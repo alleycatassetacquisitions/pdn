@@ -5,7 +5,6 @@
 #include "device/drivers/platform-clock.hpp"
 #include "utils/simple-timer.hpp"
 #include "utils/uuid-bytes.hpp"
-#include "wireless/mac-functions.hpp"
 
 #include <pb_encode.h>
 #include <climits>
@@ -20,17 +19,6 @@ inline bool appendToPayload(pb_ostream_t* stream, const pb_byte_t* buffer, size_
     std::string* payload = static_cast<std::string*>(stream->state);
     payload->append(reinterpret_cast<const char*>(buffer), count);
     return true;
-}
-
-inline void deriveDeviceIdFromMac(const char* macAddress, UUIDBytes& deviceId) {
-    static const uint8_t NAMESPACE[10] = {'p', 'd', 'n', '-', 'i', 'n', 'v', '-', 'v', '1'};
-    memset(deviceId.bytes, 0, UUIDBytes::SIZE);
-    // StringToMac writes bytes 0–5 on success; on failure (null or bad format) leave as 0.
-    if (macAddress == nullptr || !StringToMac(macAddress, deviceId.bytes)) {
-        // Sentinel byte so the derived ID is never the nil UUID.
-        deviceId.bytes[0] = 1;
-    }
-    memcpy(deviceId.bytes + 6, NAMESPACE, sizeof(NAMESPACE));
 }
 
 inline void setOptionalBool(bool value, bool* hasField, bool* field) {
@@ -59,16 +47,10 @@ inline bool toMessage(const DeviceTestResult& result,
     message.has_device = true;
     message.has_inspection = true;
 
-    UUIDBytes deviceId;
     if (result.deviceId.isZero()) {
-        deriveDeviceIdFromMac(result.macAddress, deviceId);
-    } else {
-        deviceId = result.deviceId;
-    }
-    if (deviceId.isZero()) {
         return false;
     }
-    memcpy(message.device.id, deviceId.bytes, UUIDBytes::SIZE);
+    memcpy(message.device.id, result.deviceId.bytes, UUIDBytes::SIZE);
 
     if (result.idLabel < 1 || result.idLabel > 9999) {
         return false;

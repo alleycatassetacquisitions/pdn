@@ -95,7 +95,7 @@ inline void deviceInventoryCodecRoundTripEncodesFields() {
     EXPECT_FALSE(message.inspection.checks.pdn.secondary_button);
 }
 
-inline void deviceInventoryCodecDerivesDeviceIdFromMacWhenUnset() {
+inline void deviceInventoryCodecRejectsUnsetDeviceId() {
     FixedUnixClock clock(1792359000000LL);
     SimpleTimer::setPlatformClock(&clock);
 
@@ -108,13 +108,5 @@ inline void deviceInventoryCodecDerivesDeviceIdFromMacWhenUnset() {
     result.powersOn = false;
 
     std::string payload;
-    ASSERT_TRUE(DeviceInventoryCodec::encodeRequest(result, payload));
-
-    alleycat_device_WriteDeviceReportRequest message;
-    ASSERT_TRUE(decodeDeviceReportPayload(payload, message));
-    EXPECT_FALSE(isNilUuid(message.device.id));
-    EXPECT_EQ(message.device.id[0], 0xaa);
-    EXPECT_EQ(message.device.id[5], 0xff);
-    EXPECT_TRUE(message.inspection.has_powers_on);
-    EXPECT_FALSE(message.inspection.powers_on);
+    EXPECT_FALSE(DeviceInventoryCodec::encodeRequest(result, payload));
 }

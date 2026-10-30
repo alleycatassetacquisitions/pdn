@@ -1284,8 +1284,8 @@ TEST(DeviceInventoryCodecSuite, roundTripEncodesFields) {
     deviceInventoryCodecRoundTripEncodesFields();
 }
 
-TEST(DeviceInventoryCodecSuite, derivesDeviceIdFromMacWhenUnset) {
-    deviceInventoryCodecDerivesDeviceIdFromMacWhenUnset();
+TEST(DeviceInventoryCodecSuite, rejectsUnsetDeviceId) {
+    deviceInventoryCodecRejectsUnsetDeviceId();
 }
 
 // ============================================

@@ -69,9 +69,15 @@ public:
     bool transitionToPowersOn() const;
 
 private:
+    void showInvalidId(PDN* pdn);
+    void restartDigitEntry(PDN* pdn);
+
     DeviceTestSession* session = nullptr;
     DigitEntry digitEntry;
     bool transitionToPowersOnState = false;
+    bool showingInvalidId = false;
+    SimpleTimer invalidIdTimer;
+    static constexpr unsigned long INVALID_ID_DISPLAY_MS = 1500;
 };
 
 class DeviceTestPowersOnState : public TypedState<PDN> {

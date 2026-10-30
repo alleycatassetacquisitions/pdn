@@ -40,7 +40,7 @@ void logDeviceReportPayload(const DeviceTestResult& result) {
 
     char deviceIdText[UUIDBytes::TEXT_BUFFER_SIZE] = {};
     if (result.deviceId.isZero()) {
-        strncpy(deviceIdText, "derive-from-mac", sizeof(deviceIdText) - 1);
+        strncpy(deviceIdText, "(unset)", sizeof(deviceIdText) - 1);
     } else {
         result.deviceId.format(deviceIdText);
     }
@@ -61,6 +61,9 @@ void logDeviceReportPayload(const DeviceTestResult& result) {
 void logDeviceReportPreflight(const DeviceTestResult& result) {
     if (result.idLabel < 1 || result.idLabel > 9999) {
         LOG_W(kDeviceTestReportLogTag, "Preflight: idLabel out of range (%d)", result.idLabel);
+    }
+    if (result.deviceId.isZero()) {
+        LOG_W(kDeviceTestReportLogTag, "Preflight: device UUID is nil");
     }
     if (result.firmwareCommitHash[0] == '\0') {
         LOG_W(kDeviceTestReportLogTag, "Preflight: firmware commit hash is empty");
@@ -121,18 +124,56 @@ DeviceTestEnterLabelState::~DeviceTestEnterLabelState() { session = nullptr; }
 
 void DeviceTestEnterLabelState::onStateMounted(PDN* pdn) {
     transitionToPowersOnState = false;
+    showingInvalidId = false;
+    digitEntry.mount(pdn, "Device ID");
+}
+
+void DeviceTestEnterLabelState::showInvalidId(PDN* pdn) {
+    pdn->getDisplay()
+    ->invalidateScreen()
+    ->setGlyphMode(FontMode::TEXT)
+    ->drawCenteredText("Invalid ID", 32)
+    ->render();
+}
+
+void DeviceTestEnterLabelState::restartDigitEntry(PDN* pdn) {
+    showingInvalidId = false;
     digitEntry.mount(pdn, "Device ID");
 }
 
 void DeviceTestEnterLabelState::onStateLoop(PDN* pdn) {
-    digitEntry.loop(pdn);
-    if (digitEntry.isComplete()) {
-        session->result.idLabel = digitEntry.getNumericValue();
-        transitionToPowersOnState = true;
+    if (showingInvalidId) {
+        invalidIdTimer.updateTime();
+        if (invalidIdTimer.expired()) {
+            restartDigitEntry(pdn);
+        }
+        return;
     }
+
+    digitEntry.loop(pdn);
+    if (!digitEntry.isComplete()) {
+        return;
+    }
+
+    const int idLabel = digitEntry.getNumericValue();
+    if (idLabel < 1 || idLabel > 9999) {
+        digitEntry.dismount(pdn);
+        showInvalidId(pdn);
+        showingInvalidId = true;
+        invalidIdTimer.setTimer(INVALID_ID_DISPLAY_MS);
+        return;
+    }
+
+    session->result.idLabel = idLabel;
+    char* deviceIdText = IdGenerator::getInstance().generateId();
+    IdGenerator::uuidStringToBytes(deviceIdText, session->result.deviceId.bytes);
+    transitionToPowersOnState = true;
 }
 
-void DeviceTestEnterLabelState::onStateDismounted(PDN* pdn) { digitEntry.dismount(pdn); }
+void DeviceTestEnterLabelState::onStateDismounted(PDN* pdn) {
+    digitEntry.dismount(pdn);
+    showingInvalidId = false;
+}
 
 bool DeviceTestEnterLabelState::transitionToPowersOn() const { return transitionToPowersOnState; }
 
