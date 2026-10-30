@@ -25,8 +25,8 @@ public:
     /**
      * Binds this jack to a UART. The port is fixed per jack by the subclasses below.
      */
-    Esp32s3SerialPort(const std::string& name, uart_port_t port, const char* logTag, uint8_t txPin,
-                      uint8_t rxPin)
+    Esp32s3SerialPort(const std::string& name, uart_port_t port, const char* logTag,
+                      uint8_t txPin, uint8_t rxPin)
         : SerialDriverInterface(name)
         , port(port)
         , logTag(logTag)
@@ -91,8 +91,7 @@ public:
             int incomingChar = read();
             if (incomingChar == STRING_START) {
                 std::string receivedString = readStringUntil(STRING_TERM);
-                // LOG_D(logTag, "Received: '%s' (len=%d)", receivedString.c_str(),
-                // receivedString.length());
+                LOG_D(logTag, "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
                 if (stringCallback) {
                     stringCallback(receivedString);
                 }
@@ -149,19 +148,22 @@ public:
         return result;
     }
 
-    /** @copydoc HWSerialWrapper::print */
-    void print(char msg) override { uart_write_bytes(port, &msg, 1); }
+    void print(char msg) override {
+        uart_write_bytes(port, &msg, 1);
+    }
 
-    /** @copydoc HWSerialWrapper::println */
-    void println(char* msg) override { println(std::string(msg)); }
+    void println(char* msg) override {
+        println(std::string(msg));
+    }
 
     void println(const std::string& msg) override {
         uart_write_bytes(port, msg.data(), msg.size());
         uart_write_bytes(port, "\r\n", 2);
     }
 
-    /** @copydoc HWSerialWrapper::flush */
-    void flush() override { uart_wait_tx_done(port, portMAX_DELAY); }
+    void flush() override {
+        uart_wait_tx_done(port, portMAX_DELAY);
+    }
 
     void setStringCallback(const SerialStringCallback& callback) override {
         stringCallback = callback;

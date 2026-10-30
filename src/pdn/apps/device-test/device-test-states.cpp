@@ -22,7 +22,6 @@ void copyPeerMacFromPort(DeviceTestSession* session,
     }
     memcpy(session->peerMac.data(), mac, 6);
     session->peerMacValid = true;
-    session->sessionPort = port;
     strncpy(session->result.macAddress, MacToString(mac), sizeof(session->result.macAddress) - 1);
 }
 
@@ -81,7 +80,6 @@ void logDeviceReportPreflight(const DeviceTestResult& result) {
 
 }  // namespace
 
-// --- Select hardware ---
 
 DeviceTestSelectHardwareState::DeviceTestSelectHardwareState(DeviceTestSession* sessionIn)
     : TypedState<PDN>(DeviceTestStateId::SELECT_HARDWARE)
@@ -114,7 +112,6 @@ bool DeviceTestSelectHardwareState::transitionToEnterLabel() const {
     return transitionToEnterLabelState;
 }
 
-// --- Enter label ---
 
 DeviceTestEnterLabelState::DeviceTestEnterLabelState(DeviceTestSession* sessionIn)
     : TypedState<PDN>(DeviceTestStateId::ENTER_LABEL)
@@ -139,7 +136,6 @@ void DeviceTestEnterLabelState::onStateDismounted(PDN* pdn) { digitEntry.dismoun
 
 bool DeviceTestEnterLabelState::transitionToPowersOn() const { return transitionToPowersOnState; }
 
-// --- Powers on (pre-jack) ---
 
 DeviceTestPowersOnState::DeviceTestPowersOnState(DeviceTestSession* sessionIn)
     : TypedState<PDN>(DeviceTestStateId::POWERS_ON)
@@ -175,7 +171,6 @@ void DeviceTestPowersOnState::onPass(void* ctx) {
     state->transitionToAwaitOutputJackState = true;
 }
 
-// --- Confirm power fail upload ---
 
 DeviceTestConfirmPowerFailState::DeviceTestConfirmPowerFailState(DeviceTestSession* sessionIn)
     : TypedState<PDN>(DeviceTestStateId::CONFIRM_POWER_FAIL)
@@ -207,7 +202,6 @@ void DeviceTestConfirmPowerFailState::onBack(void* ctx) {
     state->transitionToSelectHardwareState = true;
 }
 
-// --- Await output jack ---
 
 DeviceTestAwaitOutputJackState::DeviceTestAwaitOutputJackState(
 DeviceTestSession* sessionIn, RemoteDeviceCoordinator* remoteDeviceCoordinator,
@@ -257,7 +251,6 @@ bool DeviceTestAwaitOutputJackState::transitionToRemediateInputJack() const {
     return transitionToRemediateInputJackState;
 }
 
-// --- Remediate via input jack ---
 
 DeviceTestRemediateInputJackState::DeviceTestRemediateInputJackState(
 DeviceTestSession* sessionIn, RemoteDeviceCoordinator* remoteDeviceCoordinator,
@@ -311,7 +304,6 @@ bool DeviceTestRemediateInputJackState::transitionToPowerSwitch() const {
     return transitionToPowerSwitchState;
 }
 
-// --- Await session info ---
 
 DeviceTestAwaitSessionInfoState::DeviceTestAwaitSessionInfoState(
 DeviceTestSession* sessionIn, DeviceTestWirelessManager* deviceTestWirelessManagerIn)
@@ -327,7 +319,6 @@ DeviceTestAwaitSessionInfoState::~DeviceTestAwaitSessionInfoState() {
 void DeviceTestAwaitSessionInfoState::onStateMounted(PDN* pdn) {
     transitionToScreenCheckState = false;
     transitionToPowerSwitchState = false;
-    session->sessionInfoReceived = false;
     beginSessionTimer.setTimer(BEGIN_SESSION_INITIAL_DELAY_MS);
 
     prompt.mount(pdn, "Beginning...", "WAIT", "FAIL", this, [](void* ctx) { (void)ctx; }, onFail);
@@ -350,14 +341,13 @@ void DeviceTestAwaitSessionInfoState::onStateMounted(PDN* pdn) {
             memcpy(session->result.firmwareCommitHash, payload, 8);
             session->result.firmwareCommitHash[8] = '\0';
         }
-        session->sessionInfoReceived = true;
+        transitionToScreenCheckState = true;
     });
 }
 
 void DeviceTestAwaitSessionInfoState::onStateLoop(PDN* pdn) {
     (void)pdn;
-    if (session->sessionInfoReceived) {
-        transitionToScreenCheckState = true;
+    if (transitionToScreenCheckState) {
         return;
     }
     if (!session->remoteChecksEnabled) {
@@ -389,7 +379,6 @@ bool DeviceTestAwaitSessionInfoState::transitionToPowerSwitch() const {
     return transitionToPowerSwitchState;
 }
 
-// --- Prompt check (screen / leds / haptics) ---
 
 DeviceTestPromptCheckState::DeviceTestPromptCheckState(
 int stateId, DeviceTestSession* sessionIn, DeviceTestWirelessManager* deviceTestWirelessManagerIn,
@@ -455,7 +444,6 @@ void DeviceTestPromptCheckState::onPass(void* ctx) {
     state->transitionToNextState = true;
 }
 
-// --- Button check ---
 
 DeviceTestButtonCheckState::DeviceTestButtonCheckState(
 int stateId, DeviceTestSession* sessionIn, DeviceTestWirelessManager* deviceTestWirelessManagerIn,
@@ -518,7 +506,6 @@ void DeviceTestButtonCheckState::onFail(void* ctx) {
     state->transitionToNextState = true;
 }
 
-// --- Await input jack (second cable) ---
 
 DeviceTestAwaitInputJackState::DeviceTestAwaitInputJackState(
 DeviceTestSession* sessionIn, RemoteDeviceCoordinator* remoteDeviceCoordinator)
@@ -564,7 +551,6 @@ bool DeviceTestAwaitInputJackState::transitionToPowerSwitch() const {
     return transitionToPowerSwitchState;
 }
 
-// --- Power switch ---
 
 DeviceTestPowerSwitchState::DeviceTestPowerSwitchState(
 DeviceTestSession* sessionIn, RemoteDeviceCoordinator* remoteDeviceCoordinator,
@@ -597,6 +583,7 @@ void DeviceTestPowerSwitchState::onStateLoop(PDN* pdn) {
     if (dutWasOff) {
         prompt.setTitle("DUT back");
         deviceTestWirelessManager->sendBeginSession(session->peerMac.data());
+        dutWasOff = false;
     }
 }
 
@@ -616,7 +603,6 @@ void DeviceTestPowerSwitchState::onPass(void* ctx) {
     state->transitionToHousingState = true;
 }
 
-// --- Housing ---
 
 DeviceTestHousingState::DeviceTestHousingState(DeviceTestSession* sessionIn)
     : TypedState<PDN>(DeviceTestStateId::HOUSING)
@@ -645,7 +631,6 @@ void DeviceTestHousingState::onOk(void* ctx) {
     state->transitionToReportState = true;
 }
 
-// --- Report ---
 
 #define TAG "DEVICE_TEST_REPORT"
 
@@ -673,10 +658,10 @@ void DeviceTestReportState::renderStatus(PDN* pdn, const char* line1, const char
 }
 
 void DeviceTestReportState::onStateMounted(PDN* pdn) {
-    LOG_I(TAG, "State mounted — starting device report upload");
     transitionToSelectHardwareState = false;
     uploadFinished = false;
     uploadSucceeded = false;
+    uploadTimeout.setTimer(UPLOAD_TIMEOUT_MS);
 
     if (session->peerMacValid) {
         deviceTestWirelessManager->sendEndSession(session->peerMac.data());
@@ -711,7 +696,7 @@ void DeviceTestReportState::onStateMounted(PDN* pdn) {
     },
     [this](const WirelessErrorInfo& error) {
         LOG_E(TAG,
-              "Upload failed: %s (code=%d) — see HttpClient logs for server body on HTTP errors",
+              "Upload failed: %s (code=%d) ï¿½ see HttpClient logs for server body on HTTP errors",
               error.message.c_str(), static_cast<int>(error.code));
         uploadFinished = true;
         uploadSucceeded = false;
@@ -729,6 +714,12 @@ void DeviceTestReportState::onStateMounted(PDN* pdn) {
 
 void DeviceTestReportState::onStateLoop(PDN* pdn) {
     if (!uploadFinished) {
+        if (uploadTimeout.expired()) {
+            LOG_E(TAG, "Upload timed out after %lu ms",
+                  static_cast<unsigned long>(UPLOAD_TIMEOUT_MS));
+            uploadFinished = true;
+            uploadSucceeded = false;
+        }
         return;
     }
     if (uploadSucceeded) {
@@ -744,10 +735,5 @@ bool DeviceTestReportState::transitionToSelectHardware() const {
 
 void DeviceTestReportState::onStateDismounted(PDN* pdn) {
     pdn->getSecondaryButton()->removeButtonCallbacks();
-    session->result = DeviceTestResult();
-    session->peerMac = {};
-    session->peerMacValid = false;
-    session->inputJackTested = false;
-    session->remoteChecksEnabled = true;
-    session->sessionInfoReceived = false;
+    *session = DeviceTestSession{};
 }

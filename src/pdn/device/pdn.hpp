@@ -3,7 +3,6 @@
 #include "device/device.hpp"
 #include "device/light-manager.hpp"
 #include "device/serial-manager.hpp"
-#include "wireless/device-test-wireless-manager.hpp"
 
 #include <string>
 
@@ -29,8 +28,6 @@ public:
     RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override;
     /** Null unless a firmware store driver is registered. */
     FirmwareUpdateManager* getFirmwareUpdateManager() override;
-    /** ESP-NOW handler for operator/device-test packets; always non-null on PDN. */
-    DeviceTestWirelessManager* getDeviceTestWirelessManager();
 
 protected:
     PDN(DriverConfig& driverConfig);
@@ -51,7 +48,6 @@ private:
     WirelessManager* wirelessManager;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
-    DeviceTestWirelessManager* deviceTestWirelessManager = nullptr;
 
     std::string deviceId;
 };

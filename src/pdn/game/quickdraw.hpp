@@ -15,8 +15,8 @@
 #include "game/shootout-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
+class DeviceTestWirelessManager;
 class FirmwareUpdateManager;
-class PDN;
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
@@ -56,7 +56,7 @@ private:
     PeerCommsInterface* peerComms;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
-    PDN* pdnDevice = nullptr;
+    DeviceTestWirelessManager* deviceTestWirelessManager = nullptr;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager = nullptr;
@@ -65,13 +65,6 @@ private:
     SymbolWirelessManager* symbolWirelessManager;
     RemoteDebugManager* remoteDebugManager;
     SupporterReady* supporterReadyState = nullptr;
-
-    // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
-    // counters from both RDC and CDM. Intended for venue deployment: `cat`ing
-    // the serial port gives a rolling view of retry-machine health. Parseable
-    // by scripts/chain_status.sh (prefix: "STATS").
-    SimpleTimer statsLogTimer_;
-    static constexpr unsigned long kStatsLogIntervalMs = 5000;
 
     // Diagnostic: track isLoop() transitions to expose ring re-formation timing.
     bool lastIsLoop_ = false;

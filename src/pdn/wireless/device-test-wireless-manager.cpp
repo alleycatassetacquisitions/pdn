@@ -45,15 +45,9 @@ void DeviceTestWirelessManager::setPeerFilter(DeviceTestPeerFilter filter) {
     peerFilter = std::move(filter);
 }
 
-void DeviceTestWirelessManager::setSessionBeginCallback(
-std::function<void(const uint8_t* fromMac)> callback) {
-    sessionBeginCallback = std::move(callback);
-}
-
 void DeviceTestWirelessManager::clearCallbacks() {
     packetReceivedCallback = nullptr;
     peerFilter = nullptr;
-    sessionBeginCallback = nullptr;
 }
 
 int DeviceTestWirelessManager::sendCommand(const uint8_t* dstMac, DeviceTestCommand command,
@@ -128,12 +122,15 @@ int DeviceTestWirelessManager::processDeviceTestPacket(const uint8_t* macAddress
     const DeviceTestPacket* packet = reinterpret_cast<const DeviceTestPacket*>(data);
     const DeviceTestCommand command = packet->command;
 
-    if (command == DeviceTestCommand::BEGIN_SESSION && sessionBeginCallback) {
-        sessionBeginCallback(macAddress);
-    }
-
     if (packetReceivedCallback) {
-        packetReceivedCallback(macAddress, command, packet->payload, sizeof(packet->payload));
+        // Pass only the bytes meaningful for this command so downstream guards are not vacuous.
+        size_t meaningfulLen = 0;
+        switch (command) {
+            case DeviceTestCommand::SESSION_INFO: meaningfulLen = 8; break;
+            case DeviceTestCommand::BUTTON_EVENT: meaningfulLen = 1; break;
+            default: break;
+        }
+        packetReceivedCallback(macAddress, command, packet->payload, meaningfulLen);
     }
 
     return 1;

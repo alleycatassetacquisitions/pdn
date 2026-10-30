@@ -52,9 +52,7 @@ public:
     void setPacketReceivedCallback(DeviceTestPacketCallback callback);
     /** Restricts which peer MACs are accepted; null accepts all. */
     void setPeerFilter(DeviceTestPeerFilter filter);
-    /** Notified when a peer sends @ref DeviceTestCommand::BEGIN_SESSION. */
-    void setSessionBeginCallback(std::function<void(const uint8_t* fromMac)> callback);
-    /** Clears packet, peer, and session callbacks. */
+    /** Clears packet and peer callbacks. */
     void clearCallbacks();
 
     /** Sends @p command with optional @p payload to @p dstMac. */
@@ -81,6 +79,5 @@ private:
     bool espNowHandlerRegistered = false;
     DeviceTestPacketCallback packetReceivedCallback;
     DeviceTestPeerFilter peerFilter;
-    std::function<void(const uint8_t* fromMac)> sessionBeginCallback;
     uint8_t nextSeqId = 1;
 };

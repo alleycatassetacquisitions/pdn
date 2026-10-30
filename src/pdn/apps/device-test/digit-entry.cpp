@@ -59,13 +59,6 @@ void DigitEntry::loop(PDN* pdn) {
 
 bool DigitEntry::isComplete() const { return complete; }
 
-void DigitEntry::getPinString(char* out, size_t outSize) const {
-    if (out == nullptr || outSize < 5) {
-        return;
-    }
-    snprintf(out, outSize, "%d%d%d%d", inputId[0], inputId[1], inputId[2], inputId[3]);
-}
-
 int DigitEntry::getNumericValue() const {
     return inputId[0] * 1000 + inputId[1] * 100 + inputId[2] * 10 + inputId[3];
 }

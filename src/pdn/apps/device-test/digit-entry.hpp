@@ -17,8 +17,6 @@ public:
     /** @return true when all digits have been entered. */
     bool isComplete() const;
 
-    /** Writes the entered digits as a null-terminated string. */
-    void getPinString(char* out, size_t outSize) const;
     /** @return the entered value as a base-10 integer. */
     int getNumericValue() const;
 

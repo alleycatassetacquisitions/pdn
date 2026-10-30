@@ -392,4 +392,6 @@ private:
     bool transitionToSelectHardwareState = false;
     bool uploadFinished = false;
     bool uploadSucceeded = false;
+    SimpleTimer uploadTimeout;
+    static constexpr unsigned long UPLOAD_TIMEOUT_MS = 30000;
 };

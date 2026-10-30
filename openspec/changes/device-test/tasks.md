@@ -6,11 +6,7 @@
 
 - [ ] 2.1 DeviceTestSubjectState handles tester commands and reports session info / button events
 
-## 3. Result persistence (DUT-owned data)
+## 3. Verification
 
-- [ ] 3.1 After test completes on the DUT, persist the final `DeviceTestResult` (or encoded equivalent) to NVS via the existing prefs/storage driver; survive reboot; read path TBD (local display, later upload, or factory tooling)
-
-## 4. Verification
-
-- [ ] 4.1 Native tests for codec and any new storage adapter
-- [ ] 4.2 Manual: complete test on DUT, reboot, confirm NVS record still present
+- [ ] 3.1 Native tests for codec
+- [ ] 3.2 Manual: complete full inspection flow on both operator and DUT PDNs

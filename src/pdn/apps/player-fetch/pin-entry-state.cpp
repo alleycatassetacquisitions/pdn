@@ -74,9 +74,11 @@ void PinEntryState::onStateMounted(PDN* pdn) {
 
     if (deviceTestWirelessManager != nullptr) {
         deviceTestWirelessManager->registerEspNowHandler();
-        deviceTestWirelessManager->setSessionBeginCallback([this](const uint8_t* fromMac) {
-            (void)fromMac;
-            transitionToDeviceTestSubjectState = true;
+        deviceTestWirelessManager->setPacketReceivedCallback(
+        [this](const uint8_t*, DeviceTestCommand command, const uint8_t*, size_t) {
+            if (command == DeviceTestCommand::BEGIN_SESSION) {
+                transitionToDeviceTestSubjectState = true;
+            }
         });
     }
 }
@@ -141,7 +143,7 @@ void PinEntryState::onStateDismounted(PDN* pdn) {
     transitionToFirmwareUpdateState = false;
     transitionToDeviceTestSubjectState = false;
     if (deviceTestWirelessManager != nullptr) {
-        deviceTestWirelessManager->setSessionBeginCallback(nullptr);
+        deviceTestWirelessManager->clearCallbacks();
         deviceTestWirelessManager->unregisterEspNowHandler();
     }
     if (firmwareUpdateManager != nullptr) {

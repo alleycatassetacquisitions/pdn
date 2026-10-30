@@ -19,8 +19,7 @@ struct DeviceTestComponents {
 
 /** Bench session report payload for POST /device-reports (DeviceInventoryCodec). */
 struct DeviceTestResult {
-    /** Permanent device UUID when known; otherwise the codec derives a stable id from @p
-     * macAddress. */
+    /** Device UUID when known; codec derives a stable one from macAddress otherwise. */
     UUIDBytes deviceId;
     /** One UUID per bench check; retain for upload retries. */
     UUIDBytes inspectionId;

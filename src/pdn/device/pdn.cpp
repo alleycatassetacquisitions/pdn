@@ -6,7 +6,6 @@ PDN* PDN::createPDN(DriverConfig& driverConfig) { return new PDN(driverConfig); 
 
 PDN::~PDN() {
     delete firmwareUpdateManager;
-    delete deviceTestWirelessManager;
 }
 
 PDN::PDN(DriverConfig& driverConfig)
@@ -15,8 +14,7 @@ PDN::PDN(DriverConfig& driverConfig)
     , serialManager(new SerialManager(getPeripheral<HWSerialWrapper>(SERIAL_OUT_DRIVER_NAME),
                                       getPeripheral<HWSerialWrapper>(SERIAL_IN_DRIVER_NAME)))
     , wirelessManager(new WirelessManager(getPeerComms(), getHttpClient()))
-    , remoteDeviceCoordinator(new RemoteDeviceCoordinator())
-    , deviceTestWirelessManager(new DeviceTestWirelessManager()) {
+    , remoteDeviceCoordinator(new RemoteDeviceCoordinator()) {
     FirmwareStoreInterface* firmwareStore =
     getPeripheral<FirmwareStoreInterface>(FIRMWARE_STORE_DRIVER_NAME);
     if (firmwareStore != nullptr) {
@@ -27,7 +25,6 @@ PDN::PDN(DriverConfig& driverConfig)
 int PDN::begin() {
     wirelessManager->initialize();
     remoteDeviceCoordinator->initialize(wirelessManager, serialManager, this);
-    deviceTestWirelessManager->initialize(wirelessManager);
     return 1;
 }
 
@@ -55,7 +52,5 @@ WirelessManager* PDN::getWirelessManager() { return wirelessManager; }
 RemoteDeviceCoordinator* PDN::getRemoteDeviceCoordinator() { return remoteDeviceCoordinator; }
 
 FirmwareUpdateManager* PDN::getFirmwareUpdateManager() { return firmwareUpdateManager; }
-
-DeviceTestWirelessManager* PDN::getDeviceTestWirelessManager() { return deviceTestWirelessManager; }
 
 void PDN::setDeviceId(const std::string& id) { deviceId = id; }

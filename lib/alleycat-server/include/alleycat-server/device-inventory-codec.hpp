@@ -5,6 +5,7 @@
 #include "device/drivers/platform-clock.hpp"
 #include "utils/simple-timer.hpp"
 #include "utils/uuid-bytes.hpp"
+#include "wireless/mac-functions.hpp"
 
 #include <pb_encode.h>
 #include <climits>
@@ -21,57 +22,15 @@ inline bool appendToPayload(pb_ostream_t* stream, const pb_byte_t* buffer, size_
     return true;
 }
 
-inline bool isNilUuid(const uint8_t* bytes) {
-    if (bytes == nullptr) {
-        return true;
-    }
-    for (size_t index = 0; index < UUIDBytes::SIZE; ++index) {
-        if (bytes[index] != 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
-inline uint8_t hexNibble(char character) {
-    if (character >= '0' && character <= '9') {
-        return static_cast<uint8_t>(character - '0');
-    }
-    if (character >= 'a' && character <= 'f') {
-        return static_cast<uint8_t>(character - 'a' + 10);
-    }
-    if (character >= 'A' && character <= 'F') {
-        return static_cast<uint8_t>(character - 'A' + 10);
-    }
-    return 0;
-}
-
-inline void deriveDeviceIdFromMac(const char* macAddress, uint8_t (&deviceId)[UUIDBytes::SIZE]) {
+inline void deriveDeviceIdFromMac(const char* macAddress, UUIDBytes& deviceId) {
     static const uint8_t NAMESPACE[10] = {'p', 'd', 'n', '-', 'i', 'n', 'v', '-', 'v', '1'};
-    memset(deviceId, 0, UUIDBytes::SIZE);
-    if (macAddress == nullptr) {
-        memcpy(deviceId + 6, NAMESPACE, sizeof(NAMESPACE));
-        deviceId[0] = 1;
-        return;
+    memset(deviceId.bytes, 0, UUIDBytes::SIZE);
+    // StringToMac writes bytes 0–5 on success; on failure (null or bad format) leave as 0.
+    if (macAddress == nullptr || !StringToMac(macAddress, deviceId.bytes)) {
+        // Sentinel byte so the derived ID is never the nil UUID.
+        deviceId.bytes[0] = 1;
     }
-
-    size_t macByteIndex = 0;
-    for (size_t index = 0; macAddress[index] != '\0' && macByteIndex < 6; ++index) {
-        if (macAddress[index] == ':') {
-            continue;
-        }
-        const char high = macAddress[index];
-        const char low = macAddress[index + 1];
-        if (low == '\0') {
-            break;
-        }
-        deviceId[macByteIndex++] = static_cast<uint8_t>((hexNibble(high) << 4) | hexNibble(low));
-        ++index;
-    }
-    memcpy(deviceId + 6, NAMESPACE, sizeof(NAMESPACE));
-    if (isNilUuid(deviceId)) {
-        deviceId[0] = 1;
-    }
+    memcpy(deviceId.bytes + 6, NAMESPACE, sizeof(NAMESPACE));
 }
 
 inline void setOptionalBool(bool value, bool* hasField, bool* field) {
@@ -100,16 +59,16 @@ inline bool toMessage(const DeviceTestResult& result,
     message.has_device = true;
     message.has_inspection = true;
 
-    uint8_t deviceId[UUIDBytes::SIZE];
+    UUIDBytes deviceId;
     if (result.deviceId.isZero()) {
         deriveDeviceIdFromMac(result.macAddress, deviceId);
     } else {
-        memcpy(deviceId, result.deviceId.bytes, UUIDBytes::SIZE);
+        deviceId = result.deviceId;
     }
-    if (isNilUuid(deviceId)) {
+    if (deviceId.isZero()) {
         return false;
     }
-    memcpy(message.device.id, deviceId, UUIDBytes::SIZE);
+    memcpy(message.device.id, deviceId.bytes, UUIDBytes::SIZE);
 
     if (result.idLabel < 1 || result.idLabel > 9999) {
         return false;
