@@ -62,9 +62,7 @@ void PinEntryState::onStateMounted(PDN* pdn) {
             pinEntry->playerProvider->setRegistrationPin(playerId);
             pinEntry->playerProvider->applyRngSeedFromRegistrationPin();
             if (std::strcmp(playerId, DEMO_PIN) == 0) {
-                pinEntry->transitionToChooseTeamState = true;
-            } else if (std::strcmp(playerId, DEVICE_TEST_PIN) == 0) {
-                pinEntry->transitionToDeviceTestState = true;
+                pinEntry->transitionToDemoModeMenuState = true;
             } else {
                 pinEntry->transitionToFetchUserState = true;
             }
@@ -139,9 +137,8 @@ void PinEntryState::onStateDismounted(PDN* pdn) {
     currentDigitIndex = 0;
     currentDigit = 0;
     transitionToFetchUserState = false;
-    transitionToChooseTeamState = false;
+    transitionToDemoModeMenuState = false;
     transitionToFirmwareUpdateState = false;
-    transitionToDeviceTestState = false;
     transitionToDeviceTestSubjectState = false;
     if (deviceTestWirelessManager != nullptr) {
         deviceTestWirelessManager->setSessionBeginCallback(nullptr);
@@ -154,11 +151,9 @@ void PinEntryState::onStateDismounted(PDN* pdn) {
 
 bool PinEntryState::transitionToFetchUser() const { return transitionToFetchUserState; }
 
-bool PinEntryState::transitionToChooseTeam() const { return transitionToChooseTeamState; }
+bool PinEntryState::transitionToDemoModeMenu() const { return transitionToDemoModeMenuState; }
 
 bool PinEntryState::transitionToFirmwareUpdate() const { return transitionToFirmwareUpdateState; }
-
-bool PinEntryState::transitionToDeviceTest() const { return transitionToDeviceTestState; }
 
 bool PinEntryState::transitionToDeviceTestSubject() const {
     return transitionToDeviceTestSubjectState;

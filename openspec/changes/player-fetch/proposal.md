@@ -5,9 +5,10 @@ Stage 1 added protobuf player lookup (`DevicePlayer`, `PlayerApi::getDevicePlaye
 ## What Changes
 
 - Add **`PlayerFetchApp`** under `src/pdn/apps/player-fetch/` as a **self-contained state machine** (compiled and testable; **not** mounted from `quickdraw.cpp` in this change).
-- **Pin entry** — copy of `player-registration-state.cpp` as `PinEntryState`, without `MatchManager` or transmit-breath. PIN `0000` → **ChooseTeam**; any other PIN → **FetchUser**.
+- **Pin entry** — copy of `player-registration-state.cpp` as `PinEntryState`, without `MatchManager` or transmit-breath. PIN `0000` → **DemoModeMenu**; any other PIN → **FetchUser** (no dedicated device-test PIN).
 - **Fetch user** — loading glyphs + `getDevicePlayerByPin` only. Success → **Welcome**; failure/timeout → confirm-offline **page 0**, then pin entry after 3 s.
-- **Choose team** — Hunter/Bounty demo UI; confirm → **demo stub state** (no welcome, no awaken, no handoff to gameplay).
+- **Demo mode menu** — PLAY → **ChooseTeam** → welcome → gameplay; TEST → **DeviceTest** operator app.
+- **Choose team** — Hunter/Bounty demo UI; confirm → **Welcome** (demo profile applied).
 - **Welcome** — `Welcome` + name; timer → **AwakenSequence** inside the app.
 - **Awaken** — copy/move into `player-fetch/` for the server success path only; `readyForGameplay()` may be implemented for API parity but **nothing in Quickdraw consumes it yet**.
 - Session holds fetched **`DevicePlayer`** (app-owned or on `Player` where needed for display); **no `isHunter`** on PlayerFetch paths.
@@ -18,7 +19,7 @@ Unchanged in this change: `quickdraw.cpp`, `PlayerRegistrationApp`, legacy `Play
 
 ### New Capabilities
 
-- `player-fetch-flow`: Standalone pin → fetch → welcome → awaken app; demo stub; OTA from pin entry.
+- `player-fetch-flow`: Standalone pin → fetch → welcome → awaken app; demo mode menu (gameplay vs device test); OTA from pin entry.
 - `player-device-profile`: PlayerFetch session stores canonical `DevicePlayer` from fetch (not full gameplay `Player` migration).
 
 ### Modified Capabilities

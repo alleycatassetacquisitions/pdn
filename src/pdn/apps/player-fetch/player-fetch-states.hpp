@@ -15,7 +15,7 @@ namespace PlayerFetchStateId {
 constexpr int PIN_ENTRY = 0;
 constexpr int FETCH_USER = 1;
 constexpr int CHOOSE_TEAM = 2;
-constexpr int DEMO_STUB = 3;
+constexpr int DEMO_MODE_MENU = 3;
 constexpr int WELCOME = 4;
 constexpr int FIRMWARE_UPDATE = 31;
 constexpr int DEVICE_TEST = 32;
@@ -23,7 +23,6 @@ constexpr int DEVICE_TEST_SUBJECT = 33;
 }  // namespace PlayerFetchStateId
 
 constexpr const char DEMO_PIN[] = "0000";
-constexpr const char DEVICE_TEST_PIN[] = "2413";
 constexpr unsigned long PLAYER_FETCH_FIRMWARE_HOLD_MS = 5000;
 constexpr int USER_DATA_FETCH_TIMEOUT_MS = 10000;
 constexpr int FETCH_FAILURE_PAGE_TIMEOUT_MS = 3000;
@@ -46,20 +45,17 @@ public:
     /** @return true when a non-demo PIN is ready for protobuf fetch. */
     bool transitionToFetchUser() const;
     /** @return true when PIN @ref DEMO_PIN was entered. */
-    bool transitionToChooseTeam() const;
+    bool transitionToDemoModeMenu() const;
     /** @return true when secondary-button OTA hold completed on pin entry. */
     bool transitionToFirmwareUpdate() const;
 
-    /** @return true when PIN @ref DEVICE_TEST_PIN was entered. */
-    bool transitionToDeviceTest() const;
     /** @return true when a DUT session begins on pin entry. */
     bool transitionToDeviceTestSubject() const;
 
 private:
     bool transitionToFetchUserState = false;
-    bool transitionToChooseTeamState = false;
+    bool transitionToDemoModeMenuState = false;
     bool transitionToFirmwareUpdateState = false;
-    bool transitionToDeviceTestState = false;
     bool transitionToDeviceTestSubjectState = false;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
     DeviceTestWirelessManager* deviceTestWirelessManager = nullptr;
@@ -119,24 +115,24 @@ public:
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
-    /** @return true when demo team selection should mount the stub state. */
-    bool transitionToDemoStub() const;
+    /** @return true when demo role selection should show welcome before gameplay. */
+    bool transitionToWelcome() const;
 
 private:
     void renderUi(PDN* pdn) const;
 
     PlayerProvider* playerProvider = nullptr;
-    bool transitionToDemoStubState = false;
+    bool transitionToWelcomeState = false;
     bool displayIsDirty = false;
     bool hunterSelected = true;
 };
 
-class DemoStubState : public TypedState<PDN> {
+class DemoModeMenuState : public TypedState<PDN> {
 public:
-    /** Placeholder demo mode after choose-team. */
-    DemoStubState();
+    /** Demo PIN menu: launch demo gameplay or the device test operator tool. */
+    DemoModeMenuState();
     /** @copydoc TypedState::~TypedState */
-    ~DemoStubState() override;
+    ~DemoModeMenuState() override;
 
     /** @copydoc TypedState::onStateMounted */
     void onStateMounted(PDN* pdn) override;
@@ -144,11 +140,18 @@ public:
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
-    /** @return true when the stub should return to pin entry. */
-    bool transitionToPinEntry() const;
+    /** @return true when demo role selection should mount next. */
+    bool transitionToChooseTeam() const;
+    /** @return true when the device test operator app should mount. */
+    bool transitionToDeviceTest() const;
 
 private:
-    bool transitionToPinEntryState = false;
+    void renderUi(PDN* pdn) const;
+
+    bool demoGameplaySelected = true;
+    bool displayIsDirty = false;
+    bool transitionToChooseTeamState = false;
+    bool transitionToDeviceTestState = false;
 };
 
 class PlayerFetchWelcome : public TypedState<PDN> {

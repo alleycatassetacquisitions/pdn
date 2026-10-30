@@ -819,8 +819,8 @@ TEST_F(PlayerFetchTestSuite, pinEntryRoutesNonDemoPinToFetch) {
     pinEntryRoutesNonDemoPinToFetch(this);
 }
 
-TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
-    pinEntryRoutesDemoPinToChooseTeam(this);
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToDemoModeMenu) {
+    pinEntryRoutesDemoPinToDemoModeMenu(this);
 }
 
 TEST_F(PlayerFetchTestSuite, fetchUserQueuesDevicePlayerLookup) {
@@ -835,9 +835,11 @@ TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
     fetchUserFailureReturnsToPinAfterPageTimeout(this);
 }
 
-TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
-    chooseTeamConfirmReachesDemoStub(this);
+TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesWelcome) {
+    chooseTeamConfirmReachesWelcome(this);
 }
+
+TEST_F(PlayerFetchTestSuite, demoModeMenuConfirmDeviceTest) { demoModeMenuConfirmDeviceTest(this); }
 
 // ============================================
 // QUICKDRAW MATCH UPLOAD (PROTOBUF) TESTS
