@@ -28,6 +28,12 @@ typedef enum _alleycat_device_QuickdrawMatchErrorCode {
     alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE = 6
 } alleycat_device_QuickdrawMatchErrorCode;
 
+/* Supported inventory device kinds. */
+typedef enum _alleycat_device_DeviceKind {
+    alleycat_device_DeviceKind_DEVICE_KIND_UNSPECIFIED = 0,
+    alleycat_device_DeviceKind_DEVICE_KIND_PDN = 1
+} alleycat_device_DeviceKind;
+
 /* Struct definitions */
 /* Response for GET /device/players/by-pin/{pin}, application/protobuf.
  No request body. The path PIN is exactly four ASCII digits, including leading
@@ -171,18 +177,38 @@ typedef struct _alleycat_device_QuickdrawMatch {
     int64_t occurred_at_unix_ms;
 } alleycat_device_QuickdrawMatch;
 
-/* Component pass/fail flags from the PDN master test workflow. */
-typedef struct _alleycat_device_DeviceTestComponentResults {
+/* Device registration details, also accepted by POST /devices.
+ Firmware uploads include this message in WriteDeviceReportRequest. */
+typedef struct _alleycat_device_CreateDeviceRequest {
+    /* Required permanent, non-nil UUID: exactly 16 bytes in RFC 9562 network order.
+ Generate once and retain across reports and reboots; do not send UUID text. */
+    pb_byte_t id[16];
+    /* Required printed inventory label, from 1 through 9999. Globally unique. */
+    uint32_t id_label;
+    /* Optional hardware revision, from 1 through 2147483647. Omit if unknown. */
+    bool has_hardware_version;
+    uint32_t hardware_version;
+    /* Optional 48-bit MAC: six colon-separated hexadecimal byte pairs.
+ Case is ignored. Omit if unknown; an empty string is invalid. */
+    bool has_mac_address;
+    char mac_address[18];
+    /* Required: DEVICE_KIND_PDN. Unspecified and unknown values are rejected. */
+    alleycat_device_DeviceKind device_kind;
+} alleycat_device_CreateDeviceRequest;
+
+/* PDN observations: true means working, false means failed, absent means not checked.
+ Each snapshot stands alone; unchecked values never carry forward from older checks. */
+typedef struct _alleycat_device_PdnComponentChecks {
     bool has_screen;
     bool screen;
-    bool has_leds;
-    bool leds;
     bool has_primary_button;
     bool primary_button;
     bool has_secondary_button;
     bool secondary_button;
     bool has_haptics;
     bool haptics;
+    bool has_leds;
+    bool leds;
     bool has_power_switch;
     bool power_switch;
     bool has_input_jack;
@@ -191,24 +217,44 @@ typedef struct _alleycat_device_DeviceTestComponentResults {
     bool output_jack;
     bool has_housing;
     bool housing;
-} alleycat_device_DeviceTestComponentResults;
+} alleycat_device_PdnComponentChecks;
 
-/* POST /device-test-results, application/protobuf.
- Records one bench test for a labeled device at an event. 204 means accepted. */
-typedef struct _alleycat_device_WriteDeviceTestResultRequest {
-    bool has_hardware_version;
-    uint32_t hardware_version;
+/* Complete inspection snapshot for WriteDeviceReportRequest or
+ POST /devices/{device_id}/inspections. Saved snapshots are never overwritten. */
+typedef struct _alleycat_device_CreateDeviceInspectionRequest {
+    /* Required non-nil UUID: exactly 16 bytes in RFC 9562 network order.
+ Generate once per check; retain this UUID and the same contents for retries. */
+    pb_byte_t id[16];
+    /* Required check time: UTC milliseconds since 1970-01-01, from 0 through
+ 253402300799999. Must not be in the future. Upload time is recorded separately. */
+    bool has_inspected_at_unix_ms;
+    int64_t inspected_at_unix_ms;
+    /* Optional firmware identifier at check time. Nonblank, at most 64 UTF-8 bytes,
+ with no null characters. Stored unchanged. */
     bool has_firmware_commit_hash;
-    char firmware_commit_hash[16];
-    bool has_id_label;
-    uint32_t id_label;
-    bool has_device_mac;
-    char device_mac[18];
-    bool has_tester_mac;
-    char tester_mac[18];
-    bool has_components;
-    alleycat_device_DeviceTestComponentResults components;
-} alleycat_device_WriteDeviceTestResultRequest;
+    char firmware_commit_hash[64];
+    /* Optional notes, at most 2048 UTF-8 bytes, with no null characters. */
+    bool has_notes;
+    char notes[2048];
+    pb_size_t which_checks;
+    union {
+        /* Required for PDNs; must match the registered device kind. An empty message
+     means no components were checked. Missing or unsupported payloads are rejected. */
+        alleycat_device_PdnComponentChecks pdn;
+    } checks;
+} alleycat_device_CreateDeviceInspectionRequest;
+
+/* Registers a device if needed and saves its inspection atomically.
+ Used by POST /device-reports; see the HTTP API docs for responses and retries. */
+typedef struct _alleycat_device_WriteDeviceReportRequest {
+    /* Required registration details. Existing fields must match, including the
+ presence of optional fields. Reports never update registration metadata. */
+    bool has_device;
+    alleycat_device_CreateDeviceRequest device;
+    /* Required condition snapshot for this device. */
+    bool has_inspection;
+    alleycat_device_CreateDeviceInspectionRequest inspection;
+} alleycat_device_WriteDeviceReportRequest;
 
 
 #ifdef __cplusplus
@@ -220,6 +266,10 @@ extern "C" {
 #define _alleycat_device_QuickdrawMatchErrorCode_MAX alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE
 #define _alleycat_device_QuickdrawMatchErrorCode_ARRAYSIZE ((alleycat_device_QuickdrawMatchErrorCode)(alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE+1))
 
+#define _alleycat_device_DeviceKind_MIN alleycat_device_DeviceKind_DEVICE_KIND_UNSPECIFIED
+#define _alleycat_device_DeviceKind_MAX alleycat_device_DeviceKind_DEVICE_KIND_PDN
+#define _alleycat_device_DeviceKind_ARRAYSIZE ((alleycat_device_DeviceKind)(alleycat_device_DeviceKind_DEVICE_KIND_PDN+1))
+
 
 
 
@@ -227,6 +277,9 @@ extern "C" {
 
 #define alleycat_device_QuickdrawMatchRejection_code_ENUMTYPE alleycat_device_QuickdrawMatchErrorCode
 
+
+
+#define alleycat_device_CreateDeviceRequest_device_kind_ENUMTYPE alleycat_device_DeviceKind
 
 
 
@@ -239,8 +292,10 @@ extern "C" {
 #define alleycat_device_WriteQuickdrawMatchesResponse_init_default {{{NULL}, NULL}}
 #define alleycat_device_QuickdrawMatchRejection_init_default {0, "", 0, {"", ""}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
 #define alleycat_device_QuickdrawMatch_init_default {"", "", "", false, "", false, "", false, 0, false, 0, "", false, 0}
-#define alleycat_device_DeviceTestComponentResults_init_default {false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0}
-#define alleycat_device_WriteDeviceTestResultRequest_init_default {false, 0, false, "", false, 0, false, "", false, "", false, alleycat_device_DeviceTestComponentResults_init_default}
+#define alleycat_device_WriteDeviceReportRequest_init_default {false, alleycat_device_CreateDeviceRequest_init_default, false, alleycat_device_CreateDeviceInspectionRequest_init_default}
+#define alleycat_device_CreateDeviceRequest_init_default {{0}, 0, false, 0, false, "", _alleycat_device_DeviceKind_MIN}
+#define alleycat_device_CreateDeviceInspectionRequest_init_default {{0}, false, 0, false, "", false, "", 0, {alleycat_device_PdnComponentChecks_init_default}}
+#define alleycat_device_PdnComponentChecks_init_default {false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0}
 #define alleycat_device_DevicePlayerResponse_init_zero {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define alleycat_device_DevicePlayerAffiliation_init_zero {{0}, {{NULL}, NULL}, {0}, {{NULL}, NULL}}
 #define alleycat_device_WriteDeviceLogRequest_init_zero {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
@@ -248,8 +303,10 @@ extern "C" {
 #define alleycat_device_WriteQuickdrawMatchesResponse_init_zero {{{NULL}, NULL}}
 #define alleycat_device_QuickdrawMatchRejection_init_zero {0, "", 0, {"", ""}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
 #define alleycat_device_QuickdrawMatch_init_zero {"", "", "", false, "", false, "", false, 0, false, 0, "", false, 0}
-#define alleycat_device_DeviceTestComponentResults_init_zero {false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0}
-#define alleycat_device_WriteDeviceTestResultRequest_init_zero {false, 0, false, "", false, 0, false, "", false, "", false, alleycat_device_DeviceTestComponentResults_init_zero}
+#define alleycat_device_WriteDeviceReportRequest_init_zero {false, alleycat_device_CreateDeviceRequest_init_zero, false, alleycat_device_CreateDeviceInspectionRequest_init_zero}
+#define alleycat_device_CreateDeviceRequest_init_zero {{0}, 0, false, 0, false, "", _alleycat_device_DeviceKind_MIN}
+#define alleycat_device_CreateDeviceInspectionRequest_init_zero {{0}, false, 0, false, "", false, "", 0, {alleycat_device_PdnComponentChecks_init_zero}}
+#define alleycat_device_PdnComponentChecks_init_zero {false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define alleycat_device_DevicePlayerResponse_id_tag 1
@@ -284,21 +341,27 @@ extern "C" {
 #define alleycat_device_QuickdrawMatch_player_b_draw_time_ms_tag 7
 #define alleycat_device_QuickdrawMatch_winner_player_id_tag 8
 #define alleycat_device_QuickdrawMatch_occurred_at_unix_ms_tag 9
-#define alleycat_device_DeviceTestComponentResults_screen_tag 1
-#define alleycat_device_DeviceTestComponentResults_leds_tag 2
-#define alleycat_device_DeviceTestComponentResults_primary_button_tag 3
-#define alleycat_device_DeviceTestComponentResults_secondary_button_tag 4
-#define alleycat_device_DeviceTestComponentResults_haptics_tag 5
-#define alleycat_device_DeviceTestComponentResults_power_switch_tag 6
-#define alleycat_device_DeviceTestComponentResults_input_jack_tag 7
-#define alleycat_device_DeviceTestComponentResults_output_jack_tag 8
-#define alleycat_device_DeviceTestComponentResults_housing_tag 9
-#define alleycat_device_WriteDeviceTestResultRequest_hardware_version_tag 1
-#define alleycat_device_WriteDeviceTestResultRequest_firmware_commit_hash_tag 2
-#define alleycat_device_WriteDeviceTestResultRequest_id_label_tag 3
-#define alleycat_device_WriteDeviceTestResultRequest_device_mac_tag 4
-#define alleycat_device_WriteDeviceTestResultRequest_tester_mac_tag 5
-#define alleycat_device_WriteDeviceTestResultRequest_components_tag 6
+#define alleycat_device_CreateDeviceRequest_id_tag 1
+#define alleycat_device_CreateDeviceRequest_id_label_tag 2
+#define alleycat_device_CreateDeviceRequest_hardware_version_tag 3
+#define alleycat_device_CreateDeviceRequest_mac_address_tag 4
+#define alleycat_device_CreateDeviceRequest_device_kind_tag 5
+#define alleycat_device_PdnComponentChecks_screen_tag 1
+#define alleycat_device_PdnComponentChecks_primary_button_tag 2
+#define alleycat_device_PdnComponentChecks_secondary_button_tag 3
+#define alleycat_device_PdnComponentChecks_haptics_tag 4
+#define alleycat_device_PdnComponentChecks_leds_tag 5
+#define alleycat_device_PdnComponentChecks_power_switch_tag 6
+#define alleycat_device_PdnComponentChecks_input_jack_tag 7
+#define alleycat_device_PdnComponentChecks_output_jack_tag 8
+#define alleycat_device_PdnComponentChecks_housing_tag 9
+#define alleycat_device_CreateDeviceInspectionRequest_id_tag 1
+#define alleycat_device_CreateDeviceInspectionRequest_inspected_at_unix_ms_tag 2
+#define alleycat_device_CreateDeviceInspectionRequest_firmware_commit_hash_tag 3
+#define alleycat_device_CreateDeviceInspectionRequest_notes_tag 4
+#define alleycat_device_CreateDeviceInspectionRequest_pdn_tag 5
+#define alleycat_device_WriteDeviceReportRequest_device_tag 1
+#define alleycat_device_WriteDeviceReportRequest_inspection_tag 2
 
 /* Struct field encoding specification for nanopb */
 #define alleycat_device_DevicePlayerResponse_FIELDLIST(X, a) \
@@ -364,29 +427,45 @@ X(a, STATIC,   OPTIONAL, INT64,    occurred_at_unix_ms,   9)
 #define alleycat_device_QuickdrawMatch_CALLBACK NULL
 #define alleycat_device_QuickdrawMatch_DEFAULT NULL
 
-#define alleycat_device_DeviceTestComponentResults_FIELDLIST(X, a) \
+#define alleycat_device_WriteDeviceReportRequest_FIELDLIST(X, a) \
+X(a, STATIC,   OPTIONAL, MESSAGE,  device,            1) \
+X(a, STATIC,   OPTIONAL, MESSAGE,  inspection,        2)
+#define alleycat_device_WriteDeviceReportRequest_CALLBACK NULL
+#define alleycat_device_WriteDeviceReportRequest_DEFAULT NULL
+#define alleycat_device_WriteDeviceReportRequest_device_MSGTYPE alleycat_device_CreateDeviceRequest
+#define alleycat_device_WriteDeviceReportRequest_inspection_MSGTYPE alleycat_device_CreateDeviceInspectionRequest
+
+#define alleycat_device_CreateDeviceRequest_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, id,                1) \
+X(a, STATIC,   SINGULAR, UINT32,   id_label,          2) \
+X(a, STATIC,   OPTIONAL, UINT32,   hardware_version,   3) \
+X(a, STATIC,   OPTIONAL, STRING,   mac_address,       4) \
+X(a, STATIC,   SINGULAR, UENUM,    device_kind,       5)
+#define alleycat_device_CreateDeviceRequest_CALLBACK NULL
+#define alleycat_device_CreateDeviceRequest_DEFAULT NULL
+
+#define alleycat_device_CreateDeviceInspectionRequest_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, id,                1) \
+X(a, STATIC,   OPTIONAL, INT64,    inspected_at_unix_ms,   2) \
+X(a, STATIC,   OPTIONAL, STRING,   firmware_commit_hash,   3) \
+X(a, STATIC,   OPTIONAL, STRING,   notes,             4) \
+X(a, STATIC,   ONEOF,    MESSAGE,  (checks,pdn,checks.pdn),   5)
+#define alleycat_device_CreateDeviceInspectionRequest_CALLBACK NULL
+#define alleycat_device_CreateDeviceInspectionRequest_DEFAULT NULL
+#define alleycat_device_CreateDeviceInspectionRequest_checks_pdn_MSGTYPE alleycat_device_PdnComponentChecks
+
+#define alleycat_device_PdnComponentChecks_FIELDLIST(X, a) \
 X(a, STATIC,   OPTIONAL, BOOL,     screen,            1) \
-X(a, STATIC,   OPTIONAL, BOOL,     leds,              2) \
-X(a, STATIC,   OPTIONAL, BOOL,     primary_button,    3) \
-X(a, STATIC,   OPTIONAL, BOOL,     secondary_button,   4) \
-X(a, STATIC,   OPTIONAL, BOOL,     haptics,           5) \
+X(a, STATIC,   OPTIONAL, BOOL,     primary_button,    2) \
+X(a, STATIC,   OPTIONAL, BOOL,     secondary_button,   3) \
+X(a, STATIC,   OPTIONAL, BOOL,     haptics,           4) \
+X(a, STATIC,   OPTIONAL, BOOL,     leds,              5) \
 X(a, STATIC,   OPTIONAL, BOOL,     power_switch,      6) \
 X(a, STATIC,   OPTIONAL, BOOL,     input_jack,        7) \
 X(a, STATIC,   OPTIONAL, BOOL,     output_jack,       8) \
 X(a, STATIC,   OPTIONAL, BOOL,     housing,           9)
-#define alleycat_device_DeviceTestComponentResults_CALLBACK NULL
-#define alleycat_device_DeviceTestComponentResults_DEFAULT NULL
-
-#define alleycat_device_WriteDeviceTestResultRequest_FIELDLIST(X, a) \
-X(a, STATIC,   OPTIONAL, UINT32,   hardware_version,   1) \
-X(a, STATIC,   OPTIONAL, STRING,   firmware_commit_hash,   2) \
-X(a, STATIC,   OPTIONAL, UINT32,   id_label,          3) \
-X(a, STATIC,   OPTIONAL, STRING,   device_mac,        4) \
-X(a, STATIC,   OPTIONAL, STRING,   tester_mac,        5) \
-X(a, STATIC,   OPTIONAL, MESSAGE,  components,        6)
-#define alleycat_device_WriteDeviceTestResultRequest_CALLBACK NULL
-#define alleycat_device_WriteDeviceTestResultRequest_DEFAULT NULL
-#define alleycat_device_WriteDeviceTestResultRequest_components_MSGTYPE alleycat_device_DeviceTestComponentResults
+#define alleycat_device_PdnComponentChecks_CALLBACK NULL
+#define alleycat_device_PdnComponentChecks_DEFAULT NULL
 
 extern const pb_msgdesc_t alleycat_device_DevicePlayerResponse_msg;
 extern const pb_msgdesc_t alleycat_device_DevicePlayerAffiliation_msg;
@@ -395,8 +474,10 @@ extern const pb_msgdesc_t alleycat_device_WriteQuickdrawMatchesRequest_msg;
 extern const pb_msgdesc_t alleycat_device_WriteQuickdrawMatchesResponse_msg;
 extern const pb_msgdesc_t alleycat_device_QuickdrawMatchRejection_msg;
 extern const pb_msgdesc_t alleycat_device_QuickdrawMatch_msg;
-extern const pb_msgdesc_t alleycat_device_DeviceTestComponentResults_msg;
-extern const pb_msgdesc_t alleycat_device_WriteDeviceTestResultRequest_msg;
+extern const pb_msgdesc_t alleycat_device_WriteDeviceReportRequest_msg;
+extern const pb_msgdesc_t alleycat_device_CreateDeviceRequest_msg;
+extern const pb_msgdesc_t alleycat_device_CreateDeviceInspectionRequest_msg;
+extern const pb_msgdesc_t alleycat_device_PdnComponentChecks_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
 #define alleycat_device_DevicePlayerResponse_fields &alleycat_device_DevicePlayerResponse_msg
@@ -406,20 +487,24 @@ extern const pb_msgdesc_t alleycat_device_WriteDeviceTestResultRequest_msg;
 #define alleycat_device_WriteQuickdrawMatchesResponse_fields &alleycat_device_WriteQuickdrawMatchesResponse_msg
 #define alleycat_device_QuickdrawMatchRejection_fields &alleycat_device_QuickdrawMatchRejection_msg
 #define alleycat_device_QuickdrawMatch_fields &alleycat_device_QuickdrawMatch_msg
-#define alleycat_device_DeviceTestComponentResults_fields &alleycat_device_DeviceTestComponentResults_msg
-#define alleycat_device_WriteDeviceTestResultRequest_fields &alleycat_device_WriteDeviceTestResultRequest_msg
+#define alleycat_device_WriteDeviceReportRequest_fields &alleycat_device_WriteDeviceReportRequest_msg
+#define alleycat_device_CreateDeviceRequest_fields &alleycat_device_CreateDeviceRequest_msg
+#define alleycat_device_CreateDeviceInspectionRequest_fields &alleycat_device_CreateDeviceInspectionRequest_msg
+#define alleycat_device_PdnComponentChecks_fields &alleycat_device_PdnComponentChecks_msg
 
 /* Maximum encoded size of messages (where known) */
 /* alleycat_device_DevicePlayerResponse_size depends on runtime parameters */
 /* alleycat_device_DevicePlayerAffiliation_size depends on runtime parameters */
 /* alleycat_device_WriteQuickdrawMatchesRequest_size depends on runtime parameters */
 /* alleycat_device_WriteQuickdrawMatchesResponse_size depends on runtime parameters */
-#define ALLEYCAT_DEVICE_DEVICE_API_PB_H_MAX_SIZE alleycat_device_QuickdrawMatch_size
-#define alleycat_device_DeviceTestComponentResults_size 18
+#define ALLEYCAT_DEVICE_DEVICE_API_PB_H_MAX_SIZE alleycat_device_WriteDeviceReportRequest_size
+#define alleycat_device_CreateDeviceInspectionRequest_size 2164
+#define alleycat_device_CreateDeviceRequest_size 51
+#define alleycat_device_PdnComponentChecks_size  18
 #define alleycat_device_QuickdrawMatchRejection_size 96
 #define alleycat_device_QuickdrawMatch_size      261
 #define alleycat_device_WriteDeviceLogRequest_size 92
-#define alleycat_device_WriteDeviceTestResultRequest_size 87
+#define alleycat_device_WriteDeviceReportRequest_size 2220
 
 #ifdef __cplusplus
 } /* extern "C" */

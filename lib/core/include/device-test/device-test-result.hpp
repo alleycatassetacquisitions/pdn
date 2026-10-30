@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+
+#include "utils/uuid-bytes.hpp"
 
 struct DeviceTestComponents {
     bool screen = false;
@@ -14,8 +17,13 @@ struct DeviceTestComponents {
     bool housing = false;
 };
 
-/** In-memory test report; encoded by DeviceTestCodec for POST /device-test-results. */
+/** In-memory test report; encoded by DeviceTestCodec for POST /device-reports. */
 struct DeviceTestResult {
+    /** Permanent device UUID when known; otherwise the codec derives a stable id from @p macAddress. */
+    UUIDBytes deviceId;
+    /** One UUID per bench check; retain for upload retries. */
+    UUIDBytes inspectionId;
+    int64_t inspectedAtUnixMs = 0;
     int hardwareVersion = 1;
     char firmwareCommitHash[9] = "unknown";
     int idLabel = 0;

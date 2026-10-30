@@ -147,26 +147,6 @@ void Quickdraw::onStateLoop(Device *PDN) {
         }
     }
 
-    if (!statsLogTimer_.isRunning()) {
-        statsLogTimer_.setTimer(kStatsLogIntervalMs);
-    } else if (statsLogTimer_.expired()) {
-        if (remoteDeviceCoordinator != nullptr && chainDuelManager != nullptr) {
-            auto r = remoteDeviceCoordinator->getRetryStats();
-            auto c = chainDuelManager->getRetryStats();
-            unsigned long rMean = r.ackCount ? (r.ackLatencyMsSum / r.ackCount) : 0;
-            unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
-            // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2
-            // which strips info-level calls.
-            LOG_W("STATS",
-                "RDC s=%u r=%u ab=%u ack=%u/%lums | CDM s=%u r=%u ab=%u ack=%u/%lums",
-                (unsigned)r.sends, (unsigned)r.retries, (unsigned)r.abandons,
-                (unsigned)r.ackCount, rMean,
-                (unsigned)c.sends, (unsigned)c.retries, (unsigned)c.abandons,
-                (unsigned)c.ackCount, cMean);
-        }
-        statsLogTimer_.setTimer(kStatsLogIntervalMs);
-    }
-
     StateMachine::onStateLoop(PDN);
 }
 

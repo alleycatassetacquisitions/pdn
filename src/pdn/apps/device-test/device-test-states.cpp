@@ -2,11 +2,16 @@
 
 #include "alleycat-server/device-test-api.hpp"
 #include "device/drivers/logger.hpp"
+#include "id-generator.hpp"
+#include "utils/simple-timer.hpp"
+#include "utils/uuid-bytes.hpp"
 #include "wireless/mac-functions.hpp"
 
 #include <cstring>
 
 namespace {
+
+constexpr const char kDeviceTestReportLogTag[] = "DEVICE_TEST_REPORT";
 
 void copyPeerMacFromPort(DeviceTestSession* session,
                          RemoteDeviceCoordinator* remoteDeviceCoordinator,
@@ -29,6 +34,57 @@ void markRemoteChecksFailed(DeviceTestSession* session) {
     session->result.components.primaryButton = false;
     session->result.components.secondaryButton = false;
     session->result.components.haptics = false;
+}
+
+void logDeviceReportPayload(const DeviceTestResult& result) {
+    char inspectionIdText[UUIDBytes::TEXT_BUFFER_SIZE] = {};
+    result.inspectionId.format(inspectionIdText);
+
+    char deviceIdText[UUIDBytes::TEXT_BUFFER_SIZE] = {};
+    if (result.deviceId.isZero()) {
+        strncpy(deviceIdText, "derive-from-mac", sizeof(deviceIdText) - 1);
+    } else {
+        result.deviceId.format(deviceIdText);
+    }
+
+    LOG_I(kDeviceTestReportLogTag,
+          "Report payload: idLabel=%d hw=%d mac=%s fw=%s inspectedAtMs=%lld deviceId=%s inspectionId=%s "
+          "checks screen=%d leds=%d pri=%d sec=%d haptics=%d pwr=%d in=%d out=%d housing=%d",
+          result.idLabel,
+          result.hardwareVersion,
+          result.macAddress,
+          result.firmwareCommitHash,
+          static_cast<long long>(result.inspectedAtUnixMs),
+          deviceIdText,
+          inspectionIdText,
+          result.components.screen ? 1 : 0,
+          result.components.leds ? 1 : 0,
+          result.components.primaryButton ? 1 : 0,
+          result.components.secondaryButton ? 1 : 0,
+          result.components.haptics ? 1 : 0,
+          result.components.powerSwitch ? 1 : 0,
+          result.components.inputJack ? 1 : 0,
+          result.components.outputJack ? 1 : 0,
+          result.components.housing ? 1 : 0);
+}
+
+void logDeviceReportPreflight(const DeviceTestResult& result) {
+    if (result.idLabel < 1 || result.idLabel > 9999) {
+        LOG_W(kDeviceTestReportLogTag, "Preflight: idLabel out of range (%d)", result.idLabel);
+    }
+    if (result.firmwareCommitHash[0] == '\0') {
+        LOG_W(kDeviceTestReportLogTag, "Preflight: firmware commit hash is empty");
+    }
+    if (result.macAddress[0] == '\0') {
+        LOG_W(kDeviceTestReportLogTag, "Preflight: device MAC is empty");
+    }
+    if (result.inspectionId.isZero()) {
+        LOG_W(kDeviceTestReportLogTag, "Preflight: inspection UUID is nil");
+    }
+    if (result.inspectedAtUnixMs <= 0) {
+        LOG_W(kDeviceTestReportLogTag, "Preflight: inspectedAtUnixMs is %lld (clock may be unsynced)",
+              static_cast<long long>(result.inspectedAtUnixMs));
+    }
 }
 
 }  // namespace
@@ -244,7 +300,7 @@ void DeviceTestAwaitSessionInfoState::onStateMounted(PDN* pdn) {
     session->sessionInfoReceived = false;
     beginSessionTimer.setTimer(kBeginSessionInitialDelayMs);
 
-    prompt.mount(pdn, "DUT session", "WAIT", "FAIL", this, [](void* ctx) { (void)ctx; }, onFail);
+    prompt.mount(pdn, "Starting", "WAIT", "FAIL", this, [](void* ctx) { (void)ctx; }, onFail);
 
     deviceTestWirelessManager->setPeerFilter([this](const uint8_t* mac) {
         if (!session->peerMacValid) {
@@ -400,7 +456,7 @@ void DeviceTestButtonCheckState::onStateMounted(PDN* pdn) {
         return;
     }
 
-    const char* title = expectedButton == ButtonIdentifier::PRIMARY_BUTTON ? "Press DUT TOP" : "Press DUT BOTTOM";
+    const char* title = expectedButton == ButtonIdentifier::PRIMARY_BUTTON ? "Top Button" : "Bottom Button";
     prompt.mount(pdn, title, "WAIT", "FAIL", this, [](void* ctx) { (void)ctx; }, onFail);
 
     deviceTestWirelessManager->setPeerFilter([this](const uint8_t* mac) {
@@ -567,7 +623,7 @@ DeviceTestHousingState::~DeviceTestHousingState() {
 
 void DeviceTestHousingState::onStateMounted(PDN* pdn) {
     transitionToReportState = false;
-    prompt.mount(pdn, "Housing Damaged?", "OK", "DAMAGED", this, onOk, onDamaged);
+    prompt.mount(pdn, "Housing", "PASS", "FAIL", this, onOk, onDamaged);
 }
 
 void DeviceTestHousingState::onStateDismounted(PDN* pdn) {
@@ -618,6 +674,7 @@ void DeviceTestReportState::renderStatus(PDN* pdn, const char* line1, const char
 }
 
 void DeviceTestReportState::onStateMounted(PDN* pdn) {
+    LOG_I(TAG, "State mounted — starting device report upload");
     transitionToSelectHardwareState = false;
     uploadFinished = false;
     uploadSucceeded = false;
@@ -628,16 +685,37 @@ void DeviceTestReportState::onStateMounted(PDN* pdn) {
 
     renderStatus(pdn, "Uploading", "Please wait");
 
+    if (session->result.inspectionId.isZero()) {
+        char* inspectionText = IdGenerator::getInstance().generateId();
+        IdGenerator::uuidStringToBytes(inspectionText, session->result.inspectionId.bytes);
+        LOG_I(TAG, "Generated inspection UUID for this upload");
+    }
+    if (session->result.inspectedAtUnixMs <= 0) {
+        PlatformClock* clock = SimpleTimer::getPlatformClock();
+        if (clock != nullptr) {
+            session->result.inspectedAtUnixMs = clock->unixMilliseconds();
+            LOG_I(TAG, "Set inspectedAtUnixMs=%lld from platform clock",
+                  static_cast<long long>(session->result.inspectedAtUnixMs));
+        }
+    }
+
+    logDeviceReportPreflight(session->result);
+    logDeviceReportPayload(session->result);
+
     DeviceTestResult resultCopy = session->result;
-    DeviceTestApi::uploadResult(
+    DeviceTestApi::uploadDeviceReport(
         wirelessManager,
         resultCopy,
-        [this](const std::string&) {
+        [this](const std::string& response) {
+            LOG_I(TAG, "Upload succeeded (HTTP 2xx, response %zu bytes)", response.size());
             uploadFinished = true;
             uploadSucceeded = true;
         },
         [this](const WirelessErrorInfo& error) {
-            LOG_W(TAG, "Upload failed: %s", error.message.c_str());
+            LOG_E(TAG,
+                  "Upload failed: %s (code=%d) — see HttpClient logs for server body on HTTP errors",
+                  error.message.c_str(),
+                  static_cast<int>(error.code));
             uploadFinished = true;
             uploadSucceeded = false;
         });
@@ -658,9 +736,9 @@ void DeviceTestReportState::onStateLoop(PDN* pdn) {
         return;
     }
     if (uploadSucceeded) {
-        renderStatus(pdn, "Uploaded", "Press bottom");
+        renderStatus(pdn, "Uploaded", "");
     } else {
-        renderStatus(pdn, "Upload failed", "Press bottom");
+        renderStatus(pdn, "Upload failed", "");
     }
 }
 

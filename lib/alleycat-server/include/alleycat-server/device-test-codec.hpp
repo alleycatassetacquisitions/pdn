@@ -5,7 +5,7 @@
 
 namespace DeviceTestCodec {
 
-/** Encodes @p result as WriteDeviceTestResultRequest into @p payload. */
+/** Encodes @p result as WriteDeviceReportRequest into @p payload. */
 bool encodeRequest(const DeviceTestResult& result, std::string& payload);
 
 }  // namespace DeviceTestCodec

@@ -1498,6 +1498,10 @@ TEST(DeviceTestCodecSuite, roundTripEncodesFields) {
     deviceTestCodecRoundTripEncodesFields();
 }
 
+TEST(DeviceTestCodecSuite, derivesDeviceIdFromMacWhenUnset) {
+    deviceTestCodecDerivesDeviceIdFromMacWhenUnset();
+}
+
 // ============================================
 // REMOTE DEVICE COORDINATOR TESTS
 // ============================================
