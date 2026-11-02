@@ -104,11 +104,13 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
     //If we don't currently have a record for them, add them
     if(remotePlayer == remotePlayers.end())
     {
+        char safeId[IdGenerator::UUID_BUFFER_SIZE];
+        IdGenerator::copyId(safeId, pkt->id);
 
-        LOG_D("RPM", "Discovered player %s Allegiance: %u IsHunter: %u\n", pkt->id, pkt->allegiance, pkt->hunter);
+        LOG_D("RPM", "Discovered player %s Allegiance: %u IsHunter: %u\n", safeId, pkt->allegiance, pkt->hunter);
 
-        remotePlayers.emplace_back(srcMacAddr, pkt->id, pkt->allegiance, pkt->hunter,
-            SimpleTimer::getPlatformClock()->milliseconds(), currentRssi);
+        remotePlayers.emplace_back(srcMacAddr, safeId, pkt->allegiance, pkt->hunter != 0,
+                                   SimpleTimer::getPlatformClock()->milliseconds(), currentRssi);
         remotePlayer = remotePlayers.end() - 1;
         LOG_I("RPM", "Added discovered player %s (Allegiance: %u, %s) at addr %X:%X:%X:%X:%X:%X\n", 
             remotePlayer->playerInfo.getUserID().c_str(),

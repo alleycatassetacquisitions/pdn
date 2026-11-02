@@ -19,8 +19,8 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     , resender(wirelessManager)
     , duelChannel(wirelessManager, &resender, PktType::kQuickdrawCommand, nullptr) {
     duelChannel.onReceive([this](const uint8_t* fromMac, const QuickdrawPacket& p) {
-        QuickdrawCommand command(fromMac, p.command, p.matchId, p.playerId,
-                                 p.playerDrawTime, p.isHunter);
+        QuickdrawCommand command(fromMac, p.command, p.matchId, p.playerId, p.playerDrawTime,
+                                 p.isHunter != 0);
         listenForMatchEvents(command);
     });
 }
@@ -34,7 +34,7 @@ void MatchManager::sendCommand(const uint8_t* mac, int command, const char* matc
     QuickdrawPacket packet{};
     packet.command = command;
     packet.playerDrawTime = drawTime;
-    packet.isHunter = isHunter;
+    packet.isHunter = isHunter ? 1 : 0;
     IdGenerator::copyId(packet.matchId, matchId);
     IdGenerator::copyId(packet.playerId, player->getUserID().c_str());
 

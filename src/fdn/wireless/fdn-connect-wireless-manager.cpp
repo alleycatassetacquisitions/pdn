@@ -87,13 +87,17 @@ int FDNConnectWirelessManager::processPacket(const uint8_t* senderMac, const uin
     }
 
     switch (pkt->command) {
-        case PDN_CONNECT:
-            peerPlayerId = std::string(pkt->playerId);
-            LOG_I(TAG, "PDN connected, player ID: %s", pkt->playerId);
+        case PDN_CONNECT: {
+            char safeId[FDN_PLAYER_ID_BUFFER_SIZE];
+            std::memcpy(safeId, pkt->playerId, FDN_PLAYER_ID_BUFFER_SIZE - 1);
+            safeId[FDN_PLAYER_ID_BUFFER_SIZE - 1] = '\0';
+            peerPlayerId = std::string(safeId);
+            LOG_I(TAG, "PDN connected, player ID: %s", peerPlayerId.c_str());
             if (connectCallback) {
                 connectCallback(peerPlayerId, senderMac);
             }
             break;
+        }
 
         case BUTTON_PRESS: {
             ButtonIdentifier btn = static_cast<ButtonIdentifier>(pkt->buttonValue);
