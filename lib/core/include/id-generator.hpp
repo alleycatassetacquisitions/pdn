@@ -54,11 +54,6 @@ public:
         generator.seed(seed, randomDevice());
     }
 
-    /** Seeds both Marsaglia PRNG words deterministically without std::random_device. */
-    void seed(uint32_t s1, uint32_t s2) {
-        generator.seed(s1, s2);
-    }
-
     /**
      * Converts a UUID string to its binary representation.
      * 

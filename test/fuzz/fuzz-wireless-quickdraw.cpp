@@ -131,7 +131,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         IdGenerator::initialize(42);
         idGenInitialized = true;
     }
-    IdGenerator::getInstance().seed(42, 42);
 
     FuzzStepClock clock;
     SimpleTimer::setPlatformClock(&clock);
