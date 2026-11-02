@@ -8,6 +8,17 @@ ENGINE="${1:-libfuzzer}"   # libfuzzer | afl | build
 TARGET="${2:-all}"         # serial | wireless | match | all
 DURATION="${3:-10}"        # seconds per target when running
 
+case "$TARGET" in
+    all)      TARGETS=(serial match wireless) ;;
+    serial)   TARGETS=(serial) ;;
+    match)    TARGETS=(match) ;;
+    wireless) TARGETS=(wireless) ;;
+    *)
+        echo "Unknown target '$TARGET'. Expected: serial | match | wireless | all" >&2
+        exit 1
+        ;;
+esac
+
 BUILD_DIR=".pio/fuzz/bin"
 CORPUS_DIR=".pio/fuzz/corpus"
 SEEDS_DIR=".pio/fuzz/seeds"
@@ -33,6 +44,8 @@ COMMON_CXXFLAGS=(
     -O1
     -fno-omit-frame-pointer
     -I lib/core/include
+    -I lib/native-drivers/include
+    -I test/fuzz
     -I src/pdn
     -I src
     -I "$ARDUINO_JSON_INC"
@@ -59,6 +72,7 @@ WIRELESS_SRCS=(
     test/fuzz/fuzz-wireless-quickdraw.cpp
     lib/core/src/wireless/reliable-channel.cpp
     lib/core/src/wireless/reliable-transport.cpp
+    lib/core/src/wireless/remote-player-manager.cpp
     lib/core/src/wireless/resender.cpp
     lib/core/src/wireless/symbol-wireless-manager.cpp
     lib/core/src/device/remote-device-coordinator.cpp
@@ -82,15 +96,12 @@ generate_seeds_and_dict() {
     printf '\xaa\x55\x00\x11\x22\x33\x44\x55\x66\x01\xde\xad\xbe\xef\x00\x01\x01\xdc\x48' \
         > "$SEEDS_DIR/serial/valid_hello.bin"
 
-    # Valid Match JSON seed
     printf '{"match_id":"12345678-abcd-ef01-2345-6789abcdef01","hunter":"0001","bounty":"0002","winner_is_hunter":true,"hunter_time":250,"bounty_time":400}' \
         > "$SEEDS_DIR/match/valid_match.json"
 
-    # Wireless action sequence seed
     printf '\x03\x02AAAA\x00\x00\x07\x01\x05\x02BBBB\x00\x00\x09\x02\x08' \
         > "$SEEDS_DIR/wireless/duel_flow.bin"
 
-    # Protocol & JSON dictionary (AFL Life Pro Tip #1)
     cat > "$DICT_FILE" << 'EOF'
 kw_match_id="match_id"
 kw_hunter="hunter"
@@ -106,8 +117,7 @@ kw_preamble="\xaa\x55"
 kw_hello="\xaa\x55\x00"
 EOF
 
-    # Instrumentation allowlist: instrument PDN sources/headers and fuzz harnesses,
-    # excluding third-party ArduinoJson & STL internals (AFL Performance Tip #5)
+    # Instrument only project sources and harnesses, skipping ArduinoJson and STL.
     cat > "$ALLOWLIST_FILE" << 'EOF'
 *lib/core/*
 *src/pdn/*
@@ -135,19 +145,25 @@ build_target() {
     fi
 }
 
+build_for_target_name() {
+    local cxx="$1"
+    local suffix="$2"
+    local target_name="$3"
+
+    case "$target_name" in
+        serial)   build_target "$cxx" "$suffix" "serial" "${SERIAL_SRCS[@]}" ;;
+        match)    build_target "$cxx" "$suffix" "match" "${MATCH_SRCS[@]}" ;;
+        wireless) build_target "$cxx" "$suffix" "wireless" "${WIRELESS_SRCS[@]}" ;;
+    esac
+}
+
 build_all_for_compiler() {
     local cxx="$1"
     local suffix="$2"
 
-    if [[ "$TARGET" == "serial" || "$TARGET" == "all" ]]; then
-        build_target "$cxx" "$suffix" "serial" "${SERIAL_SRCS[@]}"
-    fi
-    if [[ "$TARGET" == "match" || "$TARGET" == "all" ]]; then
-        build_target "$cxx" "$suffix" "match" "${MATCH_SRCS[@]}"
-    fi
-    if [[ "$TARGET" == "wireless" || "$TARGET" == "all" ]]; then
-        build_target "$cxx" "$suffix" "wireless" "${WIRELESS_SRCS[@]}"
-    fi
+    for t in "${TARGETS[@]}"; do
+        build_for_target_name "$cxx" "$suffix" "$t"
+    done
 }
 
 run_libfuzzer_target() {
@@ -174,7 +190,7 @@ run_afl_target() {
     mkdir -p "$out"
 
     echo "=== Running AFL++ on [$name] for ${DURATION}s (max_len=${MAX_INPUT_LEN}, CMPLOG enabled) ==="
-    AFL_SKIP_CPUFREQ=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
+    AFL_AUTORESUME=1 AFL_SKIP_CPUFREQ=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
         afl-fuzz -V "$DURATION" -G "$MAX_INPUT_LEN" -c "${bin}-cmplog" -l 2AT -x "$DICT_FILE" -i "$seeds" -o "$out" -- "$bin"
 }
 
@@ -185,29 +201,17 @@ case "$ENGINE" in
         CLANG_BIN="${CLANG_CXX:-clang++-18}"
         build_all_for_compiler "$CLANG_BIN" "libfuzzer"
         if [[ "$DURATION" -gt 0 ]]; then
-            if [[ "$TARGET" == "serial" || "$TARGET" == "all" ]]; then
-                run_libfuzzer_target "serial"
-            fi
-            if [[ "$TARGET" == "match" || "$TARGET" == "all" ]]; then
-                run_libfuzzer_target "match"
-            fi
-            if [[ "$TARGET" == "wireless" || "$TARGET" == "all" ]]; then
-                run_libfuzzer_target "wireless"
-            fi
+            for t in "${TARGETS[@]}"; do
+                run_libfuzzer_target "$t"
+            done
         fi
         ;;
     afl)
         build_all_for_compiler "afl-clang-fast++" "afl"
         if [[ "$DURATION" -gt 0 ]]; then
-            if [[ "$TARGET" == "serial" || "$TARGET" == "all" ]]; then
-                run_afl_target "serial"
-            fi
-            if [[ "$TARGET" == "match" || "$TARGET" == "all" ]]; then
-                run_afl_target "match"
-            fi
-            if [[ "$TARGET" == "wireless" || "$TARGET" == "all" ]]; then
-                run_afl_target "wireless"
-            fi
+            for t in "${TARGETS[@]}"; do
+                run_afl_target "$t"
+            done
         fi
         ;;
     build)

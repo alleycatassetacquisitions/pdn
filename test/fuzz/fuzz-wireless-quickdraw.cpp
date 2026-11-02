@@ -1,59 +1,24 @@
-#include "utils/UUID.h"
-
-#include <cassert>
-#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <map>
-#include <random>
 #include <string>
 #include <vector>
 
-// Expose IdGenerator's internal UUID generator to the fuzz harness so each
-// persistent-mode iteration resets the PRNG state deterministically (Tip #4)
-// without std::random_device entropy causing path instability across runs.
-#define private public
-#include "id-generator.hpp"
-#undef private
-
-#include "device/drivers/http-client-interface.hpp"
-#include "device/drivers/logger.hpp"
+#include "device/drivers/native/native-prefs-driver.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
-#include "device/drivers/platform-clock.hpp"
-#include "device/drivers/storage-interface.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "device/wireless-manager.hpp"
+#include "fuzz-common.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
+#include "id-generator.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/quickdraw-packet.hpp"
+#include "wireless/remote-player-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
 namespace {
-
-class FuzzNullLogger : public LoggerInterface {
-public:
-    void vlog(LogLevel, const char*, const char*, int, const char*, va_list) override {}
-};
-
-class FuzzStepClock : public PlatformClock {
-public:
-    unsigned long milliseconds() override {
-        return currentTimeMs;
-    }
-
-    void setTime(unsigned long timeMs) {
-        currentTimeMs = timeMs;
-    }
-
-    void advance(unsigned long deltaMs) {
-        currentTimeMs += deltaMs;
-    }
-
-private:
-    unsigned long currentTimeMs = 10000;
-};
 
 class FuzzPeerComms : public PeerCommsInterface {
 public:
@@ -70,37 +35,23 @@ public:
         rxHandlers[type] = HandlerEntry{callback, ctx};
     }
 
-    void clearPacketHandler(PktType type) override {
-        rxHandlers.erase(type);
-    }
+    void clearPacketHandler(PktType type) override { rxHandlers.erase(type); }
 
     void setSendStatusHandler(PktType type, SendStatusCallback callback, void* ctx) override {
         txStatusHandlers[type] = SendStatusEntry{callback, ctx};
     }
 
-    void clearSendStatusHandler(PktType type) override {
-        txStatusHandlers.erase(type);
-    }
+    void clearSendStatusHandler(PktType type) override { txStatusHandlers.erase(type); }
 
-    // Copy both the 6-byte MAC and the payload into exact-sized heap allocations
-    // (Tip #5) so ASan catches any out-of-bounds read past 6 or `len` bytes.
+    // Exact-sized heap buffers so ASan catches reads past the 6-byte MAC or len-byte payload.
     void deliverRxExact(PktType type, const uint8_t* srcMac6, const uint8_t* payload, size_t len) {
         auto it = rxHandlers.find(type);
         if (it == rxHandlers.end() || it->second.callback == nullptr) {
             return;
         }
-        auto* exactMac = new uint8_t[6];
-        std::memcpy(exactMac, srcMac6, 6);
-
-        auto* exactPayload = new uint8_t[len];
-        if (len > 0) {
-            std::memcpy(exactPayload, payload, len);
-        }
-
-        it->second.callback(exactMac, exactPayload, len, it->second.ctx);
-
-        delete[] exactPayload;
-        delete[] exactMac;
+        ExactBuffer exactMac(srcMac6, 6);
+        ExactBuffer exactPayload(payload, len);
+        it->second.callback(exactMac.data(), exactPayload.data(), len, it->second.ctx);
     }
 
     void deliverTxStatusExact(PktType type, const uint8_t* dstMac6, const uint8_t* payload,
@@ -109,18 +60,9 @@ public:
         if (it == txStatusHandlers.end() || it->second.callback == nullptr) {
             return;
         }
-        auto* exactMac = new uint8_t[6];
-        std::memcpy(exactMac, dstMac6, 6);
-
-        auto* exactPayload = new uint8_t[len];
-        if (len > 0) {
-            std::memcpy(exactPayload, payload, len);
-        }
-
-        it->second.callback(exactMac, exactPayload, len, success, it->second.ctx);
-
-        delete[] exactPayload;
-        delete[] exactMac;
+        ExactBuffer exactMac(dstMac6, 6);
+        ExactBuffer exactPayload(payload, len);
+        it->second.callback(exactMac.data(), exactPayload.data(), len, success, it->second.ctx);
     }
 
     void ackLastSent(bool success) {
@@ -130,19 +72,13 @@ public:
         }
     }
 
-    const uint8_t* getGlobalBroadcastAddress() override {
-        return broadcastMac;
-    }
+    const uint8_t* getGlobalBroadcastAddress() override { return broadcastMac; }
 
-    uint8_t* getMacAddress() override {
-        return localMac;
-    }
+    uint8_t* getMacAddress() override { return localMac; }
 
     void setPeerCommsState(PeerCommsState) override {}
 
-    PeerCommsState getPeerCommsState() override {
-        return PeerCommsState::CONNECTED;
-    }
+    PeerCommsState getPeerCommsState() override { return PeerCommsState::CONNECTED; }
 
     void connect() override {}
     void disconnect() override {}
@@ -167,93 +103,8 @@ private:
     std::vector<uint8_t> lastSentBytes;
 };
 
-class FuzzStorage : public StorageInterface {
-public:
-    size_t write(const std::string& ns, const std::string& key, const std::string& value) override {
-        if (stringStore.size() > 64) {
-            stringStore.clear();
-        }
-        stringStore[ns + ":" + key] = value;
-        return value.size();
-    }
-
-    std::string read(const std::string& ns, const std::string& key,
-                     const std::string& defaultValue) override {
-        auto it = stringStore.find(ns + ":" + key);
-        if (it != stringStore.end()) {
-            return it->second;
-        }
-        return defaultValue;
-    }
-
-    bool remove(const std::string& ns, const std::string& key) override {
-        stringStore.erase(ns + ":" + key);
-        ucharStore.erase(ns + ":" + key);
-        return true;
-    }
-
-    bool clear(const std::string&) override {
-        stringStore.clear();
-        ucharStore.clear();
-        return true;
-    }
-
-    void end() override {}
-
-    uint8_t readUChar(const std::string& ns, const std::string& key,
-                      uint8_t defaultValue) override {
-        auto it = ucharStore.find(ns + ":" + key);
-        if (it != ucharStore.end()) {
-            return it->second;
-        }
-        return defaultValue;
-    }
-
-    size_t writeUChar(const std::string& ns, const std::string& key, uint8_t value) override {
-        ucharStore[ns + ":" + key] = value;
-        return 1;
-    }
-
-private:
-    std::map<std::string, std::string> stringStore;
-    std::map<std::string, uint8_t> ucharStore;
-};
-
-class FuzzHttpClient : public HttpClientInterface {
-public:
-    void setWifiConfig(WifiConfig*) override {}
-    bool isConnected() override {
-        return false;
-    }
-    bool queueRequest(HttpRequest&) override {
-        return false;
-    }
-    void disconnect() override {}
-    void updateConfig(WifiConfig*) override {}
-    void retryConnection() override {}
-    uint8_t* getMacAddress() override {
-        return macAddress;
-    }
-    void setHttpClientState(HttpClientState) override {}
-    HttpClientState getHttpClientState() override {
-        return HttpClientState::DISCONNECTED;
-    }
-
-private:
-    uint8_t macAddress[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
-};
-
 class FuzzRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
-    FuzzRemoteDeviceCoordinator() {
-        const uint8_t defaultPeer[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-        std::memcpy(peerMac, defaultPeer, 6);
-    }
-
-    void setDirectPeer(const uint8_t* mac) {
-        std::memcpy(peerMac, mac, 6);
-    }
-
     const uint8_t* getPeerMac(SerialIdentifier port) const override {
         if (port == SerialIdentifier::INPUT_JACK) {
             return peerMac;
@@ -269,35 +120,30 @@ public:
     }
 
 private:
-    uint8_t peerMac[6] = {};
+    uint8_t peerMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
 };
 
 }  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-    static FuzzNullLogger nullLogger;
-    g_logger = &nullLogger;
-
     static bool idGenInitialized = false;
     if (!idGenInitialized) {
         IdGenerator::initialize(42);
         idGenInitialized = true;
     }
-    // Deterministically reset the Marsaglia PRNG state before every testcase (Tip #4).
-    IdGenerator::getInstance().generator.seed(42, 42);
-    IdGenerator::getInstance().generator.setVersion4Mode();
+    IdGenerator::getInstance().seed(42, 42);
 
     FuzzStepClock clock;
     SimpleTimer::setPlatformClock(&clock);
 
     FuzzPeerComms peerComms;
-    FuzzStorage storage;
-    FuzzHttpClient httpClient;
+    NativePrefsDriver storage("fuzz", {MATCHES_PREFS_NAMESPACE});
     FuzzRemoteDeviceCoordinator rdc;
 
-    WirelessManager wirelessManager(&peerComms, &httpClient);
+    WirelessManager wirelessManager(&peerComms, nullptr);
     MatchManager matchManager(&wirelessManager);
     SymbolWirelessManager symbolWirelessManager(&wirelessManager, &rdc);
+    RemotePlayerManager remotePlayerManager(&peerComms);
 
     Player player;
     char initialUserId[] = "0042";
@@ -306,6 +152,13 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     matchManager.initialize(&player, &storage);
     matchManager.setRemoteDeviceCoordinator(&rdc);
+    remotePlayerManager.StartBroadcastingPlayerInfo(&player, 5000);
+    wirelessManager.setEspNowPacketHandler(
+        PktType::kPlayerInfoBroadcast,
+        [](const uint8_t* srcMac, const uint8_t* pktData, const size_t pktLen, void* ctx) {
+            static_cast<RemotePlayerManager*>(ctx)->ProcessPlayerInfoPkt(srcMac, pktData, pktLen);
+        },
+        &remotePlayerManager);
 
     symbolWirelessManager.setPacketReceivedCallback(
         [](const SymbolMatchCommand& cmd) {
@@ -315,7 +168,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         SerialIdentifier::INPUT_JACK);
 
     uint8_t peerMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    rdc.setDirectPeer(peerMac);
     symbolWirelessManager.setMacPeer(peerMac);
 
     size_t pos = 0;
@@ -324,8 +176,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
         switch (op) {
             case 0: {
-                // Deliver arbitrary raw bytes to kQuickdrawCommand from a compact 1-byte sender ID
-                // (exercises length mismatch checks and rxSeq deduplication table eviction).
+                // Variable-length raw frame to exercise ReliableChannel::deliver length checks.
                 if (size - pos < 2) {
                     pos = size;
                     break;
@@ -347,16 +198,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                     pos = size;
                     break;
                 }
-                QuickdrawPacket pkt{};
-                std::memcpy(&pkt, data + pos, sizeof(QuickdrawPacket));
-                pos += sizeof(QuickdrawPacket);
-                peerComms.deliverRxExact(PktType::kQuickdrawCommand, peerMac,
-                                         reinterpret_cast<const uint8_t*>(&pkt),
+                peerComms.deliverRxExact(PktType::kQuickdrawCommand, peerMac, data + pos,
                                          sizeof(QuickdrawPacket));
+                pos += sizeof(QuickdrawPacket);
                 break;
             }
             case 2: {
-                // Deliver a state-aware QuickdrawPacket matching active matchId & opponentMac
                 if (size - pos < 8) {
                     pos = size;
                     break;
@@ -380,20 +227,17 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             }
             case 3: {
-                // Initialize match as hunter/bounty
                 matchManager.initializeMatch(peerMac);
                 matchManager.setDuelLocalStartTime(clock.milliseconds());
                 break;
             }
             case 4: {
-                // Initialize shootout match
                 matchManager.initializeShootoutMatch("SHT-0001000200030004000500060007", peerMac,
                                                      player.isHunter());
                 matchManager.setDuelLocalStartTime(clock.milliseconds());
                 break;
             }
             case 5: {
-                // Press duel button
                 parameterizedCallbackFunction push = matchManager.getDuelButtonPush();
                 if (push != nullptr) {
                     push(&matchManager);
@@ -401,7 +245,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             }
             case 6: {
-                // Press button masher
                 parameterizedCallbackFunction mash = matchManager.getButtonMasher();
                 if (mash != nullptr) {
                     mash(&matchManager);
@@ -409,15 +252,13 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             }
             case 7: {
-                // Send never pressed & check results
                 matchManager.sendNeverPressed(1500);
                 (void)matchManager.matchResultsAreIn();
                 (void)matchManager.didWin();
                 break;
             }
             case 8: {
-                // Optionally jump stored match count near MAX_MATCHES (255) boundary (Tip #8),
-                // then finalize match & serialize stored matches to JSON
+                // Jump count near MAX_MATCHES (255) to exercise storage-full boundary.
                 if (pos < size) {
                     uint8_t countOverride = data[pos++];
                     if (countOverride >= 250) {
@@ -432,23 +273,21 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             }
             case 9: {
-                // Advance clock and sync resenders
                 if (pos < size) {
                     unsigned long delta = static_cast<unsigned long>(data[pos++]) * 25UL;
                     clock.advance(delta);
                 }
                 matchManager.sync();
                 symbolWirelessManager.sync();
+                remotePlayerManager.Update();
                 break;
             }
             case 10: {
-                // Deliver TX status (ack / fail) for last sent packet
                 bool success = (pos < size) ? ((data[pos++] & 1U) != 0U) : true;
                 peerComms.ackLastSent(success);
                 break;
             }
             case 11: {
-                // Deliver SymbolMatchPacket (raw fuzz bytes)
                 if (size - pos < sizeof(SymbolMatchPacket)) {
                     pos = size;
                     break;
@@ -459,7 +298,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             }
             case 12: {
-                // Send symbol packet
                 if (pos < size) {
                     uint8_t b = data[pos++];
                     symbolWirelessManager.sendPacket(static_cast<int>(b & 0x07U),
@@ -469,10 +307,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             }
             case 13: {
-                // Burst 34 distinct sender MACs to force ReliableChannelBase::rxSeq
-                // eviction past MAX_RX_SENDERS (32) (Tip #8).
+                // Burst 34 sender MACs to force ReliableChannelBase::rxSeq eviction past MAX_RX_SENDERS (32).
                 QuickdrawPacket pkt{};
-                pkt.command = QDCommand::DRAW_RESULT;
+                uint8_t selector = (pos < size) ? data[pos++] : 0U;
+                pkt.command = static_cast<int>(QDCommand::SEND_MATCH_ID + (selector % 5U));
+                pkt.isHunter = selector & 1U;
                 for (uint8_t i = 1; i <= 34; ++i) {
                     uint8_t burstMac[6] = {0x02, 0xAA, 0xBB, 0xCC, 0xDD, i};
                     pkt.seqId = i;
@@ -482,16 +321,28 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 }
                 break;
             }
+            case 14: {
+                if (size - pos < 2) {
+                    pos = size;
+                    break;
+                }
+                uint8_t senderId = data[pos++];
+                uint8_t srcMac[6] = {0x02, 0x11, 0x22, 0x33, 0x44, senderId};
+                size_t pktLen = data[pos++] % 64U;
+                if (pktLen > size - pos) {
+                    pktLen = size - pos;
+                }
+                peerComms.deliverRxExact(PktType::kPlayerInfoBroadcast, srcMac, data + pos, pktLen);
+                pos += pktLen;
+                break;
+            }
             default: {
-                // Toggle player role or clear match
                 player.setIsHunter(!player.isHunter());
                 matchManager.clearCurrentMatch();
                 break;
             }
         }
 
-        // State-machine invariant oracle (Life Pro Tip #17):
-        // Verify MatchManager state consistency and string bounds after every action.
         const bool hasActiveMatch = matchManager.getCurrentMatch().has_value();
         if (matchManager.isMatchReady() && !hasActiveMatch) {
             __builtin_trap();
@@ -503,16 +354,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             __builtin_trap();
         }
         if (hasActiveMatch) {
-            const Match& currentMatch = *matchManager.getCurrentMatch();
-            if (std::strlen(currentMatch.getMatchId()) >= IdGenerator::UUID_BUFFER_SIZE) {
-                __builtin_trap();
-            }
-            if (std::strlen(currentMatch.getHunterId()) > PLAYER_ID_BINARY_SIZE) {
-                __builtin_trap();
-            }
-            if (std::strlen(currentMatch.getBountyId()) > PLAYER_ID_BINARY_SIZE) {
-                __builtin_trap();
-            }
+            assertMatchStringBounds(*matchManager.getCurrentMatch());
         }
     }
 

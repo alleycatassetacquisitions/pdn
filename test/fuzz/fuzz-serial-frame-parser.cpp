@@ -1,11 +1,9 @@
 #include "device/serial-frame-parser.hpp"
 
-#include "device/drivers/logger.hpp"
-#include "device/drivers/platform-clock.hpp"
+#include "fuzz-common.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/crc16.hpp"
 
-#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -13,38 +11,10 @@
 
 namespace {
 
-class FuzzNullLogger : public LoggerInterface {
-public:
-    void vlog(LogLevel, const char*, const char*, int, const char*, va_list) override {}
-};
-
-class FuzzStepClock : public PlatformClock {
-public:
-    unsigned long milliseconds() override {
-        return currentTimeMs;
-    }
-
-    void setTime(unsigned long timeMs) {
-        currentTimeMs = timeMs;
-    }
-
-    void advance(unsigned long deltaMs) {
-        currentTimeMs += deltaMs;
-    }
-
-private:
-    unsigned long currentTimeMs = 1000;
-};
-
-// Copy into an exact-sized heap allocation (Tip #5) so ASan catches even a
-// 1-byte read past `len` instead of reading silently into the fuzzer's buffer.
+// Exact-sized heap buffer so ASan catches any read past len.
 void feedExactCopy(SerialFrameParser& parser, const uint8_t* src, size_t len) {
-    auto* exactBuf = new uint8_t[len];
-    if (len > 0) {
-        std::memcpy(exactBuf, src, len);
-    }
-    parser.feed(exactBuf, len);
-    delete[] exactBuf;
+    ExactBuffer exactBuf(src, len);
+    parser.feed(exactBuf.data(), len);
 }
 
 constexpr uint8_t ACTION_FEED_RAW_CHUNK = 0;
@@ -55,9 +25,6 @@ constexpr uint8_t ACTION_REQUEST_RESET = 3;
 }  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-    static FuzzNullLogger nullLogger;
-    g_logger = &nullLogger;
-
     FuzzStepClock clock;
     SimpleTimer::setPlatformClock(&clock);
 
@@ -70,13 +37,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         ++decodedCount;
     });
 
-    // Mode 1: Direct raw byte-stream fuzzing on an exact-sized heap copy.
     feedExactCopy(parser, data, size);
 
-    // Mode 2: Structured action stream (tests chunk boundaries, mid-frame timeouts,
-    // cross-thread reset requests, and valid-CRC frame decoding).
+    // Mode 2: Action stream driving chunking, timeouts, requestReset(), and valid frames.
     parser.requestReset();
-    clock.setTime(1000);
 
     size_t pos = 0;
     while (pos < size) {
@@ -118,9 +82,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         }
     }
 
-    // Mode 3 (Invariant Oracle): After any arbitrary corrupt byte stream followed by
-    // the mid-frame timeout window (> 50ms), a valid HELLO frame fed in fuzz-sized
-    // chunks MUST always be recovered and decoded identically.
+    // After >50ms (PARSER_TIMEOUT_MS), any partial frame must expire and a valid HELLO must decode.
     clock.advance(55);
     HelloPayload sentinel{};
     for (int i = 0; i < 6; ++i) {

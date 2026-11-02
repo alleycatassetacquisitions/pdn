@@ -44,8 +44,7 @@ void RemotePlayerManager::Update()
 int RemotePlayerManager::BroadcastPlayerInfo()
 {
     PlayerInfoPkt broadcastPkt;
-    strncpy(broadcastPkt.id, localPlayerInfo->getUserID().c_str(), IdGenerator::UUID_STRING_LENGTH);
-    broadcastPkt.id[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null termination
+    IdGenerator::copyId(broadcastPkt.id, localPlayerInfo->getUserID().c_str());
     broadcastPkt.allegiance = localPlayerInfo->getAllegiance();
     broadcastPkt.hunter = localPlayerInfo->isHunter();
 
@@ -106,10 +105,18 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
     {
         char safeId[IdGenerator::UUID_BUFFER_SIZE];
         IdGenerator::copyId(safeId, pkt->id);
+        int rawAllegiance = 0;
+        std::memcpy(&rawAllegiance, &pkt->allegiance, sizeof(rawAllegiance));
+        Allegiance safeAllegiance =
+            (rawAllegiance >= static_cast<int>(Allegiance::ALLEYCAT) &&
+             rawAllegiance <= static_cast<int>(Allegiance::RESISTANCE))
+                ? static_cast<Allegiance>(rawAllegiance)
+                : Allegiance::ALLEYCAT;
 
-        LOG_D("RPM", "Discovered player %s Allegiance: %u IsHunter: %u\n", safeId, pkt->allegiance, pkt->hunter);
+        LOG_D("RPM", "Discovered player %s Allegiance: %u IsHunter: %u\n", safeId, safeAllegiance,
+              pkt->hunter);
 
-        remotePlayers.emplace_back(srcMacAddr, safeId, pkt->allegiance, pkt->hunter != 0,
+        remotePlayers.emplace_back(srcMacAddr, safeId, safeAllegiance, pkt->hunter,
                                    SimpleTimer::getPlatformClock()->milliseconds(), currentRssi);
         remotePlayer = remotePlayers.end() - 1;
         LOG_I("RPM", "Added discovered player %s (Allegiance: %u, %s) at addr %X:%X:%X:%X:%X:%X\n", 

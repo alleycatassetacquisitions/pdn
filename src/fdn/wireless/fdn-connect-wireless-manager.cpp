@@ -1,6 +1,7 @@
 #include "wireless/fdn-connect-wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/logger.hpp"
+#include "id-generator.hpp"
 
 #define TAG "FDN_CWM"
 
@@ -89,8 +90,7 @@ int FDNConnectWirelessManager::processPacket(const uint8_t* senderMac, const uin
     switch (pkt->command) {
         case PDN_CONNECT: {
             char safeId[FDN_PLAYER_ID_BUFFER_SIZE];
-            std::memcpy(safeId, pkt->playerId, FDN_PLAYER_ID_BUFFER_SIZE - 1);
-            safeId[FDN_PLAYER_ID_BUFFER_SIZE - 1] = '\0';
+            IdGenerator::copyId(safeId, pkt->playerId);
             peerPlayerId = std::string(safeId);
             LOG_I(TAG, "PDN connected, player ID: %s", peerPlayerId.c_str());
             if (connectCallback) {
