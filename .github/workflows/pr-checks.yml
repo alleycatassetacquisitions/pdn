@@ -1,9 +1,13 @@
 name: PR Checks
 
-# Triggers on pull requests to main branch
+# Triggers on pull requests to the long-lived integration branches. comms-rewrite
+# has to be listed here, on comms-rewrite itself: while this file named only
+# main, PRs based on this branch ran no checks at all (#306 through #315).
 on:
   pull_request:
-    branches: main
+    branches:
+      - main
+      - comms-rewrite
 
 jobs:
   # Native tests (runs on all platforms for maximum compatibility)
