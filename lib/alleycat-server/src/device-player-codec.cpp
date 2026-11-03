@@ -1,4 +1,4 @@
-#include "alleycat-server/device-player-decoder.hpp"
+#include "alleycat-server/device-player-codec.hpp"
 #include "alleycat-server/device_api.pb.h"
 #include <pb_decode.h>
 #include <algorithm>
@@ -58,7 +58,7 @@ bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg
 
 }  // namespace
 
-namespace DevicePlayerDecoder {
+namespace DevicePlayerCodec {
 
 bool decode(const std::string& body, Player& player) {
     UUIDBytes serverId;
@@ -91,4 +91,4 @@ bool decode(const std::string& body, Player& player) {
     return true;
 }
 
-}  // namespace DevicePlayerDecoder
+}  // namespace DevicePlayerCodec

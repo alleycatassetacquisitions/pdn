@@ -1,41 +1,37 @@
-#include "alleycat-server/crash-encoder.hpp"
+#include "alleycat-server/crash-codec.hpp"
 #include "alleycat-server/device_api.pb.h"
 #include <pb_encode.h>
 #include <cstdio>
 #include <cstring>
 
-namespace CrashEncoder {
+namespace CrashCodec {
 
-size_t encode(const CrashRecord& record, const uint8_t* mac,
-              uint8_t* outBuf, size_t bufSize) {
-    alleycat_device_WriteDeviceLogRequest msg =
-        alleycat_device_WriteDeviceLogRequest_init_zero;
+size_t encode(const CrashRecord& record, const uint8_t* mac, uint8_t* outBuf, size_t bufSize) {
+    alleycat_device_WriteDeviceLogRequest msg = alleycat_device_WriteDeviceLogRequest_init_zero;
 
     // MAC: 6 raw bytes → "aa:bb:cc:dd:ee:ff"
     if (mac != nullptr) {
-        snprintf(msg.device_mac, sizeof(msg.device_mac),
-                 "%02x:%02x:%02x:%02x:%02x:%02x",
-                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        snprintf(msg.device_mac, sizeof(msg.device_mac), "%02x:%02x:%02x:%02x:%02x:%02x", mac[0],
+                 mac[1], mac[2], mac[3], mac[4], mac[5]);
         msg.has_device_mac = true;
     }
 
     msg.has_crash_number = true;
-    msg.crash_number     = record.crashNumber;
+    msg.crash_number = record.crashNumber;
 
     // timestamp maps to uptime_ms.
     msg.has_uptime_ms = true;
-    msg.uptime_ms     = record.timestamp;
+    msg.uptime_ms = record.timestamp;
 
     // commitHash maps to software_version.
     if (record.commitHash[0] != '\0') {
-        strncpy(msg.software_version, record.commitHash,
-                sizeof(msg.software_version) - 1);
+        strncpy(msg.software_version, record.commitHash, sizeof(msg.software_version) - 1);
         msg.software_version[sizeof(msg.software_version) - 1] = '\0';
         msg.has_software_version = true;
     }
 
     msg.has_reset_reason = true;
-    msg.reset_reason     = record.resetReason;
+    msg.reset_reason = record.resetReason;
 
     if (record.coreDumpDetails) {
         msg.has_program_counter = true;
@@ -59,4 +55,4 @@ size_t encode(const CrashRecord& record, const uint8_t* mac,
     return stream.bytes_written;
 }
 
-} // namespace CrashEncoder
+}  // namespace CrashCodec

@@ -8,7 +8,7 @@
  *
  * Pure function with no platform dependencies — testable on native.
  */
-namespace DevicePlayerDecoder {
+namespace DevicePlayerCodec {
 
 /**
  * Decodes @p body into @p player's registration fields, replacing previous registration data.
@@ -17,4 +17,4 @@ namespace DevicePlayerDecoder {
  */
 bool decode(const std::string& body, Player& player);
 
-}  // namespace DevicePlayerDecoder
+}  // namespace DevicePlayerCodec

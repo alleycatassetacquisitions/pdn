@@ -27,8 +27,8 @@
 #include "reliable-transport-tests.hpp"
 #include "storage-tests.hpp"
 #include "symbol-wireless-tests.hpp"
-#include "crash-encoder-tests.hpp"
-#include "device-player-decoder-tests.hpp"
+#include "crash-codec-tests.hpp"
+#include "device-player-codec-tests.hpp"
 #include "player-fetch-tests.hpp"
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
@@ -1000,26 +1000,20 @@ TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
 }
 
 // ============================================
-// CRASH ENCODER TESTS
+// CRASH CODEC TESTS
 // ============================================
 
-TEST_F(CrashEncoderTestSuite, roundTripPopulatesAllFields) {
+TEST_F(CrashCodecTestSuite, roundTripPopulatesAllFields) {
     encoderRoundTripPopulatesAllFields(this);
 }
 
-TEST_F(CrashEncoderTestSuite, omitsUnsetOptionalFields) {
-    encoderOmitsUnsetOptionalFields(this);
-}
+TEST_F(CrashCodecTestSuite, omitsUnsetOptionalFields) { encoderOmitsUnsetOptionalFields(this); }
 
-TEST_F(CrashEncoderTestSuite, keepsExceptionCauseZero) {
-    encoderKeepsExceptionCauseZero(this);
-}
+TEST_F(CrashCodecTestSuite, keepsExceptionCauseZero) { encoderKeepsExceptionCauseZero(this); }
 
-TEST_F(CrashEncoderTestSuite, omitsMissingExceptionCause) {
-    encoderOmitsMissingExceptionCause(this);
-}
+TEST_F(CrashCodecTestSuite, omitsMissingExceptionCause) { encoderOmitsMissingExceptionCause(this); }
 
-TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) {
+TEST_F(CrashCodecTestSuite, returnsZeroWhenBufferTooSmall) {
     encoderReturnZeroWhenBufferTooSmall(this);
 }
 
@@ -1027,45 +1021,25 @@ TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) {
 // DEVICE PLAYER (PROTOBUF) TESTS
 // ============================================
 
-TEST(DevicePlayerDecoder, decodesTeamAndAffiliations) {
-    devicePlayerDecodesTeamAndAffiliations();
-}
+TEST(DevicePlayerCodec, decodesTeamAndAffiliations) { devicePlayerDecodesTeamAndAffiliations(); }
 
-TEST(DevicePlayerDecoder, decodesUnassignedPlayer) {
-    devicePlayerDecodesUnassignedPlayer();
-}
+TEST(DevicePlayerCodec, decodesUnassignedPlayer) { devicePlayerDecodesUnassignedPlayer(); }
 
-TEST(DevicePlayerDecoder, decodesMaximumLengthName) {
-    devicePlayerDecodesMaximumLengthName();
-}
+TEST(DevicePlayerCodec, decodesMaximumLengthName) { devicePlayerDecodesMaximumLengthName(); }
 
-TEST(DevicePlayerDecoder, truncatesLongDisplayNames) {
-    devicePlayerTruncatesLongDisplayNames();
-}
+TEST(DevicePlayerCodec, truncatesLongDisplayNames) { devicePlayerTruncatesLongDisplayNames(); }
 
-TEST(DevicePlayerDecoder, decodesAbsentName) {
-    devicePlayerDecodesAbsentName();
-}
+TEST(DevicePlayerCodec, decodesAbsentName) { devicePlayerDecodesAbsentName(); }
 
-TEST(DevicePlayerDecoder, decodesMaximumAffiliations) {
-    devicePlayerDecodesMaximumAffiliations();
-}
+TEST(DevicePlayerCodec, decodesMaximumAffiliations) { devicePlayerDecodesMaximumAffiliations(); }
 
-TEST(DevicePlayerDecoder, dropsAffiliationsPastLimit) {
-    devicePlayerDropsAffiliationsPastLimit();
-}
+TEST(DevicePlayerCodec, dropsAffiliationsPastLimit) { devicePlayerDropsAffiliationsPastLimit(); }
 
-TEST(DevicePlayerDecoder, rejectsWrongLengthUuids) {
-    devicePlayerRejectsWrongLengthUuids();
-}
+TEST(DevicePlayerCodec, rejectsWrongLengthUuids) { devicePlayerRejectsWrongLengthUuids(); }
 
-TEST(DevicePlayerDecoder, rejectsMissingRequiredUuids) {
-    devicePlayerRejectsMissingRequiredUuids();
-}
+TEST(DevicePlayerCodec, rejectsMissingRequiredUuids) { devicePlayerRejectsMissingRequiredUuids(); }
 
-TEST(DevicePlayerDecoder, rejectsGarbageBody) {
-    devicePlayerRejectsGarbageBody();
-}
+TEST(DevicePlayerCodec, rejectsGarbageBody) { devicePlayerRejectsGarbageBody(); }
 
 TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
     playerApiQueuesDevicePlayerLookup(this);
