@@ -7,7 +7,7 @@
 struct QuickdrawPacket {
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
     char playerId[5];
-    bool isHunter;
+    uint8_t isHunter;
     long playerDrawTime;
     int command;
     uint8_t seqId;
