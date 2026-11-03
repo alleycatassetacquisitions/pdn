@@ -9,7 +9,7 @@
  *
  * Pure function with no platform dependencies — testable on native.
  */
-namespace CrashEncoder {
+namespace CrashCodec {
 
 /** Maximum number of bytes pb_encode can write for WriteDeviceLogRequest. */
 static constexpr size_t MAX_ENCODED_SIZE = 92;
@@ -23,7 +23,6 @@ static constexpr size_t MAX_ENCODED_SIZE = 92;
  * @param bufSize  Size of @p outBuf.
  * @return         Number of bytes written, or 0 on encode failure.
  */
-size_t encode(const CrashRecord& record, const uint8_t* mac,
-              uint8_t* outBuf, size_t bufSize);
+size_t encode(const CrashRecord& record, const uint8_t* mac, uint8_t* outBuf, size_t bufSize);
 
-} // namespace CrashEncoder
+}  // namespace CrashCodec
