@@ -91,8 +91,8 @@ int FDNConnectWirelessManager::processPacket(const uint8_t* senderMac, const uin
         case PDN_CONNECT: {
             char safeId[FDN_PLAYER_ID_BUFFER_SIZE];
             IdGenerator::copyId(safeId, pkt->playerId);
-            peerPlayerId = std::string(safeId);
-            LOG_I(TAG, "PDN connected, player ID: %s", peerPlayerId.c_str());
+            peerPlayerId = safeId;
+            LOG_I(TAG, "PDN connected, player ID: %s", safeId);
             if (connectCallback) {
                 connectCallback(peerPlayerId, senderMac);
             }
