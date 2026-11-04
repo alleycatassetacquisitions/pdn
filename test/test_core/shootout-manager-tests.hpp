@@ -2093,19 +2093,19 @@ inline void tournamentWithNoSurvivorsAbortsInsteadOfNamingNobody(
     suite->shootout->onMatchResultReceived(round1b.second.data(), round1b.first.data(),
                                            1, 21, round1b.second.data());
     suite->shootout->sync();
-    ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), 0)
-        << "the round never advanced to the final";
+    ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), 2)
+    << "the round never advanced to the final";
 
-    // Match 0's loser insists it won, tagged with match 1's index — so it is
+    // Match 0's loser insists it won, tagged with match 0's index — so it is
     // recorded but does not end the final this device is watching.
-    suite->shootout->onMatchResultReceived(round1a.second.data(), round1a.first.data(),
-                                           1, 22, round1a.second.data());
+    suite->shootout->onMatchResultReceived(round1a.second.data(), round1a.first.data(), 0, 22,
+                                           round1a.second.data());
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
     ASSERT_TRUE(suite->shootout->isEliminated(round1a.first.data()));
 
     // The final's own result takes the other finalist out. Nobody is left.
-    suite->shootout->onMatchResultReceived(round1a.first.data(), round1b.second.data(),
-                                           0, 23, round1a.first.data());
+    suite->shootout->onMatchResultReceived(round1a.first.data(), round1b.second.data(), 2, 23,
+                                           round1a.first.data());
     suite->shootout->sync();
 
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED)
@@ -2530,4 +2530,202 @@ inline void abortRuleReachesEveryStateThatDeclaresIt(ShootoutManagerTests* suite
         EXPECT_TRUE(byId[edge.first]->getTransitions()[edge.second]->isConditionMet())
             << "state " << edge.first << " ignores the abort";
     }
+}
+
+inline void matchIndexAdvancesMonotonicallyAcrossRounds(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> b = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> c = {0x03, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> d = {0x04, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
+
+    std::vector<uint8_t> lastMatchStartFrame;
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+    .WillByDefault(testing::Invoke(
+    [&lastMatchStartFrame](const uint8_t*, PktType type, const uint8_t* data, const size_t len) {
+        if (type == PktType::kShootoutCommand && len >= 15 &&
+            data[0] == static_cast<uint8_t>(ShootoutCmd::MATCH_START)) {
+            lastMatchStartFrame.assign(data, data + len);
+        }
+        return 1;
+    }));
+
+    suite->driveToFirstMatch({me, b, c, d});
+    ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), 0);
+    ASSERT_EQ(lastMatchStartFrame.size(), 15u);
+    EXPECT_EQ(lastMatchStartFrame[14], 0u);
+
+    std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> bout0 =
+    suite->shootout->getCurrentMatchPair();
+    suite->shootout->onMatchResultReceived(bout0.first.data(), bout0.second.data(), 0, 10,
+                                           bout0.first.data());
+    suite->shootout->sync();
+    ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), 1);
+    EXPECT_EQ(lastMatchStartFrame[14], 1u);
+
+    std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> bout1 =
+    suite->shootout->getCurrentMatchPair();
+    suite->shootout->onMatchResultReceived(bout1.first.data(), bout1.second.data(), 1, 11,
+                                           bout1.first.data());
+    suite->shootout->sync();
+
+    EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), 2);
+    EXPECT_EQ(lastMatchStartFrame[14], 2u);
+
+    uint8_t followerMac[6] = {0x02, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+    .WillByDefault(testing::Return(followerMac));
+    suite->followRingHead(me);
+    suite->shootout->setLoopMembersForTest({me, b, c, d});
+    suite->shootout->startProposal();
+    for (const std::array<uint8_t, 6>& m : {me, b, c, d})
+        suite->shootout->onConfirmReceived(m.data());
+    suite->shootout->onBracketReceived(me.data(), {me, b, c, d}, 1);
+
+    suite->shootout->onMatchStartReceived(me.data(), b.data(), c.data(), 0, 2);
+    suite->shootout->reportLocalWin();
+    const uint8_t round1Seq = suite->shootout->getLastMatchResultSeqId();
+    suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
+    ASSERT_NE(suite->shootout->getLastMatchResultSeqId(), round1Seq);
+
+    suite->shootout->onMatchStartReceived(me.data(), b.data(), d.data(), 2, 3);
+    suite->shootout->onMatchStartReceived(me.data(), me.data(), d.data(), 1, 4);
+    EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), 2);
+    suite->shootout->reportLocalWin();
+    const uint8_t round2Seq = suite->shootout->getLastMatchResultSeqId();
+    suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
+    EXPECT_NE(suite->shootout->getLastMatchResultSeqId(), round2Seq)
+    << "round 2's first bout lost its result recovery to round 1's index";
+}
+
+inline void staleAbortFromPreviousEpochDoesNotKillSuccessorProposal(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> peer = {0x02, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
+
+    std::vector<uint8_t> ringClosedFrame;
+    std::vector<uint8_t> abortFrame;
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+    .WillByDefault(
+    testing::Invoke([&ringClosedFrame, &abortFrame](const uint8_t*, PktType type,
+                                                    const uint8_t* data, const size_t len) {
+        if (type == PktType::kShootoutCommand && len >= 2) {
+            if (data[0] == static_cast<uint8_t>(ShootoutCmd::RING_CLOSED)) {
+                ringClosedFrame.assign(data, data + len);
+            } else if (data[0] == static_cast<uint8_t>(ShootoutCmd::ABORT)) {
+                abortFrame.assign(data, data + len);
+            }
+        }
+        return 1;
+    }));
+
+    suite->closeRingOnJacks();
+    suite->shootout->setLoopMembersForTest({me, peer});
+    suite->shootout->onRingClosed();
+    suite->shootout->startProposal();
+    suite->shootout->onConfirmReceived(peer.data());
+    ASSERT_GE(ringClosedFrame.size(), 2u);
+    const uint8_t firstEpoch = ringClosedFrame[1];
+    ASSERT_NE(firstEpoch, 0u);
+
+    suite->shootout->abortTournament();
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
+    ASSERT_EQ(abortFrame.size(), 3u);
+    EXPECT_EQ(abortFrame[2], firstEpoch);
+
+    suite->shootout->resetToIdle();
+    suite->shootout->startProposal();
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+    const uint8_t secondEpoch = ringClosedFrame[1];
+    EXPECT_NE(secondEpoch, firstEpoch);
+
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
+    .Times(2)
+    .WillRepeatedly(testing::Return(1));
+
+    suite->shootout->onAbortReceived(peer.data(), abortFrame[1], firstEpoch);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL)
+    << "a retransmitted ABORT from the previous tournament killed the new proposal";
+
+    suite->shootout->onAbortReceived(peer.data(), static_cast<uint8_t>(abortFrame[1] + 1),
+                                     secondEpoch);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
+}
+
+inline void matchResultOutsideMatchPhasesIsIgnored(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+    .WillByDefault(testing::Return(1));
+
+    suite->followRingHead(coord);
+    suite->shootout->setLoopMembersForTest({coord, me, other});
+    suite->shootout->startProposal();
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+
+    suite->shootout->onMatchResultReceived(coord.data(), other.data(), 0, 4, coord.data());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+    EXPECT_FALSE(suite->shootout->isEliminated(other.data()));
+
+    suite->shootout->onBracketReceived(coord.data(), {coord, me, other}, 1);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+
+    suite->shootout->onMatchResultReceived(coord.data(), other.data(), 0, 5, coord.data());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL)
+    << "a MATCH_RESULT arriving during BRACKET_REVEAL flipped phase to BETWEEN_MATCHES";
+    EXPECT_FALSE(suite->shootout->isEliminated(other.data()))
+    << "a MATCH_RESULT arriving before any match started eliminated a bracket member";
+}
+
+inline void receiveDedupIsKeyedPerSender(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> b = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> c = {0x03, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> d = {0x04, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+    .WillByDefault(testing::Return(1));
+
+    suite->driveToFirstMatch({me, b, c, d});
+    ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), 0);
+
+    std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> bout0 =
+    suite->shootout->getCurrentMatchPair();
+    suite->shootout->onMatchResultReceived(bout0.first.data(), bout0.second.data(), 0, /*seqId=*/1,
+                                           bout0.first.data());
+    EXPECT_TRUE(suite->shootout->isEliminated(bout0.second.data()));
+
+    suite->shootout->sync();
+    ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), 1);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+
+    std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> bout1 =
+    suite->shootout->getCurrentMatchPair();
+    ASSERT_NE(memcmp(bout0.first.data(), bout1.first.data(), 6), 0);
+    suite->shootout->onMatchResultReceived(bout1.first.data(), bout1.second.data(), 1, /*seqId=*/1,
+                                           bout1.first.data());
+    EXPECT_TRUE(suite->shootout->isEliminated(bout1.second.data()))
+    << "a second sender's seqId=1 collided with the first sender's seqId=1";
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BETWEEN_MATCHES);
+
+    suite->shootout->sync();
+    ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), 2);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
+    .Times(1)
+    .WillOnce(testing::Return(1));
+    suite->shootout->onMatchResultReceived(bout1.first.data(), bout0.first.data(), 2, /*seqId=*/1,
+                                           bout1.first.data());
+    EXPECT_FALSE(suite->shootout->isEliminated(bout0.first.data()))
+    << "a duplicate (fromMac, seqId) was not suppressed by per-sender dedup";
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
 }

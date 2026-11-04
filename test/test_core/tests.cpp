@@ -2174,6 +2174,16 @@ TEST_F(ShootoutManagerTests, bracketFanOutIsOneFrameBeyondPeerTable) { bracketFa
 TEST_F(ShootoutManagerTests, bracketRetryIsOneFramePerRound) { bracketRetryIsOneFramePerRound(this); }
 TEST_F(ShootoutManagerTests, foreignBracketIsNeitherAdoptedNorAcked) { foreignBracketIsNeitherAdoptedNorAcked(this); }
 TEST_F(ShootoutManagerTests, strayRingCommandsLeaveTournamentUntouched) { strayRingCommandsLeaveTournamentUntouched(this); }
+TEST_F(ShootoutManagerTests, matchIndexAdvancesMonotonicallyAcrossRounds) {
+    matchIndexAdvancesMonotonicallyAcrossRounds(this);
+}
+TEST_F(ShootoutManagerTests, staleAbortFromPreviousEpochDoesNotKillSuccessorProposal) {
+    staleAbortFromPreviousEpochDoesNotKillSuccessorProposal(this);
+}
+TEST_F(ShootoutManagerTests, matchResultOutsideMatchPhasesIsIgnored) {
+    matchResultOutsideMatchPhasesIsIgnored(this);
+}
+TEST_F(ShootoutManagerTests, receiveDedupIsKeyedPerSender) { receiveDedupIsKeyedPerSender(this); }
 
 // ============================================
 // MAIN
