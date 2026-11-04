@@ -15,7 +15,7 @@
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
 #include "wireless/quickdraw-packet.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include <queue>
 #include <vector>
 

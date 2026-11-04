@@ -1,7 +1,7 @@
 #pragma once
 
 #include "game/quickdraw-states.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include "game/match-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
@@ -87,7 +87,7 @@ private:
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
     MatchManager* matchManager = nullptr;
-    ChainDuelManager* chainDuelManager = nullptr;
+    PosseManager* posseManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
 
     // Every STATS_LOG_INTERVAL_MS we emit one line of the chain-duel retry

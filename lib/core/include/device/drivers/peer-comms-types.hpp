@@ -83,20 +83,20 @@ struct ChainConfirmPayload
     uint8_t seqId;
 } __attribute__((packed));
 
-// Sent by a supporter straight to the champion whose MAC reached it through the
+// Sent by a supporter straight to the challenger whose MAC reached it through the
 // role-announce cascade. The cascade only ever travels downstream, so this is
-// the sole evidence a champion gets that a device more than one cable away
+// the sole evidence a challenger gets that a device more than one cable away
 // follows it — and the only thing that lets that device's press count.
-// championMac is the champion the sender believes in, so a frame that arrives
+// challengerMac is the challenger the sender believes in, so a frame that arrives
 // by radio accident cannot enrol anyone in the wrong chain's roster.
 struct ChainJoinPayload {
-    uint8_t championMac[6];
+    uint8_t challengerMac[6];
     uint8_t seqId;
 } __attribute__((packed));
 
 struct RoleAnnouncePayload
 {
-    uint8_t championMac[6];
+    uint8_t challengerMac[6];
     uint8_t seqId;
 } __attribute__((packed));
 

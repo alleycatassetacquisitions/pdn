@@ -26,30 +26,31 @@ enum class ChainGameEventType : uint8_t {
 // WIN and LOSS use a nonzero seqId and are retransmitted until ACKed or
 // the frame's span runs out.
 //
-// championMac names the champion the event came from. Game events go out as one
+// challengerMac names the challenger the event came from. Game events go out as one
 // broadcast frame, so the sender's MAC says nothing about which chain the event
 // belongs to; this field is what each supporter filters on.
 struct ChainGameEventPayload {
     uint8_t event_type;
     uint8_t seqId;
-    uint8_t championMac[6];
+    uint8_t challengerMac[6];
 } __attribute__((packed));
 
-class ChainDuelManager {
+class PosseManager {
 public:
     /** Requires a live rdc and owns its single-subscriber topology/context callback slots. */
-    ChainDuelManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
+    PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
     /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
-    virtual ~ChainDuelManager();
+    virtual ~PosseManager();
 
-    bool isChampion() const;
+    /** True when this device is the Challenger at the head of its Posse chain. */
+    bool isChallenger() const;
     bool isSupporter() const;
     virtual bool isLoop() const;
     bool canInitiateMatch() const;
     /**
-     * This champion's supporter chain at any depth: the direct supporter-jack
+     * This challenger's supporter chain at any depth: the direct supporter-jack
      * peer, which a cable proves, plus every device that named this one as its
-     * champion in a kChainJoin. Empty inside a ring, which has no champion.
+     * challenger in a kChainJoin. Empty inside a ring, which has no challenger.
      */
     std::vector<std::array<uint8_t, 6>> getSupporterChainPeers() const;
 
@@ -57,7 +58,7 @@ public:
     void sendConfirm();
 
     /**
-     * Re-sends the confirm this device is standing on to whichever champion it
+     * Re-sends the confirm this device is standing on to whichever challenger it
      * now holds. No-op until a press has produced one, so a topology event can
      * never register a supporter who never pressed.
      */
@@ -65,34 +66,34 @@ public:
 
     /**
      * Supporter-side view of an inbound chain game event. A COUNTDOWN voids the
-     * standing confirm: the champion wipes its roll call at that same moment, so
+     * standing confirm: the challenger wipes its roll call at that same moment, so
      * re-sending the old press would register a supporter for a round it has not
      * yet answered.
      */
     void onChainGameEventReceived(uint8_t eventType);
 
     // Supporter-side: ACK a received WIN/LOSS game event back to the
-    // champion so it stops retransmitting. Called from GameSession's packet
+    // challenger so it stops retransmitting. Called from GameSession's packet
     // handler when the incoming payload has seqId != 0.
     void sendGameEventAck(const uint8_t* toMac, uint8_t seqId);
 
-    // Champion-side: called when a supporter's ACK arrives. Clears the
+    // Challenger-side: called when a supporter's ACK arrives. Clears the
     // matching pending game event so retransmission stops.
     void onChainGameEventAckReceived(const uint8_t* fromMac, uint8_t seqId);
 
     /**
-     * True when a broadcast game event names the champion this device follows.
+     * True when a broadcast game event names the challenger this device follows.
      * The frame reaches every device in radio range, so this is the only thing
-     * separating our champion's round from a neighbouring chain's.
+     * separating our challenger's round from a neighbouring chain's.
      */
-    bool isEventFromOwnChampion(const uint8_t* eventChampionMac) const;
+    bool isEventFromOwnChallenger(const uint8_t* eventChallengerMac) const;
 
     /**
-     * Champion-side: records `supporterMac` as part of this device's chain, so
+     * Challenger-side: records `supporterMac` as part of this device's chain, so
      * a press from a device it shares no cable with can be counted. Ignores a
-     * join naming any champion but this device.
+     * join naming any challenger but this device.
      */
-    void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChampionMac);
+    void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChallengerMac);
     /** Records a supporter press from originatorMac; chain membership is filtered when read. */
     void onConfirmReceived(const uint8_t* originatorMac);
     void onChainStateChanged();
@@ -101,11 +102,13 @@ public:
     size_t getConfirmedSupporterCount() const;
     void clearSupporterConfirms();
 
-    const uint8_t* getChampionMac() const;
-    /** Updates the cached champion from an opponent-jack role announce. */
-    void onRoleAnnounceReceived(const uint8_t* fromMac, const uint8_t* championMac);
+    /** Returns the MAC of the Challenger this device follows, or nullptr if none. */
+    const uint8_t* getChallengerMac() const;
+    /** Updates the cached challenger from an opponent-jack role announce. */
+    void onRoleAnnounceReceived(const uint8_t* fromMac, const uint8_t* challengerMac);
 
-    void broadcastRoleAndChampion();
+    /** Broadcasts this device's role and Challenger MAC downstream on the supporter jack. */
+    void broadcastRoleAndChallenger();
 
     void sync();
 
@@ -138,9 +141,9 @@ private:
     SerialIdentifier opponentJack() const;
     SerialIdentifier supporterJack() const;
 
-    // Tells the champion this device follows that it exists. The champion cannot
+    // Tells the challenger this device follows that it exists. The challenger cannot
     // discover a supporter it shares no cable with any other way.
-    void announceToChampion();
+    void announceToChallenger();
 
     std::optional<bool> peerIsHunter(SerialIdentifier port) const;
 
@@ -178,26 +181,26 @@ private:
     std::atomic<size_t> receivedConfirmCount{0};
     size_t receivedConfirmWrite = 0;
 
-    // Supporters that named this device as their champion. Everything past the
+    // Supporters that named this device as their challenger. Everything past the
     // direct supporter-jack peer lives here and nowhere else: the role cascade
-    // only travels downstream, so a champion has no way to see the far end of
+    // only travels downstream, so a challenger has no way to see the far end of
     // its own chain until that end says so.
     MacSlots supporterRoster{};
     std::atomic<size_t> supporterRosterCount{0};
     size_t supporterRosterWrite = 0;
 
-    std::optional<std::array<uint8_t, 6>> championMac;
+    std::optional<std::array<uint8_t, 6>> challengerMac;
 
-    // Tracks whether the current (peer, champion) pair was MAC-acked (SEND_SUCCESS).
+    // Tracks whether the current (peer, challenger) pair was MAC-acked (SEND_SUCCESS).
     struct RoleAnnounceState {
         std::array<uint8_t, 6> peer{};
-        std::array<uint8_t, 6> champion{};
+        std::array<uint8_t, 6> challenger{};
         uint8_t seqId = 0;
         bool delivered = false;
 
         /** True when this records a delivered announce of exactly `content`. */
         bool told(const RoleAnnounceState& content) const {
-            return delivered && peer == content.peer && champion == content.champion;
+            return delivered && peer == content.peer && challenger == content.challenger;
         }
     };
     std::optional<RoleAnnounceState> supporterAnnounce;

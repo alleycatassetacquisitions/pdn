@@ -82,12 +82,12 @@ public:
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
-        chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
+        posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
         ctx.player = player;
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
-        ctx.chainDuelManager = chainDuelManager;
+        ctx.posseManager = posseManager;
         idleState = new Idle(ctx);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -98,7 +98,7 @@ public:
 
     void TearDown() override {
         delete idleState;
-        delete chainDuelManager;
+        delete posseManager;
         delete matchManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
@@ -110,7 +110,7 @@ public:
     MockStorage storage;
     Player* player;
     MatchManager* matchManager;
-    ChainDuelManager* chainDuelManager;
+    PosseManager* posseManager;
     Idle* idleState;
     GameContext ctx;
     FakePlatformClock* fakeClock;
@@ -233,12 +233,12 @@ public:
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
-        chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
+        posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
         ctx.player = player;
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
-        ctx.chainDuelManager = chainDuelManager;
+        ctx.posseManager = posseManager;
         countdownState = new DuelCountdown(ctx);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -247,7 +247,7 @@ public:
 
     void TearDown() override {
         delete countdownState;
-        delete chainDuelManager;
+        delete posseManager;
         delete matchManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
@@ -263,7 +263,7 @@ public:
     MockStorage storage;
     Player* player;
     MatchManager* matchManager;
-    ChainDuelManager* chainDuelManager;
+    PosseManager* posseManager;
     DuelCountdown* countdownState;
     GameContext ctx;
     FakePlatformClock* fakeClock;
@@ -430,7 +430,7 @@ public:
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
-        chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
+        posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
         // Create a match for testing via the production wireless path
         uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -442,12 +442,12 @@ public:
         ctx.player = player;
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
-        ctx.chainDuelManager = chainDuelManager;
+        ctx.posseManager = posseManager;
     }
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
-        delete chainDuelManager;
+        delete posseManager;
         delete matchManager;
         delete wirelessManager;
         delete player;
@@ -461,7 +461,7 @@ public:
     QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
-    ChainDuelManager* chainDuelManager;
+    PosseManager* posseManager;
     GameContext ctx;
     FakePlatformClock* fakeClock;
 };
@@ -1111,7 +1111,7 @@ public:
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
-        chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
+        posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -1125,12 +1125,12 @@ public:
         ctx.player = player;
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
-        ctx.chainDuelManager = chainDuelManager;
+        ctx.posseManager = posseManager;
     }
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
-        delete chainDuelManager;
+        delete posseManager;
         delete matchManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
@@ -1142,7 +1142,7 @@ public:
     MockStorage storage;
     Player* player;
     MatchManager* matchManager;
-    ChainDuelManager* chainDuelManager;
+    PosseManager* posseManager;
     GameContext ctx;
     FakePlatformClock* fakeClock;
 };
@@ -1565,7 +1565,7 @@ inline void receivedResultLeavesTheBoutAloneWhenDisconnected(StateCleanupTests* 
 // ============================================
 // GameSession lifecycle — exercises ctor + dtor so the native_asan env
 // catches leaks in the managers the session owns (matchManager,
-// chainDuelManager, shootoutManager).
+// posseManager, shootoutManager).
 // ============================================
 
 class GameSessionLifecycleTests : public testing::Test {
@@ -1609,7 +1609,7 @@ public:
 };
 
 // Create + destroy many GameSession instances; under ASAN (env:native_asan) a
-// leak in the session's ownership of matchManager / chainDuelManager would be
+// leak in the session's ownership of matchManager / posseManager would be
 // reported. Without ASAN this still catches crashes in the lifecycle path.
 // The loop between destructions is the check on the device-held slots: the tick
 // callback captures the session and the device outlives it, so a slot the
@@ -1627,13 +1627,13 @@ inline void gameSessionCtorDtorDoesNotLeak(GameSessionLifecycleTests* suite) {
 // green even when nothing routes the packet there; this one fails instead.
 inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* suite) {
     suite->player->setIsHunter(true);
-    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
 
     // A hunter's opponent jack is OUTPUT, and only an opponent-jack announce
-    // caches championMac — which is in turn what admits the game event below.
+    // caches challengerMac — which is in turn what admits the game event below.
     FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
     rdc.setPortStatus(SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
-    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, challenger);
     rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
 
     // The role cascade emits its own traffic; a catch-all keeps that off the
@@ -1647,26 +1647,26 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
         });
 
     auto* session = new GameSession(suite->player, &suite->device, nullptr);
-    ChainDuelManager* chainDuelManager = session->getContext().chainDuelManager;
+    PosseManager* posseManager = session->getContext().posseManager;
 
-    chainDuelManager->onRoleAnnounceReceived(champion, champion);
-    ASSERT_TRUE(chainDuelManager->isSupporter());
-    chainDuelManager->sendConfirm();
+    posseManager->onRoleAnnounceReceived(challenger, challenger);
+    ASSERT_TRUE(posseManager->isSupporter());
+    posseManager->sendConfirm();
     ASSERT_EQ(confirmsSent, 1);
 
     ASSERT_NE(suite->chainGameEventHandler, nullptr);
     ChainGameEventPayload countdown{};
     countdown.event_type = static_cast<uint8_t>(ChainGameEventType::COUNTDOWN);
     countdown.seqId = 0;
-    // The frame is broadcast and the champion it names is what admits it, so an
-    // unset championMac here would be dropped before the reset under test runs.
-    memcpy(countdown.championMac, champion, 6);
-    suite->chainGameEventHandler(champion, reinterpret_cast<const uint8_t*>(&countdown),
+    // The frame is broadcast and the challenger it names is what admits it, so an
+    // unset challengerMac here would be dropped before the reset under test runs.
+    memcpy(countdown.challengerMac, challenger, 6);
+    suite->chainGameEventHandler(challenger, reinterpret_cast<const uint8_t*>(&countdown),
                                  sizeof(countdown), suite->chainGameEventCtx);
 
-    // The press is spent, so the champion change must not resurrect it.
-    uint8_t secondChampion[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
-    chainDuelManager->onRoleAnnounceReceived(champion, secondChampion);
+    // The press is spent, so the challenger change must not resurrect it.
+    uint8_t secondChallenger[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+    posseManager->onRoleAnnounceReceived(challenger, secondChallenger);
     EXPECT_EQ(confirmsSent, 1);
 
     delete session;
@@ -1674,21 +1674,21 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
 
 // The event's other consumer: the mounted SupporterReady, which the session finds
 // through the device instead of being handed a pointer at mount. A lookup that
-// misses arms no supporter, so the champion duels without their boost.
+// misses arms no supporter, so the challenger duels without their boost.
 inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* suite) {
     suite->player->setIsHunter(true);
-    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
 
     FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
     rdc.setPortStatus(SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
-    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, challenger);
     rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
     GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
-    ChainDuelManager* chainDuelManager = session->getContext().chainDuelManager;
-    chainDuelManager->onRoleAnnounceReceived(champion, champion);
-    ASSERT_TRUE(chainDuelManager->isSupporter());
+    PosseManager* posseManager = session->getContext().posseManager;
+    posseManager->onRoleAnnounceReceived(challenger, challenger);
+    ASSERT_TRUE(posseManager->isSupporter());
 
     HubApp* hub = new HubApp(session->getContext());
     AppConfig apps;
@@ -1700,9 +1700,9 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
     ChainGameEventPayload countdown{};
     countdown.event_type = static_cast<uint8_t>(ChainGameEventType::COUNTDOWN);
     countdown.seqId = 0;
-    memcpy(countdown.championMac, champion, 6);
+    memcpy(countdown.challengerMac, challenger, 6);
     ASSERT_NE(suite->chainGameEventHandler, nullptr);
-    suite->chainGameEventHandler(champion, reinterpret_cast<const uint8_t*>(&countdown),
+    suite->chainGameEventHandler(challenger, reinterpret_cast<const uint8_t*>(&countdown),
                                  sizeof(countdown), suite->chainGameEventCtx);
 
     SupporterReady* supporterReady =

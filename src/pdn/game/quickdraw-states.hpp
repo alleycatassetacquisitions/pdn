@@ -18,7 +18,7 @@
 #include <queue>
 #include <string>
 #include "device/remote-device-coordinator.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include "game/shootout-manager.hpp"
 
 /**
@@ -31,7 +31,7 @@ struct GameContext {
     Player* player = nullptr;
     MatchManager* matchManager = nullptr;
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
-    ChainDuelManager* chainDuelManager = nullptr;
+    PosseManager* posseManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
@@ -114,7 +114,7 @@ public:
 private:
     Player *player;
     MatchManager* matchManager;
-    ChainDuelManager* chainDuelManager;
+    PosseManager* posseManager;
     bool matchInitialized = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
@@ -157,7 +157,7 @@ public:
     void startLEDs(PDN* pdn, bool armed, bool confirmed);
 
 private:
-    ChainDuelManager* chainDuelManager;
+    PosseManager* posseManager;
     bool transitionToIdleFlag = false;
     int lastProcessedResult_ = 0;  // main-task-only; mirrors lastResult
 
@@ -239,7 +239,7 @@ private:
     const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
     int currentStepIndex = 0;
     MatchManager* matchManager;
-    ChainDuelManager* chainDuelManager;
+    PosseManager* posseManager;
 };
 
 class ShootoutManager;
@@ -264,7 +264,7 @@ public:
 private:
     Player* player;
     MatchManager* matchManager;
-    ChainDuelManager* chainDuelManager;
+    PosseManager* posseManager;
     ShootoutManager* shootoutManager;
     parameterizedCallbackFunction buttonPress;
     bool transitionToDuelPushedState = false;
@@ -355,7 +355,7 @@ public:
 private:
     SimpleTimer winTimer = SimpleTimer();
     Player *player;
-    ChainDuelManager* chainDuelManager;
+    PosseManager* posseManager;
     MatchManager* matchManager;
     bool reset = false;
 };
@@ -374,7 +374,7 @@ public:
 private:
     SimpleTimer loseTimer = SimpleTimer();
     Player *player;
-    ChainDuelManager* chainDuelManager;
+    PosseManager* posseManager;
     MatchManager* matchManager;
     bool reset = false;
 };

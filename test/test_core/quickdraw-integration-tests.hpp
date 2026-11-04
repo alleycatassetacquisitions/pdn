@@ -442,16 +442,16 @@ class StateFlowIntegrationTests : public SingleDeviceTestFixture {
 public:
     void SetUp() override {
         SingleDeviceTestFixture::SetUp();
-        chainDuelManager = new ChainDuelManager(player, deviceWirelessManager, &device.fakeRemoteDeviceCoordinator);
+        posseManager = new PosseManager(player, deviceWirelessManager, &device.fakeRemoteDeviceCoordinator);
 
         ctx.player = player;
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
-        ctx.chainDuelManager = chainDuelManager;
+        ctx.posseManager = posseManager;
     }
 
     void TearDown() override {
-        delete chainDuelManager;
+        delete posseManager;
         SingleDeviceTestFixture::TearDown();
     }
 
@@ -466,7 +466,7 @@ public:
     }
 
     MockDevice device;
-    ChainDuelManager* chainDuelManager = nullptr;
+    PosseManager* posseManager = nullptr;
     GameContext ctx;
 };
 

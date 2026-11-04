@@ -1,16 +1,16 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/lose-animation.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/device.hpp"
 #include <cstdio>
 
 Lose::Lose(const GameContext& ctx)
-    : TypedState<PDN>(LOSE) {
-    this->player = ctx.player;
-    this->chainDuelManager = ctx.chainDuelManager;
-    this->matchManager = ctx.matchManager;
+    : TypedState<PDN>(LOSE)
+    , player(ctx.player)
+    , posseManager(ctx.posseManager)
+    , matchManager(ctx.matchManager) {
 }
 
 Lose::~Lose() {
@@ -19,7 +19,7 @@ Lose::~Lose() {
 }
 
 void Lose::onStateMounted(PDN* pdn) {
-    chainDuelManager->sendGameEventToSupporters(ChainGameEventType::LOSS);
+    posseManager->sendGameEventToSupporters(ChainGameEventType::LOSS);
 
     pdn->getDisplay()->invalidateScreen()
         ->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOSE));
@@ -37,7 +37,7 @@ void Lose::onStateMounted(PDN* pdn) {
             pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                 ->drawText(myLine, 2, 12);
             if (d.boostMs > 0) {
-                unsigned long boosts = d.boostMs / ChainDuelManager::BOOST_PER_SUPPORTER_MS;
+                unsigned long boosts = d.boostMs / PosseManager::BOOST_PER_SUPPORTER_MS;
                 snprintf(boostLine, sizeof(boostLine), "Boost: %lu", boosts);
                 pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                     ->drawText(boostLine, 2, 28);

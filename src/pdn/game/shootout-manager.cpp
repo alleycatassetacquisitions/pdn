@@ -33,7 +33,7 @@ ShootoutManager::ShootoutManager(Player* player,
         });
     if (rdc == nullptr) return;
     // Subscribed here rather than by whoever builds this manager: see
-    // ChainDuelManager's constructor for the reasoning.
+    // PosseManager's constructor for the reasoning.
     rdc->setOnRingClosed([this]() { onRingClosed(); });
 }
 
