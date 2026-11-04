@@ -918,7 +918,7 @@ inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
 
     FdnConnectionContext fdnCtx{};
     fdnCtx.seqId = 1;
-    fdnCtx.chainRole = static_cast<uint8_t>(ChainRole::HEAD);
+    fdnCtx.chainRole = ChainRole::HEAD;
     device.peerCommsDriver->receivePacket(fdnMac, PktType::kFdnConnectionContext,
                                           reinterpret_cast<const uint8_t*>(&fdnCtx),
                                           sizeof(fdnCtx));

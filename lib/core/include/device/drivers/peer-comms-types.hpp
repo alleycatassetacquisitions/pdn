@@ -44,28 +44,41 @@ enum class PktType : uint8_t {
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
-// A player's identity + game state, exchanged once per jack connection so a
-// neighbour knows who it is plugged into. Packed: the struct layout IS the
-// wire format (both ends run the same firmware). RDC never reads these fields —
-// it forwards the profile to the game layer opaquely.
+// Device-level chain role: HEAD has no in-peer, CHILD has one, RING is head-only
+// for a closed ring (ring membership is isInRing()).
+enum class ChainRole : uint8_t {
+    STANDALONE = 0,
+    HEAD = 1,
+    CHILD = 2,
+    RING = 3,
+};
+static_assert(sizeof(ChainRole) == 1, "ChainRole must be 1 byte on the wire");
+static_assert(static_cast<uint8_t>(ChainRole::STANDALONE) == 0, "ChainRole wire value");
+static_assert(static_cast<uint8_t>(ChainRole::HEAD) == 1, "ChainRole wire value");
+static_assert(static_cast<uint8_t>(ChainRole::CHILD) == 2, "ChainRole wire value");
+static_assert(static_cast<uint8_t>(ChainRole::RING) == 3, "ChainRole wire value");
+
+// No peer id known: an FDN peer, an unregistered player, or no peer at all.
+constexpr uint16_t PEER_USER_ID_NONE = 0xFFFF;
+
+// Packed wire format; RDC lifts userId for getPeerUserId() and forwards the raw
+// struct to the game layer.
 struct PlayerProfile {
-    uint16_t userId;   // 0xFFFF unless the player id is numeric
+    uint16_t userId = PEER_USER_ID_NONE;
     uint8_t gameRole;  // 1 = hunter, 0 = bounty
     uint8_t allegiance;
     char faction[8];
     char name[16];
     uint8_t registered;  // 1 once a profile is applied, demo included
 } __attribute__((packed));
+static_assert(sizeof(PlayerProfile) == 29, "PlayerProfile wire size");
 
-// PDN-to-neighbour connection context. seqId is stamped by the ReliableChannel.
-// chainRole is the sender's own ChainRole as of the send (0 = standalone), recorded
-// by the receiver. The peer's device kind arrives out-of-band in HELLO and picks
-// which context struct to decode.
 struct PdnConnectionContext {
     uint8_t seqId;
-    uint8_t chainRole;
+    ChainRole chainRole;
     PlayerProfile player;
 } __attribute__((packed));
+static_assert(sizeof(PdnConnectionContext) == 31, "PdnConnectionContext wire size");
 
 // FDN self-description exchanged on cabled connection context. Carries the FDN's
 // synchronized UTC wall clock in epoch milliseconds (or 0 when unsynchronized).
@@ -76,7 +89,7 @@ struct FdnProfile {
 // FDN-to-neighbour connection context; same header as PdnConnectionContext, FDN body.
 struct FdnConnectionContext {
     uint8_t seqId;
-    uint8_t chainRole;
+    ChainRole chainRole;
     FdnProfile fdn;
 } __attribute__((packed));
 

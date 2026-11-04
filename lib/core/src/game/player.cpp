@@ -94,11 +94,12 @@ PlayerProfile Player::toProfile() const {
     PlayerProfile profile{};
     char* end = nullptr;
     const unsigned long parsed = std::strtoul(id.c_str(), &end, 10);
-    // Only a numeric id fits the wire field; 0xFFFF stands for everything else,
-    // and `registered` below is what tells peers a profile has been applied.
-    profile.userId = (!id.empty() && end != nullptr && *end == '\0' && parsed < 0xFFFF)
-                     ? static_cast<uint16_t>(parsed)
-                     : 0xFFFF;
+    // Only a numeric id below the sentinel fits the wire field; anything else
+    // keeps the profile's default, and `registered` below is what tells peers a
+    // profile has been applied.
+    if (!id.empty() && end != nullptr && *end == '\0' && parsed < PEER_USER_ID_NONE) {
+        profile.userId = static_cast<uint16_t>(parsed);
+    }
     profile.registered = registrationProfileStored ? 1 : 0;
     profile.gameRole = hunter ? 1 : 0;
     profile.allegiance = static_cast<uint8_t>(allegiance);
