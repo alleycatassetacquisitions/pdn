@@ -250,10 +250,27 @@ void PosseManager::resendConfirm() {
     sendConfirm();
 }
 
+void PosseManager::setGameEventObserver(GameEventObserver observer) {
+    gameEventObserver = std::move(observer);
+    if (gameEventObserver && pendingGameEvent.has_value()) {
+        ChainGameEventType event = *pendingGameEvent;
+        pendingGameEvent.reset();
+        gameEventObserver(event);
+    }
+}
+
 void PosseManager::onChainGameEventReceived(uint8_t eventType) {
-    if (static_cast<ChainGameEventType>(eventType) != ChainGameEventType::COUNTDOWN) return;
-    confirmSent = false;
-    resender.cancelAll(PktType::kChainConfirm);
+    if (eventType > static_cast<uint8_t>(ChainGameEventType::LOSS)) return;
+    ChainGameEventType event = static_cast<ChainGameEventType>(eventType);
+    if (event == ChainGameEventType::COUNTDOWN) {
+        confirmSent = false;
+        resender.cancelAll(PktType::kChainConfirm);
+    }
+    if (gameEventObserver) {
+        gameEventObserver(event);
+    } else {
+        pendingGameEvent = event;
+    }
 }
 
 void PosseManager::onConfirmReceived(const uint8_t* originatorMac) {
@@ -313,6 +330,9 @@ void PosseManager::onChainStateChanged() {
         if (selfMac != nullptr && (!opponentConnecting || !challengerMac.has_value())) {
             std::array<uint8_t, 6> selfArr;
             memcpy(selfArr.data(), selfMac, 6);
+            if (challengerMac != selfArr) {
+                pendingGameEvent.reset();
+            }
             challengerMac = selfArr;
         }
     } else if (isSupporter()) {
@@ -320,9 +340,11 @@ void PosseManager::onChainStateChanged() {
         if (challengerMac.has_value() && selfMac != nullptr &&
             memcmp(challengerMac->data(), selfMac, 6) == 0) {
             challengerMac.reset();
+            pendingGameEvent.reset();
         }
     } else {
         challengerMac.reset();
+        pendingGameEvent.reset();
     }
 
     broadcastRoleAndChallenger();
@@ -381,6 +403,7 @@ void PosseManager::onRoleAnnounceReceived(
     // the zero would cascade it onward as this device's challenger.
     if (MacToUInt64(announcedChallengerMac) == 0) {
         challengerMac.reset();
+        pendingGameEvent.reset();
         resender.cancelAll(PktType::kChainConfirm);
         resender.cancelAll(PktType::kChainJoin);
         if (isSupporter()) broadcastRoleAndChallenger();
@@ -392,6 +415,7 @@ void PosseManager::onRoleAnnounceReceived(
     bool changed = !challengerMac.has_value() || *challengerMac != newMac;
     challengerMac = newMac;
     if (changed) {
+        pendingGameEvent.reset();
         resender.cancelAll(PktType::kChainConfirm);
         resender.cancelAll(PktType::kChainJoin);
     }

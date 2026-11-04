@@ -1436,6 +1436,30 @@ TEST_F(GameSessionLifecycleTests, countdownArmsMountedSupporter) {
     gameSessionCountdownArmsMountedSupporter(this);
 }
 
+TEST_F(GameSessionLifecycleTests, supporterReceivesAllEventTypesViaObserver) {
+    gameSessionSupporterReceivesAllEventTypesViaObserver(this);
+}
+
+TEST_F(GameSessionLifecycleTests, multipleEventsInSingleDrainDoNotCollapse) {
+    gameSessionMultipleEventsInSingleDrainDoNotCollapse(this);
+}
+
+TEST_F(GameSessionLifecycleTests, countdownBeforeMountStillArms) {
+    gameSessionCountdownBeforeMountStillArms(this);
+}
+
+TEST_F(GameSessionLifecycleTests, resultScreenExpiresBackToReady) {
+    gameSessionResultScreenExpiresBackToReady(this);
+}
+
+TEST_F(GameSessionLifecycleTests, challengerChangeClearsPreMountEvent) {
+    gameSessionChallengerChangeClearsPreMountEvent(this);
+}
+
+TEST_F(GameSessionLifecycleTests, dismountClearsGameEventObserver) {
+    gameSessionDismountClearsGameEventObserver(this);
+}
+
 // ============================================
 // QUICKDRAW INTEGRATION TESTS - PACKET PARSING
 // ============================================

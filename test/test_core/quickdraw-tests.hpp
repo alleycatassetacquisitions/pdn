@@ -1,7 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <memory>
+#include <string>
+#include <vector>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "game/match-manager.hpp"
@@ -1762,43 +1765,194 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
     delete session;
 }
 
-// The event's other consumer: the mounted SupporterReady, which the session finds
-// through the device instead of being handed a pointer at mount. A lookup that
-// misses arms no supporter, so the challenger plays without their boost.
-inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* suite) {
-    suite->player->setIsHunter(true);
-    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+struct MountedSupporter {
+    GameSession* session = nullptr;
+    HubApp* hub = nullptr;
+    PosseManager* posseManager = nullptr;
 
+    /** Frees the hub before the session that owns the managers its states reference. */
+    ~MountedSupporter() {
+        delete hub;
+        delete session;
+    }
+};
+
+inline void becomeSupporterOf(GameSessionLifecycleTests* suite, const uint8_t* challenger,
+                              MountedSupporter& out) {
+    suite->player->setIsHunter(true);
     FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
     rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, challenger);
     rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
-    GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
-    PosseManager* posseManager = session->getContext().posseManager;
-    posseManager->onRoleAnnounceReceived(challenger, challenger);
-    ASSERT_TRUE(posseManager->isSupporter());
+    out.session = new GameSession(suite->player, &suite->device, nullptr);
+    out.posseManager = out.session->getContext().posseManager;
+    out.posseManager->onRoleAnnounceReceived(challenger, challenger);
+    out.hub = new HubApp(out.session->getContext());
+}
 
-    HubApp* hub = new HubApp(session->getContext());
+inline void mountSupporterReady(GameSessionLifecycleTests* suite, MountedSupporter& sup) {
     AppConfig apps;
-    apps[StateId(HUB_APP_ID)] = hub;
+    apps[StateId(HUB_APP_ID)] = sup.hub;
     suite->device.loadAppConfig(apps, StateId(HUB_APP_ID));
     suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(SUPPORTER_READY));
-    ASSERT_EQ(suite->device.getActiveApp()->getCurrentState()->getStateId(), SUPPORTER_READY);
+}
 
-    ChainGameEventPayload countdown{};
-    countdown.event_type = static_cast<uint8_t>(ChainGameEventType::COUNTDOWN);
-    countdown.seqId = 0;
-    memcpy(countdown.challengerMac, challenger, 6);
+inline void deliverGameEvent(GameSessionLifecycleTests* suite, const uint8_t* challenger,
+                             ChainGameEventType type) {
+    ChainGameEventPayload event{};
+    event.event_type = static_cast<uint8_t>(type);
+    event.seqId = 0;
+    memcpy(event.challengerMac, challenger, 6);
     ASSERT_NE(suite->chainGameEventHandler, nullptr);
-    suite->chainGameEventHandler(challenger, reinterpret_cast<const uint8_t*>(&countdown),
-                                 sizeof(countdown), suite->chainGameEventCtx);
+    suite->chainGameEventHandler(challenger, reinterpret_cast<const uint8_t*>(&event),
+                                 sizeof(event), suite->chainGameEventCtx);
+}
 
-    SupporterReady* supporterReady =
-        static_cast<SupporterReady*>(suite->device.getActiveApp()->getCurrentState());
-    EXPECT_TRUE(supporterReady->buttonArmed);
+inline std::vector<std::string> loopAndCaptureTexts(GameSessionLifecycleTests* suite) {
+    std::vector<std::string> drawn;
+    ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))
+    .WillByDefault([&drawn, suite](const char* text, int, int) {
+        drawn.push_back(text);
+        return suite->device.mockDisplay;
+    });
+    suite->device.loop();
+    ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))
+    .WillByDefault(Return(suite->device.mockDisplay));
+    return drawn;
+}
 
-    delete hub;
-    delete session;
+inline bool containsText(const std::vector<std::string>& drawn, const char* target) {
+    return std::find(drawn.begin(), drawn.end(), target) != drawn.end();
+}
+
+inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* suite) {
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, challenger, sup);
+    ASSERT_TRUE(sup.posseManager->isSupporter());
+    mountSupporterReady(suite, sup);
+
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "Ready"));
+
+    deliverGameEvent(suite, challenger, ChainGameEventType::COUNTDOWN);
+
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "PRESS"));
+}
+
+inline void gameSessionSupporterReceivesAllEventTypesViaObserver(GameSessionLifecycleTests* suite) {
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, challenger, sup);
+    mountSupporterReady(suite, sup);
+
+    deliverGameEvent(suite, challenger, ChainGameEventType::COUNTDOWN);
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "PRESS"));
+
+    deliverGameEvent(suite, challenger, ChainGameEventType::DRAW);
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "Ready"));
+
+    deliverGameEvent(suite, challenger, ChainGameEventType::WIN);
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "Won"));
+
+    deliverGameEvent(suite, challenger, ChainGameEventType::LOSS);
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "Lost"));
+}
+
+inline void gameSessionMultipleEventsInSingleDrainDoNotCollapse(GameSessionLifecycleTests* suite) {
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, challenger, sup);
+
+    std::vector<ChainGameEventType> observed;
+    sup.posseManager->setGameEventObserver(
+    [&observed](ChainGameEventType eventType) { observed.push_back(eventType); });
+    deliverGameEvent(suite, challenger, ChainGameEventType::DRAW);
+    deliverGameEvent(suite, challenger, ChainGameEventType::WIN);
+    ASSERT_EQ(observed.size(), 2u);
+    EXPECT_EQ(observed[0], ChainGameEventType::DRAW);
+    EXPECT_EQ(observed[1], ChainGameEventType::WIN);
+    sup.posseManager->setGameEventObserver(nullptr);
+
+    mountSupporterReady(suite, sup);
+    deliverGameEvent(suite, challenger, ChainGameEventType::COUNTDOWN);
+    ASSERT_TRUE(containsText(loopAndCaptureTexts(suite), "PRESS"));
+
+    deliverGameEvent(suite, challenger, ChainGameEventType::DRAW);
+    deliverGameEvent(suite, challenger, ChainGameEventType::WIN);
+
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "Won"));
+    suite->fakeClock->advance(8001);
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "Ready"));
+}
+
+inline void gameSessionCountdownBeforeMountStillArms(GameSessionLifecycleTests* suite) {
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, challenger, sup);
+
+    deliverGameEvent(suite, challenger, ChainGameEventType::COUNTDOWN);
+    mountSupporterReady(suite, sup);
+
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "PRESS"));
+}
+
+inline void gameSessionResultScreenExpiresBackToReady(GameSessionLifecycleTests* suite) {
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, challenger, sup);
+    mountSupporterReady(suite, sup);
+
+    deliverGameEvent(suite, challenger, ChainGameEventType::COUNTDOWN);
+    deliverGameEvent(suite, challenger, ChainGameEventType::WIN);
+
+    std::vector<std::string> drawn = loopAndCaptureTexts(suite);
+    EXPECT_TRUE(containsText(drawn, "Won"));
+
+    suite->fakeClock->advance(8001);
+    drawn = loopAndCaptureTexts(suite);
+    EXPECT_FALSE(containsText(drawn, "Won"));
+    EXPECT_TRUE(containsText(drawn, "Ready"));
+}
+
+inline void gameSessionChallengerChangeClearsPreMountEvent(GameSessionLifecycleTests* suite) {
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, challenger, sup);
+
+    deliverGameEvent(suite, challenger, ChainGameEventType::COUNTDOWN);
+
+    uint8_t secondChallenger[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+    sup.posseManager->onRoleAnnounceReceived(challenger, secondChallenger);
+
+    mountSupporterReady(suite, sup);
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "Ready"));
+
+    suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(IDLE));
+    deliverGameEvent(suite, secondChallenger, ChainGameEventType::COUNTDOWN);
+    uint8_t zeroChallenger[6] = {0, 0, 0, 0, 0, 0};
+    sup.posseManager->onRoleAnnounceReceived(challenger, zeroChallenger);
+    sup.posseManager->onRoleAnnounceReceived(challenger, secondChallenger);
+
+    suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(SUPPORTER_READY));
+    EXPECT_TRUE(containsText(loopAndCaptureTexts(suite), "Ready"));
+}
+
+inline void gameSessionDismountClearsGameEventObserver(GameSessionLifecycleTests* suite) {
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, challenger, sup);
+    mountSupporterReady(suite, sup);
+
+    suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(IDLE));
+    ASSERT_EQ(suite->device.getActiveApp()->getCurrentState()->getStateId(), IDLE);
+
+    deliverGameEvent(suite, challenger, ChainGameEventType::COUNTDOWN);
+
+    std::vector<ChainGameEventType> replayed;
+    sup.posseManager->setGameEventObserver(
+    [&replayed](ChainGameEventType eventType) { replayed.push_back(eventType); });
+    ASSERT_EQ(replayed.size(), 1u);
+    EXPECT_EQ(replayed[0], ChainGameEventType::COUNTDOWN);
 }

@@ -12,30 +12,14 @@
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 #include <array>
-#include <atomic>
 #include <cstddef>
 #include <cstdlib>
 #include <queue>
 #include <string>
 #include "device/remote-device-coordinator.hpp"
 #include "game/posse-manager.hpp"
+#include "game/game-session.hpp"
 #include "game/shootout-manager.hpp"
-
-/**
- * Bundle of the shared game-wide managers a state may need. Built by the
- * GameSession that owns them and handed to every state so a new manager is a
- * one-line addition here rather than a constructor change across every state.
- * All pointers are non-owning; states read only the fields they use.
- */
-struct GameContext {
-    Player* player = nullptr;
-    MatchManager* matchManager = nullptr;
-    RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
-    PosseManager* posseManager = nullptr;
-    ShootoutManager* shootoutManager = nullptr;
-    SymbolWirelessManager* symbolWirelessManager = nullptr;
-    WirelessManager* wirelessManager = nullptr;
-};
 
 enum QuickdrawStateId {
     SLEEP = 6,
@@ -141,26 +125,21 @@ public:
     void onStateDismounted(PDN* pdn) override;
     bool transitionToIdle();
 
-    // Called by GameSession's chain-game-event packet handler.
-    void onChainGameEventReceived(uint8_t event_type, const uint8_t* senderMac);
+private:
+    static constexpr unsigned long RESULT_DISPLAY_MS = 8000;
 
-public:
-    // Button callback in onStateMounted uses these via `this` capture.
-    Player *player;
-    std::atomic<bool> buttonArmed{false};
-    std::atomic<bool> hasConfirmed{false};
-    std::atomic<bool> displayIsDirty{true};
-    std::atomic<bool> ledsAreDirty{true};
-    std::atomic<int> lastResult{0};
-    SimpleTimer resultClearTimer;
-    PDN* cachedPDN = nullptr;
-
+    void onChainGameEventReceived(ChainGameEventType eventType);
     void startLEDs(PDN* pdn, bool armed, bool confirmed);
 
-private:
+    Player* player;
     PosseManager* posseManager;
+    bool buttonArmed = false;
+    bool hasConfirmed = false;
+    bool displayIsDirty = true;
+    bool ledsAreDirty = true;
+    int lastResult = 0;
+    SimpleTimer resultClearTimer;
     bool transitionToIdleFlag = false;
-    int lastProcessedResult_ = 0;  // main-task-only; mirrors lastResult
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
