@@ -16,42 +16,36 @@ const std::array<GameSession::PacketRoute, 4>& GameSession::packetRoutes() {
     return ROUTES;
 }
 
-// The initializer list is in declaration order, which is also dependency order:
-// both managers read the two device-owned managers pulled off the PDN above them.
-GameSession::GameSession(Player* player,
-                         Device* pdn,
-                         SymbolWirelessManager* symbolWirelessManager)
-    : player(player)
-    , pdn(pdn)
-    , wirelessManager(pdn->getWirelessManager())
-    , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator())
-    , symbolWirelessManager(symbolWirelessManager)
-    , matchManager(new MatchManager(wirelessManager))
-    , posseManager(new PosseManager(player, wirelessManager, remoteDeviceCoordinator))
-    , shootoutManager(new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator)) {
-    this->shootoutManager->setMatchManager(matchManager);
-    matchManager->setShootoutManager(shootoutManager);
+GameSession::GameSession(Player* player, Device* pdn, SymbolWirelessManager* symbolWirelessManager)
+    : pdn(pdn) {
+    context.player = player;
+    context.wirelessManager = pdn->getWirelessManager();
+    context.remoteDeviceCoordinator = pdn->getRemoteDeviceCoordinator();
+    context.symbolWirelessManager = symbolWirelessManager;
+    context.matchManager = new MatchManager(player, pdn->getStorage(), context.wirelessManager,
+                                            context.remoteDeviceCoordinator);
+    context.posseManager =
+    new PosseManager(player, context.wirelessManager, context.remoteDeviceCoordinator);
+    context.shootoutManager = new ShootoutManager(
+    player, context.wirelessManager, context.remoteDeviceCoordinator, context.matchManager);
 
-    matchManager->initialize(player, pdn->getStorage());
-    matchManager->setBoostProvider([this]() -> unsigned long {
-        return posseManager ? posseManager->getBoostMs() : 0;
+    context.matchManager->setBoostProvider([this]() -> unsigned long {
+        return context.posseManager ? context.posseManager->getBoostMs() : 0;
     });
-    matchManager->setRemoteDeviceCoordinator(remoteDeviceCoordinator);
 
     for (const PacketRoute& route : packetRoutes()) {
-        wirelessManager->setEspNowPacketHandler(route.type, route.handler, this);
+        context.wirelessManager->setEspNowPacketHandler(route.type, route.handler, this);
     }
 
     // The Player is the authority on this device's identity; RDC only carries it.
-    remoteDeviceCoordinator->setSelfProfileProvider([this]() -> PlayerProfile {
-        return this->player->toProfile();
-    });
+    context.remoteDeviceCoordinator->setSelfProfileProvider(
+    [this]() -> PlayerProfile { return context.player->toProfile(); }, this);
 
     // Registration flips hunter/bounty long after the jacks came up, and the
     // context exchange only runs on connect, so the flip has to push itself.
-    this->player->setOnRoleChanged([this]() {
-        remoteDeviceCoordinator->resendContext();
-        posseManager->onChainStateChanged();
+    context.player->setOnRoleChanged([this]() {
+        context.remoteDeviceCoordinator->resendContext();
+        context.posseManager->onChainStateChanged();
     });
 
     // Installed here rather than by the caller so the slot holding `this` is
@@ -65,36 +59,26 @@ GameSession::~GameSession() {
     // before that pointer dangles.
     if (pdn) pdn->setTickCallback(nullptr);
     pdn = nullptr;
-    if (player) player->setOnRoleChanged(nullptr);
-    if (remoteDeviceCoordinator) remoteDeviceCoordinator->setSelfProfileProvider(nullptr);
-    player = nullptr;
+    if (context.player) context.player->setOnRoleChanged(nullptr);
+    if (context.remoteDeviceCoordinator) {
+        context.remoteDeviceCoordinator->setSelfProfileProvider(nullptr, this);
+    }
+    context.player = nullptr;
     // setBoostProvider is the one install with no clear: matchManager owns that slot
     // and is deleted below.
-    remoteDeviceCoordinator = nullptr;
+    context.remoteDeviceCoordinator = nullptr;
     for (const PacketRoute& route : packetRoutes()) {
-        wirelessManager->clearEspNowPacketHandler(route.type);
+        context.wirelessManager->clearEspNowPacketHandler(route.type);
     }
-    symbolWirelessManager = nullptr;
+    context.symbolWirelessManager = nullptr;
     // Managers before matchManager: shootoutManager holds a raw MatchManager*
     // and dereferences it when priming a bracket match.
-    delete posseManager;
-    posseManager = nullptr;
-    delete shootoutManager;
-    shootoutManager = nullptr;
-    delete matchManager;
-    matchManager = nullptr;
-}
-
-GameContext GameSession::getContext() {
-    GameContext context;
-    context.player = player;
-    context.matchManager = matchManager;
-    context.remoteDeviceCoordinator = remoteDeviceCoordinator;
-    context.posseManager = posseManager;
-    context.shootoutManager = shootoutManager;
-    context.symbolWirelessManager = symbolWirelessManager;
-    context.wirelessManager = wirelessManager;
-    return context;
+    delete context.posseManager;
+    context.posseManager = nullptr;
+    delete context.shootoutManager;
+    context.shootoutManager = nullptr;
+    delete context.matchManager;
+    context.matchManager = nullptr;
 }
 
 SupporterReady* GameSession::getMountedSupporterReady() {
@@ -107,12 +91,12 @@ SupporterReady* GameSession::getMountedSupporterReady() {
 }
 
 void GameSession::sync() {
-    if (matchManager) matchManager->sync();
+    if (context.matchManager) context.matchManager->sync();
 
-    if (posseManager) {
-        posseManager->sync();
+    if (context.posseManager) {
+        context.posseManager->sync();
 
-        bool inRingNow = remoteDeviceCoordinator->isInRing();
+        bool inRingNow = context.remoteDeviceCoordinator->isInRing();
         if (inRingNow != lastIsInRing) {
             LOG_W("RDC", "isInRing %d -> %d", (int)lastIsInRing, (int)inRingNow);
             lastIsInRing = inRingNow;
@@ -121,8 +105,8 @@ void GameSession::sync() {
     // Driven here rather than from the shootout states so a tournament's own
     // retries keep running while the device is in the match app for a bracket
     // match.
-    if (shootoutManager) shootoutManager->sync();
-    if (symbolWirelessManager) symbolWirelessManager->sync();
+    if (context.shootoutManager) context.shootoutManager->sync();
+    if (context.symbolWirelessManager) context.symbolWirelessManager->sync();
 
     logRetryStats();
 }
@@ -138,14 +122,14 @@ void GameSession::logRetryStats() {
     // strips info-level calls. Both managers are reported: a venue reading one
     // line to judge radio health would otherwise be shown the posse's
     // retries and told nothing about the tournament's.
-    if (posseManager != nullptr) {
-        PosseManager::RetryStats c = posseManager->getRetryStats();
+    if (context.posseManager != nullptr) {
+        PosseManager::RetryStats c = context.posseManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
         LOG_W("STATS", "POSSE s=%u r=%u ab=%u ack=%u/%lums", (unsigned)c.sends, (unsigned)c.retries,
               (unsigned)c.abandons, (unsigned)c.ackCount, cMean);
     }
-    if (shootoutManager != nullptr) {
-        const Resender::Stats& s = shootoutManager->getRetryStats();
+    if (context.shootoutManager != nullptr) {
+        const Resender::Stats& s = context.shootoutManager->getRetryStats();
         LOG_W("STATS", "SHT s=%u r=%u ab=%u",
               (unsigned)s.sends, (unsigned)s.retries, (unsigned)s.abandons);
     }
@@ -154,18 +138,18 @@ void GameSession::logRetryStats() {
 
 void GameSession::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
     if (dataLen != sizeof(ChainGameEventPayload)) return;
-    if (!posseManager) return;
+    if (!context.posseManager) return;
 
     const ChainGameEventPayload* payload = reinterpret_cast<const ChainGameEventPayload*>(data);
     // The frame is broadcast, so every chain in radio range hears it. The
     // challenger it names is the only thing that says whether it is ours.
-    if (!posseManager->isEventFromOwnChallenger(payload->challengerMac)) return;
+    if (!context.posseManager->isEventFromOwnChallenger(payload->challengerMac)) return;
 
     // Ahead of the state dispatch and independent of it: a COUNTDOWN wipes the
     // challenger's roll call whether or not this device is watching for it, and a
     // confirm still held here would then re-register a press for a round the
     // supporter has not answered.
-    posseManager->onChainGameEventReceived(payload->event_type);
+    context.posseManager->onChainGameEventReceived(payload->event_type);
 
     // Out-of-state events dropped silently; challenger's retry machine bounds traffic cost.
     SupporterReady* supporterReady = getMountedSupporterReady();
@@ -178,14 +162,14 @@ void GameSession::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* 
     // already received and can't act on. seqId=0 is the sentinel for
     // fire-and-forget events (COUNTDOWN/DRAW) and must not be ACKed.
     if (payload->seqId != 0) {
-        posseManager->sendGameEventAck(fromMac, payload->seqId);
+        context.posseManager->sendGameEventAck(fromMac, payload->seqId);
     }
 }
 
 void GameSession::onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainGameEventAckPayload) || !posseManager) return;
+    if (dataLen != sizeof(ChainGameEventAckPayload) || !context.posseManager) return;
     const ChainGameEventAckPayload* payload = reinterpret_cast<const ChainGameEventAckPayload*>(data);
-    posseManager->onChainGameEventAckReceived(fromMac, payload->seqId);
+    context.posseManager->onChainGameEventAckReceived(fromMac, payload->seqId);
 }
 
 namespace {
@@ -207,7 +191,7 @@ bool decodeMacList(const uint8_t* payload, size_t payloadLen,
 }  // namespace
 
 void GameSession::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (!shootoutManager || dataLen < 2) return;
+    if (!context.shootoutManager || dataLen < 2) return;
     if (data[0] > static_cast<uint8_t>(ShootoutCmd::RING_CLOSED)) return;
     ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
     uint8_t seqId = data[1];
@@ -219,42 +203,41 @@ void GameSession::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t*
             const char* name = (payloadLen >= 6 + ShootoutManager::kNameLength)
                                    ? reinterpret_cast<const char*>(payload + 6)
                                    : nullptr;
-            shootoutManager->onConfirmReceived(payload, name);
+            context.shootoutManager->onConfirmReceived(payload, name);
             break;
         }
         case ShootoutCmd::BRACKET: {
             std::vector<std::array<uint8_t, 6>> bracket;
             if (!decodeMacList(payload, payloadLen, bracket)) break;
-            shootoutManager->onBracketReceived(fromMac, bracket, seqId);
+            context.shootoutManager->onBracketReceived(fromMac, bracket, seqId);
             break;
         }
         case ShootoutCmd::RING_CLOSED: {
             std::vector<std::array<uint8_t, 6>> members;
             if (!decodeMacList(payload, payloadLen, members)) break;
-            shootoutManager->onRingClosedReceived(fromMac, members);
+            context.shootoutManager->onRingClosedReceived(fromMac, members);
             break;
         }
         case ShootoutCmd::MATCH_START:
             if (payloadLen >= 13)
-                shootoutManager->onMatchStartReceived(fromMac, payload, payload + 6,
-                                                      payload[12], seqId);
+                context.shootoutManager->onMatchStartReceived(fromMac, payload, payload + 6,
+                                                              payload[12], seqId);
             break;
         case ShootoutCmd::MATCH_RESULT:
             if (payloadLen >= 13)
-                shootoutManager->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
+                context.shootoutManager->onMatchResultReceived(payload, payload + 6, payload[12],
+                                                               seqId, fromMac);
             break;
         case ShootoutCmd::TOURNAMENT_END:
             if (payloadLen >= 6)
-                shootoutManager->onTournamentEndReceived(fromMac, payload, seqId);
+                context.shootoutManager->onTournamentEndReceived(fromMac, payload, seqId);
             break;
-        case ShootoutCmd::ABORT:
-            shootoutManager->onAbortReceived(fromMac, seqId);
-            break;
+        case ShootoutCmd::ABORT: context.shootoutManager->onAbortReceived(fromMac, seqId); break;
     }
 }
 
 void GameSession::onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (!shootoutManager || dataLen < 2) return;
+    if (!context.shootoutManager || dataLen < 2) return;
     if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
-    shootoutManager->onCommandAckReceived(fromMac, data[1]);
+    context.shootoutManager->onCommandAckReceived(fromMac, data[1]);
 }

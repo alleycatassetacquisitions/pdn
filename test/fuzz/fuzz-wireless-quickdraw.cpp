@@ -139,18 +139,16 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     NativePrefsDriver storage("fuzz", {MATCHES_PREFS_NAMESPACE});
     FuzzRemoteDeviceCoordinator rdc;
 
-    WirelessManager wirelessManager(&peerComms, nullptr);
-    MatchManager matchManager(&wirelessManager);
-    SymbolWirelessManager symbolWirelessManager(&wirelessManager, &rdc);
-    RemotePlayerManager remotePlayerManager(&peerComms);
-
     Player player;
     char initialUserId[] = "0042";
     player.setUserID(initialUserId);
     player.setIsHunter((size > 0) ? ((data[0] & 1U) != 0U) : true);
 
-    matchManager.initialize(&player, &storage);
-    matchManager.setRemoteDeviceCoordinator(&rdc);
+    WirelessManager wirelessManager(&peerComms, nullptr);
+    MatchManager matchManager(&player, &storage, &wirelessManager, &rdc);
+    SymbolWirelessManager symbolWirelessManager(&wirelessManager, &rdc);
+    RemotePlayerManager remotePlayerManager(&peerComms);
+
     remotePlayerManager.StartBroadcastingPlayerInfo(&player, 5000);
     wirelessManager.setEspNowPacketHandler(
         PktType::kPlayerInfoBroadcast,

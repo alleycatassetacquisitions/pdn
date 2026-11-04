@@ -2001,6 +2001,10 @@ TEST_F(PosseManagerTests, gameEventAbandonsWhenSpanRunsOut) {
     posseGameEventAbandonsWhenSpanRunsOut(this);
 }
 
+TEST_F(PosseManagerTests, destroyingCoexistingManagerPreservesSurvivingRdcCallbacks) {
+    destroyingCoexistingManagerPreservesSurvivingRdcCallbacks(this);
+}
+
 // ============================================
 // POSSE MULTI-DEVICE FIXTURE TESTS
 // ============================================

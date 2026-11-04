@@ -37,7 +37,7 @@ struct ChainGameEventPayload {
 
 class PosseManager {
 public:
-    /** Requires a live rdc and owns its single-subscriber topology/context callback slots. */
+    /** Requires a live rdc and subscribes to its topology/context callbacks under `this`. */
     PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
     /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
     virtual ~PosseManager();

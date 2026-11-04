@@ -13,9 +13,11 @@ static constexpr uint8_t     MAX_MATCHES      = 255;
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
-MatchManager::MatchManager(WirelessManager* wirelessManager)
-    : player(nullptr)
-    , storage(nullptr)
+MatchManager::MatchManager(Player* player, StorageInterface* storage,
+                           WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
+    : player(player)
+    , rdc(rdc)
+    , storage(storage)
     , resender(wirelessManager)
     , matchChannel(wirelessManager, &resender, PktType::kMatchCommand, nullptr) {
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
@@ -23,6 +25,78 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
                              p.isHunter);
         listenForMatchEvents(command);
     });
+
+    matchButtonPush = [](void* ctx) {
+        if (!ctx) {
+            LOG_E(MATCH_MANAGER_TAG, "Button press handler received null context");
+            return;
+        }
+
+        PlatformClock* clock = SimpleTimer::getPlatformClock();
+        if (!clock) {
+            LOG_E(MATCH_MANAGER_TAG, "Button press handler called with no platform clock");
+            return;
+        }
+        unsigned long now = clock->milliseconds();
+
+        MatchManager* matchManager = static_cast<MatchManager*>(ctx);
+        ActiveMatchState* activeMatchState = &matchManager->activeMatchState;
+        Player* player = matchManager->player;
+
+        if (matchManager->getHasPressedButton()) {
+            LOG_I(MATCH_MANAGER_TAG, "Button already pressed - skipping");
+            return;
+        }
+
+        if (!matchManager->getCurrentMatch().has_value()) {
+            LOG_E(MATCH_MANAGER_TAG, "No current match - skipping");
+            return;
+        }
+
+        unsigned long reactionTimeMs = now - matchManager->getMatchLocalStartTime();
+
+        if (activeMatchState->buttonMasherCount > 0) {
+            reactionTimeMs = reactionTimeMs + activeMatchState->calculateButtonMasherPenalty();
+        }
+
+        unsigned long boost = matchManager->boostProvider ? matchManager->boostProvider() : 0;
+        unsigned long boostedTimeMs = (boost >= reactionTimeMs) ? 0 : (reactionTimeMs - boost);
+
+        // Snapshot boost at press time so the result screen can display it
+        // even if supporters unplug before the match finalizes.
+        matchManager->lastMatchDisplay.boostMs = boost;
+
+        LOG_I(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms (boost %lu) for %s",
+              boostedTimeMs, boost, activeMatchState->localIsHunter ? "Hunter" : "Bounty");
+
+        activeMatchState->localIsHunter ? matchManager->setHunterDrawTime(boostedTimeMs)
+                                        : matchManager->setBountyDrawTime(boostedTimeMs);
+
+        // Player stats record the raw (unboosted) reaction time — boost is a
+        // match-time advantage, not an achievement the player actually made.
+        player->addReactionTime(reactionTimeMs);
+
+        LOG_I(MATCH_MANAGER_TAG, "Stored reaction time in MatchManager");
+
+        LOG_I(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s",
+              MacToString(activeMatchState->opponentMac.data()));
+
+        // Send the BOOSTED time in DRAW_RESULT so both sides agree on who won.
+        matchManager->sendCommand(activeMatchState->opponentMac.data(), MatchCmd::DRAW_RESULT,
+                                  matchManager->getCurrentMatch()->getMatchId(), boostedTimeMs,
+                                  activeMatchState->localIsHunter);
+
+        matchManager->setReceivedButtonPush();
+
+        LOG_I(MATCH_MANAGER_TAG, "Reaction time: %lu ms", reactionTimeMs);
+    };
+
+    buttonMasher = [](void* ctx) {
+        MatchManager* matchManager = static_cast<MatchManager*>(ctx);
+        matchManager->activeMatchState.buttonMasherCount++;
+        LOG_I(MATCH_MANAGER_TAG, "Button masher count: %d",
+              matchManager->activeMatchState.buttonMasherCount);
+    };
 }
 
 void MatchManager::sync() {
@@ -49,19 +123,7 @@ MatchManager::~MatchManager() {
 }
 
 void MatchManager::setBoostProvider(std::function<unsigned long()> provider) {
-    boostProvider_ = provider;
-}
-
-void MatchManager::setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc) {
-    rdc_ = rdc;
-}
-
-void MatchManager::setShootoutManager(ShootoutManager* shootoutManager) {
-    shootoutManager_ = shootoutManager;
-}
-
-ShootoutManager* MatchManager::getShootoutManager() const {
-    return shootoutManager_;
+    boostProvider = std::move(provider);
 }
 
 bool MatchManager::currentMatchIsShootout() const {
@@ -354,83 +416,6 @@ parameterizedCallbackFunction MatchManager::getButtonMasher() {
     return buttonMasher;
 }
 
-void MatchManager::initialize(Player* player, StorageInterface* storage) {
-    this->player = player;
-    this->storage = storage;
-
-    matchButtonPush = [](void* ctx) {
-        if (!ctx) {
-            LOG_E(MATCH_MANAGER_TAG, "Button press handler received null context");
-            return;
-        }
-
-        auto* clock = SimpleTimer::getPlatformClock();
-        if (!clock) {
-            LOG_E(MATCH_MANAGER_TAG, "Button press handler called with no platform clock");
-            return;
-        }
-        unsigned long now = clock->milliseconds();
-
-        MatchManager* matchManager = static_cast<MatchManager*>(ctx);
-        ActiveMatchState* activeMatchState = &matchManager->activeMatchState;
-        Player* player = matchManager->player;
-
-        if(matchManager->getHasPressedButton()) {
-            LOG_I(MATCH_MANAGER_TAG, "Button already pressed - skipping");
-            return;
-        }
-
-        if(!matchManager->getCurrentMatch().has_value()) {
-            LOG_E(MATCH_MANAGER_TAG, "No current match - skipping");
-            return;
-        }
-
-        unsigned long reactionTimeMs = now - matchManager->getMatchLocalStartTime();
-
-        if (activeMatchState->buttonMasherCount > 0) {
-            reactionTimeMs = reactionTimeMs + activeMatchState->calculateButtonMasherPenalty();
-        }
-
-        unsigned long boost = matchManager->boostProvider_ ? matchManager->boostProvider_() : 0;
-        unsigned long boostedTimeMs = (boost >= reactionTimeMs) ? 0 : (reactionTimeMs - boost);
-
-        // Snapshot boost at press time so the result screen can display it
-        // even if supporters unplug before the match finalizes.
-        matchManager->lastMatchDisplay.boostMs = boost;
-
-        LOG_I(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms (boost %lu) for %s",
-              boostedTimeMs, boost, activeMatchState->localIsHunter ? "Hunter" : "Bounty");
-
-        activeMatchState->localIsHunter ? matchManager->setHunterDrawTime(boostedTimeMs)
-                                        : matchManager->setBountyDrawTime(boostedTimeMs);
-
-        // Player stats record the raw (unboosted) reaction time — boost is a
-        // match-time advantage, not an achievement the player actually made.
-        player->addReactionTime(reactionTimeMs);
-
-        LOG_I(MATCH_MANAGER_TAG, "Stored reaction time in MatchManager");
-
-        LOG_I(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s",
-              MacToString(activeMatchState->opponentMac.data()));
-
-        // Send the BOOSTED time in DRAW_RESULT so both sides agree on who won.
-        matchManager->sendCommand(activeMatchState->opponentMac.data(), MatchCmd::DRAW_RESULT,
-                                  matchManager->getCurrentMatch()->getMatchId(), boostedTimeMs,
-                                  activeMatchState->localIsHunter);
-
-        matchManager->setReceivedButtonPush();
-        
-        LOG_I(MATCH_MANAGER_TAG, "Reaction time: %lu ms", reactionTimeMs);
-    };
-
-    buttonMasher = [](void *ctx) {
-        MatchManager* matchManager = static_cast<MatchManager*>(ctx);
-        matchManager->activeMatchState.buttonMasherCount++;
-        LOG_I(MATCH_MANAGER_TAG, "Button masher count: %d",
-              matchManager->activeMatchState.buttonMasherCount);
-    };
-}
-
 bool MatchManager::isFromActiveMatchOpponent(const MatchCommand& command) const {
     if (!activeMatchState.match.has_value()) return false;
     if (memcmp(command.wifiMacAddr, activeMatchState.opponentMac.data(), 6) != 0) return false;
@@ -445,12 +430,11 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
         // Gate on RDC peering — no active match exists yet, so the sender
         // must be authenticated via the cable-established direct peer.
         LOG_I(MATCH_MANAGER_TAG, "Received SEND_MATCH_ID command from opponent");
-        if (!rdc_ || !rdc_->isDirectPeer(command.wifiMacAddr)) {
+        if (!rdc || !rdc->isDirectPeer(command.wifiMacAddr)) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
             return;
         }
-        bool shootoutActive = shootoutManager_ && shootoutManager_->active();
-        if(!shootoutActive && player->isHunter() == command.isHunter) {
+        if (player->isHunter() == command.isHunter) {
             // Echo the sender's matchId/MAC: activeMatchState.match is still empty.
             sendCommand(command.wifiMacAddr, MatchCmd::MATCH_ROLE_MISMATCH, command.matchId, 0,
                         player->isHunter());

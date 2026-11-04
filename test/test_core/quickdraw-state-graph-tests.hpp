@@ -127,33 +127,25 @@ inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>>
 // registered and frees them; this only owns the apps.
 struct QuickdrawAppsForTest {
     PlayerFetchApp* playerFetch = nullptr;
-    HubApp* hub = nullptr;
-    MatchApp* match = nullptr;
-    ShootoutApp* shootout = nullptr;
-    SymbolApp* symbol = nullptr;
+    AppConfig gameplay;
 
     /** Constructs and populates the five apps without mounting any of them. */
     QuickdrawAppsForTest() {
         GameContext context;
         playerFetch = new PlayerFetchApp(nullptr, nullptr, nullptr);
-        hub = new HubApp(context);
-        match = new MatchApp(context);
-        shootout = new ShootoutApp(context);
-        symbol = new SymbolApp(context);
+        gameplay = makeGameplayApps(context);
         playerFetch->populateStateMap();
-        hub->populateStateMap();
-        match->populateStateMap();
-        shootout->populateStateMap();
-        symbol->populateStateMap();
+        for (const std::pair<const StateId, StateMachine*>& entry : gameplay) {
+            entry.second->populateStateMap();
+        }
     }
 
     /** Frees the apps, and with them every state they registered. */
     ~QuickdrawAppsForTest() {
         delete playerFetch;
-        delete hub;
-        delete match;
-        delete shootout;
-        delete symbol;
+        for (const std::pair<const StateId, StateMachine*>& entry : gameplay) {
+            delete entry.second;
+        }
     }
 
     /**
@@ -162,10 +154,8 @@ struct QuickdrawAppsForTest {
      */
     std::vector<State*> gameplayStates() const {
         std::vector<State*> states;
-        for (const StateMachine* app :
-             {static_cast<const StateMachine*>(hub), static_cast<const StateMachine*>(match),
-              static_cast<const StateMachine*>(shootout),
-              static_cast<const StateMachine*>(symbol)}) {
+        for (int appId : {HUB_APP_ID, MATCH_APP_ID, SHOOTOUT_APP_ID, SYMBOL_APP_ID}) {
+            const StateMachine* app = gameplay.at(StateId(appId));
             for (State* state : app->getStateMap()) {
                 states.push_back(state);
             }
@@ -188,13 +178,9 @@ struct QuickdrawAppsForTest {
      */
     State* resolveTarget(const StateTransition* edge) const {
         if (edge->getNextState() != nullptr) return edge->getNextState();
-        const StateMachine* target = nullptr;
-        if (edge->getTargetAppId().id == HUB_APP_ID) target = hub;
-        if (edge->getTargetAppId().id == MATCH_APP_ID) target = match;
-        if (edge->getTargetAppId().id == SHOOTOUT_APP_ID) target = shootout;
-        if (edge->getTargetAppId().id == SYMBOL_APP_ID) target = symbol;
-        if (target == nullptr) return nullptr;
-        for (State* state : target->getStateMap()) {
+        std::map<StateId, StateMachine*>::const_iterator it = gameplay.find(edge->getTargetAppId());
+        if (it == gameplay.end() || it->second == nullptr) return nullptr;
+        for (State* state : it->second->getStateMap()) {
             if (state->getStateId() == edge->getEntryStateId().id) return state;
         }
         return nullptr;
@@ -217,10 +203,13 @@ inline void quickdrawAppsRegisterStatesInDeclaredOrder() {
             << "registration slot " << i << " changed";
     }
 
-    EXPECT_EQ(apps.hub->getStateMap()[0]->getStateId(), AWAKEN_SEQUENCE);
-    EXPECT_EQ(apps.match->getStateMap()[0]->getStateId(), MATCH_COUNTDOWN);
-    EXPECT_EQ(apps.shootout->getStateMap()[0]->getStateId(), SHOOTOUT_PROPOSAL);
-    EXPECT_EQ(apps.symbol->getStateMap()[0]->getStateId(), SYMBOL);
+    EXPECT_EQ(apps.gameplay.at(StateId(HUB_APP_ID))->getStateMap()[0]->getStateId(),
+              AWAKEN_SEQUENCE);
+    EXPECT_EQ(apps.gameplay.at(StateId(MATCH_APP_ID))->getStateMap()[0]->getStateId(),
+              MATCH_COUNTDOWN);
+    EXPECT_EQ(apps.gameplay.at(StateId(SHOOTOUT_APP_ID))->getStateMap()[0]->getStateId(),
+              SHOOTOUT_PROPOSAL);
+    EXPECT_EQ(apps.gameplay.at(StateId(SYMBOL_APP_ID))->getStateMap()[0]->getStateId(), SYMBOL);
 }
 
 // Every edge of the pre-split graph still leaves the same state, at the same
@@ -319,5 +308,6 @@ inline void registrationHandsOffFromWelcomeMessage() {
     // decides where that lands. Naming one would put a gameplay state id in the
     // registration app, which is the coupling the two apps do not otherwise have.
     EXPECT_LT(edge->getEntryStateId().id, 0);
-    EXPECT_EQ(apps.hub->getStateMap()[0]->getStateId(), AWAKEN_SEQUENCE);
+    EXPECT_EQ(apps.gameplay.at(StateId(HUB_APP_ID))->getStateMap()[0]->getStateId(),
+              AWAKEN_SEQUENCE);
 }

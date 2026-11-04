@@ -34,14 +34,9 @@ struct JackConnectionState {
 };
 
 /*
- * The coordinator's observer slot is single, and the mounted ConnectState holds it.
- * That works because StateMachine dismounts the outgoing state before mounting the
- * incoming one, handing the slot over cleanly; a second ConnectState mounted without
- * that dismount would take the slot and leave the first one permanently deaf.
- *
- * `subscribed` records that this state registered, not that it still holds the slot
- * — the coordinator arbitrates nothing — so the two clear paths below are only safe
- * under that same dismount-before-mount ordering.
+ * Subscribes to the coordinator's jack-change observer for the duration of the
+ * state's mount, keyed on `this` so neither dismount nor destructor teardown can
+ * clear another subscriber's registration.
  */
 template <typename DeviceT>
 class ConnectState : public TypedState<DeviceT> {
@@ -51,11 +46,11 @@ public:
         : TypedState<DeviceT>(stateId)
         , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
 
-    /** Non-owning; just drops the coordinator pointer. */
+    /** Non-owning; drops any active subscription and clears the coordinator pointer. */
     ~ConnectState() override {
         // App teardown deletes states without dismounting them, which would leave a
         // `this`-bound lambda in the device-owned coordinator.
-        if (subscribed) unsubscribe();
+        unsubscribe();
         remoteDeviceCoordinator = nullptr;
     }
 
@@ -130,18 +125,12 @@ private:
         replayConnectedJacks();
     }
 
-    // A dismounted state must stop receiving; the next mounted state may not be a
-    // ConnectState, and nothing else would clear the slot.
-    void beforeDismount(DeviceT* device) final {
-        if (subscribed) unsubscribe();
-    }
+    void beforeDismount(DeviceT* device) final { unsubscribe(); }
 
     void subscribe() {
         remoteDeviceCoordinator->setOnJackChange(
-            [this](SerialIdentifier jack, bool connected) {
-                dispatchJackState(jack, connected);
-            });
-        subscribed = true;
+        [this](SerialIdentifier jack, bool connected) { dispatchJackState(jack, connected); },
+        this);
     }
 
     void dispatchJackState(SerialIdentifier jack, bool connected) {
@@ -170,8 +159,9 @@ private:
     }
 
     void unsubscribe() {
-        remoteDeviceCoordinator->setOnJackChange(nullptr);
-        subscribed = false;
+        if (remoteDeviceCoordinator != nullptr) {
+            remoteDeviceCoordinator->setOnJackChange(nullptr, this);
+        }
     }
 
     void replayConnectedJacks() {
@@ -193,5 +183,4 @@ private:
     static constexpr unsigned long DISCONNECT_DEBOUNCE_MS = 500;
     DebouncedCondition disconnectDebounce;
     JackStateHandler jackStateHandler;
-    bool subscribed = false;
 };

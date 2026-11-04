@@ -28,24 +28,22 @@ using ::testing::DoAll;
 
 // Stubs a fixture's RDC to accept the conventional test MAC as a direct peer
 // so MatchManager's SEND_MATCH_ID gate passes. Called once per fixture SetUp.
-inline void wireFixtureRdcForMatchManager(MockDevice& device, MatchManager* mm) {
+inline void wireFixtureRdcForMatchManager(MockDevice& device) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, dummyMac);
     device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::OUTPUT_JACK, dummyMac);
-    mm->setRemoteDeviceCoordinator(&device.fakeRemoteDeviceCoordinator);
 }
 
 static const uint8_t kTestMacBytes[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
 // Stands a ShootoutManager up to MATCH_IN_PROGRESS with this device in the match
-// against the coordinator, and lets it prime `matchManager` the way MATCH_START
-// does on hardware. `selfMac` sorts above the coordinator's, which puts the local
-// side in the BOUNTY draw slot — the opposite of the fixtures' standing hunter
-// role, so a reader consulting the wrong one of the two is visible. Returns the
-// opponent's MAC.
-inline std::array<uint8_t, 6> mountShootoutMatchWithBountySlot(
-    ShootoutManager& shootout, MockDevice& device, MatchManager* matchManager,
-    uint8_t* selfMac) {
+// against the coordinator, and lets it prime the bound MatchManager the way
+// MATCH_START does on hardware. `selfMac` sorts above the coordinator's, which
+// puts the local side in the BOUNTY draw slot — the opposite of the fixtures'
+// standing hunter role, so a reader consulting the wrong one of the two is
+// visible. Returns the opponent's MAC.
+inline std::array<uint8_t, 6>
+mountShootoutMatchWithBountySlot(ShootoutManager& shootout, MockDevice& device, uint8_t* selfMac) {
     std::array<uint8_t, 6> me{};
     memcpy(me.data(), selfMac, 6);
     std::array<uint8_t, 6> coordinator = {0x01, 0, 0, 0, 0, 0};
@@ -54,7 +52,6 @@ inline std::array<uint8_t, 6> mountShootoutMatchWithBountySlot(
     ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
 
     device.fakeRemoteDeviceCoordinator.ringHeadMac = coordinator;
-    shootout.setMatchManager(matchManager);
     shootout.setRingMembersForTest({me, coordinator, spectator});
     shootout.startProposal();
     for (const std::array<uint8_t, 6>& m : {me, coordinator, spectator}) {
@@ -82,9 +79,9 @@ public:
         player->setIsHunter(true);
 
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        matchManager = new MatchManager(device.wirelessManager);
-        matchManager->initialize(player, &storage);
-        wireFixtureRdcForMatchManager(device, matchManager);
+        wireFixtureRdcForMatchManager(device);
+        matchManager = new MatchManager(player, &storage, device.wirelessManager,
+                                        &device.fakeRemoteDeviceCoordinator);
 
         posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
@@ -329,9 +326,9 @@ public:
         player->setIsHunter(true);
 
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        matchManager = new MatchManager(device.wirelessManager);
-        matchManager->initialize(player, &storage);
-        wireFixtureRdcForMatchManager(device, matchManager);
+        wireFixtureRdcForMatchManager(device);
+        matchManager = new MatchManager(player, &storage, device.wirelessManager,
+                                        &device.fakeRemoteDeviceCoordinator);
 
         posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
@@ -516,9 +513,9 @@ public:
         wirelessManager = new QuickdrawRadioTap();
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         wirelessManager->attach(device.mockPeerComms);
-        matchManager = new MatchManager(device.wirelessManager);
-        matchManager->initialize(player, &storage);
-        wireFixtureRdcForMatchManager(device, matchManager);
+        wireFixtureRdcForMatchManager(device);
+        matchManager = new MatchManager(player, &storage, device.wirelessManager,
+                                        &device.fakeRemoteDeviceCoordinator);
 
         posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
@@ -569,9 +566,9 @@ inline void matchShootoutTimeoutForfeitsTheMatchHunter(MatchStateTests* suite) {
     suite->matchManager->clearCurrentMatch();
     uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
     ShootoutManager shootout(suite->player, suite->device.wirelessManager,
-                             &suite->device.fakeRemoteDeviceCoordinator);
-    std::array<uint8_t, 6> opponent = mountShootoutMatchWithBountySlot(
-        shootout, suite->device, suite->matchManager, selfMac);
+                             &suite->device.fakeRemoteDeviceCoordinator, suite->matchManager);
+    std::array<uint8_t, 6> opponent =
+    mountShootoutMatchWithBountySlot(shootout, suite->device, selfMac);
     suite->ctx.shootoutManager = &shootout;
     ASSERT_TRUE(suite->player->isHunter()) << "the standing role should be the opposite";
     ASSERT_FALSE(suite->matchManager->isLocalHunter());
@@ -950,9 +947,9 @@ public:
         player->setIsHunter(true);
 
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        matchManager = new MatchManager(device.wirelessManager);
-        matchManager->initialize(player, &storage);
-        wireFixtureRdcForMatchManager(device, matchManager);
+        wireFixtureRdcForMatchManager(device);
+        matchManager = new MatchManager(player, &storage, device.wirelessManager,
+                                        &device.fakeRemoteDeviceCoordinator);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -1154,9 +1151,9 @@ inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
 inline void resultShootoutLoserDoesNotClaimTheWin(MatchResultTests* suite) {
     uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
     ShootoutManager shootout(suite->player, suite->device.wirelessManager,
-                             &suite->device.fakeRemoteDeviceCoordinator);
-    std::array<uint8_t, 6> opponent = mountShootoutMatchWithBountySlot(
-        shootout, suite->device, suite->matchManager, selfMac);
+                             &suite->device.fakeRemoteDeviceCoordinator, suite->matchManager);
+    std::array<uint8_t, 6> opponent =
+    mountShootoutMatchWithBountySlot(shootout, suite->device, selfMac);
     suite->ctx.shootoutManager = &shootout;
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
     ASSERT_TRUE(suite->player->isHunter()) << "the standing role should be the opposite";
@@ -1198,9 +1195,9 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager(device.wirelessManager);
-        matchManager->initialize(player, &storage);
-        wireFixtureRdcForMatchManager(device, matchManager);
+        wireFixtureRdcForMatchManager(device);
+        matchManager = new MatchManager(player, &storage, device.wirelessManager,
+                                        &device.fakeRemoteDeviceCoordinator);
 
         posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 

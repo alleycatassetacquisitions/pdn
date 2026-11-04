@@ -271,3 +271,12 @@ void SymbolApp::populateStateMap() {
     stateMap.push_back(symbol);
     stateMap.push_back(symbolMatched);
 }
+
+AppConfig makeGameplayApps(const GameContext& context) {
+    return {
+    {StateId(HUB_APP_ID), new HubApp(context)},
+    {StateId(MATCH_APP_ID), new MatchApp(context)},
+    {StateId(SHOOTOUT_APP_ID), new ShootoutApp(context)},
+    {StateId(SYMBOL_APP_ID), new SymbolApp(context)},
+    };
+}

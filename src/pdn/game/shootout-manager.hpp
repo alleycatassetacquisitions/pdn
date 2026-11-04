@@ -29,23 +29,14 @@ public:
     };
 
     /**
-     * Subscribes to the coordinator's ring-closed edge when given one. That
-     * callback is a single slot, so at most one ShootoutManager per coordinator:
-     * a second built on the same one takes the slot over, and whichever is
-     * destroyed first empties it for both.
+     * Subscribes to the coordinator's ring-closed edge under `this` when given one.
+     * When `matchManager` is provided, primes it with the player pair on each
+     * MATCH_START so match states find a ready match.
      */
-    ShootoutManager(Player* player,
-                    WirelessManager* wirelessManager,
-                    RemoteDeviceCoordinator* rdc);
+    ShootoutManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc,
+                    MatchManager* matchManager = nullptr);
     /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
     ~ShootoutManager();
-
-    /**
-     * Optional MatchManager injection. When set, Shootout primes the
-     * MatchManager with the player pair on each MATCH_START so match
-     * states find a ready match. Tests leave this unset.
-     */
-    void setMatchManager(MatchManager* manager) { matchManager = manager; }
 
     bool active() const;
     Phase getPhase() const;

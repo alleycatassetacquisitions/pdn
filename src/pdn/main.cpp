@@ -74,10 +74,6 @@ PlayerProvider* playerProvider = nullptr;
 // Shared game managers, and the apps the device swaps between
 GameSession* gameSession = nullptr;
 PlayerFetchApp* playerFetchApp = nullptr;
-HubApp* hubApp = nullptr;
-MatchApp* matchApp = nullptr;
-ShootoutApp* shootoutApp = nullptr;
-SymbolApp* symbolApp = nullptr;
 
 // Remote player management
 SymbolWirelessManager* symbolWirelessManager = nullptr;
@@ -178,12 +174,8 @@ static void setup() {
     gameSession = new GameSession(playerProvider->getPlayer(), pdn, symbolWirelessManager);
 
     GameContext gameContext = gameSession->getContext();
-    playerFetchApp = new PlayerFetchApp(pdn->getWirelessManager(),
-                                        pdn->getFirmwareUpdateManager(), playerProvider);
-    hubApp = new HubApp(gameContext);
-    matchApp = new MatchApp(gameContext);
-    shootoutApp = new ShootoutApp(gameContext);
-    symbolApp = new SymbolApp(gameContext);
+    playerFetchApp =
+    new PlayerFetchApp(pdn->getWirelessManager(), pdn->getFirmwareUpdateManager(), playerProvider);
 
     pdn->getDisplay()->
     invalidateScreen()->
@@ -199,13 +191,8 @@ static void setup() {
     }
 
     // Register the swappable state machines and boot into registration
-    AppConfig apps = {
-    {StateId(PLAYER_FETCH_APP_ID), playerFetchApp},
-    {StateId(HUB_APP_ID), hubApp},
-    {StateId(MATCH_APP_ID), matchApp},
-    {StateId(SHOOTOUT_APP_ID), shootoutApp},
-    {StateId(SYMBOL_APP_ID), symbolApp},
-    };
+    AppConfig apps = makeGameplayApps(gameContext);
+    apps[StateId(PLAYER_FETCH_APP_ID)] = playerFetchApp;
     pdn->loadAppConfig(apps, StateId(PLAYER_FETCH_APP_ID));
 }
 
