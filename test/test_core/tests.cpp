@@ -670,6 +670,10 @@ TEST_F(PlayerTestSuite, profileCarriesRoleAndIdentity) {
     playerProfileCarriesRoleAndIdentity(player);
 }
 
+TEST_F(PlayerTestSuite, profileRejectsOutOfRangeUserIds) {
+    playerProfileRejectsOutOfRangeUserIds(player);
+}
+
 TEST_F(PlayerTestSuite, statsIncrementCorrectly) {
     playerStatsIncrementCorrectly(player);
 }
@@ -1651,6 +1655,9 @@ TEST_F(RDCHelloTests, connectedRetryResendThrottled) {
 }
 TEST_F(RDCHelloTests, resendContextPushesCurrentProfile) {
     rdcResendContextPushesCurrentProfile(this);
+}
+TEST_F(RDCHelloTests, contextWithoutProviderSendsUnregistered) {
+    rdcContextWithoutProviderSendsUnregistered(this);
 }
 TEST_F(RDCHelloTests, resendContextSkipsUnconnectedJacks) {
     rdcResendContextSkipsUnconnectedJacks(this);
