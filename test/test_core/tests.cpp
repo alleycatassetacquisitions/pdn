@@ -1906,182 +1906,182 @@ TEST_F(RDCHelloTests, unprovenUpstreamIsNeverAdopted) {
 // CHAIN DUEL MANAGER TESTS
 // ============================================
 
-TEST_F(ChainDuelManagerTests, roleDerivationWithChampionTopology) {
-    cdmRoleDerivationWithChampionTopology(this);
+TEST_F(PosseManagerTests, roleDerivationWithChallengerTopology) {
+    cdmRoleDerivationWithChallengerTopology(this);
 }
 
-TEST_F(ChainDuelManagerTests, canInitiateMatchRequiresConnectedOpponentJack) {
+TEST_F(PosseManagerTests, canInitiateMatchRequiresConnectedOpponentJack) {
     cdmCanInitiateMatchRequiresConnectedOpponentJack(this);
 }
 
-TEST_F(ChainDuelManagerTests, canInitiateMatchFalseForBounty) {
+TEST_F(PosseManagerTests, canInitiateMatchFalseForBounty) {
     cdmCanInitiateMatchFalseForBounty(this);
 }
 
-TEST_F(ChainDuelManagerTests, confirmLifecycle) {
+TEST_F(PosseManagerTests, confirmLifecycle) {
     cdmConfirmLifecycle(this);
 }
 
-TEST_F(ChainDuelManagerTests, onChainStateChangedClearsOnDrain) {
+TEST_F(PosseManagerTests, onChainStateChangedClearsOnDrain) {
     cdmOnChainStateChangedClearsOnDrain(this);
 }
 
-TEST_F(ChainDuelManagerTests, confirmFromUnknownOriginatorRejected) {
+TEST_F(PosseManagerTests, confirmFromUnknownOriginatorRejected) {
     cdmConfirmFromUnknownOriginatorRejected(this);
 }
 
-TEST_F(ChainDuelManagerTests, isChampionFalseWithSameRoleOpponent) {
-    cdmIsChampionFalseWithSameRoleOpponent(this);
+TEST_F(PosseManagerTests, isChallengerFalseWithSameRoleOpponent) {
+    cdmIsChallengerFalseWithSameRoleOpponent(this);
 }
 
-TEST_F(ChainDuelManagerTests, isChampionFalseInRing) {
-    cdmIsChampionFalseInRing(this);
+TEST_F(PosseManagerTests, isChallengerFalseInRing) {
+    cdmIsChallengerFalseInRing(this);
 }
 
-TEST_F(ChainDuelManagerTests, sendConfirmTargetsChampionMac) {
-    cdmSendConfirmTargetsChampionMac(this);
+TEST_F(PosseManagerTests, sendConfirmTargetsChallengerMac) {
+    cdmSendConfirmTargetsChallengerMac(this);
 }
 
-TEST_F(ChainDuelManagerTests, sendConfirmIncrementsSeqId) {
+TEST_F(PosseManagerTests, sendConfirmIncrementsSeqId) {
     cdmSendConfirmIncrementsSeqId(this);
 }
 
-TEST_F(ChainDuelManagerTests, sendConfirmNoopWhenChampionMacInvalid) {
-    cdmSendConfirmNoopWhenChampionMacInvalid(this);
+TEST_F(PosseManagerTests, sendConfirmNoopWhenChallengerMacInvalid) {
+    cdmSendConfirmNoopWhenChallengerMacInvalid(this);
 }
 
-TEST_F(ChainDuelManagerTests, confirmBufferedUntilOriginatorJoinsChain) {
+TEST_F(PosseManagerTests, confirmBufferedUntilOriginatorJoinsChain) {
     cdmConfirmBufferedUntilOriginatorJoinsChain(this);
 }
 
-TEST_F(ChainDuelManagerTests, strangerConfirmsCannotSilenceRealSupporter) {
+TEST_F(PosseManagerTests, strangerConfirmsCannotSilenceRealSupporter) {
     cdmStrangerConfirmsCannotSilenceRealSupporter(this);
 }
 
-TEST_F(ChainDuelManagerTests, chainJoinForAnotherChampionIsIgnored) {
-    cdmChainJoinForAnotherChampionIsIgnored(this);
+TEST_F(PosseManagerTests, chainJoinForAnotherChallengerIsIgnored) {
+    cdmChainJoinForAnotherChallengerIsIgnored(this);
 }
 
-TEST_F(ChainDuelManagerTests, confirmResentWhenChampionChanges) {
-    cdmConfirmResentWhenChampionChanges(this);
+TEST_F(PosseManagerTests, confirmResentWhenChallengerChanges) {
+    cdmConfirmResentWhenChallengerChanges(this);
 }
 
-TEST_F(ChainDuelManagerTests, countdownVoidsStandingConfirm) {
+TEST_F(PosseManagerTests, countdownVoidsStandingConfirm) {
     cdmCountdownVoidsStandingConfirm(this);
 }
 
-TEST_F(ChainDuelManagerTests, headTransferResendsStandingConfirm) {
+TEST_F(PosseManagerTests, headTransferResendsStandingConfirm) {
     cdmHeadTransferResendsStandingConfirm(this);
 }
 
-TEST_F(ChainDuelManagerTests, supporterRoleLossVoidsStandingConfirm) {
+TEST_F(PosseManagerTests, supporterRoleLossVoidsStandingConfirm) {
     cdmSupporterRoleLossVoidsStandingConfirm(this);
 }
 
-TEST_F(ChainDuelManagerTests, championChangeWithoutPressSendsNoConfirm) {
-    cdmChampionChangeWithoutPressSendsNoConfirm(this);
+TEST_F(PosseManagerTests, challengerChangeWithoutPressSendsNoConfirm) {
+    cdmChallengerChangeWithoutPressSendsNoConfirm(this);
 }
 
-TEST_F(ChainDuelManagerTests, ringClosureClearsTheChampion) {
-    cdmRingClosureClearsTheChampion(this);
+TEST_F(PosseManagerTests, ringClosureClearsTheChallenger) {
+    cdmRingClosureClearsTheChallenger(this);
 }
-TEST_F(ChainDuelManagerTests, roleAnnounceWithNoChampionIsRefused) {
-    cdmRoleAnnounceWithNoChampionIsRefused(this);
-}
-
-TEST_F(ChainDuelManagerTests, roleAnnounceUpdatesChampionMac) {
-    cdmRoleAnnounceUpdatesChampionMac(this);
+TEST_F(PosseManagerTests, roleAnnounceWithNoChallengerIsRefused) {
+    cdmRoleAnnounceWithNoChallengerIsRefused(this);
 }
 
-TEST_F(ChainDuelManagerTests, roleAnnounceNoCascadeIfChampionUnchanged) {
-    cdmRoleAnnounceNoCascadeIfChampionUnchanged(this);
+TEST_F(PosseManagerTests, roleAnnounceUpdatesChallengerMac) {
+    cdmRoleAnnounceUpdatesChallengerMac(this);
 }
 
-TEST_F(ChainDuelManagerTests, broadcastRoleAndChampionSends) {
-    cdmBroadcastRoleAndChampionSends(this);
+TEST_F(PosseManagerTests, roleAnnounceNoCascadeIfChallengerUnchanged) {
+    cdmRoleAnnounceNoCascadeIfChallengerUnchanged(this);
 }
 
-TEST_F(ChainDuelManagerTests, newTerminalEventSupersedesThePrevious) {
+TEST_F(PosseManagerTests, broadcastRoleAndChallengerSends) {
+    cdmBroadcastRoleAndChallengerSends(this);
+}
+
+TEST_F(PosseManagerTests, newTerminalEventSupersedesThePrevious) {
     cdmNewTerminalEventSupersedesThePrevious(this);
 }
 
-TEST_F(ChainDuelManagerTests, reannouncesAfterSameMacReconnect) {
+TEST_F(PosseManagerTests, reannouncesAfterSameMacReconnect) {
     cdmReannouncesAfterSameMacReconnect(this);
 }
 
-TEST_F(ChainDuelManagerTests, championChangeReachesAToldSupporter) {
-    cdmChampionChangeReachesAToldSupporter(this);
+TEST_F(PosseManagerTests, challengerChangeReachesAToldSupporter) {
+    cdmChallengerChangeReachesAToldSupporter(this);
 }
 
-TEST_F(ChainDuelManagerTests, undeliveredSupporterAnnounceIsRetriedByBackstop) {
+TEST_F(PosseManagerTests, undeliveredSupporterAnnounceIsRetriedByBackstop) {
     cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(this);
 }
 
-TEST_F(ChainDuelManagerTests, announceWaitsForConnectedSupporterJack) {
+TEST_F(PosseManagerTests, announceWaitsForConnectedSupporterJack) {
     cdmAnnounceWaitsForConnectedSupporterJack(this);
 }
 
-TEST_F(ChainDuelManagerTests, ackClearsPending) {
+TEST_F(PosseManagerTests, ackClearsPending) {
     cdmAckClearsPending(this);
 }
 
-TEST_F(ChainDuelManagerTests, ackFromWrongMacIgnored) {
+TEST_F(PosseManagerTests, ackFromWrongMacIgnored) {
     cdmAckFromWrongMacIgnored(this);
 }
 
-TEST_F(ChainDuelManagerTests, retryStatsRecordsLifecycle) {
+TEST_F(PosseManagerTests, retryStatsRecordsLifecycle) {
     cdmRetryStatsRecordsLifecycle(this);
 }
 
-TEST_F(ChainDuelManagerTests, retransmitAbandonsWhenSpanRunsOut) {
+TEST_F(PosseManagerTests, retransmitAbandonsWhenSpanRunsOut) {
     cdmRetransmitAbandonsWhenSpanRunsOut(this);
 }
 
-TEST_F(ChainDuelManagerTests, onChainStateBecomesChampionSetsSelfMac) {
-    cdmOnChainStateBecomesChampionSetsSelfMac(this);
+TEST_F(PosseManagerTests, onChainStateBecomesChallengerSetsSelfMac) {
+    cdmOnChainStateBecomesChallengerSetsSelfMac(this);
 }
 
-TEST_F(ChainDuelManagerTests, supporterKeepsUpstreamChampionMacAfterTransition) {
-    cdmSupporterKeepsUpstreamChampionMacAfterTransition(this);
+TEST_F(PosseManagerTests, supporterKeepsUpstreamChallengerMacAfterTransition) {
+    cdmSupporterKeepsUpstreamChallengerMacAfterTransition(this);
 }
 
-TEST_F(ChainDuelManagerTests, onChainStateNewSupporterTriggersBroadcast) {
+TEST_F(PosseManagerTests, onChainStateNewSupporterTriggersBroadcast) {
     cdmOnChainStateNewSupporterTriggersBroadcast(this);
 }
 
-TEST_F(ChainDuelManagerTests, chainDuelThreeDeviceConfirm) {
+TEST_F(PosseManagerTests, chainDuelThreeDeviceConfirm) {
     chainDuelThreeDeviceConfirm(this);
 }
 
-TEST_F(ChainDuelManagerTests, chainDuelReconfigRecovers) {
+TEST_F(PosseManagerTests, chainDuelReconfigRecovers) {
     chainDuelReconfigRecovers(this);
 }
 
-TEST_F(ChainDuelManagerTests, roleAnnounceFromSupporterJackIgnoresChampionMac) {
-    cdmRoleAnnounceFromSupporterJackIgnoresChampionMac(this);
+TEST_F(PosseManagerTests, roleAnnounceFromSupporterJackIgnoresChallengerMac) {
+    cdmRoleAnnounceFromSupporterJackIgnoresChallengerMac(this);
 }
 
-TEST_F(ChainDuelManagerTests, championToSupporterClearsStaleSelfMac) {
-    cdmChampionToSupporterClearsStaleSelfMac(this);
+TEST_F(PosseManagerTests, challengerToSupporterClearsStaleSelfMac) {
+    cdmChallengerToSupporterClearsStaleSelfMac(this);
 }
 
-TEST_F(ChainDuelManagerTests, roleAnnounceFromOppositeRoleOpponentIgnoresChampionMac) {
-    cdmRoleAnnounceFromOppositeRoleOpponentIgnoresChampionMac(this);
+TEST_F(PosseManagerTests, roleAnnounceFromOppositeRoleOpponentIgnoresChallengerMac) {
+    cdmRoleAnnounceFromOppositeRoleOpponentIgnoresChallengerMac(this);
 }
 
-TEST_F(ChainDuelManagerTests, gameEventCountdownIsFireAndForget) {
+TEST_F(PosseManagerTests, gameEventCountdownIsFireAndForget) {
     cdmGameEventCountdownIsFireAndForget(this);
 }
 
-TEST_F(ChainDuelManagerTests, gameEventWinIsTrackedAndRetried) {
+TEST_F(PosseManagerTests, gameEventWinIsTrackedAndRetried) {
     cdmGameEventWinIsTrackedAndRetried(this);
 }
 
-TEST_F(ChainDuelManagerTests, gameEventAckClearsPending) {
+TEST_F(PosseManagerTests, gameEventAckClearsPending) {
     cdmGameEventAckClearsPending(this);
 }
 
-TEST_F(ChainDuelManagerTests, gameEventAbandonsWhenSpanRunsOut) {
+TEST_F(PosseManagerTests, gameEventAbandonsWhenSpanRunsOut) {
     cdmGameEventAbandonsWhenSpanRunsOut(this);
 }
 
@@ -2089,12 +2089,12 @@ TEST_F(ChainDuelManagerTests, gameEventAbandonsWhenSpanRunsOut) {
 // CHAIN DUEL MULTI-DEVICE FIXTURE TESTS
 // ============================================
 
-TEST_F(ChainDuelMultiDeviceFixture, chainFormsAndElectsChampion) {
-    cdmMultiDeviceChainFormsAndElectsChampion(this);
+TEST_F(ChainDuelMultiDeviceFixture, chainFormsAndElectsChallenger) {
+    cdmMultiDeviceChainFormsAndElectsChallenger(this);
 }
 
-TEST_F(ChainDuelMultiDeviceFixture, confirmDeliveredToChampion) {
-    cdmMultiDeviceConfirmDeliveredToChampion(this);
+TEST_F(ChainDuelMultiDeviceFixture, confirmDeliveredToChallenger) {
+    cdmMultiDeviceConfirmDeliveredToChallenger(this);
 }
 
 TEST_F(ChainDuelMultiDeviceFixture, boostScalesWithChainDepth) {

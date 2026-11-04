@@ -1,5 +1,5 @@
 #include "game/quickdraw-states.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/idle-animation.hpp"
 #include "device/animation/vertical-chase-animation.hpp"
@@ -10,9 +10,9 @@
 #define TAG "SupporterReady"
 
 SupporterReady::SupporterReady(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, SUPPORTER_READY) {
-    this->player = ctx.player;
-    this->chainDuelManager = ctx.chainDuelManager;
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, SUPPORTER_READY)
+    , player(ctx.player)
+    , posseManager(ctx.posseManager) {
 }
 
 SupporterReady::~SupporterReady() {
@@ -64,9 +64,9 @@ void SupporterReady::onStateMounted(PDN* pdn) {
     auto onSupporterPress = [](void *ctx) {
         auto* self = static_cast<SupporterReady*>(ctx);
         if (!self || !self->buttonArmed || self->hasConfirmed) return;
-        if (self->chainDuelManager == nullptr) return;
+        if (self->posseManager == nullptr) return;
 
-        self->chainDuelManager->sendConfirm();
+        self->posseManager->sendConfirm();
 
         self->hasConfirmed = true;
         self->displayIsDirty = true;
@@ -78,7 +78,7 @@ void SupporterReady::onStateMounted(PDN* pdn) {
 }
 
 void SupporterReady::onStateLoop(PDN* pdn) {
-    if (chainDuelManager == nullptr || !chainDuelManager->isSupporter()) {
+    if (posseManager == nullptr || !posseManager->isSupporter()) {
         transitionToIdleFlag = true;
     }
 

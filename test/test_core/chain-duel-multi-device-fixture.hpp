@@ -3,17 +3,17 @@
 // True multi-device chain duel test fixture.
 //
 // Each device owns its own MockDevice, RemoteDeviceCoordinator, Player, and
-// ChainDuelManager. Packets emitted via mockPeerComms->sendData(...) are
+// PosseManager. Packets emitted via mockPeerComms->sendData(...) are
 // captured into a shared queue and routed by MAC to the target device's
 // per-type packet handler. Physical connectivity is the production HELLO path:
 // each node owns two native serial drivers, a "cable" pumps one node's emitted
 // bytes into the other's RX, and the real exec() drain feeds the RDC parser.
 //
 // Topology convention:
-//   Champion status requires NO same-role peer on the opponent jack, so in an
-//   H-H-H line the champion is the device whose OUTPUT is unconnected. This
+//   Challenger status requires NO same-role peer on the opponent jack, so in an
+//   H-H-H line the challenger is the device whose OUTPUT is unconnected. This
 //   fixture therefore wires device i's OUTPUT into device (i-1)'s INPUT, which
-//   puts the champion at device 0.
+//   puts the challenger at device 0.
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
@@ -27,7 +27,7 @@
 #include "utility-tests.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "protocol-constants.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "game/player.hpp"
 #include "device/drivers/peer-comms-types.hpp"
@@ -47,8 +47,11 @@ struct MultiDeviceNode {
     NativeSerialDriver in{"md-in"};
     std::unique_ptr<RemoteDeviceCoordinator> rdc;
     std::unique_ptr<Player> player;
-    std::unique_ptr<ChainDuelManager> cdm;
+    PosseManager* cdm = nullptr;
     std::unique_ptr<ShootoutManager> shootout;
+
+    /** Frees the owned PosseManager. */
+    ~MultiDeviceNode() { delete cdm; }
 
     // Per-device captured handlers (one slot per PktType the fixture routes).
     PeerCommsInterface::PacketCallback contextHandler = nullptr;
@@ -125,15 +128,15 @@ public:
 
             // CDM and chain-event handlers register after RDC so they don't
             // compete with RDC's own setPacketHandler calls.
-            node->cdm = std::make_unique<ChainDuelManager>(node->player.get(),
-                                                          node->device->wirelessManager,
-                                                          node->rdc.get());
+            node->cdm = new PosseManager(node->player.get(),
+                                         node->device->wirelessManager,
+                                         node->rdc.get());
             node->shootout = std::make_unique<ShootoutManager>(node->player.get(),
                                                                node->device->wirelessManager,
                                                                node->rdc.get());
             Player* p = node->player.get();
             RemoteDeviceCoordinator* r = node->rdc.get();
-            ChainDuelManager* c = node->cdm.get();
+            PosseManager* c = node->cdm;
             r->setSelfProfileProvider([p]() -> PlayerProfile { return p->toProfile(); });
             p->setOnRoleChanged([r, c]() {
                 r->resendContext();
@@ -153,7 +156,7 @@ public:
 
     // Wire every device's i+1 OUTPUT to device i INPUT (reverse of task
     // wording for the reason explained at the top of this header) so that
-    // in a homogeneous hunter chain, device 0 is the champion.
+    // in a homogeneous hunter chain, device 0 is the challenger.
     //
     // For i from 1 to N-1:
     //   device i OUTPUT <-> device (i-1) INPUT
@@ -488,20 +491,20 @@ protected:
     // length check, the decode and the duplicate suppression — leaving the
     // production receive path untested by every chain and tournament case here.
     void wireChainEventHandlers(MultiDeviceNode& n) {
-        ChainDuelManager* cdm = n.cdm.get();
+        PosseManager* cdm = n.cdm;
 
         // GameSession fans this one to two consumers; only the manager half has a
         // counterpart here, since the fixture stands up no states. Dropping it
         // would leave a supporter's spent press standing into the next round.
-        // The champion gate has to be mirrored too: without it a foreign chain's
+        // The challenger gate has to be mirrored too: without it a foreign chain's
         // broadcast clears confirmSent here where hardware discards the frame.
         n.device->wirelessManager->setEspNowPacketHandler(
             PktType::kChainGameEvent,
             [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
                 if (dataLen != sizeof(ChainGameEventPayload)) return;
                 const ChainGameEventPayload* p = reinterpret_cast<const ChainGameEventPayload*>(data);
-                ChainDuelManager* manager = static_cast<ChainDuelManager*>(ctx);
-                if (!manager->isEventFromOwnChampion(p->championMac)) return;
+                PosseManager* manager = static_cast<PosseManager*>(ctx);
+                if (!manager->isEventFromOwnChallenger(p->challengerMac)) return;
                 manager->onChainGameEventReceived(p->event_type);
             },
             cdm);
@@ -585,10 +588,10 @@ protected:
 // Tests exercising the multi-device fixture.
 // ============================================================================
 
-// H-H-H linear chain: device 0 is champion (OUTPUT tail), devices 1 and 2 are
-// supporters whose championMac caches device 0's MAC after the role-announce
+// H-H-H linear chain: device 0 is challenger (OUTPUT tail), devices 1 and 2 are
+// supporters whose challengerMac caches device 0's MAC after the role-announce
 // cascade propagates.
-inline void cdmMultiDeviceChainFormsAndElectsChampion(ChainDuelMultiDeviceFixture* suite) {
+inline void cdmMultiDeviceChainFormsAndElectsChallenger(ChainDuelMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -602,7 +605,7 @@ inline void cdmMultiDeviceChainFormsAndElectsChampion(ChainDuelMultiDeviceFixtur
     MultiDeviceNode& d1 = suite->node(1);
     MultiDeviceNode& d2 = suite->node(2);
 
-    // Role election: device 0 has no OUTPUT-jack peer so isChampion() should be
+    // Role election: device 0 has no OUTPUT-jack peer so isChallenger() should be
     // true once it observes its supporter-jack peer. Drive onChainStateChanged
     // explicitly to match what GameSession does.
     d0.cdm->onChainStateChanged();
@@ -615,24 +618,24 @@ inline void cdmMultiDeviceChainFormsAndElectsChampion(ChainDuelMultiDeviceFixtur
     d2.cdm->onChainStateChanged();
     suite->deliverAllPackets();
 
-    EXPECT_TRUE(d0.cdm->isChampion());
-    EXPECT_FALSE(d1.cdm->isChampion());
-    EXPECT_FALSE(d2.cdm->isChampion());
+    EXPECT_TRUE(d0.cdm->isChallenger());
+    EXPECT_FALSE(d1.cdm->isChallenger());
+    EXPECT_FALSE(d2.cdm->isChallenger());
 
     EXPECT_TRUE(d1.cdm->isSupporter());
     EXPECT_TRUE(d2.cdm->isSupporter());
 
-    // Both supporters should have learned d0's MAC as championMac.
-    ASSERT_NE(d1.cdm->getChampionMac(), nullptr);
-    EXPECT_EQ(memcmp(d1.cdm->getChampionMac(), d0.mac, 6), 0);
-    ASSERT_NE(d2.cdm->getChampionMac(), nullptr);
-    EXPECT_EQ(memcmp(d2.cdm->getChampionMac(), d0.mac, 6), 0);
+    // Both supporters should have learned d0's MAC as challengerMac.
+    ASSERT_NE(d1.cdm->getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(d1.cdm->getChallengerMac(), d0.mac, 6), 0);
+    ASSERT_NE(d2.cdm->getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(d2.cdm->getChallengerMac(), d0.mac, 6), 0);
 }
 
-// H-H-H linear chain: the champion counts the supporter two cables away as
+// H-H-H linear chain: the challenger counts the supporter two cables away as
 // readily as the one on its own cable. The far one is placed by the join it
-// sent when the role cascade named its champion, nothing else can see it.
-inline void cdmMultiDeviceConfirmDeliveredToChampion(ChainDuelMultiDeviceFixture* suite) {
+// sent when the role cascade named its challenger, nothing else can see it.
+inline void cdmMultiDeviceConfirmDeliveredToChallenger(ChainDuelMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -653,24 +656,24 @@ inline void cdmMultiDeviceConfirmDeliveredToChampion(ChainDuelMultiDeviceFixture
     d2.cdm->onChainStateChanged();
     suite->deliverAllPackets();
 
-    ASSERT_TRUE(d0.cdm->isChampion());
-    ASSERT_NE(d2.cdm->getChampionMac(), nullptr);
-    ASSERT_EQ(memcmp(d2.cdm->getChampionMac(), d0.mac, 6), 0);
+    ASSERT_TRUE(d0.cdm->isChallenger());
+    ASSERT_NE(d2.cdm->getChallengerMac(), nullptr);
+    ASSERT_EQ(memcmp(d2.cdm->getChallengerMac(), d0.mac, 6), 0);
     ASSERT_EQ(d0.cdm->getBoostMs(), 0u);
 
-    // D2 is two cables from the champion and shares none of them with it.
+    // D2 is two cables from the challenger and shares none of them with it.
     d2.cdm->sendConfirm();
     suite->deliverAllPackets();
 
     EXPECT_EQ(d0.cdm->getConfirmedSupporterCount(), 1u);
-    EXPECT_EQ(d0.cdm->getBoostMs(), ChainDuelManager::BOOST_PER_SUPPORTER_MS);
+    EXPECT_EQ(d0.cdm->getBoostMs(), PosseManager::BOOST_PER_SUPPORTER_MS);
 
-    // D1 is on the champion's own cable, so its confirm counts too.
+    // D1 is on the challenger's own cable, so its confirm counts too.
     d1.cdm->sendConfirm();
     suite->deliverAllPackets();
 
     EXPECT_EQ(d0.cdm->getConfirmedSupporterCount(), 2u);
-    EXPECT_EQ(d0.cdm->getBoostMs(), 2 * ChainDuelManager::BOOST_PER_SUPPORTER_MS);
+    EXPECT_EQ(d0.cdm->getBoostMs(), 2 * PosseManager::BOOST_PER_SUPPORTER_MS);
 }
 
 // Boost is the reason the chain exists: it has to grow with the chain, not sit
@@ -686,7 +689,7 @@ inline void cdmMultiDeviceBoostScalesWithChainDepth(ChainDuelMultiDeviceFixture*
     suite->deliverAllPackets();
 
     // Two passes: the cascade advances one cable per pass, so the tail needs the
-    // second to learn the champion and announce itself back.
+    // second to learn the challenger and announce itself back.
     for (int pass = 0; pass < 3; ++pass) {
         for (size_t i = 0; i < suite->nodeCount(); ++i) {
             suite->node(i).cdm->onChainStateChanged();
@@ -694,27 +697,27 @@ inline void cdmMultiDeviceBoostScalesWithChainDepth(ChainDuelMultiDeviceFixture*
         suite->deliverAllPackets();
     }
 
-    MultiDeviceNode& champion = suite->node(0);
-    ASSERT_TRUE(champion.cdm->isChampion());
+    MultiDeviceNode& challenger = suite->node(0);
+    ASSERT_TRUE(challenger.cdm->isChallenger());
     for (size_t i = 1; i < suite->nodeCount(); ++i) {
-        ASSERT_NE(suite->node(i).cdm->getChampionMac(), nullptr) << "node " << i;
-        ASSERT_EQ(memcmp(suite->node(i).cdm->getChampionMac(), champion.mac, 6), 0)
-            << "node " << i << " follows the wrong champion";
+        ASSERT_NE(suite->node(i).cdm->getChallengerMac(), nullptr) << "node " << i;
+        ASSERT_EQ(memcmp(suite->node(i).cdm->getChallengerMac(), challenger.mac, 6), 0)
+            << "node " << i << " follows the wrong challenger";
     }
     // Every supporter is on the roster before a single press, which is what lets
     // a COUNTDOWN reach a device that has not confirmed yet.
-    ASSERT_EQ(champion.cdm->getSupporterChainPeers().size(), 3u);
+    ASSERT_EQ(challenger.cdm->getSupporterChainPeers().size(), 3u);
 
     for (size_t i = 1; i < suite->nodeCount(); ++i) {
         suite->node(i).cdm->sendConfirm();
         suite->deliverAllPackets();
     }
 
-    EXPECT_EQ(champion.cdm->getConfirmedSupporterCount(), 3u);
-    EXPECT_EQ(champion.cdm->getBoostMs(), 3 * ChainDuelManager::BOOST_PER_SUPPORTER_MS);
+    EXPECT_EQ(challenger.cdm->getConfirmedSupporterCount(), 3u);
+    EXPECT_EQ(challenger.cdm->getBoostMs(), 3 * PosseManager::BOOST_PER_SUPPORTER_MS);
 }
 
-// The champion's COUNTDOWN/WIN/LOSS have to land on every supporter, not just
+// The challenger's COUNTDOWN/WIN/LOSS have to land on every supporter, not just
 // the one it shares a cable with — a supporter three cables away never sees a
 // round start otherwise, and never leaves its stale screen.
 inline void cdmMultiDeviceGameEventReachesDistantSupporter(ChainDuelMultiDeviceFixture* suite) {
@@ -732,10 +735,10 @@ inline void cdmMultiDeviceGameEventReachesDistantSupporter(ChainDuelMultiDeviceF
         suite->deliverAllPackets();
     }
 
-    MultiDeviceNode& champion = suite->node(0);
-    ASSERT_TRUE(champion.cdm->isChampion());
+    MultiDeviceNode& challenger = suite->node(0);
+    ASSERT_TRUE(challenger.cdm->isChallenger());
 
-    // Count the events each node accepts as its own champion's, which is the
+    // Count the events each node accepts as its own challenger's, which is the
     // filter Quickdraw::onChainGameEventPacket applies on hardware.
     std::vector<int> accepted(suite->nodeCount(), 0);
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
@@ -750,21 +753,21 @@ inline void cdmMultiDeviceGameEventReachesDistantSupporter(ChainDuelMultiDeviceF
             counter);
     }
 
-    champion.cdm->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
+    challenger.cdm->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
     suite->deliverAllPackets();
 
-    EXPECT_EQ(accepted[0], 0) << "champion should not receive its own broadcast";
+    EXPECT_EQ(accepted[0], 0) << "challenger should not receive its own broadcast";
     for (size_t i = 1; i < suite->nodeCount(); ++i) {
         EXPECT_EQ(accepted[i], 1) << "node " << i << " missed the COUNTDOWN";
     }
 
-    // Every supporter, at every depth, filters on the champion the event names.
+    // Every supporter, at every depth, filters on the challenger the event names.
     for (size_t i = 1; i < suite->nodeCount(); ++i) {
-        EXPECT_TRUE(suite->node(i).cdm->isEventFromOwnChampion(champion.mac))
-            << "node " << i << " would reject its own champion's event";
+        EXPECT_TRUE(suite->node(i).cdm->isEventFromOwnChallenger(challenger.mac))
+            << "node " << i << " would reject its own challenger's event";
     }
-    uint8_t strangerChampion[6] = {0x77, 0x77, 0x77, 0x77, 0x77, 0x77};
-    EXPECT_FALSE(suite->node(3).cdm->isEventFromOwnChampion(strangerChampion));
+    uint8_t strangerChallenger[6] = {0x77, 0x77, 0x77, 0x77, 0x77, 0x77};
+    EXPECT_FALSE(suite->node(3).cdm->isEventFromOwnChallenger(strangerChallenger));
 }
 
 // End-to-end Shootout consensus: 4 devices form a ring, each confirms,
@@ -1093,13 +1096,13 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
         suite->deliverAllPackets();
     }
 
-    ASSERT_TRUE(d0.cdm->isChampion());
+    ASSERT_TRUE(d0.cdm->isChallenger());
     ASSERT_TRUE(d1.cdm->isSupporter());
     ASSERT_TRUE(d2.cdm->isSupporter());
-    ASSERT_NE(d1.cdm->getChampionMac(), nullptr);
-    ASSERT_EQ(memcmp(d1.cdm->getChampionMac(), d0.mac, 6), 0);
-    ASSERT_NE(d2.cdm->getChampionMac(), nullptr);
-    ASSERT_EQ(memcmp(d2.cdm->getChampionMac(), d0.mac, 6), 0);
+    ASSERT_NE(d1.cdm->getChallengerMac(), nullptr);
+    ASSERT_EQ(memcmp(d1.cdm->getChallengerMac(), d0.mac, 6), 0);
+    ASSERT_NE(d2.cdm->getChallengerMac(), nullptr);
+    ASSERT_EQ(memcmp(d2.cdm->getChallengerMac(), d0.mac, 6), 0);
 
     for (int tick = 0; tick < 6; ++tick) {
         suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
@@ -1108,25 +1111,25 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
 
     ASSERT_EQ(d0.rdc->getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
     ASSERT_EQ(d1.rdc->getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
-    ASSERT_TRUE(d1.cdm->isChampion());
+    ASSERT_TRUE(d1.cdm->isChallenger());
 
     suite->settleLinks();
     suite->syncAll();
     suite->deliverAllPackets();
 
-    EXPECT_TRUE(d0.cdm->isChampion());
+    EXPECT_TRUE(d0.cdm->isChallenger());
     EXPECT_TRUE(d1.cdm->isSupporter());
     EXPECT_TRUE(d2.cdm->isSupporter());
-    ASSERT_NE(d1.cdm->getChampionMac(), nullptr);
-    EXPECT_EQ(memcmp(d1.cdm->getChampionMac(), d0.mac, 6), 0);
-    ASSERT_NE(d2.cdm->getChampionMac(), nullptr);
-    EXPECT_EQ(memcmp(d2.cdm->getChampionMac(), d0.mac, 6), 0);
+    ASSERT_NE(d1.cdm->getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(d1.cdm->getChallengerMac(), d0.mac, 6), 0);
+    ASSERT_NE(d2.cdm->getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(d2.cdm->getChallengerMac(), d0.mac, 6), 0);
 
     d1.cdm->sendConfirm();
     d2.cdm->sendConfirm();
     suite->deliverAllPackets();
     EXPECT_EQ(d0.cdm->getConfirmedSupporterCount(), 2u);
-    EXPECT_EQ(d0.cdm->getBoostMs(), 2 * ChainDuelManager::BOOST_PER_SUPPORTER_MS);
+    EXPECT_EQ(d0.cdm->getBoostMs(), 2 * PosseManager::BOOST_PER_SUPPORTER_MS);
 
     suite->advanceClock(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
     for (int tick = 0; tick < 6; ++tick) {
@@ -1143,7 +1146,7 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
 
     EXPECT_EQ(d0.cdm->getSupporterChainPeers().size(), 2u);
     EXPECT_EQ(d0.cdm->getConfirmedSupporterCount(), 2u);
-    EXPECT_EQ(d0.cdm->getBoostMs(), 2 * ChainDuelManager::BOOST_PER_SUPPORTER_MS);
+    EXPECT_EQ(d0.cdm->getBoostMs(), 2 * PosseManager::BOOST_PER_SUPPORTER_MS);
 }
 
 inline void cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(

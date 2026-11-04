@@ -3,7 +3,7 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
@@ -14,10 +14,10 @@
 #include <cstring>
 
 Idle::Idle(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, IDLE) {
-    this->matchManager = ctx.matchManager;
-    this->player = ctx.player;
-    this->chainDuelManager = ctx.chainDuelManager;
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, IDLE)
+    , player(ctx.player)
+    , matchManager(ctx.matchManager)
+    , posseManager(ctx.posseManager) {
 }
 
 Idle::~Idle() {
@@ -74,7 +74,7 @@ void Idle::onStateLoop(PDN* pdn) {
     ShootoutManager* shMgr = matchManager->getShootoutManager();
     bool shootoutActive = shMgr && shMgr->active();
     if (!shootoutActive && isConnected()) {
-        if (chainDuelManager->canInitiateMatch()) {
+        if (posseManager->canInitiateMatch()) {
             if (!matchInitialized) {
                 const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
                 if (peerMac != nullptr) {
@@ -111,8 +111,8 @@ bool Idle::transitionToDuelCountdown() {
 
 bool Idle::transitionToSupporterReady() {
     // A supporter is a device whose opponent-jack peer is same role.
-    // This means the chain extends upstream toward the champion.
-    return chainDuelManager->isSupporter();
+    // This means the chain extends upstream toward the challenger.
+    return posseManager->isSupporter();
 }
 
 void Idle::renderStats(PDN* pdn) {
@@ -138,7 +138,7 @@ void Idle::renderStats(PDN* pdn) {
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getAverageReactionTime()).c_str(), 80, 55);
     } else if (statsIndex == 6) {
-        size_t sc = chainDuelManager->getSupporterChainPeers().size();
+        size_t sc = posseManager->getSupporterChainPeers().size();
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Posse",70, 20);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(sc).c_str(), 88, 40);
     } else if (statsIndex == 7) {

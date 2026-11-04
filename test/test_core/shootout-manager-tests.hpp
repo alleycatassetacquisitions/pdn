@@ -11,7 +11,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/shootout-manager.hpp"
 #include "game/match-manager.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-apps.hpp"
 #include "game/player.hpp"
