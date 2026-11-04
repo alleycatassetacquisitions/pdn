@@ -26,16 +26,16 @@ Duel::~Duel() {
 void Duel::onStateMounted(PDN* pdn) {
     LOG_I(DUEL_TAG, "Duel state mounted");
 
-    // Arm the supporter chain for confirmations during the draw window.
+    // Disarm the supporter confirmation window now that the draw phase has begun.
     chainDuelManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
 
     matchManager->setDuelLocalStartTime(SimpleTimer::getPlatformClock()->milliseconds());
 
     LOG_I(DUEL_TAG, "Setting up button handlers");
 
-    auto duelButtonPush = matchManager->getDuelButtonPush();
-    pdn->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
-    pdn->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+    parameterizedCallbackFunction duelButtonPush = matchManager->getDuelButtonPush();
+    pdn->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::PRESS);
+    pdn->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::PRESS);
 
     duelTimer.setTimer(DUEL_TIMEOUT);
 

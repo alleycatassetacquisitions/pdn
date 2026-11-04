@@ -34,13 +34,15 @@ void DuelCountdown::onStateMounted(PDN* pdn) {
     countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
     currentStepIndex++;
 
+    matchManager->clearButtonMasherCount();
+
     pdn->getPrimaryButton()->setButtonPress(
         matchManager->getButtonMasher(),
-        matchManager, ButtonInteraction::CLICK);
+        matchManager, ButtonInteraction::PRESS);
 
     pdn->getSecondaryButton()->setButtonPress(
         matchManager->getButtonMasher(),
-        matchManager);
+        matchManager, ButtonInteraction::PRESS);
 
     pdn->getHaptics()->setIntensity(HAPTIC_INTENSITY);
     hapticTimer.setTimer(HAPTIC_DURATION);

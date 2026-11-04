@@ -21,9 +21,9 @@ DuelReceivedResult::~DuelReceivedResult() {
 void DuelReceivedResult::onStateMounted(PDN* pdn) {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state mounted");
 
-    auto duelButtonPush = matchManager->getDuelButtonPush();
-    pdn->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
-    pdn->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+    parameterizedCallbackFunction duelButtonPush = matchManager->getDuelButtonPush();
+    pdn->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::PRESS);
+    pdn->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::PRESS);
 
     buttonPushGraceTimer.setTimer(BUTTON_PUSH_GRACE_PERIOD);
 }

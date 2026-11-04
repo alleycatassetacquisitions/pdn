@@ -213,12 +213,14 @@ int main(int argc, char** argv) {
             if (key == static_cast<int>(cli::Key::ARROW_UP)) {
                 // Up arrow = primary button click on selected device
                 if (g_selectedDevice >= 0 && g_selectedDevice < static_cast<int>(devices.size())) {
+                    devices[g_selectedDevice].primaryButtonDriver->execCallback(ButtonInteraction::PRESS);
                     devices[g_selectedDevice].primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
                     g_commandResult = "Button1 click on " + devices[g_selectedDevice].deviceId;
                 }
             } else if (key == static_cast<int>(cli::Key::ARROW_DOWN)) {
                 // Down arrow = secondary button click on selected device
                 if (g_selectedDevice >= 0 && g_selectedDevice < static_cast<int>(devices.size())) {
+                    devices[g_selectedDevice].secondaryButtonDriver->execCallback(ButtonInteraction::PRESS);
                     devices[g_selectedDevice].secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
                     g_commandResult = "Button2 click on " + devices[g_selectedDevice].deviceId;
                 }

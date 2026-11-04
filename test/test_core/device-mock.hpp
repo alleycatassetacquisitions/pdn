@@ -114,11 +114,53 @@ public:
 
 class MockButton : public Button {
 public:
+    /** Wires default slot storage so tests can fire callbacks by ButtonInteraction. */
+    MockButton() {
+        ON_CALL(*this, setButtonPress(testing::An<callbackFunction>(), testing::_))
+            .WillByDefault(testing::Invoke([this](callbackFunction cb, ButtonInteraction type) {
+                Slot& slot = slots[static_cast<size_t>(type)];
+                slot.plain = cb;
+                slot.parameterized = nullptr;
+                slot.parameter = nullptr;
+            }));
+        ON_CALL(*this,
+                setButtonPress(testing::An<parameterizedCallbackFunction>(), testing::_, testing::_))
+            .WillByDefault(testing::Invoke(
+                [this](parameterizedCallbackFunction cb, void* param, ButtonInteraction type) {
+                    Slot& slot = slots[static_cast<size_t>(type)];
+                    slot.plain = nullptr;
+                    slot.parameterized = cb;
+                    slot.parameter = param;
+                }));
+        ON_CALL(*this, removeButtonCallbacks()).WillByDefault(testing::Invoke([this]() {
+            slots.fill(Slot{});
+        }));
+    }
+
     MOCK_METHOD(void, setButtonPress, (callbackFunction, ButtonInteraction), (override));
     MOCK_METHOD(void, setButtonPress, (parameterizedCallbackFunction, void*, ButtonInteraction), (override));
     MOCK_METHOD(void, removeButtonCallbacks, (), (override));
     MOCK_METHOD(bool, isLongPressed, (), (override));
     MOCK_METHOD(unsigned long, longPressedMillis, (), (override));
+
+    /** Fires whatever callback is currently bound to `type`, matching the hardware driver. */
+    void trigger(ButtonInteraction type) const {
+        const Slot& slot = slots[static_cast<size_t>(type)];
+        if (slot.parameterized != nullptr) {
+            slot.parameterized(slot.parameter);
+        } else if (slot.plain != nullptr) {
+            slot.plain();
+        }
+    }
+
+private:
+    struct Slot {
+        callbackFunction plain = nullptr;
+        parameterizedCallbackFunction parameterized = nullptr;
+        void* parameter = nullptr;
+    };
+    static constexpr size_t INTERACTION_COUNT = static_cast<size_t>(ButtonInteraction::RELEASE) + 1;
+    std::array<Slot, INTERACTION_COUNT> slots{};
 };
 
 class MockHaptics : public Haptics {

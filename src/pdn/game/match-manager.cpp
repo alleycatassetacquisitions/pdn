@@ -369,6 +369,10 @@ parameterizedCallbackFunction MatchManager::getButtonMasher() {
     return buttonMasher;
 }
 
+void MatchManager::clearButtonMasherCount() {
+    activeDuelState.buttonMasherCount = 0;
+}
+
 void MatchManager::initialize(Player* player, StorageInterface* storage) {
     this->player = player;
     this->storage = storage;
