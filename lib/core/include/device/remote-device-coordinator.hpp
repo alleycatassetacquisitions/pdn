@@ -463,12 +463,14 @@ private:
     // seqId of the announce most recently sent; delivery of any earlier one is
     // stale and must not raise the confirmed bit.
     uint8_t pendingAnnounceSeqId = 0;
-    // disconnectedMac of the report most recently sent whose delivery is not yet
-    // confirmed (all-zero = none). A head change cancels the in-flight report to
-    // the old head, and unlike the announce path nothing re-triggers it, so
-    // applyUpstreamHead re-sends it to the successor — otherwise the departed
-    // member stays a phantom in the new head's roster.
+    // disconnectedMac and upstreamMac of the report most recently sent whose
+    // delivery is not yet confirmed (all-zero = none). A head change cancels
+    // the in-flight report to the old head, and unlike the announce path
+    // nothing re-triggers it, so adoptUpstreamHead re-sends it to the
+    // successor — otherwise the departed member stays a phantom in the new
+    // head's roster.
     std::array<uint8_t, 6> pendingReportMac{};
+    std::array<uint8_t, 6> pendingReportUpstreamMac{};
     uint8_t pendingReportSeqId = 0;
     bool isRosterAuthority() const;
     // Send ConnectionAnnounce{INPUT peer} to the held head, once the upstream
@@ -477,9 +479,11 @@ private:
     // OUTPUT (downstream) link death: report to the head (unless the lost link
     // IS the head), or clear the roster when this device is the head.
     void reportDownstreamLoss(const uint8_t* lostMac);
-    // Reliable-send a DisconnectReport naming `lostMac` to `headMac`, tracking
-    // it as the pending report until its delivery is confirmed.
-    void sendDisconnectReport(const uint8_t* headMac, const uint8_t* lostMac);
+    // Reliable-send a DisconnectReport naming `lostMac` and `upstreamMac` to
+    // `headMac`, tracking it as the pending report until its delivery is
+    // confirmed.
+    void sendDisconnectReport(const uint8_t* headMac, const uint8_t* lostMac,
+                              const uint8_t* upstreamMac);
     // Drop `mac` and every member whose upstream chain passes through it.
     void removeChainMemberSubtree(const uint8_t* mac);
     // One OUTPUT jack means one downstream: when `member` announces `upstream`,

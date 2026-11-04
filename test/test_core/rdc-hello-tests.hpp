@@ -1511,10 +1511,12 @@ inline std::vector<uint8_t> announceBytes(const uint8_t* upstream, uint8_t seqId
     return bytes;
 }
 
-inline std::vector<uint8_t> disconnectReportBytes(const uint8_t* mac, uint8_t seqId) {
+inline std::vector<uint8_t> disconnectReportBytes(const uint8_t* mac, const uint8_t* upstream,
+                                                  uint8_t seqId) {
     DisconnectReportPayload payload{};
     payload.seqId = seqId;
     memcpy(payload.disconnectedMac, mac, 6);
+    memcpy(payload.upstreamMac, upstream, 6);
     std::vector<uint8_t> bytes(sizeof(payload));
     memcpy(bytes.data(), &payload, sizeof(payload));
     return bytes;
@@ -1650,7 +1652,7 @@ inline void rdcHeadBuildsAndPrunesRoster(RDCHelloTests* suite) {
     EXPECT_EQ(membershipChanges, 3);
 
     // c2 departs: c3 hangs off c2, so both go.
-    std::vector<uint8_t> report = disconnectReportBytes(c2, 1);
+    std::vector<uint8_t> report = disconnectReportBytes(c2, c1, 1);
     suite->transport()->deliverIncoming(PktType::kDisconnectReport, c1, report.data(), report.size());
     EXPECT_EQ(membershipChanges, 4);
     std::vector<std::array<uint8_t, 6>> members = suite->rdc.getChainMembers();
@@ -1696,6 +1698,7 @@ inline void rdcChildReportsDownstreamLossToHead(RDCHelloTests* suite) {
     ASSERT_EQ(report.lastPayload.size(), sizeof(sent));
     memcpy(&sent, report.lastPayload.data(), sizeof(sent));
     EXPECT_EQ(0, memcmp(sent.disconnectedMac, downstream, 6));
+    EXPECT_EQ(0, memcmp(sent.upstreamMac, suite->localMac, 6));
 }
 
 // A latched ring device is its own head: it never announces to itself, and a
@@ -1828,7 +1831,7 @@ inline void rdcHeadIgnoresSelfDisconnectReport(RDCHelloTests* suite) {
     ASSERT_EQ(suite->rdc.getChainMembers().size(), 2u);
     ASSERT_EQ(membershipChanges, 2);
 
-    std::vector<uint8_t> selfReport = disconnectReportBytes(suite->localMac, 1);
+    std::vector<uint8_t> selfReport = disconnectReportBytes(suite->localMac, c1, 1);
     suite->transport()->deliverIncoming(PktType::kDisconnectReport, c1,
                                         selfReport.data(), selfReport.size());
     EXPECT_EQ(suite->rdc.getChainMembers().size(), 2u);
@@ -1863,7 +1866,7 @@ inline void rdcHeadTransferDoesNotOverwriteAnnouncedUpstream(RDCHelloTests* suit
 
     // The demoted head departing must not take the member with it: the member's
     // recorded upstream is still b1.
-    std::vector<uint8_t> report = disconnectReportBytes(oldHead, 1);
+    std::vector<uint8_t> report = disconnectReportBytes(oldHead, b1, 1);
     suite->transport()->deliverIncoming(PktType::kDisconnectReport, b1,
                                         report.data(), report.size());
     std::vector<std::array<uint8_t, 6>> members = suite->rdc.getChainMembers();
@@ -1873,10 +1876,11 @@ inline void rdcHeadTransferDoesNotOverwriteAnnouncedUpstream(RDCHelloTests* suit
 
 // Head propagation is hop-by-hop, so a report can be addressed to a device
 // that was just demoted; it forwards the edit to the head it now holds
-// instead of dropping it.
+// instead of dropping it, preserving the original reporter's upstreamMac.
 inline void rdcDemotedDeviceForwardsDisconnectReport(RDCHelloTests* suite) {
     const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t nextHead[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
     const uint8_t lost[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t reporter[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
@@ -1887,7 +1891,7 @@ inline void rdcDemotedDeviceForwardsDisconnectReport(RDCHelloTests* suite) {
                 chainHelloFrame(upstream, head));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
 
-    std::vector<uint8_t> report = disconnectReportBytes(lost, 1);
+    std::vector<uint8_t> report = disconnectReportBytes(lost, reporter, 1);
     suite->transport()->deliverIncoming(PktType::kDisconnectReport, reporter,
                                         report.data(), report.size());
     ASSERT_EQ(forwarded.count, 1);
@@ -1896,6 +1900,18 @@ inline void rdcDemotedDeviceForwardsDisconnectReport(RDCHelloTests* suite) {
     ASSERT_EQ(forwarded.lastPayload.size(), sizeof(sent));
     memcpy(&sent, forwarded.lastPayload.data(), sizeof(sent));
     EXPECT_EQ(0, memcmp(sent.disconnectedMac, lost, 6));
+    EXPECT_EQ(0, memcmp(sent.upstreamMac, reporter, 6));
+
+    // A head change before the forwarded report is delivered must re-send it
+    // to the successor with the original reporter's upstreamMac still intact.
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, nextHead));
+    ASSERT_EQ(forwarded.count, 2);
+    EXPECT_EQ(0, memcmp(forwarded.lastDst.data(), nextHead, 6));
+    DisconnectReportPayload resent{};
+    ASSERT_EQ(forwarded.lastPayload.size(), sizeof(resent));
+    memcpy(&resent, forwarded.lastPayload.data(), sizeof(resent));
+    EXPECT_EQ(0, memcmp(resent.disconnectedMac, lost, 6));
+    EXPECT_EQ(0, memcmp(resent.upstreamMac, reporter, 6));
 }
 
 // An ex-head is STANDALONE, not a roster authority: late Resender retries from
@@ -2037,8 +2053,8 @@ inline void rdcBackToBackReportsBothRetryToHead(RDCHelloTests* suite) {
                 chainHelloFrame(upstream, head));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
 
-    std::vector<uint8_t> r1 = disconnectReportBytes(lost1, 1);
-    std::vector<uint8_t> r2 = disconnectReportBytes(lost2, 1);
+    std::vector<uint8_t> r1 = disconnectReportBytes(lost1, reporter1, 1);
+    std::vector<uint8_t> r2 = disconnectReportBytes(lost2, reporter2, 1);
     suite->transport()->deliverIncoming(PktType::kDisconnectReport, reporter1,
                                         r1.data(), r1.size());
     suite->transport()->deliverIncoming(PktType::kDisconnectReport, reporter2,
@@ -2089,6 +2105,7 @@ inline void rdcPendingReportResentOnHeadChange(RDCHelloTests* suite) {
     ASSERT_EQ(report.lastPayload.size(), sizeof(resent));
     memcpy(&resent, report.lastPayload.data(), sizeof(resent));
     EXPECT_EQ(0, memcmp(resent.disconnectedMac, downstream, 6));
+    EXPECT_EQ(0, memcmp(resent.upstreamMac, suite->localMac, 6));
 
     // Delivery lands; a later head change must NOT re-send the settled report.
     suite->transport()->onSendResult(PktType::kDisconnectReport, h2,
@@ -2155,7 +2172,7 @@ inline void rdcReportFromHeldHeadNotForwardedBack(RDCHelloTests* suite) {
                 chainHelloFrame(head, nullptr));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
 
-    std::vector<uint8_t> report = disconnectReportBytes(lost, 1);
+    std::vector<uint8_t> report = disconnectReportBytes(lost, head, 1);
     suite->transport()->deliverIncoming(PktType::kDisconnectReport, head,
                                         report.data(), report.size());
     EXPECT_EQ(forwarded.count, 0);
@@ -2192,7 +2209,7 @@ inline void rdcHeadTransferReceiveMergesAndPrunes(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getChainMembers().size(), 3u);
 
     // Mid-chain B departs: C hangs off B and goes too; A stays.
-    std::vector<uint8_t> report = disconnectReportBytes(memberB, 1);
+    std::vector<uint8_t> report = disconnectReportBytes(memberB, memberA, 1);
     suite->transport()->deliverIncoming(PktType::kDisconnectReport, memberA,
                                         report.data(), report.size());
     EXPECT_EQ(membershipChanges, 2);
@@ -2201,11 +2218,71 @@ inline void rdcHeadTransferReceiveMergesAndPrunes(RDCHelloTests* suite) {
     EXPECT_EQ(0, memcmp(members[0].data(), memberA, 6));
 
     // The demoted head departs: the rest of its transferred subtree follows.
-    std::vector<uint8_t> headLoss = disconnectReportBytes(oldHead, 2);
+    std::vector<uint8_t> headLoss = disconnectReportBytes(oldHead, memberA, 2);
     suite->transport()->deliverIncoming(PktType::kDisconnectReport, memberA,
                                         headLoss.data(), headLoss.size());
     EXPECT_EQ(membershipChanges, 3);
     EXPECT_TRUE(suite->rdc.getChainMembers().empty());
+}
+
+// disconnectReportChannel is KEEP_DISTINCT, so two reports from one sender
+// interleave across its single rx-dedup cursor and let a late retransmit of the
+// first report through. When the departed member has re-announced under a new
+// upstream in the interim, that replayed report names a stale upstream edge and
+// must leave the live member and its subtree untouched.
+inline void rdcReplayedDisconnectReportDoesNotEraseReannouncedSubtree(RDCHelloTests* suite) {
+    const uint8_t c1[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t c2[6] = {0xC2, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t c3[6] = {0xC3, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t c4[6] = {0xC4, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    int membershipChanges = 0;
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    // HEAD <- c1 <- c2 <- c3
+    std::vector<uint8_t> a1 = announceBytes(suite->localMac, 1);
+    std::vector<uint8_t> a2 = announceBytes(c1, 1);
+    std::vector<uint8_t> a3 = announceBytes(c2, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, c1, a1.data(), a1.size());
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, c2, a2.data(), a2.size());
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, c3, a3.data(), a3.size());
+    ASSERT_EQ(membershipChanges, 3);
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), 3u);
+
+    // c2 unplugs from c1: first copy of c1's report (seqId=1) lands and prunes c2 + c3.
+    std::vector<uint8_t> report1 = disconnectReportBytes(c2, c1, 1);
+    suite->transport()->deliverIncoming(PktType::kDisconnectReport, c1, report1.data(),
+                                        report1.size());
+    ASSERT_EQ(membershipChanges, 4);
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), 1u);
+
+    // A second report from c1 (seqId=2) advances the head's single rxSeq cursor
+    // for c1, so a late retransmit of report1 (seqId=1) will not be deduped.
+    std::vector<uint8_t> report2 = disconnectReportBytes(c4, c1, 2);
+    suite->transport()->deliverIncoming(PktType::kDisconnectReport, c1, report2.data(),
+                                        report2.size());
+
+    // c4 joins on c1, and c2 + c3 re-join behind c4: HEAD <- c1 <- c4 <- c2 <- c3.
+    std::vector<uint8_t> a4 = announceBytes(c1, 1);
+    std::vector<uint8_t> a2Rejoin = announceBytes(c4, 2);
+    std::vector<uint8_t> a3Rejoin = announceBytes(c2, 2);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, c4, a4.data(), a4.size());
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, c2, a2Rejoin.data(),
+                                        a2Rejoin.size());
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, c3, a3Rejoin.data(),
+                                        a3Rejoin.size());
+    ASSERT_EQ(membershipChanges, 7);
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), 4u);
+
+    // Late retransmit of report1 (seqId=1, naming c2 under stale upstream c1):
+    // must be ignored because the roster now records c2 under c4.
+    suite->transport()->deliverIncoming(PktType::kDisconnectReport, c1, report1.data(),
+                                        report1.size());
+    EXPECT_EQ(membershipChanges, 7);
+    EXPECT_EQ(suite->rdc.getChainMembers().size(), 4u);
 }
 
 // One OUTPUT jack means one downstream: a fresh announce claiming an upstream

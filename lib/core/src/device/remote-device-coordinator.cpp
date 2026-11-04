@@ -133,6 +133,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
         disconnectReportChannel->setOnDelivered([this](uint8_t seqId, const uint8_t*) {
             if (seqId != pendingReportSeqId) return;
             pendingReportMac.fill(0);
+            pendingReportUpstreamMac.fill(0);
         });
     }
     headTransferChannel = transport->channel<HeadTransferPayload>(
@@ -680,9 +681,10 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         chainHeadState.store(0);
         // A downstream-loss report is owed only while we remain a child under a
         // head. Becoming our own head voids it: clear the pending re-send state so
-        // a later head adoption (applyUpstreamHead's successor-chase) cannot ship
+        // a later head adoption (adoptUpstreamHead's successor-chase) cannot ship
         // this stale report to an unrelated new head and prune a live member.
         pendingReportMac.fill(0);
+        pendingReportUpstreamMac.fill(0);
         pendingReportSeqId = 0;
         cancelHeadRosterTraffic(formingHead);
         // Copied before the call, as the chain-change dispatch is:
@@ -732,7 +734,7 @@ void RemoteDeviceCoordinator::adoptUpstreamHead() {
     // report path has no equivalent), so an undelivered report must chase the
     // successor head or its member stays a phantom in that roster.
     if (MacToUInt64(pendingReportMac.data()) != 0) {
-        sendDisconnectReport(headMac, pendingReportMac.data());
+        sendDisconnectReport(headMac, pendingReportMac.data(), pendingReportUpstreamMac.data());
     }
 }
 
@@ -756,9 +758,10 @@ void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier jack) {
         upstreamRingClosed = false;
         // A downstream-loss report is owed only while we remain a child under a
         // head. Becoming our own head voids it: clear the pending re-send state so
-        // a later head adoption (applyUpstreamHead's successor-chase) cannot ship
+        // a later head adoption (adoptUpstreamHead's successor-chase) cannot ship
         // this stale report to an unrelated new head and prune a live member.
         pendingReportMac.fill(0);
+        pendingReportUpstreamMac.fill(0);
         pendingReportSeqId = 0;
         cancelHeadRosterTraffic(lostHead);
     }
@@ -842,18 +845,21 @@ void RemoteDeviceCoordinator::reportDownstreamLoss(const uint8_t* lostMac) {
     if (headMac48 == MacToUInt64(lostMac)) return;
     uint8_t headMac[6];
     unpackMac(headMac48, headMac);
-    sendDisconnectReport(headMac, lostMac);
+    sendDisconnectReport(headMac, lostMac, selfMac.data());
 }
 
-void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
-                                                   const uint8_t* lostMac) {
+void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac, const uint8_t* lostMac,
+                                                   const uint8_t* upstreamMac) {
     if (disconnectReportChannel == nullptr) return;
     DisconnectReportPayload report{};
     memcpy(report.disconnectedMac, lostMac, 6);
+    memcpy(report.upstreamMac, upstreamMac, 6);
     pendingReportSeqId = disconnectReportChannel->sendReliable(headMac, report);
     // memmove, not memcpy: the successor-chase re-send passes pendingReportMac
-    // back in as lostMac, so source and destination alias on that path.
+    // and pendingReportUpstreamMac back in, so source and destination alias on
+    // that path.
     memmove(pendingReportMac.data(), lostMac, 6);
+    memmove(pendingReportUpstreamMac.data(), upstreamMac, 6);
 }
 
 void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {
@@ -976,9 +982,17 @@ void RemoteDeviceCoordinator::onDisconnectReport(const uint8_t* fromMac,
         if (headMac48 == 0 || headMac48 == MacToUInt64(fromMac)) return;
         uint8_t headMac[6];
         unpackMac(headMac48, headMac);
-        sendDisconnectReport(headMac, report.disconnectedMac);
+        sendDisconnectReport(headMac, report.disconnectedMac, report.upstreamMac);
         return;
     }
+    // KEEP_DISTINCT reports from one sender can thrash its single rx-dedup
+    // cursor, letting a late retransmit arrive after the member re-announced
+    // under a new upstream.
+    std::array<uint8_t, 6> departed;
+    std::array<uint8_t, 6> upstream;
+    memcpy(departed.data(), report.disconnectedMac, 6);
+    memcpy(upstream.data(), report.upstreamMac, 6);
+    if (chainRoster.count(departed) != 0 && chainRoster[departed] != upstream) return;
     removeChainMemberSubtree(report.disconnectedMac);
 }
 
