@@ -80,6 +80,16 @@ public:
     // matching pending game event so retransmission stops.
     void onChainGameEventAckReceived(const uint8_t* fromMac, uint8_t seqId);
 
+    using OnGameEventCallback = std::function<void(uint8_t eventType, const uint8_t* fromMac)>;
+    /**
+     * Optional observer invoked when a valid chain game event from this
+     * supporter's own champion arrives. Used by GameSession to notify the
+     * mounted SupporterReady state.
+     */
+    void setOnGameEventReceived(OnGameEventCallback cb) {
+        onGameEventReceivedCallback = std::move(cb);
+    }
+
     /**
      * True when a broadcast game event names the champion this device follows.
      * The frame reaches every device in radio range, so this is the only thing
@@ -202,13 +212,13 @@ private:
     };
     std::optional<RoleAnnounceState> supporterAnnounce;
 
-    uint8_t nextGameEventSeqId = 1;
-
     Resender resender;
 
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
     ReliableChannel<ChainConfirmPayload> chainConfirmChannel;
     ReliableChannel<ChainJoinPayload> chainJoinChannel;
+    ReliableChannel<ChainGameEventPayload> chainGameEventChannel;
+    OnGameEventCallback onGameEventReceivedCallback;
 
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 

@@ -62,6 +62,21 @@ void ReliableChannelBase::cancel(const uint8_t* mac) {
     resender->cancel(packetType, mac);
 }
 
+void ReliableChannelBase::cancelAll() {
+    resender->cancelAll(packetType);
+}
+
+bool ReliableChannelBase::onRecipientAck(const uint8_t* fromMac, uint8_t seqId) {
+    if (seqId == 0) return false;
+    return resender->onAck(packetType, seqId, fromMac);
+}
+
+void ReliableChannelBase::sendBroadcastOnceBytes(const uint8_t* data, size_t len) {
+    if (wirelessManager == nullptr) return;
+    wirelessManager->sendEspNowData(
+        wirelessManager->getBroadcastAddress(), packetType, data, len);
+}
+
 uint8_t ReliableChannelBase::nextSeqId() {
     // 0 is reserved for "no ack expected"; skip it on wrap.
     lastSentSeqId = lastSentSeqId == 255 ? 1 : lastSentSeqId + 1;

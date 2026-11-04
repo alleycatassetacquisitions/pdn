@@ -141,9 +141,11 @@ public:
      * caller that wants the previous fan-out gone wants all of it gone, which is
      * cancelAll.
      */
+    static constexpr size_t NO_SEQ_ID_STAMP = static_cast<size_t>(-1);
     void sendBroadcast(const std::vector<std::array<uint8_t, 6>>& recipients,
                        PktType type, uint8_t seqId,
-                       const uint8_t* payload, size_t len);
+                       const uint8_t* payload, size_t len,
+                       size_t seqIdOffset = NO_SEQ_ID_STAMP);
 
     /**
      * Clears this recipient's obligation for the frame sent under `seqId`.

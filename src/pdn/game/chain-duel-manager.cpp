@@ -13,13 +13,38 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // backstop in sync(), not by a callback.
     , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr)
     , chainConfirmChannel(wirelessManager, &resender, PktType::kChainConfirm, nullptr)
-    , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr) {
+    , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr)
+    , chainGameEventChannel(wirelessManager, &resender, PktType::kChainGameEvent, nullptr) {
     chainConfirmChannel.onReceive([this](const uint8_t*, const ChainConfirmPayload& p) {
         onConfirmReceived(p.originatorMac);
     });
     chainJoinChannel.onReceive([this](const uint8_t* fromMac, const ChainJoinPayload& p) {
         onChainJoinReceived(fromMac, p.championMac);
     });
+    // The frame is broadcast, so every chain in radio range hears it. Only an
+    // event naming our own champion is ours to ack or act on, and the ack
+    // emitter runs before duplicate suppression so a retransmitted WIN/LOSS
+    // still silences the champion even after the first copy was delivered.
+    chainGameEventChannel.setOnAckNeeded([this](const uint8_t* fromMac, const ChainGameEventPayload& p) {
+        if (!isEventFromOwnChampion(p.championMac)) return;
+        sendGameEventAck(fromMac, p.seqId);
+    });
+    chainGameEventChannel.onReceive([this](const uint8_t* fromMac, const ChainGameEventPayload& p) {
+        if (!isEventFromOwnChampion(p.championMac)) return;
+        onChainGameEventReceived(p.event_type);
+        if (onGameEventReceivedCallback) onGameEventReceivedCallback(p.event_type, fromMac);
+    });
+    if (this->wirelessManager != nullptr) {
+        this->wirelessManager->setEspNowPacketHandler(
+            PktType::kChainGameEventAck,
+            [](const uint8_t* src, const uint8_t* data, const size_t len, void* ctx) {
+                if (len != sizeof(ChainGameEventAckPayload)) return;
+                const ChainGameEventAckPayload* p =
+                    reinterpret_cast<const ChainGameEventAckPayload*>(data);
+                static_cast<ChainDuelManager*>(ctx)->onChainGameEventAckReceived(src, p->seqId);
+            },
+            this);
+    }
     // The radio's delivery report is this channel's ack; there is no reply
     // packet. Latency is read here because the channel reports delivery but does
     // not time it, and the peer is recorded as told here for the same reason:
@@ -61,6 +86,9 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
 }
 
 ChainDuelManager::~ChainDuelManager() {
+    if (wirelessManager != nullptr) {
+        wirelessManager->clearEspNowPacketHandler(PktType::kChainGameEventAck);
+    }
     rdc->setChainChangeCallback(nullptr);
     rdc->setOnContextReceived(nullptr);
     rdc->setOnChainRoleChange(nullptr);
@@ -184,27 +212,20 @@ void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
     // already resolved; a late DRAW would disarm a supporter who just
     // entered a new COUNTDOWN. Keep them fire-and-forget: seqId=0.
     if (eventType == ChainGameEventType::WIN || eventType == ChainGameEventType::LOSS) {
-        payload.seqId = nextGameEventSeqId++;
-        if (nextGameEventSeqId == 0) nextGameEventSeqId = 1;
         gameEventSentTimer.setTimer(0);
         // A newer terminal event obsoletes the previous one for every supporter
         // at once: the supporter's screen shows the latest result, so an older
         // retransmit landing afterwards would flip it back. Dropping the prior
         // fan-out is what SendMode::SUPERSEDE_PER_TARGET does for unicast.
-        resender.cancelAll(PktType::kChainGameEvent);
-        resender.sendBroadcast(peers, PktType::kChainGameEvent, payload.seqId,
-                               reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
+        chainGameEventChannel.cancelAll();
+        chainGameEventChannel.sendBroadcast(payload, peers);
     } else {
         // Fire-and-forget: no seqId, no ack owed, so it goes straight out. One
         // broadcast frame either way — addressing a supporter three cables away
         // by unicast costs a peer-table slot per device in the chain and the
         // table holds 20. Supporters keep only the events whose championMac
         // matches the champion they follow.
-        wirelessManager->sendEspNowData(
-            wirelessManager->getBroadcastAddress(),
-            PktType::kChainGameEvent,
-            reinterpret_cast<const uint8_t*>(&payload),
-            sizeof(payload));
+        chainGameEventChannel.sendOnce(payload);
     }
 
     // After the send, never before: the recipients above are the join roster and
@@ -228,7 +249,7 @@ void ChainDuelManager::onChainGameEventAckReceived(const uint8_t* fromMac, uint8
     if (fromMac == nullptr || seqId == 0) return;
     // A broadcast carries no per-member delivery evidence from the radio, so
     // this reply is the only thing that clears a supporter's slot.
-    if (resender.onAck(PktType::kChainGameEvent, seqId, fromMac)) {
+    if (chainGameEventChannel.onRecipientAck(fromMac, seqId)) {
         ackLatencyMsSum += gameEventSentTimer.getElapsedTime();
         ackCount++;
     }

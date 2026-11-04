@@ -282,6 +282,23 @@ private:
     Resender resender;
     void onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac,
                             const uint8_t* packet, size_t len);
+    void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    static bool decodeMacList(const uint8_t* payload, size_t payloadLen,
+                              std::vector<std::array<uint8_t, 6>>& out);
+    static bool matchStartNamesPeer(const uint8_t* packet, size_t len, const uint8_t* peerMac);
+
+    // [cmd(1), seqId(1), duelistA(6), duelistB(6), matchIndex(1)]
+    static constexpr size_t MATCH_START_DUELIST_A_OFFSET = 2;
+    static constexpr size_t MATCH_START_DUELIST_B_OFFSET = 8;
+    static constexpr size_t MATCH_START_INDEX_OFFSET = 14;
+    static constexpr size_t MATCH_START_PACKET_SIZE = 15;
+
+    // [cmd(1), seqId(1), winner(6), loser(6), matchIndex(1)]
+    static constexpr size_t MATCH_RESULT_WINNER_OFFSET = 2;
+    static constexpr size_t MATCH_RESULT_LOSER_OFFSET = 8;
+    static constexpr size_t MATCH_RESULT_INDEX_OFFSET = 14;
+    static constexpr size_t MATCH_RESULT_PACKET_SIZE = 15;
 
     void sendBracketToPeers();
     // [cmd, seqId, count, count * 6-byte MAC] — the frame BRACKET and
@@ -294,7 +311,7 @@ private:
     std::array<uint8_t, 6> coordinatorMac{};
 
     std::array<uint8_t, 6> opponentMac{};
-    void sendShootoutAck(ShootoutCmd cmd, uint8_t seqId, const uint8_t* toMac);
+    void sendShootoutAck(uint8_t seqId, const uint8_t* toMac);
 
     int currentMatchIndex = -1;
     // bracket shrinks on round advancement (coordinator only), so cache the

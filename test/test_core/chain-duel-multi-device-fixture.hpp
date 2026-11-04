@@ -65,6 +65,8 @@ struct MultiDeviceNode {
     void* chainJoinCtx = nullptr;
     PeerCommsInterface::PacketCallback chainGameEventHandler = nullptr;
     void* chainGameEventCtx = nullptr;
+    PeerCommsInterface::PacketCallback chainGameEventAckHandler = nullptr;
+    void* chainGameEventAckCtx = nullptr;
     PeerCommsInterface::PacketCallback shootoutHandler = nullptr;
     void* shootoutCtx = nullptr;
     PeerCommsInterface::PacketCallback shootoutAckHandler = nullptr;
@@ -139,8 +141,6 @@ public:
                 r->resendContext();
                 c->onChainStateChanged();
             });
-            wireChainEventHandlers(*node);
-            wireShootoutHandlers(*node);
 
             nodes.push_back(std::move(node));
         }
@@ -390,6 +390,10 @@ protected:
                 ctx = target.chainJoinCtx;
                 break;
             case PktType::kChainGameEvent:       handler = target.chainGameEventHandler;   ctx = target.chainGameEventCtx; break;
+            case PktType::kChainGameEventAck:
+                handler = target.chainGameEventAckHandler;
+                ctx = target.chainGameEventAckCtx;
+                break;
             case PktType::kShootoutCommand:      handler = target.shootoutHandler;         ctx = target.shootoutCtx; break;
             case PktType::kShootoutCommandAck:   handler = target.shootoutAckHandler;      ctx = target.shootoutAckCtx; break;
             default: return;
@@ -472,6 +476,11 @@ protected:
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
                 n.chainGameEventHandler = cb; n.chainGameEventCtx = ctx;
             });
+        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainGameEventAck), _, _))
+            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
+                n.chainGameEventAckHandler = cb;
+                n.chainGameEventAckCtx = ctx;
+            });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kShootoutCommand), _, _))
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
                 n.shootoutHandler = cb; n.shootoutCtx = ctx;
@@ -481,105 +490,6 @@ protected:
                 n.shootoutAckHandler = cb; n.shootoutAckCtx = ctx;
             });
     }
-
-    // Mirrors what the GameSession constructor installs for the chain-duel packet
-    // types that no channel claims. Deliberately NOT kRoleAnnounce: the CDM's
-    // ReliableChannel claims that slot in its own constructor, and registering
-    // over it here would replace the channel with a trampoline that skips the
-    // length check, the decode and the duplicate suppression — leaving the
-    // production receive path untested by every chain and tournament case here.
-    void wireChainEventHandlers(MultiDeviceNode& n) {
-        ChainDuelManager* cdm = n.cdm.get();
-
-        // GameSession fans this one to two consumers; only the manager half has a
-        // counterpart here, since the fixture stands up no states. Dropping it
-        // would leave a supporter's spent press standing into the next round.
-        // The champion gate has to be mirrored too: without it a foreign chain's
-        // broadcast clears confirmSent here where hardware discards the frame.
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kChainGameEvent,
-            [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(ChainGameEventPayload)) return;
-                const ChainGameEventPayload* p = reinterpret_cast<const ChainGameEventPayload*>(data);
-                ChainDuelManager* manager = static_cast<ChainDuelManager*>(ctx);
-                if (!manager->isEventFromOwnChampion(p->championMac)) return;
-                manager->onChainGameEventReceived(p->event_type);
-            },
-            cdm);
-    }
-
-    // Register Shootout command + ack handlers. Mirrors the dispatcher in
-    // the GameSession constructor so every packet path exercised on hardware is
-    // exercised in the fixture too.
-    void wireShootoutHandlers(MultiDeviceNode& n) {
-        ShootoutManager* mgr = n.shootout.get();
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kShootoutCommand,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                auto* m = static_cast<ShootoutManager*>(ctx);
-                if (dataLen < 2) return;
-                ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
-                uint8_t seqId = data[1];
-                const uint8_t* payload = data + 2;
-                size_t payloadLen = dataLen - 2;
-                switch (cmd) {
-                    case ShootoutCmd::CONFIRM: {
-                        if (payloadLen < 6) break;
-                        const char* name = (payloadLen >= 6 + ShootoutManager::kNameLength)
-                            ? reinterpret_cast<const char*>(payload + 6) : nullptr;
-                        m->onConfirmReceived(payload, name);
-                        break;
-                    }
-                    case ShootoutCmd::BRACKET:
-                    case ShootoutCmd::RING_CLOSED: {
-                        if (payloadLen < 1) break;
-                        uint8_t count = payload[0];
-                        if (payloadLen < 1 + 6u * static_cast<size_t>(count)) break;
-                        std::vector<std::array<uint8_t, 6>> macs;
-                        for (uint8_t i = 0; i < count; i++) {
-                            std::array<uint8_t, 6> mac;
-                            memcpy(mac.data(), payload + 1 + 6 * i, 6);
-                            macs.push_back(mac);
-                        }
-                        if (cmd == ShootoutCmd::BRACKET) {
-                            m->onBracketReceived(fromMac, macs, seqId);
-                        } else {
-                            m->onRingClosedReceived(fromMac, macs);
-                        }
-                        break;
-                    }
-                    case ShootoutCmd::MATCH_START:
-                        if (payloadLen >= 13)
-                            m->onMatchStartReceived(fromMac, payload, payload + 6, payload[12], seqId);
-                        break;
-                    case ShootoutCmd::MATCH_RESULT:
-                        if (payloadLen >= 13) m->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
-                        break;
-                    case ShootoutCmd::TOURNAMENT_END:
-                        if (payloadLen >= 6) m->onTournamentEndReceived(fromMac, payload, seqId);
-                        break;
-                    case ShootoutCmd::ABORT:
-                        m->onAbortReceived(fromMac, seqId);
-                        break;
-                }
-            },
-            mgr);
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kShootoutCommandAck,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                // Same routing as GameSession::onShootoutCommandAckPacket: the
-                // seqId alone names the frame, so the command byte is only
-                // range-checked, never dispatched on.
-                auto* m = static_cast<ShootoutManager*>(ctx);
-                if (dataLen < 2) return;
-                if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
-                m->onCommandAckReceived(fromMac, data[1]);
-            },
-            mgr);
-    }
-
 };
 
 // ============================================================================
@@ -736,19 +646,14 @@ inline void cdmMultiDeviceGameEventReachesDistantSupporter(ChainDuelMultiDeviceF
     MultiDeviceNode& champion = suite->node(0);
     ASSERT_TRUE(champion.cdm->isChampion());
 
-    // Count the events each node accepts as its own champion's, which is the
-    // filter Quickdraw::onChainGameEventPacket applies on hardware.
+    // Count the events each node's ChainDuelManager accepts as its own champion's.
     std::vector<int> accepted(suite->nodeCount(), 0);
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         MultiDeviceNode& n = suite->node(i);
         int* counter = &accepted[i];
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kChainGameEvent,
-            [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(ChainGameEventPayload)) return;
-                static_cast<int*>(ctx)[0]++;
-            },
-            counter);
+        n.cdm->setOnGameEventReceived([counter](uint8_t, const uint8_t*) {
+            (*counter)++;
+        });
     }
 
     champion.cdm->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);

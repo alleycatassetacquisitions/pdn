@@ -1453,3 +1453,55 @@ inline void cdmGameEventAbandonsWhenSpanRunsOut(ChainDuelManagerTests* suite) {
     EXPECT_EQ(cdm.getRetryStats().abandons, 1u);
 }
 
+// A retransmitted WIN/LOSS (duplicate seqId from the supporter's own champion)
+// must still emit kChainGameEventAck even though the duplicate is suppressed
+// before onChainGameEventReceived/onGameEventReceivedCallback runs.
+inline void cdmGameEventDuplicateRetransmitStillAcksChampion(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
+
+    PeerCommsInterface::PacketCallback eventHandler = nullptr;
+    void* eventCtx = nullptr;
+    ON_CALL(*suite->device.mockPeerComms,
+            setPacketHandler(testing::Eq(PktType::kChainGameEvent), _, _))
+        .WillByDefault(testing::DoAll(testing::SaveArg<1>(&eventHandler),
+                                      testing::SaveArg<2>(&eventCtx)));
+
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_NE(eventHandler, nullptr);
+
+    uint8_t champion[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, champion);
+    ASSERT_TRUE(cdm.isSupporter());
+
+    int appCallbacks = 0;
+    cdm.setOnGameEventReceived([&appCallbacks](uint8_t, const uint8_t*) {
+        appCallbacks++;
+    });
+
+    int acksSent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainGameEventAck, _, sizeof(ChainGameEventAckPayload)))
+        .WillRepeatedly([&acksSent](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            acksSent++;
+            return 1;
+        });
+
+    ChainGameEventPayload winEvent{};
+    winEvent.event_type = static_cast<uint8_t>(ChainGameEventType::WIN);
+    winEvent.seqId = 5;
+    memcpy(winEvent.championMac, champion, 6);
+
+    // First delivery: acks and dispatches to the observer.
+    eventHandler(champion, reinterpret_cast<const uint8_t*>(&winEvent),
+                 sizeof(winEvent), eventCtx);
+    EXPECT_EQ(acksSent, 1);
+    EXPECT_EQ(appCallbacks, 1);
+
+    // Duplicate retransmit: still acks so the champion retires us, but does not
+    // re-dispatch the event to the observer.
+    eventHandler(champion, reinterpret_cast<const uint8_t*>(&winEvent),
+                 sizeof(winEvent), eventCtx);
+    EXPECT_EQ(acksSent, 2);
+    EXPECT_EQ(appCallbacks, 1);
+}

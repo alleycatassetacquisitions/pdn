@@ -126,8 +126,7 @@ struct ShootoutPacket
 
 struct ShootoutAckPayload
 {
-    ShootoutCmd cmd;
-    uint8_t     seqId;
+    uint8_t seqId;
 } __attribute__((packed));
 
 // ---- Head roster management (#158) ----

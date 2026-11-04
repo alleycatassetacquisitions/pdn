@@ -19,13 +19,21 @@ void Resender::send(const uint8_t* target, PktType type, uint8_t seqId,
 
 void Resender::sendBroadcast(const std::vector<std::array<uint8_t, 6>>& recipients,
                              PktType type, uint8_t seqId,
-                             const uint8_t* payload, size_t len) {
+                             const uint8_t* payload, size_t len,
+                             size_t seqIdOffset) {
     if (recipients.empty()) return;
     // The all-ones address is the ESP-NOW broadcast MAC. Held as a literal rather
     // than read from the radio so a fan-out is representable before the driver is
     // up, and so the unit-test path (null manager) takes the same route as
     // production instead of a second one.
     const std::array<uint8_t, 6> broadcast = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    if (seqIdOffset < len) {
+        std::vector<uint8_t> stamped(payload, payload + len);
+        stamped[seqIdOffset] = seqId;
+        addGroup(type, seqId, broadcast, recipients, stamped.data(), stamped.size(),
+                 SendMode::KEEP_DISTINCT);
+        return;
+    }
     addGroup(type, seqId, broadcast, recipients, payload, len, SendMode::KEEP_DISTINCT);
 }
 
