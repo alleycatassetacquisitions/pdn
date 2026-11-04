@@ -2,17 +2,17 @@
 #include "apps/hacking/states/hacking-show-hint-state.hpp"
 #include "apps/fdn-app-ids.hpp"
 
-Hacking::Hacking(FDNConnectWirelessManager* fdnConnectWirelessManager,
-                 HackedPlayersManager* hackedPlayersManager,
-                 RemoteDeviceCoordinator* remoteDeviceCoordinator)
+HackingApp::HackingApp(FDNConnectWirelessManager* fdnConnectWirelessManager,
+                       HackedPlayersManager* hackedPlayersManager,
+                       RemoteDeviceCoordinator* remoteDeviceCoordinator)
     : StateMachine(HACKING_APP_ID)
     , fdnConnectWirelessManager(fdnConnectWirelessManager)
     , hackedPlayersManager(hackedPlayersManager)
     , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
 
-Hacking::~Hacking() {}
+HackingApp::~HackingApp() {}
 
-void Hacking::populateStateMap() {
+void HackingApp::populateStateMap() {
     auto* showHintState = new HackingShowHintState(
         fdnConnectWirelessManager, hackedPlayersManager, remoteDeviceCoordinator);
 

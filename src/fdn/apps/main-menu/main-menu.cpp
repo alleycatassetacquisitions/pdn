@@ -2,17 +2,17 @@
 #include "apps/main-menu/main-menu-states.hpp"
 #include "apps/fdn-app-ids.hpp"
 
-MainMenu::MainMenu(FDN* fdn, RemotePlayerManager* remotePlayerManager)
+MainMenuApp::MainMenuApp(FDN* fdn, RemotePlayerManager* remotePlayerManager)
     : StateMachine(MAIN_MENU_APP_ID)
     , remotePlayerManager(remotePlayerManager)
     , remoteDeviceCoordinator(fdn->getRemoteDeviceCoordinator()) {}
 
-MainMenu::~MainMenu() {
+MainMenuApp::~MainMenuApp() {
     remotePlayerManager     = nullptr;
     remoteDeviceCoordinator = nullptr;
 }
 
-void MainMenu::populateStateMap() {
+void MainMenuApp::populateStateMap() {
     auto* mainMenuState = new MainMenuState(remoteDeviceCoordinator);
 
     mainMenuState->addAppTransition(

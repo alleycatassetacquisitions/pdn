@@ -6,12 +6,13 @@
 
 class SymbolWirelessManager;
 
-class SymbolMatch : public StateMachine {
+class SymbolMatchApp : public StateMachine {
 public:
     /** Symbol-match app: Selection → SymbolIdle → MatchSuccess → Selection; a refresh skips
      * MatchSuccess. */
-    SymbolMatch(FDN* fdn, SymbolWirelessManager* symbolWirelessManager);
-    ~SymbolMatch();
+    SymbolMatchApp(FDN* fdn, SymbolWirelessManager* symbolWirelessManager);
+    /** Deletes the owned SymbolManager and clears non-owning pointers. */
+    ~SymbolMatchApp();
 
     void populateStateMap() override;
 

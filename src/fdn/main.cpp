@@ -77,10 +77,10 @@ HackedPlayersManager*     hackedPlayersManager     = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
 
 // Apps
-MainMenu*    mainMenu        = nullptr;
-Idle*        idleApp         = nullptr;
-Hacking*     hackingApp      = nullptr;
-SymbolMatch* symbolMatchApp  = nullptr;
+MainMenuApp* mainMenuApp = nullptr;
+IdleApp* idleApp = nullptr;
+HackingApp* hackingApp = nullptr;
+SymbolMatchApp* symbolMatchApp = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
 
@@ -184,17 +184,15 @@ static void setup() {
     remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
 
     // Apps
-    idleApp = new Idle(
-        remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager, fdn->getRemoteDeviceCoordinator());
+    idleApp = new IdleApp(remotePlayerManager, hackedPlayersManager, fdnConnectWirelessManager,
+                          fdn->getRemoteDeviceCoordinator());
 
-    mainMenu = new MainMenu(fdn, remotePlayerManager);
+    mainMenuApp = new MainMenuApp(fdn, remotePlayerManager);
 
-    hackingApp = new Hacking(
-        fdnConnectWirelessManager, hackedPlayersManager,
-        fdn->getRemoteDeviceCoordinator());
+    hackingApp = new HackingApp(fdnConnectWirelessManager, hackedPlayersManager,
+                                fdn->getRemoteDeviceCoordinator());
 
-    symbolMatchApp = new SymbolMatch(fdn, symbolWirelessManager);
+    symbolMatchApp = new SymbolMatchApp(fdn, symbolWirelessManager);
 
     // Splash screen
     fdn->getDisplay()
@@ -204,10 +202,10 @@ static void setup() {
     vTaskDelay(pdMS_TO_TICKS(SPLASH_HOLD_MS));
 
     AppConfig apps = {
-        {StateId(SYMBOL_MATCH_APP_ID), symbolMatchApp},
-        {StateId(MAIN_MENU_APP_ID),    mainMenu},
-        {StateId(HACKING_APP_ID),      hackingApp},
-        {StateId(IDLE_APP_ID),         idleApp},
+    {StateId(SYMBOL_MATCH_APP_ID), symbolMatchApp},
+    {StateId(MAIN_MENU_APP_ID), mainMenuApp},
+    {StateId(HACKING_APP_ID), hackingApp},
+    {StateId(IDLE_APP_ID), idleApp},
     };
     fdn->loadAppConfig(apps, StateId(SYMBOL_MATCH_APP_ID));
 }

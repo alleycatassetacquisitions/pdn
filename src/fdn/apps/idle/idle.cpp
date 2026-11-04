@@ -2,24 +2,24 @@
 #include "apps/idle/idle-states.hpp"
 #include "apps/fdn-app-ids.hpp"
 
-Idle::Idle(RemotePlayerManager* remotePlayerManager,
-           HackedPlayersManager* hackedPlayersManager,
-           FDNConnectWirelessManager* fdnConnectWirelessManager,
-           RemoteDeviceCoordinator* remoteDeviceCoordinator)
+IdleApp::IdleApp(RemotePlayerManager* remotePlayerManager,
+                 HackedPlayersManager* hackedPlayersManager,
+                 FDNConnectWirelessManager* fdnConnectWirelessManager,
+                 RemoteDeviceCoordinator* remoteDeviceCoordinator)
     : StateMachine(IDLE_APP_ID)
     , remotePlayerManager(remotePlayerManager)
     , hackedPlayersManager(hackedPlayersManager)
     , fdnConnectWirelessManager(fdnConnectWirelessManager)
     , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
 
-Idle::~Idle() {
+IdleApp::~IdleApp() {
     remotePlayerManager       = nullptr;
     hackedPlayersManager      = nullptr;
     fdnConnectWirelessManager = nullptr;
     remoteDeviceCoordinator   = nullptr;
 }
 
-void Idle::populateStateMap() {
+void IdleApp::populateStateMap() {
     auto* idleState = new IdleState(
         remotePlayerManager, hackedPlayersManager,
         fdnConnectWirelessManager, remoteDeviceCoordinator);

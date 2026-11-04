@@ -5,10 +5,12 @@
 #include "wireless/remote-player-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
 
-class MainMenu : public StateMachine {
+class MainMenuApp : public StateMachine {
 public:
-    MainMenu(FDN* fdn, RemotePlayerManager* remotePlayerManager);
-    ~MainMenu();
+    /** Constructs the FDN main-menu app state machine. */
+    MainMenuApp(FDN* fdn, RemotePlayerManager* remotePlayerManager);
+    /** Clears non-owning manager pointers. */
+    ~MainMenuApp();
 
     void populateStateMap() override;
 
