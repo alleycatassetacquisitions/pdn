@@ -39,7 +39,7 @@ class PosseManager {
 public:
     /** Requires a live rdc and owns its single-subscriber topology/context callback slots. */
     PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
-    /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
+    /** Drops the wireless and coordinator subscriptions the constructor took, which hold `this`. */
     virtual ~PosseManager();
 
     /** True when this device is the Challenger at the head of its Posse chain. */
@@ -71,14 +71,19 @@ public:
      */
     void onChainGameEventReceived(uint8_t eventType);
 
-    // Supporter-side: ACK a received WIN/LOSS game event back to the
-    // challenger so it stops retransmitting. Called from GameSession's packet
-    // handler when the incoming payload has seqId != 0.
+    /** Sends a kChainGameEventAck for `seqId` to `toMac`. */
     void sendGameEventAck(const uint8_t* toMac, uint8_t seqId);
 
     // Challenger-side: called when a supporter's ACK arrives. Clears the
     // matching pending game event so retransmission stops.
     void onChainGameEventAckReceived(const uint8_t* fromMac, uint8_t seqId);
+
+    using OnGameEventCallback = std::function<void(uint8_t eventType, const uint8_t* fromMac)>;
+    /** Optional observer invoked when a valid chain game event from this supporter's own challenger
+     * arrives. */
+    void setOnGameEventReceived(OnGameEventCallback cb) {
+        onGameEventReceivedCallback = std::move(cb);
+    }
 
     /**
      * True when a broadcast game event names the challenger this device follows.
@@ -204,13 +209,13 @@ private:
     };
     std::optional<RoleAnnounceState> supporterAnnounce;
 
-    uint8_t nextGameEventSeqId = 1;
-
     Resender resender;
 
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
     ReliableChannel<ChainConfirmPayload> chainConfirmChannel;
     ReliableChannel<ChainJoinPayload> chainJoinChannel;
+    ReliableChannel<ChainGameEventPayload> chainGameEventChannel;
+    OnGameEventCallback onGameEventReceivedCallback;
 
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 

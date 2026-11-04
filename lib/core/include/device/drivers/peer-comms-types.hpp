@@ -120,17 +120,9 @@ enum class ShootoutCmd : uint8_t {
     RING_CLOSED = 6,
 };
 
-struct ShootoutPacket
-{
-    ShootoutCmd cmd;
-    uint8_t     seqId;   // nonzero for reliable commands; 0 = no ack expected
-    uint8_t     payload[];
-} __attribute__((packed));
-
 struct ShootoutAckPayload
 {
-    ShootoutCmd cmd;
-    uint8_t     seqId;
+    uint8_t seqId;
 } __attribute__((packed));
 
 // ---- Head roster management ----

@@ -2463,6 +2463,104 @@ inline void strayRingCommandsLeaveTournamentUntouched(ShootoutManagerTests* suit
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 }
 
+inline void shootoutManagerOwnsWireCodecAndSingleByteAck(ShootoutManagerTests* suite) {
+    static_assert(sizeof(ShootoutAckPayload) == 1,
+                  "ShootoutAckPayload must carry only the 1-byte seqId");
+
+    PeerCommsInterface::PacketCallback cmdHandler = nullptr;
+    void* cmdCtx = nullptr;
+    PeerCommsInterface::PacketCallback ackHandler = nullptr;
+    void* ackCtx = nullptr;
+    ON_CALL(*suite->device.mockPeerComms,
+            setPacketHandler(testing::Eq(PktType::kShootoutCommand), testing::_, testing::_))
+    .WillByDefault(testing::DoAll(testing::SaveArg<1>(&cmdHandler), testing::SaveArg<2>(&cmdCtx)));
+    ON_CALL(*suite->device.mockPeerComms,
+            setPacketHandler(testing::Eq(PktType::kShootoutCommandAck), testing::_, testing::_))
+    .WillByDefault(testing::DoAll(testing::SaveArg<1>(&ackHandler), testing::SaveArg<2>(&ackCtx)));
+
+    std::array<uint8_t, 6> coord = {0x06, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
+    suite->followRingHead(coord);
+    ASSERT_NE(cmdHandler, nullptr);
+    ASSERT_NE(ackHandler, nullptr);
+
+    const uint8_t ringClosedFrame[] = {
+    static_cast<uint8_t>(ShootoutCmd::RING_CLOSED),
+    0,
+    2,
+    coord[0],
+    coord[1],
+    coord[2],
+    coord[3],
+    coord[4],
+    coord[5],
+    me[0],
+    me[1],
+    me[2],
+    me[3],
+    me[4],
+    me[5],
+    };
+    cmdHandler(coord.data(), ringClosedFrame, sizeof(ringClosedFrame), cmdCtx);
+    EXPECT_EQ(suite->shootout->getRingMembers().size(), 2u);
+
+    suite->shootout->startProposal();
+
+    std::vector<uint8_t> ackBytes;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
+    .WillOnce(
+    testing::Invoke([&ackBytes](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+        ackBytes.assign(data, data + len);
+        return 1;
+    }));
+    const uint8_t bracketFrame[] = {
+    static_cast<uint8_t>(ShootoutCmd::BRACKET),
+    9,
+    2,
+    coord[0],
+    coord[1],
+    coord[2],
+    coord[3],
+    coord[4],
+    coord[5],
+    me[0],
+    me[1],
+    me[2],
+    me[3],
+    me[4],
+    me[5],
+    };
+    cmdHandler(coord.data(), bracketFrame, sizeof(bracketFrame), cmdCtx);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    ASSERT_EQ(ackBytes.size(), sizeof(ShootoutAckPayload));
+    EXPECT_EQ(ackBytes[0], 9u);
+
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
+    .WillOnce(testing::Return(1));
+    const uint8_t matchStartFrame[] = {
+    static_cast<uint8_t>(ShootoutCmd::MATCH_START),
+    11,
+    coord[0],
+    coord[1],
+    coord[2],
+    coord[3],
+    coord[4],
+    coord[5],
+    me[0],
+    me[1],
+    me[2],
+    me[3],
+    me[4],
+    me[5],
+    0,
+    };
+    cmdHandler(coord.data(), matchStartFrame, sizeof(matchStartFrame), cmdCtx);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+    EXPECT_TRUE(suite->shootout->isInCurrentMatch());
+}
+
 // The abort is one edge condition over ShootoutManager's phase, read by every state
 // that can be interrupted by it. Builds the three apps and checks each of those
 // edges against a hardcoded (state, edge index) table — it does not discover abort

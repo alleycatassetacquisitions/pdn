@@ -1435,3 +1435,54 @@ inline void posseGameEventAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
 
     EXPECT_EQ(posse.getRetryStats().abandons, 1u);
 }
+
+inline void posseGameEventDuplicateRetransmitStillAcksChallenger(PosseManagerTests* suite) {
+    suite->setupHunterChallenger();
+    suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
+
+    PeerCommsInterface::PacketCallback eventHandler = nullptr;
+    void* eventCtx = nullptr;
+    ON_CALL(*suite->device.mockPeerComms,
+            setPacketHandler(testing::Eq(PktType::kChainGameEvent), _, _))
+    .WillByDefault(
+    testing::DoAll(testing::SaveArg<1>(&eventHandler), testing::SaveArg<2>(&eventCtx)));
+
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_NE(eventHandler, nullptr);
+
+    uint8_t challenger[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+
+    int appCallbacks = 0;
+    posse.setOnGameEventReceived([&appCallbacks](uint8_t, const uint8_t*) { appCallbacks++; });
+
+    int acksSent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainGameEventAck, _, sizeof(ChainGameEventAckPayload)))
+    .WillRepeatedly([&acksSent](const uint8_t*, PktType, const uint8_t*, const size_t) {
+        acksSent++;
+        return 1;
+    });
+
+    ChainGameEventPayload winEvent{};
+    winEvent.event_type = static_cast<uint8_t>(ChainGameEventType::WIN);
+    winEvent.seqId = 5;
+    memcpy(winEvent.challengerMac, challenger, 6);
+
+    eventHandler(challenger, reinterpret_cast<const uint8_t*>(&winEvent), sizeof(winEvent),
+                 eventCtx);
+    EXPECT_EQ(acksSent, 0);
+    EXPECT_EQ(appCallbacks, 0);
+
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    ASSERT_TRUE(posse.isSupporter());
+
+    eventHandler(challenger, reinterpret_cast<const uint8_t*>(&winEvent), sizeof(winEvent),
+                 eventCtx);
+    EXPECT_EQ(acksSent, 1);
+    EXPECT_EQ(appCallbacks, 1);
+
+    eventHandler(challenger, reinterpret_cast<const uint8_t*>(&winEvent), sizeof(winEvent),
+                 eventCtx);
+    EXPECT_EQ(acksSent, 2);
+    EXPECT_EQ(appCallbacks, 1);
+}

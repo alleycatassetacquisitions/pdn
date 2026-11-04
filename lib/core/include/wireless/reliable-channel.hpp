@@ -21,15 +21,8 @@
 // the untyped mechanics; the ReliableChannel<P> template below binds them to a
 // payload type.
 //
-// No ack packet is sent or expected: a send is cleared by the radio's own
-// SEND_SUCCESS, which is why deliver() emits nothing on receipt. Dedup still
-// earns its place, because a sender that missed SEND_SUCCESS retransmits.
-//
-// Most channels are created and owned by a ReliableTransport, one per PktType.
-// Not all: PosseManager binds one straight to its own Resender, which is
-// what a caller outside the coordinator has to do, the transport being private
-// to it. Such an owner can route abandonment itself by setting the callback on
-// the Resender it holds; PosseManager does not.
+// Unicast sends clear on radio SEND_SUCCESS; fan-out broadcasts emit
+// application acks via onAckNeededCallback and clear via onRecipientAck.
 class ReliableChannelBase {
 public:
     using OnAbandon = std::function<void(uint8_t seqId, const uint8_t* targetMac)>;
@@ -60,6 +53,18 @@ public:
 
     /** Silently drops every pending send to this MAC (no abandon callback). */
     void cancel(const uint8_t* mac);
+
+    /** Silently drops every pending send on this channel (no abandon callback). */
+    void cancelAll();
+
+    /**
+     * Clears one recipient's obligation for the fan-out sent under `seqId` via
+     * an application-level ack. Returns true when a pending recipient matched.
+     */
+    bool onRecipientAck(const uint8_t* fromMac, uint8_t seqId);
+
+    /** Unsequenced single-shot broadcast of `len` raw bytes on this channel's PktType. */
+    void sendBroadcastOnceBytes(const uint8_t* data, size_t len);
 
     /**
      * Typed subclass deserializes bytes into its payload type and dispatches
@@ -135,6 +140,7 @@ class ReliableChannel : public ReliableChannelBase {
 public:
     using OnReceive = std::function<void(const uint8_t* fromMac, const P&)>;
     using OnDelivered = std::function<void(uint8_t seqId, const uint8_t* toMac)>;
+    using OnAckNeeded = std::function<bool(const uint8_t* fromMac, const P&)>;
 
     /** See ReliableChannelBase; the payload struct P is the wire format. */
     ReliableChannel(WirelessManager* wirelessManager,
@@ -160,13 +166,27 @@ public:
         return p.seqId;
     }
 
+    /** Reliable broadcast fan-out tracked per recipient; returns 0 without sending when
+     * `recipients` is empty. */
+    uint8_t sendBroadcast(P& p, const std::vector<std::array<uint8_t, 6>>& recipients) {
+        if (recipients.empty()) return 0;
+        p.seqId = nextSeqId();
+        resender->sendBroadcast(recipients, packetType, p.seqId,
+                                reinterpret_cast<const uint8_t*>(&p), sizeof(P));
+        return p.seqId;
+    }
+
     /**
-     * Decode + dispatch one inbound packet: dedup, then the onReceive
-     * callback. No ack is emitted; the sender's Resender is cleared by its own
-     * radio SEND_SUCCESS, not a round-trip. Dedup still matters because a
-     * sender that missed SEND_SUCCESS retransmits, and the duplicate must be
-     * suppressed here.
+     * Fire-and-forget broadcast: stamps seqId = 0 (no ack expected, never
+     * deduped on receipt) and sends once to the broadcast address.
      */
+    void sendOnce(P& p) {
+        p.seqId = 0;
+        sendBroadcastOnceBytes(reinterpret_cast<const uint8_t*>(&p), sizeof(P));
+    }
+
+    /** Decodes and dispatches one inbound packet, running `onAckNeededCallback` before duplicate
+     * suppression. */
     bool deliver(const uint8_t* fromMac, const uint8_t* data, size_t len) {
         if (len != sizeof(P)) {
             // A corrupt/truncated ESP-NOW frame (no CRC on this path); log so
@@ -176,6 +196,9 @@ public:
         }
         P p;
         std::memcpy(&p, data, sizeof(P));
+        if (p.seqId != 0 && onAckNeededCallback && !onAckNeededCallback(fromMac, p)) {
+            return false;
+        }
         if (isDuplicateReliableRx(fromMac, p.seqId)) return true;
         if (onReceiveCallback) onReceiveCallback(fromMac, p);
         return true;
@@ -214,7 +237,12 @@ public:
     /** Registers the SEND_SUCCESS observer (see onSendResult). */
     void setOnDelivered(OnDelivered cb) { onDeliveredCallback = std::move(cb); }
 
+    /** Registers an application-ack emitter invoked for `seqId != 0` before duplicate suppression.
+     */
+    void setOnAckNeeded(OnAckNeeded cb) { onAckNeededCallback = std::move(cb); }
+
 private:
     OnReceive onReceiveCallback;
     OnDelivered onDeliveredCallback;
+    OnAckNeeded onAckNeededCallback;
 };
