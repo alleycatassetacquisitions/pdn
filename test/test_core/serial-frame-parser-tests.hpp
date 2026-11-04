@@ -126,6 +126,9 @@ TEST_F(SerialFrameParserTests, encodeFramedEmitsExactFrameBytes) {
     const std::vector<uint8_t> expected = {0xAA, 0x55, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x01,
                                            0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x01, 0xDC, 0x48};
     EXPECT_EQ(encodeFramed(hello), expected);
+
+    const std::array<uint8_t, HELLO_FRAME_LEN> fixedFrame = encodeHelloFrame(hello);
+    EXPECT_EQ(std::vector<uint8_t>(fixedFrame.begin(), fixedFrame.end()), expected);
 }
 
 TEST_F(SerialFrameParserTests, encodeFramedRoundTripsThroughParser) {

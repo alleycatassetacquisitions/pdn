@@ -112,6 +112,15 @@ public:
      */
     ReliableTransport* transport() { return rdc.transport; }
 
+    /** Writes `publishedHelloState` directly without updating main-loop chain state. */
+    void overridePublishedHelloState(const uint8_t* headMac, bool confirmed, bool ringClosed) {
+        uint64_t snapshot =
+            headMac != nullptr ? (MacToUInt64(headMac) & RemoteDeviceCoordinator::HEAD_MAC_MASK) : 0;
+        if (confirmed) snapshot |= RemoteDeviceCoordinator::CONFIRMED_BIT;
+        if (ringClosed) snapshot |= RemoteDeviceCoordinator::RING_CLOSED_BIT;
+        rdc.publishedHelloState.store(snapshot);
+    }
+
     MockDevice device;
     FakePlatformClock* fakeClock = nullptr;
     NativeSerialDriver outJack{"hello-out"};
@@ -2856,4 +2865,30 @@ inline void rdcHeadTransferCarriesFullCapRoster(RDCHelloTests* suite) {
                                         handoff.data(), handoff.size());
 
     EXPECT_EQ(suite->rdc.getChainMembers().size(), static_cast<size_t>(MAX_CHAIN_MEMBERS));
+}
+
+inline void rdcEmitHelloReadsPublishedSnapshotOnly(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t realHead[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t snapshotHead[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
+
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, realHead));
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), realHead, 6));
+    ASSERT_FALSE(suite->rdc.isInRing());
+
+    suite->overridePublishedHelloState(snapshotHead, /*confirmed=*/true, /*ringClosed=*/true);
+
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    const std::string raw = suite->outJack.getOutput();
+    EXPECT_EQ(raw.size(), HELLO_FRAME_LEN);
+    HelloPayload emitted = parseEmittedHello(raw);
+    EXPECT_EQ(0, memcmp(emitted.headMac, snapshotHead, 6));
+    EXPECT_EQ(emitted.flags,
+              static_cast<uint8_t>(HELLO_FLAG_CONFIRMED | HELLO_FLAG_RING_CLOSED));
+
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), realHead, 6));
 }

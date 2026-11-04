@@ -1901,6 +1901,9 @@ TEST_F(RDCHelloTests, chainRoleChangeReportsRingLatch) {
 TEST_F(RDCHelloTests, unprovenUpstreamIsNeverAdopted) {
     rdcUnprovenUpstreamIsNeverAdopted(this);
 }
+TEST_F(RDCHelloTests, emitHelloReadsPublishedSnapshotOnly) {
+    rdcEmitHelloReadsPublishedSnapshotOnly(this);
+}
 
 // ============================================
 // CHAIN DUEL MANAGER TESTS
