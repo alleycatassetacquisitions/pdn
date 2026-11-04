@@ -1028,6 +1028,10 @@ TEST_F(IdleStateTests, dismountClearsUnreadyMatch) {
     idleDismountClearsUnreadyMatch(this);
 }
 
+TEST_F(IdleStateTests, transitionsToSymbolOnlyForOutputJackFdnWithMac) {
+    idleTransitionsToSymbolOnlyForOutputJackFdnWithMac(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - COUNTDOWN
 // ============================================
@@ -1243,6 +1247,14 @@ TEST_F(StateCleanupTests, duelReceivedResultDebouncesTransientDisconnect) {
 
 TEST_F(StateCleanupTests, countdownFreezesDisconnectDebounceDuringShootout) {
     countdownFreezesDisconnectDebounceDuringShootout(this);
+}
+
+TEST_F(StateCleanupTests, symbolStateDwellsNonBlockingBeforeReturningToIdle) {
+    symbolStateDwellsNonBlockingBeforeReturningToIdle(this);
+}
+
+TEST_F(StateCleanupTests, symbolMatchedDwellsNonBlockingBeforeReturningToIdle) {
+    symbolMatchedDwellsNonBlockingBeforeReturningToIdle(this);
 }
 
 // ============================================

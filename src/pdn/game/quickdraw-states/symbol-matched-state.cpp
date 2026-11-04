@@ -22,6 +22,7 @@ void SymbolMatched::onStateMounted(PDN* pdn) {
     transitionToIdleState = false;
     toggleBlink = true;
     holdSteadySymbol = false;
+    bufferTimer.invalidate();
     renderSymbolScreen(pdn);
     blinkTimer.setTimer(BLINK_INTERVAL);
     successTimer.setTimer(SUCCESS_TIMEOUT);
@@ -42,8 +43,24 @@ void SymbolMatched::onStateMounted(PDN* pdn) {
 }
 
 void SymbolMatched::onStateLoop(PDN* pdn) {
-    if (!(getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN)) {
-        transitionToIdleState = true;
+    if (transitionToSymbolState) {
+        return;
+    }
+
+    if (bufferTimer.isRunning() ||
+        getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) != DeviceType::FDN) {
+        if (!bufferTimer.isRunning()) {
+            pdn->getHaptics()->off();
+            blinkTimer.invalidate();
+            successTimer.invalidate();
+            bufferTimer.setTimer(BUFFER_TIMEOUT);
+        }
+        if (bufferTimer.expired()) {
+            bufferTimer.invalidate();
+            transitionToIdleState = true;
+        } else if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
+            renderLoadingScreen(pdn->getDisplay());
+        }
         return;
     }
 
@@ -69,32 +86,17 @@ void SymbolMatched::onStateLoop(PDN* pdn) {
 
 void SymbolMatched::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "dismounted");
-    // Opposite registration order here: the sibling edge is declared first, so it
-    // outranks the Idle hand-off and the qualifier is load-bearing.
-    const bool showRefreshScreen = transitionToIdleState && !transitionToSymbolState;
     transitionToSymbolState = false;
     transitionToIdleState = false;
     toggleBlink = true;
     holdSteadySymbol = false;
     blinkTimer.invalidate();
     successTimer.invalidate();
-
+    bufferTimer.invalidate();
 
     pdn->getLightManager()->stopAnimation();
     pdn->getLightManager()->clear();
     pdn->getHaptics()->off();
-
-    if (showRefreshScreen) {
-        SimpleTimer bufferTimer;
-        const int bufferTimeout = 1000;
-        bufferTimer.setTimer(bufferTimeout);
-        while (!bufferTimer.expired()) {
-            if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
-                renderLoadingScreen(pdn->getDisplay());
-            }
-        }
-        bufferTimer.invalidate();
-    }
 
     symbolWirelessManager->clearCallback();
 }
@@ -130,6 +132,9 @@ void SymbolMatched::renderSymbolScreen(PDN* pdn) {
 }
 
 void SymbolMatched::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
+    if (bufferTimer.isRunning()) {
+        return;
+    }
     if (command.command == SMCommand::SYMBOLS_REFRESHED) {
         transitionToSymbolState = true;
     }

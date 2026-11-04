@@ -520,8 +520,6 @@ private:
     SymbolWirelessManager* symbolWirelessManager;
     PDN* mountedPdn = nullptr;
     uint8_t* fdnMac = nullptr;
-    /** PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN). */
-    SerialIdentifier pdnJackToFdn = SerialIdentifier::OUTPUT_JACK;
     SymbolId fdnSymbol;
 
     SimpleTimer renderTimer;
@@ -535,6 +533,7 @@ private:
     bool symbolSent = false;
     bool hapticPulseActive = false;
     bool matchReady = false;
+    bool exitingToIdle = false;
     bool transitionToIdleState = false;
     bool transitionToSymbolMatchedState = false;
 
@@ -574,6 +573,8 @@ private:
     const int BLINK_INTERVAL = 0.15 * 1000;
     SimpleTimer successTimer;
     const int SUCCESS_TIMEOUT = 3 * 1000;
+    SimpleTimer bufferTimer;
+    static constexpr int BUFFER_TIMEOUT = 1000;
 
     AnimationConfig cfg{};
 
