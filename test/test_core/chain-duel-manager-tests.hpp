@@ -58,7 +58,7 @@ public:
      */
     void deliverPdnContext(const uint8_t* peerMac, bool isHunter = false) {
         if (contextHandler == nullptr) return;
-        std::vector<uint8_t> bytes = pdnContextBytes(/*chainRole=*/0, /*userId=*/4242,
+        std::vector<uint8_t> bytes = pdnContextBytes(ChainRole::STANDALONE, /*userId=*/4242,
                                                      ++contextSeqId, isHunter ? 1 : 0);
         contextHandler(peerMac, bytes.data(), bytes.size(), contextCtx);
     }

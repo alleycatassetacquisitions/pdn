@@ -42,10 +42,8 @@ public:
     void setOnRoleChanged(RoleChangedCallback callback);
 
     /**
-     * This player as the packed profile peers receive in the connection
-     * context. userId is 0xFFFF while the player id is not wholly numeric
-     * (registration has not completed); faction and name truncate to the
-     * fixed wire widths.
+     * Packed wire profile for connection context; userId is PEER_USER_ID_NONE
+     * unless id is a decimal integer in 0..0xFFFE, and strings truncate to wire width.
      */
     PlayerProfile toProfile() const;
 
