@@ -1,6 +1,5 @@
 #pragma once
 
-#include "game/quickdraw-states.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/match-manager.hpp"
 #include "game/shootout-manager.hpp"
@@ -10,6 +9,22 @@
 #include "game/player.hpp"
 #include "utils/simple-timer.hpp"
 #include <array>
+
+/**
+ * Bundle of the shared game-wide managers a state may need. Built by the
+ * GameSession that owns them and handed to every state so a new manager is a
+ * one-line addition here rather than a constructor change across every state.
+ * All pointers are non-owning; states read only the fields they use.
+ */
+struct GameContext {
+    Player* player = nullptr;
+    MatchManager* matchManager = nullptr;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
+    ChainDuelManager* chainDuelManager = nullptr;
+    ShootoutManager* shootoutManager = nullptr;
+    SymbolWirelessManager* symbolWirelessManager = nullptr;
+    WirelessManager* wirelessManager = nullptr;
+};
 
 /**
  * Owns the managers the gameplay apps share and the wireless plumbing that
@@ -46,13 +61,6 @@ public:
     GameContext getContext();
 
 private:
-    /**
-     * The mounted SupporterReady, or null when another state holds the device.
-     * Read from the mounted app rather than published into the session: which
-     * state is running is the app's fact, and a second copy of it can drift.
-     */
-    SupporterReady* getMountedSupporterReady();
-
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);

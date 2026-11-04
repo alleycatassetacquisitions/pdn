@@ -250,10 +250,27 @@ void ChainDuelManager::resendConfirm() {
     sendConfirm();
 }
 
+void ChainDuelManager::setGameEventObserver(GameEventObserver observer) {
+    gameEventObserver = std::move(observer);
+    if (gameEventObserver && pendingGameEvent.has_value()) {
+        ChainGameEventType event = *pendingGameEvent;
+        pendingGameEvent.reset();
+        gameEventObserver(event);
+    }
+}
+
 void ChainDuelManager::onChainGameEventReceived(uint8_t eventType) {
-    if (static_cast<ChainGameEventType>(eventType) != ChainGameEventType::COUNTDOWN) return;
-    confirmSent = false;
-    resender.cancelAll(PktType::kChainConfirm);
+    if (eventType > static_cast<uint8_t>(ChainGameEventType::LOSS)) return;
+    ChainGameEventType event = static_cast<ChainGameEventType>(eventType);
+    if (event == ChainGameEventType::COUNTDOWN) {
+        confirmSent = false;
+        resender.cancelAll(PktType::kChainConfirm);
+    }
+    if (gameEventObserver) {
+        gameEventObserver(event);
+    } else {
+        pendingGameEvent = event;
+    }
 }
 
 void ChainDuelManager::onConfirmReceived(const uint8_t* originatorMac) {
@@ -313,6 +330,9 @@ void ChainDuelManager::onChainStateChanged() {
         if (selfMac != nullptr && (!opponentConnecting || !championMac.has_value())) {
             std::array<uint8_t, 6> selfArr;
             memcpy(selfArr.data(), selfMac, 6);
+            if (championMac != selfArr) {
+                pendingGameEvent.reset();
+            }
             championMac = selfArr;
         }
     } else if (isSupporter()) {
@@ -320,9 +340,11 @@ void ChainDuelManager::onChainStateChanged() {
         if (championMac.has_value() && selfMac != nullptr &&
             memcmp(championMac->data(), selfMac, 6) == 0) {
             championMac.reset();
+            pendingGameEvent.reset();
         }
     } else {
         championMac.reset();
+        pendingGameEvent.reset();
     }
 
     broadcastRoleAndChampion();
@@ -381,6 +403,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
     // the zero would cascade it onward as this device's champion.
     if (MacToUInt64(announcedChampionMac) == 0) {
         championMac.reset();
+        pendingGameEvent.reset();
         resender.cancelAll(PktType::kChainConfirm);
         resender.cancelAll(PktType::kChainJoin);
         if (isSupporter()) broadcastRoleAndChampion();
@@ -392,6 +415,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
     bool changed = !championMac.has_value() || *championMac != newMac;
     championMac = newMac;
     if (changed) {
+        pendingGameEvent.reset();
         resender.cancelAll(PktType::kChainConfirm);
         resender.cancelAll(PktType::kChainJoin);
     }

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <functional>
 #include <optional>
 #include <vector>
 #include <cstdint>
@@ -61,6 +62,11 @@ public:
      * never register a supporter who never pressed.
      */
     void resendConfirm();
+
+    using GameEventObserver = std::function<void(ChainGameEventType)>;
+
+    /** Sets or clears the game-event observer, immediately replaying any unconsumed event from the current champion. */
+    void setGameEventObserver(GameEventObserver observer);
 
     /**
      * Supporter-side view of an inbound chain game event. A COUNTDOWN voids the
@@ -160,7 +166,9 @@ private:
     size_t lastSupporterChainCount = 0;
     bool wasInRing = false;
 
-    std::atomic<bool> confirmSent{false};
+    bool confirmSent = false;
+    GameEventObserver gameEventObserver;
+    std::optional<ChainGameEventType> pendingGameEvent;
 
     // Every press we have heard this round, member or not. Membership is applied
     // when the count is read, not here, because a confirm can beat the kChainJoin
