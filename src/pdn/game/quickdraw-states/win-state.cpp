@@ -80,10 +80,4 @@ void Win::onStateDismounted(PDN* pdn) {
     pdn->getHaptics()->setIntensity(VIBRATION_OFF);
 }
 
-bool Win::resetGame() {
-    return reset;
-}
-
-bool Win::isTerminalState() {
-    return true;
-}
+bool Win::resetGame() const { return reset; }

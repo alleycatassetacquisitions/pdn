@@ -479,12 +479,12 @@ TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
         ReliableChannel<TransportTestPayload> channel(
             &wm, &resender, PktType::kShootoutCommand, nullptr);
         TransportTestPayload p{};
-        channel.sendReliable(peer, p);
+        const uint8_t seqId = channel.sendReliable(peer, p);
         ASSERT_EQ(frames, 1);
-        ASSERT_EQ(resender.pendingCount(PktType::kShootoutCommand), 1u);
+        ASSERT_EQ(resender.pendingCount(PktType::kShootoutCommand, seqId), 1u);
     }
 
-    EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 0u);
+    EXPECT_FALSE(resender.isPending(PktType::kShootoutCommand, peer));
     clock.advance(Resender::INITIAL_TIMEOUT_MS + 1);
     resender.sync();
     EXPECT_EQ(frames, 1) << "a destroyed channel kept retransmitting";

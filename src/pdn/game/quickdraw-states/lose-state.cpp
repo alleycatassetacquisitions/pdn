@@ -72,10 +72,4 @@ void Lose::onStateDismounted(PDN* pdn) {
     reset = false;
 }
 
-bool Lose::resetGame() {
-    return reset;
-}
-
-bool Lose::isTerminalState() {
-    return true;
-}
+bool Lose::resetGame() const { return reset; }

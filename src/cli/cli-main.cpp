@@ -259,10 +259,7 @@ int main(int argc, char** argv) {
         
         // Deliver pending peer-to-peer messages
         NativePeerBroker::getInstance().deliverPackets();
-        
-        // Transfer serial data between connected devices
-        cli::SerialCableBroker::getInstance().transferData();
-        
+
         // Update all devices
         for (auto& device : devices) {
             device.pdn->loop();

@@ -24,42 +24,41 @@ public:
         // Byte mode drains the RX buffer straight to the byte callback (HELLO
         // framing); no string assembly. Legacy string jacks push through
         // injectInput() and leave exec() a no-op.
-        if (byteCallback_) {
+        if (byteCallback) {
             while (available() > 0) {
-                byteCallback_(static_cast<uint8_t>(read()));
+                byteCallback(static_cast<uint8_t>(read()));
             }
         }
     }
 
     int availableForWrite() override {
         // Return remaining space in output buffer
-        return static_cast<int>(MAX_OUTPUT_BUFFER_SIZE - outputBuffer_.size());
+        return static_cast<int>(MAX_OUTPUT_BUFFER_SIZE - outputBuffer.size());
     }
 
-    int available() override {
-        return inputBuffer_.empty() ? 0 : 1;
-    }
+    /** @return 1 when bytes are queued in inputBuffer, 0 otherwise. */
+    int available() override { return inputBuffer.empty() ? 0 : 1; }
 
     int peek() override {
-        if (inputBuffer_.empty()) return -1;
-        return inputBuffer_.front()[0];
+        if (inputBuffer.empty()) return -1;
+        return inputBuffer.front()[0];
     }
 
     int read() override {
-        if (inputBuffer_.empty()) return -1;
-        char c = inputBuffer_.front()[0];
-        if (inputBuffer_.front().length() == 1) {
-            inputBuffer_.pop();
+        if (inputBuffer.empty()) return -1;
+        char c = inputBuffer.front()[0];
+        if (inputBuffer.front().length() == 1) {
+            inputBuffer.pop();
         } else {
-            inputBuffer_.front() = inputBuffer_.front().substr(1);
+            inputBuffer.front() = inputBuffer.front().substr(1);
         }
         return c;
     }
 
     std::string readStringUntil(char terminator) override {
-        if (inputBuffer_.empty()) return "";
-        std::string result = inputBuffer_.front();
-        inputBuffer_.pop();
+        if (inputBuffer.empty()) return "";
+        std::string result = inputBuffer.front();
+        inputBuffer.pop();
         // Remove terminator if present
         if (!result.empty() && result.back() == terminator) {
             result.pop_back();
@@ -69,67 +68,71 @@ public:
     }
 
     void print(char msg) override {
-        outputBuffer_ += msg;
+        outputBuffer += msg;
         trimOutputBuffer();
+        if (routedPeer != nullptr && routedPeer->hasByteCallback()) {
+            routePendingOutput();
+        }
     }
 
-    void println(char* msg) override {
-        outputBuffer_ += msg;
-        outputBuffer_ += '\n';
-        trimOutputBuffer();
-        // Track sent message
-        addToHistory(sentHistory_, std::string(msg));
-    }
+    /** Appends @p msg followed by a newline to the output buffer. */
+    void println(char* msg) override { println(std::string(msg)); }
 
     void println(const std::string& msg) override {
-        outputBuffer_ += msg;
-        outputBuffer_ += '\n';
+        outputBuffer += msg;
+        outputBuffer += '\n';
         trimOutputBuffer();
-        // Track sent message
-        addToHistory(sentHistory_, msg);
+        addToHistory(sentHistory, msg);
+        routePendingOutput();
     }
 
     void flush() override {
-        // In native simulation, we intentionally do NOT clear the buffer here.
-        // This prevents data loss when state transitions call flushSerial() before
-        // the SerialCableBroker has a chance to transfer the data.
-        // The broker calls clearOutput() after successfully transferring data.
+        // No-op: keep unrouted outputBuffer intact for getOutput() inspection after flushSerial().
     }
 
     void setStringCallback(const SerialStringCallback& callback) override {
-        stringCallback_ = callback;
+        stringCallback = callback;
     }
 
     /** Routes RX bytes to the byte callback in exec(); see HWSerialWrapper. */
-    void setByteCallback(const SerialByteCallback& callback) override {
-        byteCallback_ = callback;
-    }
+    void setByteCallback(const SerialByteCallback& callback) override { byteCallback = callback; }
 
     /**
-     * True when a byte callback is installed (HELLO/binary mode), so the cable
-     * broker delivers raw bytes rather than re-framing STRING_START messages.
+     * Connects this jack's TX output directly to `peer`'s RX queue, or passes
+     * nullptr to disconnect the simulated cable.
      */
-    bool hasByteCallback() const { return static_cast<bool>(byteCallback_); }
+    void routeTo(NativeSerialDriver* peer) { routedPeer = peer; }
+
+    /** True when a byte callback is installed on this jack. */
+    bool hasByteCallback() const { return static_cast<bool>(byteCallback); }
 
     /**
      * Test/broker helper: buffers raw bytes for exec() to drain to the byte
      * callback. The binary-framing analogue of injectInput().
      */
     void injectBytes(const std::vector<uint8_t>& bytes) {
-        while (inputBuffer_.size() >= MAX_INPUT_QUEUE_SIZE) {
-            inputBuffer_.pop();
+        if (bytes.empty()) return;
+        if (byteCallback && !inputBuffer.empty()) {
+            inputBuffer.back().append(bytes.begin(), bytes.end());
+            if (inputBuffer.back().size() > MAX_OUTPUT_BUFFER_SIZE) {
+                inputBuffer.back().erase(0, inputBuffer.back().size() - MAX_OUTPUT_BUFFER_SIZE);
+            }
+            return;
         }
-        inputBuffer_.push(std::string(bytes.begin(), bytes.end()));
+        while (inputBuffer.size() >= MAX_INPUT_QUEUE_SIZE) {
+            inputBuffer.pop();
+        }
+        inputBuffer.push(std::string(bytes.begin(), bytes.end()));
     }
 
     // Test helper methods
     void injectInput(const std::string& input) {
         // Enforce FIFO limit on input queue
-        while (inputBuffer_.size() >= MAX_INPUT_QUEUE_SIZE) {
-            inputBuffer_.pop();  // Drop oldest
+        while (inputBuffer.size() >= MAX_INPUT_QUEUE_SIZE) {
+            inputBuffer.pop();  // Drop oldest
         }
-        inputBuffer_.push(input);
-        
+        inputBuffer.push(input);
+
         // Clean the message by stripping framing (if present)
         // Framing: STRING_START (*) at beginning, STRING_TERM (\r) at end
         std::string cleanMsg = input;
@@ -143,41 +146,61 @@ public:
         }
         
         // Track the clean message in history for UI display
-        addToHistory(receivedHistory_, cleanMsg);
-        
+        addToHistory(receivedHistory, cleanMsg);
+
         // Invoke callback with clean message
-        if (stringCallback_) {
-            stringCallback_(cleanMsg);
+        if (stringCallback) {
+            stringCallback(cleanMsg);
         }
     }
 
-    std::string getOutput() const {
-        return outputBuffer_;
-    }
+    /** @return Copy of the buffered TX output. */
+    std::string getOutput() const { return outputBuffer; }
 
-    void clearOutput() {
-        outputBuffer_.clear();
-    }
-    
-    // Message history access for CLI display
-    const std::deque<std::string>& getSentHistory() const { return sentHistory_; }
-    const std::deque<std::string>& getReceivedHistory() const { return receivedHistory_; }
-    
-    // Get current buffer sizes for display
-    size_t getInputQueueSize() const { return inputBuffer_.size(); }
-    size_t getOutputBufferSize() const { return outputBuffer_.size(); }
+    /** Clears the buffered TX output. */
+    void clearOutput() { outputBuffer.clear(); }
+
+    /** Returns the sent message history for CLI diagnostics. */
+    const std::deque<std::string>& getSentHistory() const { return sentHistory; }
+    /** Returns the received message history for CLI diagnostics. */
+    const std::deque<std::string>& getReceivedHistory() const { return receivedHistory; }
+
+    /** Returns the number of queued RX entries. */
+    size_t getInputQueueSize() const { return inputBuffer.size(); }
+    /** Returns the number of buffered TX bytes. */
+    size_t getOutputBufferSize() const { return outputBuffer.size(); }
 
 private:
-    std::queue<std::string> inputBuffer_;
-    std::string outputBuffer_;
-    SerialStringCallback stringCallback_;
-    SerialByteCallback byteCallback_;
+    std::queue<std::string> inputBuffer;
+    std::string outputBuffer;
+    SerialStringCallback stringCallback;
+    SerialByteCallback byteCallback;
+    NativeSerialDriver* routedPeer = nullptr;
 
     // Message history (most recent at back)
-    std::deque<std::string> sentHistory_;
-    std::deque<std::string> receivedHistory_;
+    std::deque<std::string> sentHistory;
+    std::deque<std::string> receivedHistory;
     static const size_t MAX_HISTORY = 5;
-    
+
+    void routePendingOutput() {
+        if (routedPeer == nullptr || outputBuffer.empty()) {
+            return;
+        }
+        if (routedPeer->hasByteCallback()) {
+            routedPeer->injectBytes(std::vector<uint8_t>(outputBuffer.begin(), outputBuffer.end()));
+            outputBuffer.clear();
+            return;
+        }
+        size_t pos = 0;
+        while ((pos = outputBuffer.find('\n')) != std::string::npos) {
+            std::string line = outputBuffer.substr(0, pos);
+            if (!line.empty()) {
+                routedPeer->injectInput(line + "\r");
+            }
+            outputBuffer.erase(0, pos + 1);
+        }
+    }
+
     void addToHistory(std::deque<std::string>& history, const std::string& msg) {
         history.push_back(msg);
         while (history.size() > MAX_HISTORY) {
@@ -189,9 +212,9 @@ private:
      * Trim output buffer to max size using FIFO - drops oldest data from front.
      */
     void trimOutputBuffer() {
-        if (outputBuffer_.size() > MAX_OUTPUT_BUFFER_SIZE) {
+        if (outputBuffer.size() > MAX_OUTPUT_BUFFER_SIZE) {
             // Keep only the newest data (from the end)
-            outputBuffer_ = outputBuffer_.substr(outputBuffer_.size() - MAX_OUTPUT_BUFFER_SIZE);
+            outputBuffer = outputBuffer.substr(outputBuffer.size() - MAX_OUTPUT_BUFFER_SIZE);
         }
     }
 };

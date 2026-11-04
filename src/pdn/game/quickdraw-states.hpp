@@ -367,8 +367,8 @@ public:
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    bool resetGame();
-    bool isTerminalState() override;
+    /** True once the win display timer has expired. */
+    bool resetGame() const;
 
 private:
     SimpleTimer winTimer = SimpleTimer();
@@ -386,8 +386,8 @@ public:
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    bool resetGame();
-    bool isTerminalState() override;
+    /** True once the win display timer has expired. */
+    bool resetGame() const;
 
 private:
     SimpleTimer loseTimer = SimpleTimer();
@@ -493,7 +493,6 @@ public:
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    bool isTerminalState() override;
 
     bool transitionToSleep();
 

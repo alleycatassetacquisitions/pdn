@@ -966,8 +966,7 @@ void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
     ASSERT_NE(state->getStateId(), PlayerFetchStateId::FETCH_USER);
 
     // Reboot: same sequence as cmdReboot
-    suite->device.httpClientDriver->setMockServerEnabled(true);
-    suite->device.httpClientDriver->setConnected(true);
+    suite->device.httpClientDriver->setHttpClientState(HttpClientState::CONNECTED);
     suite->device.stateHistory.clear();
     suite->device.lastStateId = -1;
     cliSkipQuickdrawToFetchUser(suite->device);
@@ -989,8 +988,7 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::WELCOME);
 
     // Reboot
-    suite->device.httpClientDriver->setMockServerEnabled(true);
-    suite->device.httpClientDriver->setConnected(true);
+    suite->device.httpClientDriver->setHttpClientState(HttpClientState::CONNECTED);
     suite->device.stateHistory.clear();
     suite->device.lastStateId = -1;
     cliSkipQuickdrawToFetchUser(suite->device);
@@ -1135,8 +1133,7 @@ void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device.lastStateId, 7);
 
     // Reboot
-    suite->device.httpClientDriver->setMockServerEnabled(true);
-    suite->device.httpClientDriver->setConnected(true);
+    suite->device.httpClientDriver->setHttpClientState(HttpClientState::CONNECTED);
     suite->device.stateHistory.clear();
     suite->device.lastStateId = -1;
 

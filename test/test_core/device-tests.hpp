@@ -105,7 +105,6 @@ public:
     
     void onStateMounted(Device *PDN) override {
         mountedCount++;
-        launched = true;
         if (mountedCount == 1) {
             StateMachine::onStateMounted(PDN);
         }
@@ -114,16 +113,9 @@ public:
     void onStateLoop(Device *PDN) override {
         loopCount++;
     }
-    
-    void onStateDismounted(Device *PDN) override {
-        dismountedCount++;
-    }
-    
-    // Expose protected members for testing
-    bool hasLaunchedPublic() const { return launched; }
-    
-private:
-    bool launched = false;
+
+    /** Increments the dismounted counter when this mock app dismounts. */
+    void onStateDismounted(Device* PDN) override { dismountedCount++; }
 };
 
 class DeviceTestSuite : public ::testing::Test {
