@@ -29,19 +29,6 @@ enum class PortStatus {
     CONNECTED = 2,     // Port is connected to a peer.
 };
 
-// This device's position in the physical chain, derived from jack state:
-// head has no in-peer, a child has one, RING is the head of a chain whose ends
-// met. RING is deliberately head-only — it is the roster/coordinator authority.
-// Ring MEMBERSHIP, which every device on the loop shares, is isInRing().
-// Device-level (not per-port): whether a connection makes this device a head
-// or child is a chain concern surfaced here, never a PortStatus.
-enum class ChainRole {
-    STANDALONE = 0,
-    HEAD = 1,
-    CHILD = 2,
-    RING = 3,
-};
-
 class RemoteDeviceCoordinator {
     // Reaches the owned transport to inject SEND_SUCCESS / inbound contexts without
     // a radio; the transport stays out of the public API.
@@ -217,10 +204,10 @@ public:
 
     /**
      * The peer's own ChainRole as of the context it sent on `jack`, recorded but
-     * not acted on here. 0 before any context arrives, which is also STANDALONE:
-     * a peer whose only link is the one still connecting reports exactly that.
+     * not acted on here. STANDALONE before any context arrives: a peer whose only
+     * link is the one still connecting reports exactly that.
      */
-    uint8_t getPeerChainRole(SerialIdentifier jack) const {
+    ChainRole getPeerChainRole(SerialIdentifier jack) const {
         return helloByPort[portIndex(jack)].peerChainRole;
     }
 
@@ -297,7 +284,7 @@ private:
     size_t portIndex(SerialIdentifier port) const;
 
     void notifyChainChange();
-    void recordJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
+    void recordJackContext(SerialIdentifier jack, DeviceType peerType, ChainRole chainRole,
                            uint16_t peerUserId, const uint8_t* profile, size_t len);
 
     SerialManager* serialManager = nullptr;
@@ -315,7 +302,7 @@ private:
         SerialFrameParser parser;  // non-copyable; default-constructed in place
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
         // Recorded from the peer's received context; consumed by the chain SM (#156).
-        uint8_t peerChainRole = 0;
+        ChainRole peerChainRole = ChainRole::STANDALONE;
         // Which context channel the peer's context arrived on, so the kind and the
         // profile bytes below always describe the same peer and the same moment.
         DeviceType peerDeviceType = DeviceType::UNKNOWN;
@@ -357,7 +344,7 @@ private:
     struct BufferedContext {
         std::array<uint8_t, 6> mac{};
         DeviceType peerType = DeviceType::UNKNOWN;
-        uint8_t chainRole = 0;
+        ChainRole chainRole = ChainRole::STANDALONE;
         uint16_t peerUserId = PEER_USER_ID_NONE;
         std::array<uint8_t, MAX_PEER_PROFILE_BYTES> profile{};
         size_t len = 0;
@@ -376,16 +363,16 @@ private:
     // Serialize + reliably send this device's context to `mac` per selfDeviceType.
     void sendSelfContext(const uint8_t* mac);
     // Cache a received peer context by MAC, then apply it to jacks (rationale in .cpp).
-    void onContextReceived(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
+    void onContextReceived(const uint8_t* fromMac, DeviceType peerType, ChainRole chainRole,
                            uint16_t peerUserId, const uint8_t* profile, size_t len);
-    void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
+    void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType, ChainRole chainRole,
                              uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Assumes `jack` is CONNECTING to this peer; both timing paths route through here,
     // so the context callback fires once per connect.
-    void completeJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
+    void completeJackContext(SerialIdentifier jack, DeviceType peerType, ChainRole chainRole,
                              uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Holds a context whose jack is not yet CONNECTING; evicts oldest when full.
-    void bufferContext(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
+    void bufferContext(const uint8_t* fromMac, DeviceType peerType, ChainRole chainRole,
                        uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Applies any cached context for `jack`'s peer to `jack` as it connects. Leaves
     // the cache entry for the peer's other jack (2-node ring); the TTL clears it.

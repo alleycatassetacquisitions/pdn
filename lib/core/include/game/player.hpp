@@ -43,9 +43,10 @@ public:
 
     /**
      * This player as the packed profile peers receive in the connection
-     * context. userId is 0xFFFF while the player id is not wholly numeric
-     * (registration has not completed); faction and name truncate to the
-     * fixed wire widths.
+     * context. userId is PEER_USER_ID_NONE (0xFFFF) while the player id is not
+     * a decimal integer in 0..0xFFFE (registration has not completed, or the id
+     * would collide with or truncate into the sentinel); faction and name
+     * truncate to the fixed wire widths.
      */
     PlayerProfile toProfile() const;
 

@@ -17,7 +17,7 @@
  */
 struct ConnectionContext {
     DeviceType peerType = DeviceType::UNKNOWN;
-    uint8_t chainRole = 0;
+    ChainRole chainRole = ChainRole::STANDALONE;
     std::array<uint8_t, RemoteDeviceCoordinator::MAX_PEER_PROFILE_BYTES> profile{};
     size_t profileLen = 0;
 };

@@ -36,7 +36,7 @@ public:
         bool afterMountHook = false;
         bool hadContext = false;
         DeviceType peerType = DeviceType::UNKNOWN;
-        uint8_t chainRole = 0;
+        ChainRole chainRole = ChainRole::STANDALONE;
         std::vector<uint8_t> profile;
     };
 
@@ -132,7 +132,7 @@ public:
 // Drives the OUT jack through the real HELLO + context path to CONNECTED.
 // A re-link needs a fresh seqId: the reliable channel drops a repeat of the last
 // one it accepted from that sender, so the context would never reach the RDC.
-inline void connectOutJack(RDCHelloTests* suite, uint8_t chainRole, uint16_t userId,
+inline void connectOutJack(RDCHelloTests* suite, ChainRole chainRole, uint16_t userId,
                            uint8_t seqId = 9) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
@@ -149,7 +149,7 @@ inline void connectStateMountedReceivesJackConnect(RDCHelloTests* suite) {
     mountState(&state, &suite->device);
     ASSERT_TRUE(state.events.empty()) << "nothing is connected yet";
 
-    connectOutJack(suite, /*chainRole=*/2, /*userId=*/4242);
+    connectOutJack(suite, ChainRole::CHILD, /*userId=*/4242);
 
     ASSERT_EQ(state.events.size(), 1u);
     EXPECT_EQ(state.events[0].jack, SerialIdentifier::OUTPUT_JACK);
@@ -163,12 +163,12 @@ inline void connectStateConnectCarriesPeerContext(RDCHelloTests* suite) {
     RecordingConnectState state(&suite->rdc, /*stateId=*/1);
     mountState(&state, &suite->device);
 
-    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+    connectOutJack(suite, ChainRole::RING, /*userId=*/1234);
 
     ASSERT_EQ(state.events.size(), 1u);
     ASSERT_TRUE(state.events[0].hadContext) << "the connect arrived without a context";
     EXPECT_EQ(state.events[0].peerType, DeviceType::PDN);
-    EXPECT_EQ(state.events[0].chainRole, 4);
+    EXPECT_EQ(state.events[0].chainRole, ChainRole::RING);
     ASSERT_EQ(state.events[0].profile.size(), sizeof(PlayerProfile));
     PlayerProfile decoded{};
     memcpy(&decoded, state.events[0].profile.data(), sizeof(decoded));
@@ -178,7 +178,7 @@ inline void connectStateConnectCarriesPeerContext(RDCHelloTests* suite) {
 // A mount after the context already landed still gets it, because the context is
 // read at dispatch rather than captured by whoever was mounted when it arrived.
 inline void connectStateReplayCarriesPeerContext(RDCHelloTests* suite) {
-    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+    connectOutJack(suite, ChainRole::RING, /*userId=*/1234);
 
     RecordingConnectState late(&suite->rdc, /*stateId=*/1);
     mountState(&late, &suite->device);
@@ -186,7 +186,7 @@ inline void connectStateReplayCarriesPeerContext(RDCHelloTests* suite) {
     ASSERT_EQ(late.events.size(), 1u);
     ASSERT_TRUE(late.events[0].hadContext) << "a late mount lost the peer context";
     EXPECT_EQ(late.events[0].peerType, DeviceType::PDN);
-    EXPECT_EQ(late.events[0].chainRole, 4);
+    EXPECT_EQ(late.events[0].chainRole, ChainRole::RING);
 }
 
 // A disconnect carries no context, so a handler cannot mistake the departed peer's
@@ -194,7 +194,7 @@ inline void connectStateReplayCarriesPeerContext(RDCHelloTests* suite) {
 inline void connectStateDisconnectCarriesNoContext(RDCHelloTests* suite) {
     RecordingConnectState state(&suite->rdc, /*stateId=*/1);
     mountState(&state, &suite->device);
-    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+    connectOutJack(suite, ChainRole::RING, /*userId=*/1234);
     ASSERT_EQ(state.events.size(), 1u);
 
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
@@ -209,7 +209,7 @@ inline void connectStateDisconnectCarriesNoContext(RDCHelloTests* suite) {
 inline void connectStateReceivesDisconnect(RDCHelloTests* suite) {
     RecordingConnectState state(&suite->rdc, /*stateId=*/1);
     mountState(&state, &suite->device);
-    connectOutJack(suite, /*chainRole=*/2, /*userId=*/4242);
+    connectOutJack(suite, ChainRole::CHILD, /*userId=*/4242);
     ASSERT_EQ(state.events.size(), 1u);
 
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
@@ -228,7 +228,7 @@ inline void connectStateDismountedStopsReceiving(RDCHelloTests* suite) {
     dismountState(&state, &suite->device);
     ASSERT_EQ(state.dismountedCount, 1);
 
-    connectOutJack(suite, /*chainRole=*/2, /*userId=*/4242);
+    connectOutJack(suite, ChainRole::CHILD, /*userId=*/4242);
 
     EXPECT_TRUE(state.events.empty()) << "a dismounted state was still subscribed";
 }
@@ -238,7 +238,7 @@ inline void connectStateDismountedStopsReceiving(RDCHelloTests* suite) {
 // until the next physical event. The replay lands after the state's own mount
 // hook, so it cannot reach half-initialized members.
 inline void connectStateReplaysConnectedJackAtMount(RDCHelloTests* suite) {
-    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+    connectOutJack(suite, ChainRole::RING, /*userId=*/1234);
 
     RecordingConnectState state(&suite->rdc, /*stateId=*/1);
     mountState(&state, &suite->device);
@@ -254,7 +254,7 @@ inline void connectStateReplaysConnectedJackAtMount(RDCHelloTests* suite) {
 // a jack whose link died is skipped, the same jack once revived is replayed. Both
 // halves are needed — the empty case alone also passes if replay never runs.
 inline void connectStateReplaysOnlyConnectedJacks(RDCHelloTests* suite) {
-    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+    connectOutJack(suite, ChainRole::RING, /*userId=*/1234);
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK),
@@ -265,7 +265,7 @@ inline void connectStateReplaysOnlyConnectedJacks(RDCHelloTests* suite) {
     EXPECT_TRUE(afterLinkDeath.events.empty())
         << "a disconnected jack was replayed as connected";
 
-    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234, /*seqId=*/10);
+    connectOutJack(suite, ChainRole::RING, /*userId=*/1234, /*seqId=*/10);
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK),
               PortStatus::CONNECTED);
 
@@ -278,8 +278,8 @@ inline void connectStateReplaysOnlyConnectedJacks(RDCHelloTests* suite) {
 // the departed one's. Each fact is asserted set before it is asserted cleared,
 // or "cleared" would also pass against a fact that was never stored.
 inline void connectStatePeerFactsClearedOnDisconnect(RDCHelloTests* suite) {
-    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
-    ASSERT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 4);
+    connectOutJack(suite, ChainRole::RING, /*userId=*/1234);
+    ASSERT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::RING);
     ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
     size_t profileLen = 0;
     ASSERT_NE(suite->rdc.getPeerProfile(SerialIdentifier::OUTPUT_JACK, profileLen), nullptr);
@@ -287,7 +287,7 @@ inline void connectStatePeerFactsClearedOnDisconnect(RDCHelloTests* suite) {
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
 
-    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 0);
+    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::STANDALONE);
     EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK),
               DeviceType::UNKNOWN);
     EXPECT_EQ(suite->rdc.getPeerProfile(SerialIdentifier::OUTPUT_JACK, profileLen), nullptr);
@@ -298,7 +298,7 @@ inline void connectStatePeerFactsClearedOnDisconnect(RDCHelloTests* suite) {
 // disconnect, and a second tenure after a dismount/remount. This is the usage the
 // #145 sketch documents, so it has to hold without re-registering per mount.
 inline void connectStateConstructorRegistrationCoversEveryTenure(RDCHelloTests* suite) {
-    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+    connectOutJack(suite, ChainRole::RING, /*userId=*/1234);
 
     ConstructorRegisteredConnectState state(&suite->rdc, /*stateId=*/1);
     mountState(&state, &suite->device);
@@ -309,7 +309,7 @@ inline void connectStateConstructorRegistrationCoversEveryTenure(RDCHelloTests* 
     ASSERT_EQ(state.disconnects, 1) << "the live disconnect missed it";
 
     dismountState(&state, &suite->device);
-    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234, /*seqId=*/10);
+    connectOutJack(suite, ChainRole::RING, /*userId=*/1234, /*seqId=*/10);
     mountState(&state, &suite->device);
 
     EXPECT_EQ(state.connects, 2) << "the registration did not survive a remount";
@@ -320,7 +320,7 @@ inline void connectStateConstructorRegistrationCoversEveryTenure(RDCHelloTests* 
 inline void connectStateClearedHandlerStopsReceiving(RDCHelloTests* suite) {
     RecordingConnectState state(&suite->rdc, /*stateId=*/1);
     mountState(&state, &suite->device);
-    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+    connectOutJack(suite, ChainRole::RING, /*userId=*/1234);
     ASSERT_EQ(state.events.size(), 1u);
 
     state.setOnJackChange(nullptr);
@@ -344,7 +344,7 @@ inline void rdcHelloPeerDeviceTypeComesFromContextChannel(RDCHelloTests* suite) 
     ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN)
         << "the HELLO byte set the kind";
 
-    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/4, /*userId=*/1234, /*seqId=*/9);
+    std::vector<uint8_t> ctx = pdnContextBytes(ChainRole::RING, /*userId=*/1234, /*seqId=*/9);
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
@@ -374,6 +374,6 @@ inline void connectStateDestructorReleasesSlot(RDCHelloTests* suite) {
     mountState(state, &suite->device);
     delete state;
 
-    connectOutJack(suite, /*chainRole=*/2, /*userId=*/4242);
+    connectOutJack(suite, ChainRole::CHILD, /*userId=*/4242);
     SUCCEED();
 }

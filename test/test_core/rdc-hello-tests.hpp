@@ -281,7 +281,7 @@ inline void rdcHelloEveryJackInitiatesContext(RDCHelloTests* suite) {
 
 // A PdnConnectionContext carrying the given chainRole + userId, serialized to its
 // wire bytes for deliverIncoming.
-inline std::vector<uint8_t> pdnContextBytes(uint8_t chainRole, uint16_t userId, uint8_t seqId,
+inline std::vector<uint8_t> pdnContextBytes(ChainRole chainRole, uint16_t userId, uint8_t seqId,
                                             uint8_t gameRole = 0) {
     PdnConnectionContext ctx{};
     ctx.seqId = seqId;
@@ -291,6 +291,11 @@ inline std::vector<uint8_t> pdnContextBytes(uint8_t chainRole, uint16_t userId, 
     std::vector<uint8_t> bytes(sizeof(ctx));
     memcpy(bytes.data(), &ctx, sizeof(ctx));
     return bytes;
+}
+
+inline std::vector<uint8_t> pdnContextBytes(uint8_t chainRole, uint16_t userId, uint8_t seqId,
+                                            uint8_t gameRole = 0) {
+    return pdnContextBytes(static_cast<ChainRole>(chainRole), userId, seqId, gameRole);
 }
 
 // (a)+(b) A new OUT-jack HELLO MAC sends context (pending), and the #152
@@ -358,7 +363,7 @@ inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
     EXPECT_EQ(cbJack, SerialIdentifier::OUTPUT_JACK);
     EXPECT_EQ(cbType, DeviceType::PDN);
     EXPECT_EQ(cbUserId, 4242);
-    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 2);
+    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::CHILD);
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
     EXPECT_EQ(suite->connectCount, 1);
@@ -768,13 +773,13 @@ inline void rdcLinkDeathClearsPeerChainRole(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    ASSERT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 2);
+    ASSERT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::CHILD);
 
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
-    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 0);
+    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::STANDALONE);
 }
 
 inline void rdcDuplicateContextSameTickFiresCallbackOnce(RDCHelloTests* suite) {
@@ -801,7 +806,7 @@ inline void rdcDuplicateContextSameTickFiresCallbackOnce(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
     EXPECT_EQ(callbacks, 1);
-    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 2);
+    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::CHILD);
     EXPECT_EQ(suite->rdc.getPeerUserId(SerialIdentifier::OUTPUT_JACK), 99);
     size_t profileLen = 0;
     const uint8_t* raw = suite->rdc.getPeerProfile(SerialIdentifier::OUTPUT_JACK, profileLen);
@@ -2401,7 +2406,7 @@ inline void rdcPeerUserIdAbsentForFdnContext(RDCHelloTests* suite) {
 
     FdnConnectionContext fdn{};
     fdn.seqId = 4;
-    fdn.chainRole = 1;
+    fdn.chainRole = ChainRole::HEAD;
     fdn.fdn.reserved = 0x7F;
     std::vector<uint8_t> ctx(sizeof(fdn));
     memcpy(ctx.data(), &fdn, sizeof(fdn));
@@ -2521,7 +2526,7 @@ inline PlayerProfile profileFromContextBytes(const std::vector<uint8_t>& bytes) 
 }
 
 // Reads the sender's chainRole back out of a captured PdnConnectionContext frame.
-inline uint8_t chainRoleFromContextBytes(const std::vector<uint8_t>& bytes) {
+inline ChainRole chainRoleFromContextBytes(const std::vector<uint8_t>& bytes) {
     PdnConnectionContext ctx{};
     memcpy(&ctx, bytes.data(), sizeof(ctx) < bytes.size() ? sizeof(ctx) : bytes.size());
     return ctx.chainRole;
@@ -2588,6 +2593,25 @@ inline void rdcResendContextPushesCurrentProfile(RDCHelloTests* suite) {
     EXPECT_EQ(profileFromContextBytes(contextSends[1]).gameRole, 1);
     EXPECT_EQ(profileFromContextBytes(contextSends[1]).userId, 4242);
     EXPECT_TRUE(suite->rdc.isContextSendPending(peer));
+}
+
+// The context send is unconditional but the profile fill is not, so a device whose
+// provider was never installed — or was cleared, which the game layer does on
+// teardown while this coordinator keeps running — still puts a profile on the wire.
+// It must read as unregistered: userId 0 is a well-formed id no registration can
+// produce, and a peer has no way to tell it from a real one.
+inline void rdcContextWithoutProviderSendsUnregistered(RDCHelloTests* suite) {
+    std::vector<std::vector<uint8_t>> contextSends;
+    captureContextSends(suite, &contextSends);
+
+    // No setSelfProfileProvider call anywhere in this case — that is the condition
+    // under test, not an omission.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+
+    ASSERT_EQ(contextSends.size(), 1u);
+    EXPECT_EQ(profileFromContextBytes(contextSends[0]).userId,
+              RemoteDeviceCoordinator::PEER_USER_ID_NONE);
 }
 
 // A jack that only reached CONNECTING has no proven return path, so a
@@ -2676,8 +2700,7 @@ inline void rdcContextCarriesOwnChainRole(RDCHelloTests* suite) {
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(contextSends.size(), 1u);
-    EXPECT_EQ(chainRoleFromContextBytes(contextSends[0]),
-              static_cast<uint8_t>(ChainRole::STANDALONE));
+    EXPECT_EQ(chainRoleFromContextBytes(contextSends[0]), ChainRole::STANDALONE);
     suite->transport()->onSendResult(PktType::kPdnConnectionContext, peer,
                                      contextSends[0].data(), contextSends[0].size(), true);
 
@@ -2690,8 +2713,7 @@ inline void rdcContextCarriesOwnChainRole(RDCHelloTests* suite) {
     suite->rdc.resendContext();
 
     ASSERT_EQ(contextSends.size(), 2u);
-    EXPECT_EQ(chainRoleFromContextBytes(contextSends[1]),
-              static_cast<uint8_t>(ChainRole::HEAD));
+    EXPECT_EQ(chainRoleFromContextBytes(contextSends[1]), ChainRole::HEAD);
 }
 
 // A 2-node ring points both jacks at one peer, and one frame reaches it however
@@ -2754,7 +2776,7 @@ inline void rdcConnectedJackUpdatesPeerContextOnResend(RDCHelloTests* suite) {
         PktType::kPdnConnectionContext, peer, update1.data(), update1.size());
 
     for (SerialIdentifier jack : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
-        EXPECT_EQ(suite->rdc.getPeerChainRole(jack), 2);
+        EXPECT_EQ(suite->rdc.getPeerChainRole(jack), ChainRole::CHILD);
         EXPECT_EQ(suite->rdc.getPeerUserId(jack), 4242);
         size_t len = 0;
         const uint8_t* raw = suite->rdc.getPeerProfile(jack, len);
@@ -2773,7 +2795,7 @@ inline void rdcConnectedJackUpdatesPeerContextOnResend(RDCHelloTests* suite) {
         PktType::kPdnConnectionContext, peer, update2.data(), update2.size());
 
     for (SerialIdentifier jack : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
-        EXPECT_EQ(suite->rdc.getPeerChainRole(jack), 3);
+        EXPECT_EQ(suite->rdc.getPeerChainRole(jack), ChainRole::RING);
         EXPECT_EQ(suite->rdc.getPeerUserId(jack), 5555);
         size_t len = 0;
         const uint8_t* raw = suite->rdc.getPeerProfile(jack, len);

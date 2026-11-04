@@ -374,7 +374,7 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
     // Each device describes itself, so the payload is chosen by THIS device's kind,
     // not the peer's, and the role is read at send time: a resend on a role change
     // has to carry the position this device holds now, not the one it held at plug-in.
-    const uint8_t role = static_cast<uint8_t>(getChainRole());
+    const ChainRole role = getChainRole();
     if (selfDeviceType == DeviceType::FDN) {
         if (fdnContextChannel == nullptr) return;
         FdnConnectionContext ctx{};
@@ -385,6 +385,10 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
     if (pdnContextChannel == nullptr) return;
     PdnConnectionContext ctx{};
     ctx.chainRole = role;
+    // The send below is unconditional, so a value-initialized profile would go out
+    // as userId 0 — a well-formed id no registration can produce, which peers read
+    // as registered. Absent a provider this device is exactly "unregistered".
+    ctx.player.userId = PEER_USER_ID_NONE;
     if (selfProfileProvider) ctx.player = selfProfileProvider();
     pdnContextChannel->sendReliable(mac, ctx);
 }
@@ -422,7 +426,7 @@ bool RemoteDeviceCoordinator::isContextSendPending(const uint8_t* mac) const {
 }
 
 void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceType peerType,
-                                                uint8_t chainRole, uint16_t peerUserId,
+                                                ChainRole chainRole, uint16_t peerUserId,
                                                 const uint8_t* profile, size_t len) {
     // Every jack sends its own context on connecting, so receiving the peer's just
     // completes our matching jack(s); no reply in the normal exchange. Cache it keyed by MAC AND
@@ -436,7 +440,7 @@ void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceTy
 }
 
 void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, DeviceType peerType,
-                                                  uint8_t chainRole, uint16_t peerUserId,
+                                                  ChainRole chainRole, uint16_t peerUserId,
                                                   const uint8_t* profile, size_t len) {
     bool appliedToConnectingJack = false;
     JackHelloLink* firstConnectedLink = nullptr;
@@ -473,7 +477,7 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
 }
 
 void RemoteDeviceCoordinator::recordJackContext(SerialIdentifier jack, DeviceType peerType,
-                                                uint8_t chainRole, uint16_t peerUserId,
+                                                ChainRole chainRole, uint16_t peerUserId,
                                                 const uint8_t* profile, size_t len) {
     JackHelloLink& link = helloByPort[portIndex(jack)];
     // The kind comes from the channel that decoded this context, not the HELLO
@@ -490,7 +494,7 @@ void RemoteDeviceCoordinator::recordJackContext(SerialIdentifier jack, DeviceTyp
 }
 
 void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceType peerType,
-                                                  uint8_t chainRole, uint16_t peerUserId,
+                                                  ChainRole chainRole, uint16_t peerUserId,
                                                   const uint8_t* profile, size_t len) {
     recordJackContext(jack, peerType, chainRole, peerUserId, profile, len);
     JackHelloLink& link = helloByPort[portIndex(jack)];
@@ -500,7 +504,7 @@ void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceT
 }
 
 void RemoteDeviceCoordinator::bufferContext(const uint8_t* fromMac, DeviceType peerType,
-                                            uint8_t chainRole, uint16_t peerUserId,
+                                            ChainRole chainRole, uint16_t peerUserId,
                                             const uint8_t* profile, size_t len) {
     const unsigned long now = nowMs();
     BufferedContext* slot = nullptr;
@@ -547,7 +551,7 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     // The residue is per-jack while the slot rule is per-MAC, so it clears
     // regardless of what happens to the slot: the next peer on this jack must not
     // inherit the departed peer's chainRole during its CONNECTING window.
-    helloByPort[portIndex(jack)].peerChainRole = 0;
+    helloByPort[portIndex(jack)].peerChainRole = ChainRole::STANDALONE;
     helloByPort[portIndex(jack)].peerDeviceType = DeviceType::UNKNOWN;
     helloByPort[portIndex(jack)].peerUserId = PEER_USER_ID_NONE;
     helloByPort[portIndex(jack)].peerProfileLen = 0;

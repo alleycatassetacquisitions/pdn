@@ -1,4 +1,5 @@
 #include "game/player.hpp"
+#include <cerrno>
 #include <memory>
 #include <cstdio>
 #include <cstring>
@@ -74,13 +75,16 @@ void Player::setOnRoleChanged(RoleChangedCallback callback) {
 
 PlayerProfile Player::toProfile() const {
     PlayerProfile profile{};
+    errno = 0;
     char* end = nullptr;
     const unsigned long parsed = std::strtoul(id.c_str(), &end, 10);
     // A non-numeric id ("default", or a name) means registration has not
-    // completed; 0xFFFF is the unregistered player-id sentinel peers expect.
-    profile.userId = (!id.empty() && end != nullptr && *end == '\0')
+    // completed, and values >= 0xFFFF would collide with or truncate into the
+    // unregistered player-id sentinel (PEER_USER_ID_NONE = 0xFFFF).
+    profile.userId = (!id.empty() && end != nullptr && *end == '\0' && errno != ERANGE &&
+                      parsed <= 0xFFFE)
                          ? static_cast<uint16_t>(parsed)
-                         : 0xFFFF;
+                         : PEER_USER_ID_NONE;
     profile.gameRole = hunter ? 1 : 0;
     profile.allegiance = static_cast<uint8_t>(allegiance);
     // snprintf both truncates to the fixed wire width and NUL-terminates.
