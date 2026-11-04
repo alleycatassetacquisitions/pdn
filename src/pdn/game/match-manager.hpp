@@ -18,7 +18,7 @@
 #include "game/match.hpp"
 #include "game/player.hpp"
 #include "wireless/mac-functions.hpp"
-#include "wireless/quickdraw-packet.hpp"
+#include "wireless/duel-packet.hpp"
 #include "wireless/reliable-channel.hpp"
 #include "wireless/resender.hpp"
 #include "device/drivers/storage-interface.hpp"
@@ -57,7 +57,7 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    /** Claims the kQuickdrawCommand channel on wirelessManager (may be nullptr in tests). */
+    /** Claims the kDuelCommand channel on wirelessManager (may be nullptr in tests). */
     explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
     
@@ -67,11 +67,7 @@ public:
     */
     void initializeMatch(uint8_t* opponentMac);
 
-    /**
-     * Initializes a match received from another player
-     * @param match_json JSON string containing match data
-     * @return Pointer to the initialized match, nullptr if invalid
-     */
+    /** Primes a match from an incoming SEND_MATCH_ID and replies with MATCH_ID_ACK. */
     void receiveMatch(const char* matchId, const char* opponentId, bool isHunter, uint8_t* opponentMac);
 
     /**
@@ -161,7 +157,8 @@ public:
     void setShootoutManager(ShootoutManager* shootoutManager);
     ShootoutManager* getShootoutManager() const;
 
-    void listenForMatchEvents(const QuickdrawCommand& command);
+    /** Dispatches an inbound duel command (handshake or active-match event). */
+    void listenForMatchEvents(const DuelCommand& command);
 
     /** Binds the player and storage this manager records matches against. */
     void initialize(Player* player, StorageInterface* storage);
@@ -200,7 +197,7 @@ private:
 
     StorageInterface* storage;
     Resender resender;
-    ReliableChannel<QuickdrawPacket> duelChannel;
+    ReliableChannel<DuelPacket> duelChannel;
     void sendCommand(const uint8_t* mac, int command, const char* matchId,
                      long drawTime, bool isHunter);
     /**
@@ -229,7 +226,7 @@ private:
     // in ESP-NOW range could forge a result for a match they're not in.
     // SEND_MATCH_ID is intentionally exempt: it's the packet that
     // establishes the peering in the first place.
-    bool isFromActiveMatchOpponent(const QuickdrawCommand& command) const;
+    bool isFromActiveMatchOpponent(const DuelCommand& command) const;
 
     // Emplace match with given id/opponent/draw slot. Common path for both the
     // cable-handshake init and the Shootout MATCH_START init.
