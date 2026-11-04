@@ -2085,6 +2085,10 @@ TEST_F(ChainDuelManagerTests, gameEventAbandonsWhenSpanRunsOut) {
     cdmGameEventAbandonsWhenSpanRunsOut(this);
 }
 
+TEST_F(ChainDuelManagerTests, gameEventDuplicateRetransmitStillAcksChampion) {
+    cdmGameEventDuplicateRetransmitStillAcksChampion(this);
+}
+
 // ============================================
 // CHAIN DUEL MULTI-DEVICE FIXTURE TESTS
 // ============================================
@@ -2200,6 +2204,7 @@ TEST_F(ShootoutManagerTests, bracketFanOutIsOneFrameBeyondPeerTable) { bracketFa
 TEST_F(ShootoutManagerTests, bracketRetryIsOneFramePerRound) { bracketRetryIsOneFramePerRound(this); }
 TEST_F(ShootoutManagerTests, foreignBracketIsNeitherAdoptedNorAcked) { foreignBracketIsNeitherAdoptedNorAcked(this); }
 TEST_F(ShootoutManagerTests, strayRingCommandsLeaveTournamentUntouched) { strayRingCommandsLeaveTournamentUntouched(this); }
+TEST_F(ShootoutManagerTests, shootoutManagerOwnsWireCodecAndSingleByteAck) { shootoutManagerOwnsWireCodecAndSingleByteAck(this); }
 
 // ============================================
 // MAIN

@@ -37,7 +37,7 @@ public:
     ShootoutManager(Player* player,
                     WirelessManager* wirelessManager,
                     RemoteDeviceCoordinator* rdc);
-    /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
+    /** Drops the wireless and coordinator subscriptions the constructor took, which hold `this`. */
     ~ShootoutManager();
 
     /**
@@ -284,6 +284,22 @@ private:
     Resender resender;
     void onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac,
                             const uint8_t* packet, size_t len);
+    void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    static bool decodeMacList(const uint8_t* payload, size_t payloadLen,
+                              std::vector<std::array<uint8_t, 6>>& out);
+
+    // [cmd(1), seqId(1), firstMac(6), secondMac(6), matchIndex(1)] — shared by
+    // MATCH_START (duelistA, duelistB) and MATCH_RESULT (winner, loser).
+    static constexpr size_t MATCH_PAIR_FIRST_MAC_OFFSET = 2;
+    static constexpr size_t MATCH_PAIR_SECOND_MAC_OFFSET = 8;
+    static constexpr size_t MATCH_PAIR_INDEX_OFFSET = 14;
+    static constexpr size_t MATCH_PAIR_PACKET_SIZE = 15;
+    static std::vector<uint8_t> buildMatchPairPacket(ShootoutCmd cmd,
+                                                     uint8_t seqId,
+                                                     const uint8_t* firstMac,
+                                                     const uint8_t* secondMac,
+                                                     uint8_t matchIndex);
 
     void sendBracketToPeers();
     // [cmd, seqId, count, count * 6-byte MAC] — the frame BRACKET and
@@ -296,7 +312,7 @@ private:
     std::array<uint8_t, 6> coordinatorMac{};
 
     std::array<uint8_t, 6> opponentMac{};
-    void sendShootoutAck(ShootoutCmd cmd, uint8_t seqId, const uint8_t* toMac);
+    void sendShootoutAck(uint8_t seqId, const uint8_t* toMac);
 
     int currentMatchIndex = -1;
     // bracket shrinks on round advancement (coordinator only), so cache the
@@ -311,7 +327,6 @@ private:
      */
     void maybeStartNextMatch();
     void sendMatchStartToPeers(int matchIndex);
-    std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
 
     std::vector<std::array<uint8_t, 6>> eliminated;
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
@@ -331,9 +346,6 @@ private:
      */
     void applyMatchResult(const uint8_t* winner, const uint8_t* loser,
                           bool endsCurrentMatch = true);
-    std::vector<uint8_t> buildMatchResultPacket(const uint8_t* winner,
-                                                const uint8_t* loser,
-                                                uint8_t matchIndex) const;
 
     std::array<uint8_t, 6> tournamentWinner{};
     uint8_t lastTournamentEndSeqId = 0;

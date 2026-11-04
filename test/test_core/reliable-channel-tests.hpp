@@ -414,3 +414,80 @@ TEST(ResenderBroadcastTest, emptyMemberListSendsNothing) {
     EXPECT_EQ(f.frames, 0);
     EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
 }
+
+struct FanOutTestPayload {
+    uint8_t eventType;
+    uint8_t seqId;
+    uint8_t tag[6];
+} __attribute__((packed));
+
+TEST(ReliableChannelFanOutTest, sendBroadcastStampsSeqIdAndTracksEachRecipient) {
+    BroadcastFixture f;
+    std::vector<uint8_t> wireBytes;
+    ON_CALL(f.comms, sendData(::testing::_, ::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault([&wireBytes](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+            wireBytes.assign(data, data + len);
+            return 1;
+        });
+
+    ReliableChannel<FanOutTestPayload> channel(
+        &f.wm, &f.resender, PktType::kChainGameEvent, nullptr);
+    std::vector<std::array<uint8_t, 6>> recipients = {f.mac(1), f.mac(2)};
+    FanOutTestPayload payload{};
+    payload.eventType = 3;
+
+    const uint8_t seqId = channel.sendBroadcast(payload, recipients);
+    ASSERT_NE(seqId, 0u);
+    EXPECT_EQ(payload.seqId, seqId);
+    ASSERT_EQ(wireBytes.size(), sizeof(FanOutTestPayload));
+    EXPECT_EQ(wireBytes[offsetof(FanOutTestPayload, seqId)], seqId);
+    EXPECT_TRUE(channel.isPending(f.mac(1).data()));
+    EXPECT_TRUE(channel.isPending(f.mac(2).data()));
+
+    EXPECT_TRUE(channel.onRecipientAck(f.mac(1).data(), seqId));
+    EXPECT_FALSE(channel.isPending(f.mac(1).data()));
+    EXPECT_TRUE(channel.isPending(f.mac(2).data()));
+
+    channel.cancelAll();
+    EXPECT_FALSE(channel.isPending(f.mac(2).data()));
+}
+
+TEST(ReliableChannelFanOutTest, duplicateDeliveryStillEmitsAckBeforeDedupReturn) {
+    BroadcastFixture f;
+    ReliableChannel<FanOutTestPayload> channel(
+        &f.wm, &f.resender, PktType::kChainGameEvent, nullptr);
+
+    int acksEmitted = 0;
+    int deliveries = 0;
+    channel.setOnAckNeeded([&acksEmitted](const uint8_t*, const FanOutTestPayload&) {
+        acksEmitted++;
+        return true;
+    });
+    channel.onReceive([&deliveries](const uint8_t*, const FanOutTestPayload&) {
+        deliveries++;
+    });
+
+    std::array<uint8_t, 6> sender = f.mac(9);
+    FanOutTestPayload incoming{};
+    incoming.eventType = 2;
+    incoming.seqId = 4;
+
+    EXPECT_TRUE(channel.deliver(sender.data(),
+                                reinterpret_cast<const uint8_t*>(&incoming),
+                                sizeof(incoming)));
+    EXPECT_EQ(acksEmitted, 1);
+    EXPECT_EQ(deliveries, 1);
+
+    EXPECT_TRUE(channel.deliver(sender.data(),
+                                reinterpret_cast<const uint8_t*>(&incoming),
+                                sizeof(incoming)));
+    EXPECT_EQ(acksEmitted, 2);
+    EXPECT_EQ(deliveries, 1);
+
+    incoming.seqId = 0;
+    EXPECT_TRUE(channel.deliver(sender.data(),
+                                reinterpret_cast<const uint8_t*>(&incoming),
+                                sizeof(incoming)));
+    EXPECT_EQ(acksEmitted, 2);
+    EXPECT_EQ(deliveries, 2);
+}
