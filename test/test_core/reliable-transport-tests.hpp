@@ -309,7 +309,7 @@ TEST(ReliableTransportTest, ackRoutesByPktType) {
         PktType::kShootoutCommand,
         [](uint8_t, const uint8_t*) {});
     ReliableChannel<TransportTestPayload>* chB = transport.channel<TransportTestPayload>(
-        PktType::kQuickdrawCommand,
+        PktType::kDuelCommand,
         [](uint8_t, const uint8_t*) {});
 
     using ::testing::_;

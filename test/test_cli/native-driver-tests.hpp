@@ -129,46 +129,46 @@ void serialDriverStripsFraming(NativeSerialDriverTestSuite* suite) {
 class NativePeerCommsDriverTestSuite : public testing::Test {
 public:  // Public for test function access
     void SetUp() override {
-        driver_ = new NativePeerCommsDriver("TestPeerComms");
-        driver_->initialize();
-        driver_->connect();
+        driver = new NativePeerCommsDriver("TestPeerComms");
+        driver->initialize();
+        driver->connect();
     }
     
     void TearDown() override {
-        driver_->disconnect();
-        delete driver_;
+        driver->disconnect();
+        delete driver;
     }
-    
-    NativePeerCommsDriver* driver_;
+
+    NativePeerCommsDriver* driver;
 };
 
 // Test: Packet history is tracked
 void peerCommsTracksHistory(NativePeerCommsDriverTestSuite* suite) {
     uint8_t dstMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     uint8_t data[] = {0x01, 0x02};
-    
-    suite->driver_->sendData(dstMac, PktType::kQuickdrawCommand, data, sizeof(data));
-    
-    const auto& history = suite->driver_->getPacketHistory();
+
+    suite->driver->sendData(dstMac, PktType::kDuelCommand, data, sizeof(data));
+
+    const std::deque<PacketHistoryEntry>& history = suite->driver->getPacketHistory();
     ASSERT_EQ(history.size(), 1);
     ASSERT_TRUE(history[0].isSent);
-    ASSERT_EQ(history[0].packetType, PktType::kQuickdrawCommand);
+    ASSERT_EQ(history[0].packetType, PktType::kDuelCommand);
 }
 
 // Test: State string returns correct values
 void peerCommsStateString(NativePeerCommsDriverTestSuite* suite) {
-    ASSERT_EQ(suite->driver_->getStateString(), "CONNECTED");
-    
-    suite->driver_->disconnect();
-    ASSERT_EQ(suite->driver_->getStateString(), "DISCONNECTED");
-    
-    suite->driver_->connect();  // Reconnect for teardown
+    ASSERT_EQ(suite->driver->getStateString(), "CONNECTED");
+
+    suite->driver->disconnect();
+    ASSERT_EQ(suite->driver->getStateString(), "DISCONNECTED");
+
+    suite->driver->connect();  // Reconnect for teardown
 }
 
 // Test: MAC string format
 void peerCommsMacString(NativePeerCommsDriverTestSuite* suite) {
-    std::string macStr = suite->driver_->getMacString();
-    
+    std::string macStr = suite->driver->getMacString();
+
     // Should be in XX:XX:XX:XX:XX:XX format
     ASSERT_EQ(macStr.length(), 17);  // 6 hex pairs + 5 colons
     ASSERT_EQ(macStr[2], ':');
@@ -177,15 +177,15 @@ void peerCommsMacString(NativePeerCommsDriverTestSuite* suite) {
 
 // Test: Cannot send when disconnected
 void peerCommsCannotSendWhenDisconnected(NativePeerCommsDriverTestSuite* suite) {
-    suite->driver_->disconnect();
-    
+    suite->driver->disconnect();
+
     uint8_t dstMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     uint8_t data[] = {0x01};
-    
-    int result = suite->driver_->sendData(dstMac, PktType::kQuickdrawCommand, data, 1);
+
+    int result = suite->driver->sendData(dstMac, PktType::kDuelCommand, data, 1);
     ASSERT_EQ(result, -1);  // Should fail
-    
-    suite->driver_->connect();  // Reconnect for teardown
+
+    suite->driver->connect();  // Reconnect for teardown
 }
 
 // Test: Handler registration and clearance
@@ -195,22 +195,22 @@ void peerCommsHandlerRegistration(NativePeerCommsDriverTestSuite* suite) {
     auto handler = [](const uint8_t* srcMac, const uint8_t* data, size_t length, void* ctx) {
         *static_cast<bool*>(ctx) = true;
     };
-    
-    suite->driver_->setPacketHandler(PktType::kQuickdrawCommand, handler, &handlerCalled);
-    
+
+    suite->driver->setPacketHandler(PktType::kDuelCommand, handler, &handlerCalled);
+
     // Simulate receiving a packet
     uint8_t srcMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     uint8_t data[] = {0x01};
-    suite->driver_->receivePacket(srcMac, PktType::kQuickdrawCommand, data, 1);
-    suite->driver_->exec();  // Drain queue to invoke handler
+    suite->driver->receivePacket(srcMac, PktType::kDuelCommand, data, 1);
+    suite->driver->exec();  // Drain queue to invoke handler
 
     ASSERT_TRUE(handlerCalled);
     
     // Clear handler
     handlerCalled = false;
-    suite->driver_->clearPacketHandler(PktType::kQuickdrawCommand);
-    suite->driver_->receivePacket(srcMac, PktType::kQuickdrawCommand, data, 1);
-    suite->driver_->exec();  // Drain queue — cleared handler must not fire
+    suite->driver->clearPacketHandler(PktType::kDuelCommand);
+    suite->driver->receivePacket(srcMac, PktType::kDuelCommand, data, 1);
+    suite->driver->exec();        // Drain queue — cleared handler must not fire
     ASSERT_FALSE(handlerCalled);  // Should not be called after clear
 }
 

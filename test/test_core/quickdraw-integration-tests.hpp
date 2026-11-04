@@ -9,7 +9,7 @@
 #include "device-mock.hpp"
 #include "id-generator.hpp"
 #include "utility-tests.hpp"
-#include "wireless/quickdraw-packet.hpp"
+#include "wireless/duel-packet.hpp"
 #include "device/wireless-manager.hpp"
 
 using ::testing::_;
@@ -20,24 +20,23 @@ using ::testing::NiceMock;
 using ::testing::DoAll;
 
 // ============================================
-// Packet type alias — QuickdrawPacket is now defined in the header.
+// Packet type alias — DuelPacket is now defined in the header.
 // ============================================
 
-using TestQuickdrawPacket = QuickdrawPacket;
+using TestDuelPacket = DuelPacket;
 
 // ============================================
 // Packet Creation Helpers
 // ============================================
 
-inline TestQuickdrawPacket createTestPacket(
+inline TestDuelPacket createTestPacket(
     const std::string& matchId,
     const std::string& playerId,
     int command,
     long playerDrawTime = 0,
-    bool isHunter = true
-) {
+    bool isHunter = true) {
     // Zero-init sets seqId = 0 (the unsequenced sentinel that bypasses RX dedup).
-    TestQuickdrawPacket packet{};
+    TestDuelPacket packet{};
     strncpy(packet.matchId, matchId.c_str(), 36);
     packet.matchId[36] = '\0';
     strncpy(packet.playerId, playerId.c_str(), 4);
@@ -85,8 +84,8 @@ public:
         ON_CALL(peerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     }
 
-    // Creates a packet as if sent by the local player's opponent.
-    TestQuickdrawPacket createPacket(int command, long hunterTime = 0, long bountyTime = 0) {
+    /** Creates a packet as if sent by the local player's opponent. */
+    TestDuelPacket createPacket(int command, long hunterTime = 0, long bountyTime = 0) {
         if (player->isHunter()) {
             // Opponent is the bounty: send bountyTime with isHunter=false
             return createTestPacket(getMatchId(), DEFAULT_BOUNTY_ID, command, bountyTime, false);
@@ -96,8 +95,9 @@ public:
         }
     }
 
-    void processPacket(const TestQuickdrawPacket& packet, 
-                      const uint8_t macAddr[6] = nullptr) {
+    /** Delivers a packet into the test wireless manager from macAddr (or defaultMac). */
+    void processPacket(const TestDuelPacket& packet,
+                       const uint8_t macAddr[6] = nullptr) {
         uint8_t defaultMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         const uint8_t* mac = macAddr ? macAddr : defaultMac;
         wirelessManager->deliverBytesTo(
@@ -317,7 +317,7 @@ public:
 };
 
 inline void packetParsingSuppressesRetransmit(PacketParsingTests* suite) {
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 180);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 0, 180);
     packet.seqId = 9;
     uint8_t macAddr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
@@ -334,7 +334,7 @@ inline void packetParsingSuppressesRetransmit(PacketParsingTests* suite) {
 }
 
 inline void packetParsingRejectsMalformedPacket(PacketParsingTests* suite) {
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 180);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 0, 180);
     packet.seqId = 4;
     uint8_t macAddr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
@@ -345,7 +345,7 @@ inline void packetParsingRejectsMalformedPacket(PacketParsingTests* suite) {
 }
 
 inline void listenForMatchResultsSetsOpponentTimeHunter(PacketParsingTests* suite) {
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 350);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 0, 350);
     suite->processPacket(packet);
 
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
@@ -356,7 +356,7 @@ inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suit
     // Switch to bounty perspective
     suite->player->setIsHunter(false);
 
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 200, 0);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 200, 0);
     suite->processPacket(packet);
 
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
@@ -364,7 +364,7 @@ inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suit
 }
 
 inline void listenForMatchResultsHandlesNeverPressed(PacketParsingTests* suite) {
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::NEVER_PRESSED, 0, 9999);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::NEVER_PRESSED, 0, 9999);
     suite->processPacket(packet);
 
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
@@ -374,8 +374,8 @@ inline void listenForMatchResultsHandlesNeverPressed(PacketParsingTests* suite) 
 inline void listenForMatchResultsIgnoresUnexpectedCommands(PacketParsingTests* suite) {
     static const char kMatchId[37] = "000000000000000000000000000000000000";
     uint8_t strangerMac[6] = {0x99, 0x99, 0x99, 0x99, 0x99, 0x99};
-    QuickdrawCommand cmd(strangerMac, QDCommand::SEND_MATCH_ID, kMatchId, "test", 0, true);
-    
+    DuelCommand cmd(strangerMac, DuelCmd::SEND_MATCH_ID, kMatchId, "test", 0, true);
+
     suite->matchManager->listenForMatchEvents(cmd);
     
     EXPECT_FALSE(suite->matchManager->getHasReceivedDrawResult());
@@ -431,7 +431,7 @@ inline void callbackChainButtonPressBroadcasts(CallbackChainTests* suite) {
     buttonCallback(suite->matchManager);
 
     ASSERT_GT(suite->wirelessManager->sentFrames.size(), sentBefore);
-    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, QDCommand::DRAW_RESULT);
+    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, DuelCmd::DRAW_RESULT);
 }
 
 // ============================================
@@ -487,7 +487,7 @@ inline void stateFlowDutPressesFirstWins(StateFlowIntegrationTests* suite) {
     DuelPushed pushedState(suite->ctx);
     pushedState.onStateMounted(&suite->device);
 
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 150, 300);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 150, 300);
     suite->processPacket(packet);
 
     pushedState.onStateLoop(&suite->device);
@@ -506,7 +506,7 @@ inline void stateFlowDutReceivesFirstLoses(StateFlowIntegrationTests* suite) {
     Duel duelState(suite->ctx);
     duelState.onStateMounted(&suite->device);
 
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 100);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 0, 100);
     suite->processPacket(packet);
 
     duelState.onStateLoop(&suite->device);
@@ -534,7 +534,7 @@ inline void stateFlowDutNeverPressesLoses(StateFlowIntegrationTests* suite) {
     duelState.onStateMounted(&suite->device);
 
     // Opponent pressed at 100ms
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 100);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 0, 100);
     suite->processPacket(packet);
 
     // DUT never presses in time - simulate pressing very late (after pity time)
@@ -558,7 +558,7 @@ inline void stateFlowOpponentNeverRespondsWins(StateFlowIntegrationTests* suite)
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
 
     // Opponent never pressed
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::NEVER_PRESSED, 150, 9999);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::NEVER_PRESSED, 150, 9999);
     suite->processPacket(packet);
 
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
@@ -576,7 +576,7 @@ inline void stateFlowThroughDuelResultToWin(StateFlowIntegrationTests* suite) {
     suite->fakeClock->advance(100);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
 
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 100, 200);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 100, 200);
     suite->processPacket(packet);
 
     DuelResult resultState(suite->ctx);
@@ -603,7 +603,7 @@ inline void stateFlowThroughDuelResultToLose(StateFlowIntegrationTests* suite) {
     suite->fakeClock->advance(300);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
 
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 300, 150);
+    TestDuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 300, 150);
     suite->processPacket(packet);
 
     DuelResult resultState(suite->ctx);

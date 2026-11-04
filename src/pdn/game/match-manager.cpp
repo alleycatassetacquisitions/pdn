@@ -1,7 +1,7 @@
 #include "game/match-manager.hpp"
 #include <ArduinoJson.h>
 #include "device/drivers/logger.hpp"
-#include "wireless/quickdraw-packet.hpp"
+#include "wireless/duel-packet.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
 #include <optional>
@@ -17,10 +17,10 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     : player(nullptr)
     , storage(nullptr)
     , resender(wirelessManager)
-    , duelChannel(wirelessManager, &resender, PktType::kQuickdrawCommand, nullptr) {
-    duelChannel.onReceive([this](const uint8_t* fromMac, const QuickdrawPacket& p) {
-        QuickdrawCommand command(fromMac, p.command, p.matchId, p.playerId,
-                                 p.playerDrawTime, p.isHunter);
+    , duelChannel(wirelessManager, &resender, PktType::kDuelCommand, nullptr) {
+    duelChannel.onReceive([this](const uint8_t* fromMac, const DuelPacket& p) {
+        DuelCommand command(fromMac, p.command, p.matchId, p.playerId,
+                            p.playerDrawTime, p.isHunter);
         listenForMatchEvents(command);
     });
 }
@@ -31,7 +31,7 @@ void MatchManager::sync() {
 
 void MatchManager::sendCommand(const uint8_t* mac, int command, const char* matchId,
                                long drawTime, bool isHunter) {
-    QuickdrawPacket packet{};
+    DuelPacket packet{};
     packet.command = command;
     packet.playerDrawTime = drawTime;
     packet.isHunter = isHunter;
@@ -101,7 +101,7 @@ void MatchManager::initializeMatch(uint8_t* opponentMac) {
     LOG_D(MATCH_MANAGER_TAG, "TIMING initializeMatch T=%lu", clock ? clock->milliseconds() : 0UL);
 
     primeMatch(IdGenerator::getInstance().generateId(), opponentMac, player->isHunter());
-    sendCommand(activeDuelState.opponentMac.data(), QDCommand::SEND_MATCH_ID,
+    sendCommand(activeDuelState.opponentMac.data(), DuelCmd::SEND_MATCH_ID,
                 activeDuelState.match->getMatchId(), 0, activeDuelState.localIsHunter);
 }
 
@@ -138,7 +138,7 @@ void MatchManager::receiveMatch(const char* matchId, const char* opponentId, boo
 
     activeDuelState.matchIsReady = true;
 
-    sendCommand(activeDuelState.opponentMac.data(), QDCommand::MATCH_ID_ACK,
+    sendCommand(activeDuelState.opponentMac.data(), DuelCmd::MATCH_ID_ACK,
                 activeDuelState.match->getMatchId(), 0, activeDuelState.localIsHunter);
 }
 
@@ -429,7 +429,7 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
                 MacToString(activeDuelState->opponentMac.data()));
 
         // Send the BOOSTED time in DRAW_RESULT so both sides agree on who won.
-        matchManager->sendCommand(activeDuelState->opponentMac.data(), QDCommand::DRAW_RESULT,
+        matchManager->sendCommand(activeDuelState->opponentMac.data(), DuelCmd::DRAW_RESULT,
                                   matchManager->getCurrentMatch()->getMatchId(),
                                   boostedTimeMs, activeDuelState->localIsHunter);
 
@@ -445,17 +445,17 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
     };
 }
 
-bool MatchManager::isFromActiveMatchOpponent(const QuickdrawCommand& command) const {
+bool MatchManager::isFromActiveMatchOpponent(const DuelCommand& command) const {
     if (!activeDuelState.match.has_value()) return false;
     if (memcmp(command.wifiMacAddr, activeDuelState.opponentMac.data(), 6) != 0) return false;
     if (strcmp(command.matchId, activeDuelState.match->getMatchId()) != 0) return false;
     return true;
 }
 
-void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
+void MatchManager::listenForMatchEvents(const DuelCommand& command) {
     LOG_I(MATCH_MANAGER_TAG, "Received command: %d", command.command);
 
-    if(command.command == QDCommand::SEND_MATCH_ID) {
+    if (command.command == DuelCmd::SEND_MATCH_ID) {
         // Gate on RDC peering — no active match exists yet, so the sender
         // must be authenticated via the cable-established direct peer.
         LOG_I(MATCH_MANAGER_TAG, "Received SEND_MATCH_ID command from opponent");
@@ -466,13 +466,13 @@ void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
         bool shootoutActive = shootoutManager_ && shootoutManager_->active();
         if(!shootoutActive && player->isHunter() == command.isHunter) {
             // Echo the sender's matchId/MAC: activeDuelState.match is still empty.
-            sendCommand(command.wifiMacAddr, QDCommand::MATCH_ROLE_MISMATCH,
+            sendCommand(command.wifiMacAddr, DuelCmd::MATCH_ROLE_MISMATCH,
                         command.matchId, 0, player->isHunter());
             return;
         } else {
             receiveMatch(command.matchId, command.playerId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr));
         }
-    } else if(command.command == QDCommand::MATCH_ID_ACK) {
+    } else if (command.command == DuelCmd::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
         duelChannel.cancel(activeDuelState.opponentMac.data());
@@ -484,12 +484,12 @@ void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
         auto* clock = SimpleTimer::getPlatformClock();
         LOG_D(MATCH_MANAGER_TAG, "TIMING matchAck-ready T=%lu", clock ? clock->milliseconds() : 0UL);
         activeDuelState.matchIsReady = true;
-    } else if(command.command == QDCommand::MATCH_ROLE_MISMATCH) {
+    } else if (command.command == DuelCmd::MATCH_ROLE_MISMATCH) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ROLE_MISMATCH command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
         clearCurrentMatch();
         return;
-    } else if(command.command == QDCommand::DRAW_RESULT || command.command == QDCommand::NEVER_PRESSED) {
+    } else if (command.command == DuelCmd::DRAW_RESULT || command.command == DuelCmd::NEVER_PRESSED) {
         LOG_I(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
 
@@ -501,7 +501,7 @@ void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
         setHunterDrawTime(opponentTime)
         : setBountyDrawTime(opponentTime);
 
-        if (command.command == QDCommand::NEVER_PRESSED) {
+        if (command.command == DuelCmd::NEVER_PRESSED) {
             activeDuelState.opponentNeverPressed = true;
         }
 
@@ -523,7 +523,7 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
     // so on-device "average reaction" should include pity times too.
     player->addReactionTime(pityTime);
 
-    sendCommand(activeDuelState.opponentMac.data(), QDCommand::NEVER_PRESSED,
+    sendCommand(activeDuelState.opponentMac.data(), DuelCmd::NEVER_PRESSED,
                 activeDuelState.match->getMatchId(), pityTime, activeDuelState.localIsHunter);
 }
 

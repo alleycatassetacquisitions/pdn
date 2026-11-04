@@ -14,7 +14,7 @@
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
-#include "wireless/quickdraw-packet.hpp"
+#include "wireless/duel-packet.hpp"
 #include "game/chain-duel-manager.hpp"
 #include <queue>
 #include <vector>
@@ -298,18 +298,18 @@ class QuickdrawRadioTap {
 public:
     /** Call after any wildcard sendData ON_CALL and before constructing MatchManager. */
     void attach(MockPeerComms* radio) {
-        ON_CALL(*radio, setPacketHandler(PktType::kQuickdrawCommand, testing::_, testing::_))
+        ON_CALL(*radio, setPacketHandler(PktType::kDuelCommand, testing::_, testing::_))
             .WillByDefault(testing::Invoke(
                 [this](PktType, PeerCommsInterface::PacketCallback callback, void* ctx) {
                     receiveHandler = callback;
                     receiveContext = ctx;
                 }));
-        ON_CALL(*radio, sendData(testing::_, PktType::kQuickdrawCommand, testing::_, testing::_))
+        ON_CALL(*radio, sendData(testing::_, PktType::kDuelCommand, testing::_, testing::_))
             .WillByDefault(testing::DoAll(
                 testing::Invoke([this](const uint8_t*, PktType, const uint8_t* data,
                                        const size_t len) {
-                    if (len != sizeof(QuickdrawPacket)) return;
-                    QuickdrawPacket p{};
+                    if (len != sizeof(DuelPacket)) return;
+                    DuelPacket p{};
                     memcpy(&p, data, sizeof(p));
                     sentFrames.push_back(p);
                 }),
@@ -317,12 +317,12 @@ public:
     }
 
     /** The exact frame this radio last sent, for the peer's tap to replay. */
-    const QuickdrawPacket* lastFrame() const {
+    const DuelPacket* lastFrame() const {
         return sentFrames.empty() ? nullptr : &sentFrames.back();
     }
 
     /** Delivers frame from senderMac into this tap's own receiveHandler. */
-    void deliverFrameFrom(const uint8_t* senderMac, const QuickdrawPacket* frame) {
+    void deliverFrameFrom(const uint8_t* senderMac, const DuelPacket* frame) {
         if (frame == nullptr) return;
         deliverBytesTo(senderMac, reinterpret_cast<const uint8_t*>(frame),
                        sizeof(*frame));
@@ -335,7 +335,7 @@ public:
         }
     }
 
-    std::vector<QuickdrawPacket> sentFrames;
+    std::vector<DuelPacket> sentFrames;
 
 private:
     PeerCommsInterface::PacketCallback receiveHandler = nullptr;

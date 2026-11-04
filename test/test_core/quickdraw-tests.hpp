@@ -191,7 +191,7 @@ inline void idleTransitionsToDuelCountdownWhenMatchIsReady(IdleStateTests* suite
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     const char* matchId = suite->matchManager->getCurrentMatch()->getMatchId();
-    QuickdrawCommand ack(dummyMac, QDCommand::MATCH_ID_ACK, matchId, "boun", 0, false);
+    DuelCommand ack(dummyMac, DuelCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
     suite->matchManager->listenForMatchEvents(ack);
 
     EXPECT_TRUE(suite->idleState->transitionToDuelCountdown());
@@ -598,24 +598,24 @@ inline void duelLaterCommandSupersedesEarlierRetries(DuelStateTests* suite) {
 
     auto countOf = [suite](int command) {
         size_t n = 0;
-        for (const QuickdrawPacket& p : suite->wirelessManager->sentFrames) {
+        for (const DuelPacket& p : suite->wirelessManager->sentFrames) {
             if (p.command == command) n++;
         }
         return n;
     };
 
-    ASSERT_EQ(countOf(QDCommand::SEND_MATCH_ID), 1u);
+    ASSERT_EQ(countOf(DuelCmd::SEND_MATCH_ID), 1u);
 
     suite->fakeClock->advance(200);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    ASSERT_EQ(countOf(QDCommand::DRAW_RESULT), 1u);
+    ASSERT_EQ(countOf(DuelCmd::DRAW_RESULT), 1u);
 
     for (int i = 0; i < 4; i++) {
         suite->fakeClock->advance(150);
         suite->matchManager->sync();
     }
-    EXPECT_EQ(countOf(QDCommand::SEND_MATCH_ID), 1u);
-    EXPECT_GT(countOf(QDCommand::DRAW_RESULT), 1u);
+    EXPECT_EQ(countOf(DuelCmd::SEND_MATCH_ID), 1u);
+    EXPECT_GT(countOf(DuelCmd::DRAW_RESULT), 1u);
 }
 
 inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
@@ -632,7 +632,7 @@ inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
 
     ASSERT_GT(suite->wirelessManager->sentFrames.size(), sentBefore);
-    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, QDCommand::DRAW_RESULT);
+    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, DuelCmd::DRAW_RESULT);
 }
 
 // Test: DuelPushed waits for opponent result (grace period)
@@ -911,7 +911,7 @@ inline void resultBountyWinsWithFasterTime(DuelResultTests* suite) {
     // Simulate hunter sending SEND_MATCH_ID; this bounty receives and creates the match.
     // Use the fixture's stubbed RDC peer MAC so the SEND_MATCH_ID gate accepts it.
     uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    QuickdrawCommand sendMatchCmd(hunterMac, QDCommand::SEND_MATCH_ID, "test-match-id-000000000000000", "5678", 0, true);
+    DuelCommand sendMatchCmd(hunterMac, DuelCmd::SEND_MATCH_ID, "test-match-id-000000000000000", "5678", 0, true);
     suite->matchManager->listenForMatchEvents(sendMatchCmd);
     suite->matchManager->setHunterDrawTime(250);
     suite->matchManager->setBountyDrawTime(150);
