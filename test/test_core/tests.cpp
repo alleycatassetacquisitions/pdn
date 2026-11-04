@@ -1578,6 +1578,9 @@ TEST_F(RDCHelloTests, pendingReportVoidedByBecomingHead) {
 TEST_F(RDCHelloTests, reportFromHeldHeadNotForwardedBack) {
     rdcReportFromHeldHeadNotForwardedBack(this);
 }
+TEST_F(RDCHelloTests, replayedDisconnectReportDoesNotEraseReannouncedSubtree) {
+    rdcReplayedDisconnectReportDoesNotEraseReannouncedSubtree(this);
+}
 
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();
