@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <functional>
 #include <optional>
 #include <vector>
 #include <cstdint>
@@ -63,11 +64,21 @@ public:
      */
     void resendConfirm();
 
+    using GameEventObserver = std::function<void(ChainGameEventType)>;
+
+    /**
+     * Registers the mounted supporter state's game-event observer, or clears it
+     * when nullptr is passed on dismount. Replays any unconsumed event from the
+     * current champion that arrived before the observer mounted.
+     */
+    void setGameEventObserver(GameEventObserver observer);
+
     /**
      * Supporter-side view of an inbound chain game event. A COUNTDOWN voids the
      * standing confirm: the champion wipes its roll call at that same moment, so
      * re-sending the old press would register a supporter for a round it has not
-     * yet answered.
+     * yet answered. Fans the event out to the mounted observer, or holds it if no
+     * observer is mounted yet.
      */
     void onChainGameEventReceived(uint8_t eventType);
 
@@ -161,7 +172,9 @@ private:
     size_t lastSupporterChainCount = 0;
     bool wasInLoop = false;
 
-    std::atomic<bool> confirmSent{false};
+    bool confirmSent = false;
+    GameEventObserver gameEventObserver;
+    std::optional<ChainGameEventType> pendingGameEvent;
 
     // Every press we have heard this round, member or not. Membership is applied
     // when the count is read, not here, because a confirm can beat the kChainJoin

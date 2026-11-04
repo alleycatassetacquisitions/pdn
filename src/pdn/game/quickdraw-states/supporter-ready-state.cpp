@@ -60,6 +60,7 @@ void SupporterReady::onStateMounted(PDN* pdn) {
     displayIsDirty = true;
     ledsAreDirty = true;
     lastResult = 0;
+    resultClearTimer.invalidate();
 
     auto onSupporterPress = [](void *ctx) {
         auto* self = static_cast<SupporterReady*>(ctx);
@@ -75,6 +76,12 @@ void SupporterReady::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
     cachedPDN = pdn;
+
+    if (chainDuelManager != nullptr) {
+        chainDuelManager->setGameEventObserver([this](ChainGameEventType eventType) {
+            onChainGameEventReceived(eventType);
+        });
+    }
 }
 
 void SupporterReady::onStateLoop(PDN* pdn) {
@@ -82,25 +89,12 @@ void SupporterReady::onStateLoop(PDN* pdn) {
         transitionToIdleFlag = true;
     }
 
-    // Detect lastResult transitions driven by the WiFi-task packet callback
-    // and update the timer here on the main task. SimpleTimer is not atomic;
-    // calling setTimer/invalidate from the packet callback would race with
-    // expired() reads below.
-    int currentResult = lastResult.load();
-    if (currentResult != lastProcessedResult_) {
-        if (currentResult != 0) {
-            resultClearTimer.setTimer(8000);
-        } else {
-            resultClearTimer.invalidate();
-        }
-        lastProcessedResult_ = currentResult;
-    }
-
     // Clear result + hasConfirmed 8s after WIN/LOSS. Leaving hasConfirmed
     // set would land pressed supporters on "Locked In" instead of "Ready".
     if (lastResult != 0 && resultClearTimer.expired()) {
         lastResult = 0;
         hasConfirmed = false;
+        resultClearTimer.invalidate();
         displayIsDirty = true;
         ledsAreDirty = true;
     }
@@ -136,9 +130,14 @@ void SupporterReady::onStateLoop(PDN* pdn) {
 
 void SupporterReady::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "SupporterReady dismounted");
+    if (chainDuelManager != nullptr) {
+        chainDuelManager->setGameEventObserver(nullptr);
+    }
     transitionToIdleFlag = false;
     buttonArmed = false;
     hasConfirmed = false;
+    lastResult = 0;
+    resultClearTimer.invalidate();
     cachedPDN = nullptr;
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
@@ -146,17 +145,13 @@ void SupporterReady::onStateDismounted(PDN* pdn) {
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
 }
 
-// Runs on the ESP-NOW WiFi task on hardware. Touch only atomic fields here;
-// onStateLoop (main task) observes lastResult transitions and manages the
-// non-atomic resultClearTimer.
-void SupporterReady::onChainGameEventReceived(uint8_t event_type, const uint8_t* senderMac) {
-    (void)senderMac;
-    ChainGameEventType et = static_cast<ChainGameEventType>(event_type);
-    switch (et) {
+void SupporterReady::onChainGameEventReceived(ChainGameEventType eventType) {
+    switch (eventType) {
         case ChainGameEventType::COUNTDOWN:
             buttonArmed = true;
             hasConfirmed = false;
             lastResult = 0;
+            resultClearTimer.invalidate();
             displayIsDirty = true;
             ledsAreDirty = true;
             break;
@@ -168,12 +163,14 @@ void SupporterReady::onChainGameEventReceived(uint8_t event_type, const uint8_t*
         case ChainGameEventType::WIN:
             buttonArmed = false;
             lastResult = 1;
+            resultClearTimer.setTimer(RESULT_DISPLAY_MS);
             displayIsDirty = true;
             ledsAreDirty = true;
             break;
         case ChainGameEventType::LOSS:
             buttonArmed = false;
             lastResult = -1;
+            resultClearTimer.setTimer(RESULT_DISPLAY_MS);
             displayIsDirty = true;
             ledsAreDirty = true;
             break;

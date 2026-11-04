@@ -1,5 +1,4 @@
 #include "game/game-session.hpp"
-#include "state/state-machine.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/logger.hpp"
 #include <array>
@@ -97,15 +96,6 @@ GameContext GameSession::getContext() {
     return context;
 }
 
-SupporterReady* GameSession::getMountedSupporterReady() {
-    if (pdn == nullptr) return nullptr;
-    StateMachine* activeApp = pdn->getActiveApp();
-    if (activeApp == nullptr) return nullptr;
-    State* current = activeApp->getCurrentState();
-    if (current == nullptr || current->getStateId() != SUPPORTER_READY) return nullptr;
-    return static_cast<SupporterReady*>(current);
-}
-
 void GameSession::sync() {
     if (matchManager) matchManager->sync();
 
@@ -162,17 +152,10 @@ void GameSession::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* 
     // champion it names is the only thing that says whether it is ours.
     if (!chainDuelManager->isEventFromOwnChampion(payload->championMac)) return;
 
-    // Ahead of the state dispatch and independent of it: a COUNTDOWN wipes the
-    // champion's roll call whether or not this device is watching for it, and a
-    // confirm still held here would then re-register a press for a round the
-    // supporter has not answered.
+    // A COUNTDOWN wipes the champion's roll call whether or not this device is
+    // watching for it, and the manager fans the event out to any mounted
+    // supporter observer (or holds it until one mounts).
     chainDuelManager->onChainGameEventReceived(payload->event_type);
-
-    // Out-of-state events dropped silently; champion's retry machine bounds traffic cost.
-    SupporterReady* supporterReady = getMountedSupporterReady();
-    if (supporterReady != nullptr) {
-        supporterReady->onChainGameEventReceived(payload->event_type, fromMac);
-    }
 
     // ACK regardless of whether we were in SupporterReady. Not ACKing after
     // leaving the state would let the champion keep retrying a WIN/LOSS we

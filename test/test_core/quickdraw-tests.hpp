@@ -1,7 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <memory>
+#include <string>
+#include <vector>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "game/match-manager.hpp"
@@ -1672,43 +1675,237 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
     delete session;
 }
 
-// The event's other consumer: the mounted SupporterReady, which the session finds
-// through the device instead of being handed a pointer at mount. A lookup that
-// misses arms no supporter, so the champion duels without their boost.
-inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* suite) {
-    suite->player->setIsHunter(true);
-    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+// Stands a supporter up under a champion and hands back the hub holding it, so a
+// test can drive game events at a live SupporterReady.
+struct MountedSupporter {
+    GameSession* session = nullptr;
+    HubApp* hub = nullptr;
+    ChainDuelManager* chainDuelManager = nullptr;
 
+    /**
+     * The hub's states hold only non-owning pointers into the session and null
+     * them without dereferencing, so either order frees safely.
+     */
+    ~MountedSupporter() {
+        delete hub;
+        delete session;
+    }
+};
+
+inline void becomeSupporterOf(GameSessionLifecycleTests* suite,
+                              const uint8_t* champion,
+                              MountedSupporter& out) {
+    suite->player->setIsHunter(true);
     FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
     rdc.setPortStatus(SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
     rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
-    GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
-    ChainDuelManager* chainDuelManager = session->getContext().chainDuelManager;
-    chainDuelManager->onRoleAnnounceReceived(champion, champion);
-    ASSERT_TRUE(chainDuelManager->isSupporter());
+    out.session = new GameSession(suite->player, &suite->device, nullptr);
+    out.chainDuelManager = out.session->getContext().chainDuelManager;
+    out.chainDuelManager->onRoleAnnounceReceived(champion, champion);
+    out.hub = new HubApp(out.session->getContext());
+}
 
-    HubApp* hub = new HubApp(session->getContext());
+inline void mountSupporterReady(GameSessionLifecycleTests* suite, MountedSupporter& sup) {
     AppConfig apps;
-    apps[StateId(HUB_APP_ID)] = hub;
+    apps[StateId(HUB_APP_ID)] = sup.hub;
     suite->device.loadAppConfig(apps, StateId(HUB_APP_ID));
     suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(SUPPORTER_READY));
-    ASSERT_EQ(suite->device.getActiveApp()->getCurrentState()->getStateId(), SUPPORTER_READY);
+}
 
-    ChainGameEventPayload countdown{};
-    countdown.event_type = static_cast<uint8_t>(ChainGameEventType::COUNTDOWN);
-    countdown.seqId = 0;
-    memcpy(countdown.championMac, champion, 6);
+inline void deliverGameEvent(GameSessionLifecycleTests* suite,
+                             const uint8_t* champion,
+                             ChainGameEventType type) {
+    ChainGameEventPayload event{};
+    event.event_type = static_cast<uint8_t>(type);
+    event.seqId = 0;
+    memcpy(event.championMac, champion, 6);
     ASSERT_NE(suite->chainGameEventHandler, nullptr);
-    suite->chainGameEventHandler(champion, reinterpret_cast<const uint8_t*>(&countdown),
-                                 sizeof(countdown), suite->chainGameEventCtx);
+    suite->chainGameEventHandler(champion, reinterpret_cast<const uint8_t*>(&event),
+                                 sizeof(event), suite->chainGameEventCtx);
+}
 
-    SupporterReady* supporterReady =
-        static_cast<SupporterReady*>(suite->device.getActiveApp()->getCurrentState());
+inline SupporterReady* mountedSupporterReady(GameSessionLifecycleTests* suite) {
+    State* current = suite->device.getActiveApp()->getCurrentState();
+    if (current == nullptr || current->getStateId() != SUPPORTER_READY) return nullptr;
+    return static_cast<SupporterReady*>(current);
+}
+
+// A COUNTDOWN that lands while the supporter state is mounted arms the press via
+// the observer registered on ChainDuelManager.
+inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* suite) {
+    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, champion, sup);
+    ASSERT_TRUE(sup.chainDuelManager->isSupporter());
+    mountSupporterReady(suite, sup);
+
+    SupporterReady* supporterReady = mountedSupporterReady(suite);
+    ASSERT_NE(supporterReady, nullptr);
+    ASSERT_FALSE(supporterReady->buttonArmed);
+
+    deliverGameEvent(suite, champion, ChainGameEventType::COUNTDOWN);
+
     EXPECT_TRUE(supporterReady->buttonArmed);
+}
 
-    delete hub;
-    delete session;
+// All four chain game event types (COUNTDOWN, DRAW, WIN, LOSS) reach the mounted
+// SupporterReady through the observer registered on ChainDuelManager.
+inline void gameSessionSupporterReceivesAllEventTypesViaObserver(GameSessionLifecycleTests* suite) {
+    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, champion, sup);
+    mountSupporterReady(suite, sup);
+
+    SupporterReady* supporterReady = mountedSupporterReady(suite);
+    ASSERT_NE(supporterReady, nullptr);
+
+    deliverGameEvent(suite, champion, ChainGameEventType::COUNTDOWN);
+    EXPECT_TRUE(supporterReady->buttonArmed);
+    EXPECT_EQ(supporterReady->lastResult, 0);
+
+    deliverGameEvent(suite, champion, ChainGameEventType::DRAW);
+    EXPECT_FALSE(supporterReady->buttonArmed);
+    EXPECT_EQ(supporterReady->lastResult, 0);
+
+    deliverGameEvent(suite, champion, ChainGameEventType::WIN);
+    EXPECT_FALSE(supporterReady->buttonArmed);
+    EXPECT_EQ(supporterReady->lastResult, 1);
+
+    deliverGameEvent(suite, champion, ChainGameEventType::LOSS);
+    EXPECT_FALSE(supporterReady->buttonArmed);
+    EXPECT_EQ(supporterReady->lastResult, -1);
+}
+
+// Two events arriving in the same radio drain (e.g. DRAW then WIN) are delivered
+// per-event to the observer rather than collapsing into a single polled slot.
+inline void gameSessionMultipleEventsInSingleDrainDoNotCollapse(GameSessionLifecycleTests* suite) {
+    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, champion, sup);
+
+    std::vector<ChainGameEventType> observed;
+    sup.chainDuelManager->setGameEventObserver([&observed](ChainGameEventType eventType) {
+        observed.push_back(eventType);
+    });
+    deliverGameEvent(suite, champion, ChainGameEventType::DRAW);
+    deliverGameEvent(suite, champion, ChainGameEventType::WIN);
+    ASSERT_EQ(observed.size(), 2u);
+    EXPECT_EQ(observed[0], ChainGameEventType::DRAW);
+    EXPECT_EQ(observed[1], ChainGameEventType::WIN);
+    sup.chainDuelManager->setGameEventObserver(nullptr);
+
+    mountSupporterReady(suite, sup);
+    SupporterReady* supporterReady = mountedSupporterReady(suite);
+    ASSERT_NE(supporterReady, nullptr);
+
+    deliverGameEvent(suite, champion, ChainGameEventType::COUNTDOWN);
+    ASSERT_TRUE(supporterReady->buttonArmed);
+
+    // DRAW then WIN in one radio drain before any loop tick.
+    deliverGameEvent(suite, champion, ChainGameEventType::DRAW);
+    deliverGameEvent(suite, champion, ChainGameEventType::WIN);
+
+    EXPECT_FALSE(supporterReady->buttonArmed);
+    EXPECT_EQ(supporterReady->lastResult, 1);
+    EXPECT_TRUE(supporterReady->resultClearTimer.isRunning());
+}
+
+// A COUNTDOWN that lands one tick before SupporterReady mounts is replayed when
+// the state registers its observer in onStateMounted, so the supporter still arms.
+inline void gameSessionCountdownBeforeMountStillArms(GameSessionLifecycleTests* suite) {
+    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, champion, sup);
+
+    deliverGameEvent(suite, champion, ChainGameEventType::COUNTDOWN);
+    mountSupporterReady(suite, sup);
+
+    SupporterReady* supporterReady = mountedSupporterReady(suite);
+    ASSERT_NE(supporterReady, nullptr);
+    EXPECT_TRUE(supporterReady->buttonArmed);
+}
+
+// The result screen expires back to Ready after RESULT_DISPLAY_MS so a supporter
+// who pressed is not stranded on "Locked In" once the round is over.
+inline void gameSessionResultScreenExpiresBackToReady(GameSessionLifecycleTests* suite) {
+    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, champion, sup);
+    mountSupporterReady(suite, sup);
+
+    deliverGameEvent(suite, champion, ChainGameEventType::COUNTDOWN);
+    deliverGameEvent(suite, champion, ChainGameEventType::WIN);
+
+    std::vector<std::string> drawn;
+    ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))
+        .WillByDefault([&drawn, suite](const char* text, int, int) {
+            drawn.push_back(text);
+            return suite->device.mockDisplay;
+        });
+
+    suite->device.loop();
+    EXPECT_NE(std::find(drawn.begin(), drawn.end(), "Won"), drawn.end());
+
+    drawn.clear();
+    suite->fakeClock->advance(8001);
+    suite->device.loop();
+    EXPECT_EQ(std::find(drawn.begin(), drawn.end(), "Won"), drawn.end());
+    EXPECT_NE(std::find(drawn.begin(), drawn.end(), "Ready"), drawn.end());
+}
+
+// Changing or clearing championMac invalidates any unconsumed pre-mount event so
+// a supporter mounting under a new champion does not inherit the old round.
+inline void gameSessionChampionChangeClearsPreMountEvent(GameSessionLifecycleTests* suite) {
+    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, champion, sup);
+
+    deliverGameEvent(suite, champion, ChainGameEventType::COUNTDOWN);
+
+    uint8_t secondChampion[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+    sup.chainDuelManager->onRoleAnnounceReceived(champion, secondChampion);
+
+    mountSupporterReady(suite, sup);
+    SupporterReady* supporterReady = mountedSupporterReady(suite);
+    ASSERT_NE(supporterReady, nullptr);
+    EXPECT_FALSE(supporterReady->buttonArmed);
+
+    // Dismount back to Idle, receive a pre-mount COUNTDOWN from secondChampion,
+    // then clear championMac with a zero-MAC announce and remount.
+    suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(IDLE));
+    deliverGameEvent(suite, secondChampion, ChainGameEventType::COUNTDOWN);
+    uint8_t zeroChampion[6] = {0, 0, 0, 0, 0, 0};
+    sup.chainDuelManager->onRoleAnnounceReceived(champion, zeroChampion);
+    sup.chainDuelManager->onRoleAnnounceReceived(champion, secondChampion);
+
+    suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(SUPPORTER_READY));
+    supporterReady = mountedSupporterReady(suite);
+    ASSERT_NE(supporterReady, nullptr);
+    EXPECT_FALSE(supporterReady->buttonArmed);
+}
+
+// Dismounting SupporterReady clears the observer on ChainDuelManager so events
+// arriving after dismount do not mutate the dismounted state.
+inline void gameSessionDismountClearsGameEventObserver(GameSessionLifecycleTests* suite) {
+    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    MountedSupporter sup;
+    becomeSupporterOf(suite, champion, sup);
+    mountSupporterReady(suite, sup);
+
+    SupporterReady* supporterReady = mountedSupporterReady(suite);
+    ASSERT_NE(supporterReady, nullptr);
+
+    suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(IDLE));
+    ASSERT_EQ(suite->device.getActiveApp()->getCurrentState()->getStateId(), IDLE);
+    ASSERT_FALSE(supporterReady->buttonArmed);
+    ASSERT_EQ(supporterReady->lastResult, 0);
+
+    deliverGameEvent(suite, champion, ChainGameEventType::COUNTDOWN);
+    deliverGameEvent(suite, champion, ChainGameEventType::WIN);
+
+    EXPECT_FALSE(supporterReady->buttonArmed);
+    EXPECT_EQ(supporterReady->lastResult, 0);
 }
