@@ -271,55 +271,97 @@ public:
 
 // Test: Button masher penalty increments on button press
 inline void countdownButtonMasherPenaltyIncrementsOnButtonPress(DuelCountdownTests* suite) {
-    // Capture the button callback when it's set
-    parameterizedCallbackFunction capturedCallback = nullptr;
-    void* capturedCtx = nullptr;
-    
-    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
-        .WillOnce(DoAll(
-            SaveArg<0>(&capturedCallback),
-            SaveArg<1>(&capturedCtx)
-        ));
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockPrimaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
     suite->countdownState->onStateMounted(&suite->device);
-    
-    // Invoke the button callback (simulating early button press)
-    ASSERT_NE(capturedCallback, nullptr);
-    capturedCallback(capturedCtx);
-    
-    // The button masher count should be tracked in the match manager
-    // We can verify this by checking that a subsequent duel button press has penalty applied
-    // For now, we verify the callback was invokable
-    SUCCEED();
+
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+    EXPECT_EQ(suite->matchManager->getButtonMasherCount(), 1);
 }
 
-// Test: Multiple early presses accumulate penalty  
+// Test: Multiple early presses accumulate penalty
 inline void countdownMultipleEarlyPressesAccumulatePenalty(DuelCountdownTests* suite) {
-    parameterizedCallbackFunction capturedCallback = nullptr;
-    void* capturedCtx = nullptr;
-    
-    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
-        .WillOnce(DoAll(
-            SaveArg<0>(&capturedCallback),
-            SaveArg<1>(&capturedCtx)
-        ));
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockPrimaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
     suite->countdownState->onStateMounted(&suite->device);
-    
-    ASSERT_NE(capturedCallback, nullptr);
-    
-    // Simulate 3 early button presses
-    capturedCallback(capturedCtx);
-    capturedCallback(capturedCtx);
-    capturedCallback(capturedCtx);
-    
-    // The penalty should now be 3 * 75ms = 225ms
-    // This will be verified when the duel button is pressed
-    SUCCEED();
+
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::PRESS);
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+
+    EXPECT_EQ(suite->matchManager->getButtonMasherCount(), 3);
+}
+
+// Test: Countdown resets stale masher count on mount and binds PRESS on both buttons
+inline void countdownBindsMasherOnPressAndResetsStaleCount(DuelCountdownTests* suite) {
+    suite->matchManager->getButtonMasher()(suite->matchManager);
+    suite->matchManager->getButtonMasher()(suite->matchManager);
+    ASSERT_EQ(suite->matchManager->getButtonMasherCount(), 2);
+
+    EXPECT_CALL(*suite->device.mockPrimaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    suite->countdownState->onStateMounted(&suite->device);
+    EXPECT_EQ(suite->matchManager->getButtonMasherCount(), 0);
+
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::CLICK);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::CLICK);
+    EXPECT_EQ(suite->matchManager->getButtonMasherCount(), 0);
+
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::PRESS);
+    EXPECT_EQ(suite->matchManager->getButtonMasherCount(), 2);
+}
+
+// Test: Dismounting DuelCountdown detaches the masher so later presses in Duel or Idle do not increment it
+inline void countdownDismountDetachesMasher(DuelCountdownTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    suite->countdownState->onStateMounted(&suite->device);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::PRESS);
+    ASSERT_EQ(suite->matchManager->getButtonMasherCount(), 1);
+
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
+    suite->countdownState->onStateDismounted(&suite->device);
+
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::PRESS);
+    EXPECT_EQ(suite->matchManager->getButtonMasherCount(), 1);
+
+    Idle idleState(suite->ctx);
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, ButtonInteraction::CLICK))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, ButtonInteraction::CLICK))
+        .Times(1);
+    idleState.onStateMounted(&suite->device);
+
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::PRESS);
+    EXPECT_EQ(suite->matchManager->getButtonMasherCount(), 1);
 }
 
 // Test: Countdown progresses through stages
@@ -547,22 +589,23 @@ inline void duelButtonPressCalculatesReactionTime(DuelStateTests* suite) {
 // Test: Button press applies button masher penalty
 inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
-    
+
     // First, simulate button mashing during countdown
     DuelCountdown countdownState(suite->ctx);
 
-    parameterizedCallbackFunction masherCallback = nullptr;
-    void* masherCtx = nullptr;
-    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
-        .WillOnce(DoAll(SaveArg<0>(&masherCallback), SaveArg<1>(&masherCtx)));
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
-    
+    EXPECT_CALL(*suite->device.mockPrimaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+
     countdownState.onStateMounted(&suite->device);
-    
-    // Simulate 2 early presses during countdown
-    ASSERT_NE(masherCallback, nullptr);
-    masherCallback(masherCtx);
-    masherCallback(masherCtx);
+
+    // Simulate 2 early presses during countdown (one on each button)
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::PRESS);
+    ASSERT_EQ(suite->matchManager->getButtonMasherCount(), 2);
 
     // Cycle through THREE → TWO → ONE → BATTLE (3 × 2001ms) so the battle edge
     // holds and the match survives the dismount into the duel.
@@ -578,16 +621,21 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
 
     Duel duelState(suite->ctx);
 
-    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockPrimaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
     duelState.onStateMounted(&suite->device);
-    
+
     // Advance 200ms
     suite->fakeClock->advance(200);
-    
-    // Trigger button press
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    
+
+    // Trigger draw button press on the down-edge; must not add another masher penalty
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::PRESS);
+    EXPECT_EQ(suite->matchManager->getButtonMasherCount(), 2);
+
     // Reaction time should be 200ms + (2 * 75ms penalty) = 350ms
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 350);
@@ -635,6 +683,37 @@ inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
     EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, QDCommand::DRAW_RESULT);
 }
 
+// Test: Duel scores on button down-edge (PRESS) and ignores CLICK
+inline void duelScoresOnButtonPressAndIgnoresClick(DuelStateTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    Duel duelState(suite->ctx);
+    duelState.onStateMounted(&suite->device);
+
+    suite->fakeClock->advance(150);
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::CLICK);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::CLICK);
+    duelState.onStateLoop(&suite->device);
+    EXPECT_FALSE(suite->matchManager->getHasPressedButton());
+    EXPECT_FALSE(duelState.transitionToDuelPushed());
+
+    suite->fakeClock->advance(50);
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+    duelState.onStateLoop(&suite->device);
+
+    EXPECT_TRUE(suite->matchManager->getHasPressedButton());
+    EXPECT_TRUE(duelState.transitionToDuelPushed());
+    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 200u);
+    EXPECT_EQ(suite->matchManager->getButtonMasherCount(), 0);
+}
+
 // Test: DuelPushed waits for opponent result (grace period)
 inline void duelPushedWaitsForOpponentResult(DuelStateTests* suite) {
     DuelPushed pushedState(suite->ctx);
@@ -646,11 +725,16 @@ inline void duelPushedWaitsForOpponentResult(DuelStateTests* suite) {
     
     // Should not transition immediately
     EXPECT_FALSE(pushedState.transitionToDuelResult());
-    
-    // Advance less than grace period (900ms)
+
+    // Advance less than grace period (1700ms)
     suite->fakeClock->advance(500);
     pushedState.onStateLoop(&suite->device);
-    
+    EXPECT_FALSE(pushedState.transitionToDuelResult());
+
+    // Past the opponent's 750ms press grace + first retry (where the old 900ms
+    // window used to expire prematurely), DuelPushed must still be waiting.
+    suite->fakeClock->advance(500);
+    pushedState.onStateLoop(&suite->device);
     EXPECT_FALSE(pushedState.transitionToDuelResult());
 }
 
@@ -718,18 +802,26 @@ inline void duelButtonPressDuringGracePeriodTransitions(DuelStateTests* suite) {
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
 
+    EXPECT_CALL(*suite->device.mockPrimaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton,
+                setButtonPress(_, suite->matchManager, ButtonInteraction::PRESS))
+        .Times(1);
+
     DuelReceivedResult receivedState(suite->ctx);
     receivedState.onStateMounted(&suite->device);
-    
-    // Advance some time
+
     suite->fakeClock->advance(300);
-    
-    // Simulate button press
-    suite->matchManager->setHunterDrawTime(300);
-    suite->matchManager->setReceivedButtonPush();
-    
+
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::CLICK);
     receivedState.onStateLoop(&suite->device);
-    
+    EXPECT_FALSE(suite->matchManager->getHasPressedButton());
+    EXPECT_FALSE(receivedState.transitionToDuelResult());
+
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+    receivedState.onStateLoop(&suite->device);
+
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
     EXPECT_TRUE(receivedState.transitionToDuelResult());
 }
@@ -768,11 +860,16 @@ inline void duelPushedGracePeriodExpiresTransitions(DuelStateTests* suite) {
 
     DuelPushed pushedState(suite->ctx);
     pushedState.onStateMounted(&suite->device);
-    
-    // Advance past grace period (900ms)
+
+    // Still inside the 1700ms grace period after 1000ms
     suite->fakeClock->advance(1000);
     pushedState.onStateLoop(&suite->device);
-    
+    EXPECT_FALSE(pushedState.transitionToDuelResult());
+
+    // Advance past the 1700ms grace period
+    suite->fakeClock->advance(800);
+    pushedState.onStateLoop(&suite->device);
+
     EXPECT_TRUE(pushedState.transitionToDuelResult());
 }
 

@@ -442,8 +442,16 @@ inline void matchManagerClearCurrentMatchResetsMasherCount(MatchManager* mm, Pla
     masherCallback(mm);
     masherCallback(mm);
     masherCallback(mm);
+    EXPECT_EQ(mm->getButtonMasherCount(), 3);
+
+    mm->clearButtonMasherCount();
+    EXPECT_EQ(mm->getButtonMasherCount(), 0);
+
+    masherCallback(mm);
+    EXPECT_EQ(mm->getButtonMasherCount(), 1);
 
     mm->clearCurrentMatch();
+    EXPECT_EQ(mm->getButtonMasherCount(), 0);
 
     mm->initializeMatch(dummyMac);
 

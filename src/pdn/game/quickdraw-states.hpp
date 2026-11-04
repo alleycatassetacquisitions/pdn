@@ -293,7 +293,10 @@ private:
     Player* player;
     MatchManager* matchManager;
     SimpleTimer gracePeriodTimer;
-    const int DUEL_RESULT_GRACE_PERIOD = 900;
+    // Covers the opponent's 750ms BUTTON_PUSH_GRACE_PERIOD in DuelReceivedResult,
+    // a 700ms reliable-send retry budget for their NEVER_PRESSED, and 250ms of
+    // entry/schedule margin so our wait does not expire before their forfeit arrives.
+    static constexpr int DUEL_RESULT_GRACE_PERIOD = 1700;
 };
 
 class DuelReceivedResult : public ConnectState<PDN> {

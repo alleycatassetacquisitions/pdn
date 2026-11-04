@@ -33,9 +33,9 @@ void Duel::onStateMounted(PDN* pdn) {
 
     LOG_I(DUEL_TAG, "Setting up button handlers");
 
-    auto duelButtonPush = matchManager->getDuelButtonPush();
-    pdn->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
-    pdn->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+    parameterizedCallbackFunction duelButtonPush = matchManager->getDuelButtonPush();
+    pdn->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::PRESS);
+    pdn->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::PRESS);
 
     duelTimer.setTimer(DUEL_TIMEOUT);
 

@@ -1040,6 +1040,14 @@ TEST_F(DuelCountdownTests, multipleEarlyPressesAccumulatePenalty) {
     countdownMultipleEarlyPressesAccumulatePenalty(this);
 }
 
+TEST_F(DuelCountdownTests, bindsMasherOnPressAndResetsStaleCount) {
+    countdownBindsMasherOnPressAndResetsStaleCount(this);
+}
+
+TEST_F(DuelCountdownTests, dismountDetachesMasher) {
+    countdownDismountDetachesMasher(this);
+}
+
 TEST_F(DuelCountdownTests, progressesThroughStages) {
     countdownProgressesThroughStages(this);
 }
@@ -1061,6 +1069,10 @@ TEST_F(DuelStateTests, shootoutTimeoutForfeitsTheBoutHunter) {
 }
 
 // Scenario 1: DUT presses button first
+TEST_F(DuelStateTests, scoresOnButtonPressAndIgnoresClick) {
+    duelScoresOnButtonPressAndIgnoresClick(this);
+}
+
 TEST_F(DuelStateTests, buttonPressTransitionsToDuelPushed) {
     duelButtonPressTransitionsToDuelPushed(this);
 }
