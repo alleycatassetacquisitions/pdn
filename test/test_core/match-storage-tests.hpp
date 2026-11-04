@@ -10,7 +10,10 @@
 #include "game/node-network/match-storage.hpp"
 #include "uuid-bytes-tests.hpp"
 
-/** In-memory StorageInterface that keeps strings byte-exact and records which namespaces were used. */
+/**
+ * In-memory StorageInterface that records which namespaces were used. write() truncates at the
+ * first 0x00 like NVS strings do; writeBlob() keeps bytes exact.
+ */
 class InMemoryStorage : public StorageInterface {
 public:
     size_t write(const std::string& ns, const std::string& key, const std::string& value) override {
@@ -18,8 +21,22 @@ public:
         if (failWrites) {
             return 0;
         }
-        strings[ns + "/" + key] = value;
+        strings[ns + "/" + key] = value.substr(0, value.find('\0'));
         return value.size();
+    }
+
+    size_t writeBlob(const std::string& ns, const std::string& key, const std::string& data) override {
+        usedNamespaces.insert(ns);
+        if (failWrites) {
+            return 0;
+        }
+        blobs[ns + "/" + key] = data;
+        return data.size();
+    }
+
+    std::string readBlob(const std::string& ns, const std::string& key) override {
+        std::map<std::string, std::string>::const_iterator found = blobs.find(ns + "/" + key);
+        return found == blobs.end() ? std::string() : found->second;
     }
 
     std::string read(const std::string& ns, const std::string& key,
@@ -30,7 +47,7 @@ public:
 
     bool remove(const std::string& ns, const std::string& key) override {
         usedNamespaces.insert(ns);
-        return strings.erase(ns + "/" + key) > 0;
+        return strings.erase(ns + "/" + key) + blobs.erase(ns + "/" + key) > 0;
     }
 
     bool clear(const std::string& ns) override {
@@ -38,6 +55,9 @@ public:
         const std::string prefix = ns + "/";
         for (std::map<std::string, std::string>::iterator it = strings.begin(); it != strings.end();) {
             it = it->first.rfind(prefix, 0) == 0 ? strings.erase(it) : std::next(it);
+        }
+        for (std::map<std::string, std::string>::iterator it = blobs.begin(); it != blobs.end();) {
+            it = it->first.rfind(prefix, 0) == 0 ? blobs.erase(it) : std::next(it);
         }
         for (std::map<std::string, uint8_t>::iterator it = bytes.begin(); it != bytes.end();) {
             it = it->first.rfind(prefix, 0) == 0 ? bytes.erase(it) : std::next(it);
@@ -64,6 +84,7 @@ public:
     bool failWrites = false;
     std::set<std::string> usedNamespaces;
     std::map<std::string, std::string> strings;
+    std::map<std::string, std::string> blobs;
     std::map<std::string, uint8_t> bytes;
 };
 
@@ -208,8 +229,8 @@ inline void matchStorageReadRejectsTruncatedRecord() {
     InMemoryStorage backing;
     MatchStorage storage(&backing);
     ASSERT_TRUE(storage.append(makeStorageTestRecord(1)));
-    for (std::map<std::string, std::string>::iterator it = backing.strings.begin();
-         it != backing.strings.end(); ++it) {
+    for (std::map<std::string, std::string>::iterator it = backing.blobs.begin();
+         it != backing.blobs.end(); ++it) {
         if (it->second.size() > 8) {
             it->second.resize(8);
         }
@@ -226,5 +247,6 @@ inline void matchStorageUsesOwnNamespace() {
     storage.clear();
 
     EXPECT_EQ(backing.usedNamespaces.count("matches"), 0u);
+    EXPECT_EQ(backing.usedNamespaces.count(PENDING_MATCHES_PREFS_NAMESPACE), 1u);
     EXPECT_EQ(backing.usedNamespaces.size(), 1u);
 }

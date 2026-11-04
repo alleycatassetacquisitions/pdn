@@ -5,7 +5,6 @@
 #include <string>
 
 namespace {
-const char* const STORAGE_NAMESPACE = "evtmatches";
 const char* const COUNT_KEY = "count";
 constexpr size_t ENCODED_RECORD_SIZE = 6 * UUIDBytes::SIZE + 3 * sizeof(uint64_t);
 
@@ -57,7 +56,7 @@ MatchStorage::MatchStorage(StorageInterface* storage)
 }
 
 size_t MatchStorage::getCount() const {
-    return storage->readUChar(STORAGE_NAMESPACE, COUNT_KEY, 0);
+    return storage->readUChar(PENDING_MATCHES_PREFS_NAMESPACE, COUNT_KEY, 0);
 }
 
 bool MatchStorage::append(const QuickdrawMatchRecord& record) {
@@ -67,10 +66,10 @@ bool MatchStorage::append(const QuickdrawMatchRecord& record) {
     }
 
     const std::string encoded = encodeRecord(record);
-    if (storage->write(STORAGE_NAMESPACE, recordKey(count), encoded) != encoded.size()) {
+    if (storage->writeBlob(PENDING_MATCHES_PREFS_NAMESPACE, recordKey(count), encoded) != encoded.size()) {
         return false;
     }
-    return storage->writeUChar(STORAGE_NAMESPACE, COUNT_KEY, static_cast<uint8_t>(count + 1)) == 1;
+    return storage->writeUChar(PENDING_MATCHES_PREFS_NAMESPACE, COUNT_KEY, static_cast<uint8_t>(count + 1)) == 1;
 }
 
 bool MatchStorage::readAt(size_t index, QuickdrawMatchRecord& record) const {
@@ -78,7 +77,7 @@ bool MatchStorage::readAt(size_t index, QuickdrawMatchRecord& record) const {
         return false;
     }
 
-    const std::string encoded = storage->read(STORAGE_NAMESPACE, recordKey(index), "");
+    const std::string encoded = storage->readBlob(PENDING_MATCHES_PREFS_NAMESPACE, recordKey(index));
     if (encoded.size() != ENCODED_RECORD_SIZE) {
         return false;
     }
@@ -99,5 +98,5 @@ bool MatchStorage::readAt(size_t index, QuickdrawMatchRecord& record) const {
 }
 
 void MatchStorage::clear() {
-    storage->clear(STORAGE_NAMESPACE);
+    storage->clear(PENDING_MATCHES_PREFS_NAMESPACE);
 }

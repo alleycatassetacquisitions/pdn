@@ -7,7 +7,7 @@
 
 struct HandshakePacket {
     int sendingJack;
-    int receicingJack;
+    int receivingJack;
     int deviceType;
     int command;
 } __attribute__((packed));
@@ -18,8 +18,9 @@ HandshakeWirelessManager::~HandshakeWirelessManager() {
     wirelessManager = nullptr;
 }
 
-void HandshakeWirelessManager::initialize(WirelessManager* wirelessManager) {
+void HandshakeWirelessManager::initialize(WirelessManager* wirelessManager, DeviceType deviceType) {
     this->wirelessManager = wirelessManager;
+    this->deviceType = deviceType;
 }
 
 void HandshakeWirelessManager::setPacketReceivedCallback(const std::function<void(HandshakeCommand)>& callback, SerialIdentifier jack) {
@@ -69,8 +70,9 @@ int HandshakeWirelessManager::sendPacket(int command, SerialIdentifier jack) {
 
     HandshakePacket hsPacket;
     hsPacket.command = command;
+    hsPacket.deviceType = static_cast<int>(deviceType);
     hsPacket.sendingJack = static_cast<int>(jack);
-    hsPacket.receicingJack = static_cast<int>(it->second.sid);
+    hsPacket.receivingJack = static_cast<int>(it->second.sid);
 
     LOG_I("HWM", "Sending command %i to port %i", command, static_cast<int>(jack));
 
@@ -98,7 +100,7 @@ int HandshakeWirelessManager::processHandshakeCommand(const uint8_t* macAddress,
     }
 
     SerialIdentifier sendingJack = static_cast<SerialIdentifier>(packet->sendingJack);
-    SerialIdentifier receivingJack = static_cast<SerialIdentifier>(packet->receicingJack);
+    SerialIdentifier receivingJack = static_cast<SerialIdentifier>(packet->receivingJack);
     HandshakeCommand command(macAddress, packet->command, packet->deviceType, sendingJack, receivingJack);
 
     auto it = callbacks.find(receivingJack);

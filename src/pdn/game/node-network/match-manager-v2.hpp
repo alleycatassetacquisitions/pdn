@@ -37,11 +37,14 @@ public:
     /** Sets which end of the cable this device is. */
     void setLocalLinkSide(DuelLinkSide side);
 
+    /** Marks the cable side unknown; incoming OFFERs are ignored and startMatch refuses. */
+    void clearLocalLinkSide();
+
     /**
      * Opens a duel by sending an OFFER to @p opponentMac.
      *
-     * @return false when not the initiator, a duel is active, the player is unregistered, or the
-     *         unix clock is not positive.
+     * @return false when the link side is unset or not the initiator, a duel is active, the
+     *         player is unregistered, or the unix clock is not positive.
      */
     bool startMatch(const uint8_t* opponentMac);
 
@@ -69,6 +72,17 @@ public:
     uint32_t getFailedAttempts() const;
     bool hasExhaustedAttempts() const;
 
+    /** Remaining link retries before sleep (`0` when exhausted). */
+    uint32_t getRetriesRemaining() const;
+
+    DuelLinkSide getLocalLinkSide() const;
+
+    /** Resets failed-attempt count (e.g. when entering sleep). */
+    void clearFailedAttemptsForCurrentPeer();
+
+    /** @return nullptr when no peer MAC has been tracked yet. */
+    const uint8_t* getTrackedPeerMac() const;
+
     size_t getPendingRecordCount() const;
     bool readPendingRecord(size_t index, QuickdrawMatchRecord& record) const;
     void clearPendingRecords();
@@ -77,7 +91,6 @@ public:
     void clearCurrentMatch();
 
     const DuelSession& getSession() const;
-
 private:
     bool buildLocalParticipant(DuelParticipant& participant) const;
     void trackPeer(const uint8_t* peerMac);
@@ -100,6 +113,7 @@ private:
     MatchStorage* matchStorage = nullptr;
     DuelSession session;
     DuelLinkSide localLinkSide = DuelLinkSide::INITIATOR;
+    bool localLinkSideAssigned = false;
     bool timeCorrectionApplied = false;
     bool hasTrackedPeer = false;
     uint8_t trackedPeerMac[6] = {};

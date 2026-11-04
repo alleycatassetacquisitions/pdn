@@ -115,6 +115,31 @@ public:
         return sizeof(value);
     }
 
+    size_t writeBlob(const std::string& ns, const std::string& key, const std::string& data) override {
+        nvs_handle_t handle = requireHandle(ns);
+        if (nvs_set_blob(handle, key.c_str(), data.data(), data.size()) != ESP_OK) {
+            return 0;
+        }
+        if (nvs_commit(handle) != ESP_OK) {
+            return 0;
+        }
+        return data.size();
+    }
+
+    std::string readBlob(const std::string& ns, const std::string& key) override {
+        nvs_handle_t handle = requireHandle(ns);
+        size_t length = 0;
+        if (nvs_get_blob(handle, key.c_str(), nullptr, &length) != ESP_OK || length == 0) {
+            return std::string();
+        }
+        std::string data(length, '\0');
+        if (nvs_get_blob(handle, key.c_str(), &data[0], &length) != ESP_OK) {
+            return std::string();
+        }
+        data.resize(length);
+        return data;
+    }
+
 private:
     nvs_handle_t requireHandle(const std::string& ns) {
         auto it = namespaceHandles.find(ns);

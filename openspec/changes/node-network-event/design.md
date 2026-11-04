@@ -57,6 +57,10 @@ No `finalizeMatch`, no stored record, no HTTP. States show soft-fail UX then ret
 
 Implement `node-network-states/` by copying behavior from Quickdraw states, not from `metagame` branch files.
 
+### Cable vs duel handshake
+
+`ConnectState::getPortConnectionMap()` exposes per-jack link-up (serial handshake complete). Node idle gates `startMatch` on `isConnected()`, derives initiator/responder via `resolveNodeCableLink()`, then uses MatchManagerV2 only for OFFER/ACCEPT and draw exchange.
+
 ## Risks / Trade-offs
 
 - [Two duel implementations] → Accept until post-event Quickdraw refactor.

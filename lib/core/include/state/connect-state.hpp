@@ -36,6 +36,11 @@ public:
 protected:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
 
+    /** Raw status of one jack (serial handshake state), for states that must distinguish CONNECTED from DAISY_CHAINED. */
+    PortStatus getJackStatus(SerialIdentifier jack) {
+        return remoteDeviceCoordinator->getPortStatus(jack);
+    }
+
     virtual bool isPrimaryRequired() = 0;
     virtual bool isAuxRequired() = 0;
     // Override and return true to also consider INPUT_JACK_SECONDARY when

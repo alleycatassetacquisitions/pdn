@@ -33,6 +33,7 @@
 #include "node-network-wireless-tests.hpp"
 #include "match-manager-v2-tests.hpp"
 #include "node-network-tests.hpp"
+#include "node-network-stats-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1893,6 +1894,12 @@ TEST(NodeNetworkWireless, nodeNetworkWirelessClearCallbacksStopsDelivery) {
 TEST_F(MatchManagerV2TestSuite, matchManagerV2StartMatchSendsOffer) {
     matchManagerV2StartMatchSendsOffer(this);
 }
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ClearFailedAttemptsOnSleepPolicy) {
+    matchManagerV2ClearFailedAttemptsOnSleepPolicy(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2RetriesRemainingAfterFailure) {
+    matchManagerV2RetriesRemainingAfterFailure(this);
+}
 TEST_F(MatchManagerV2TestSuite, matchManagerV2StartMatchGeneratesDistinctMatchIds) {
     matchManagerV2StartMatchGeneratesDistinctMatchIds(this);
 }
@@ -2114,4 +2121,42 @@ TEST_F(NodeNetworkTestSuite, nodeNetworkEntersNodeIdleWhenWelcomeFinishes) {
 }
 TEST_F(NodeNetworkTestSuite, nodeNetworkRegistersOnlyItsOwnPacketHandler) {
     nodeNetworkRegistersOnlyItsOwnPacketHandler(this);
+}
+
+TEST_F(NodeIdleLinkTestSuite, nodeIdleOffersWhenOutputJackLinked) {
+    nodeIdleOffersWhenOutputJackLinked(this);
+}
+TEST_F(NodeIdleLinkTestSuite, nodeIdleWaitsAsResponderWhenInputJackLinked) {
+    nodeIdleWaitsAsResponderWhenInputJackLinked(this);
+}
+TEST_F(NodeIdleLinkTestSuite, nodeIdleIgnoresJackStillConnecting) {
+    nodeIdleIgnoresJackStillConnecting(this);
+}
+TEST_F(NodeIdleLinkTestSuite, nodeIdleIgnoresDaisyChainedJack) {
+    nodeIdleIgnoresDaisyChainedJack(this);
+}
+TEST_F(NodeIdleLinkTestSuite, nodeIdleIgnoresPdnLinkedOnBothJacks) {
+    nodeIdleIgnoresPdnLinkedOnBothJacks(this);
+}
+TEST_F(NodeIdleLinkTestSuite, nodeIdleReoffersWhenOfferGoesUnanswered) {
+    nodeIdleReoffersWhenOfferGoesUnanswered(this);
+}
+TEST_F(NodeIdleLinkTestSuite, nodeIdleStopsOfferingWhenLinkDrops) {
+    nodeIdleStopsOfferingWhenLinkDrops(this);
+}
+TEST_F(NodeIdleLinkTestSuite, nodeIdleRoutesFdnToSymbolFlow) {
+    nodeIdleRoutesFdnToSymbolFlow(this);
+}
+TEST(NodeNetworkWireless, nodeNetworkIgnoresOfferBeforeLinkSideIsAssigned) {
+    nodeNetworkIgnoresOfferBeforeLinkSideIsAssigned();
+}
+
+TEST(nodeNetworkStats, nodeNetworkStatsStartsAtZero) {
+    nodeNetworkStatsStartsAtZero();
+}
+TEST(nodeNetworkStats, nodeNetworkStatsIncrementsOncePerNewMac) {
+    nodeNetworkStatsIncrementsOncePerNewMac();
+}
+TEST(nodeNetworkStats, nodeNetworkStatsReloadsCountFromStorage) {
+    nodeNetworkStatsReloadsCountFromStorage();
 }

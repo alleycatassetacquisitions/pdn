@@ -48,6 +48,9 @@ public:
         if (ucharStorage_.erase(composite) > 0) {
             removed = true;
         }
+        if (blobStorage_.erase(composite) > 0) {
+            removed = true;
+        }
         return removed;
     }
 
@@ -59,6 +62,9 @@ public:
         }
         for (auto it = ucharStorage_.begin(); it != ucharStorage_.end(); ) {
             it = it->first.rfind(prefix, 0) == 0 ? ucharStorage_.erase(it) : ++it;
+        }
+        for (auto it = blobStorage_.begin(); it != blobStorage_.end(); ) {
+            it = it->first.rfind(prefix, 0) == 0 ? blobStorage_.erase(it) : ++it;
         }
         return true;
     }
@@ -77,6 +83,18 @@ public:
         return 1;
     }
 
+    size_t writeBlob(const std::string& ns, const std::string& key, const std::string& data) override {
+        requireRegisteredNamespace(ns);
+        blobStorage_[compositeKey(ns, key)] = data;
+        return data.size();
+    }
+
+    std::string readBlob(const std::string& ns, const std::string& key) override {
+        requireRegisteredNamespace(ns);
+        auto it = blobStorage_.find(compositeKey(ns, key));
+        return it != blobStorage_.end() ? it->second : std::string();
+    }
+
 private:
     static std::string compositeKey(const std::string& ns, const std::string& key) {
         return ns + "/" + key;
@@ -91,4 +109,5 @@ private:
     std::set<std::string> registeredNamespaces;
     std::map<std::string, std::string> stringStorage_;
     std::map<std::string, uint8_t> ucharStorage_;
+    std::map<std::string, std::string> blobStorage_;
 };

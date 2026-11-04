@@ -17,17 +17,17 @@
 
 ## 4. Duel states (PR 3)
 
-- [ ] 4.1 `node-network-states.hpp` ID block
-- [ ] 4.2 Port idle + connect/jack rules (OUTPUT initiates)
-- [ ] 4.3 Port duel countdown → result chain
-- [ ] 4.4 `NodeWin` on sync; `NodeLinkRetry` on fail (no upload transition); sleep when attempts exhausted
-- [ ] 4.5 `node-network-resources.hpp` event palette / copy
+- [x] 4.1 `node-network-states.hpp` ID block
+- [x] 4.2 Port idle + connect/jack rules (OUTPUT initiates)
+- [x] 4.3 Port duel countdown → result chain
+- [x] 4.4 `NodeWin` on sync; `NodeLinkRetry` on fail (no upload transition); sleep when attempts exhausted
+- [x] 4.5 `node-network-resources.hpp` event palette / copy
 
 ## 5. Upload + firmware (PR 4)
 
-- [ ] 5.1 `NodeUploadMatches` using `MatchesApi::uploadQuickdrawMatches`
+- [x] 5.1 `NodeUploadMatches` using `MatchesApi::uploadQuickdrawMatches`
 - [ ] 5.2 Rejection logging / retry UX
-- [ ] 5.3 PlatformIO event env + `main` default app = NodeNetwork
+- [x] 5.3 PlatformIO event env + `main` default app = NodeNetwork
 - [ ] 5.4 `pio run` event env; native tests green
 
 ## 6. Validation (PR 5)

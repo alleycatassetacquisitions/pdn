@@ -1,16 +1,20 @@
 #pragma once
 
 #include "device/animation/animation-base.hpp"
+#include "game/quickdraw-resources.hpp"
 #include "utils/simple-timer.hpp"
 #include <algorithm> // For std::min
 #include <random>
 
 class HunterWinAnimation : public AnimationBase {
 public:
-    HunterWinAnimation() : 
+    /** `palette` must hold at least 6 colors (3 per side); defaults to the hunter greens. */
+    explicit HunterWinAnimation(const LEDColor* palette = hunterIdleLEDColors) :
         AnimationBase(),
         lastFrameTime_(0) {
-
+        for (int i = 0; i < 6; i++) {
+            gripColors[i] = palette[i];
+        }
     }
 
 protected:
@@ -74,12 +78,5 @@ private:
 
     uint32_t lastFrameTime_;   // Last frame time for timing calculations
     LEDColor twinkleColor = LEDColor(222, 97, 7);
-    LEDColor gripColors[6] = {
-        hunterIdleLEDColors[0],
-        hunterIdleLEDColors[1],
-        hunterIdleLEDColors[2],
-        hunterIdleLEDColors[3],
-        hunterIdleLEDColors[4],
-        hunterIdleLEDColors[5]
-    };
+    LEDColor gripColors[6];
 }; 

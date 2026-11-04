@@ -53,7 +53,8 @@ public:
     HandshakeWirelessManager();
     ~HandshakeWirelessManager();
 
-    void initialize(WirelessManager* wirelessManager);
+    /** @param deviceType Type stamped on every outgoing handshake packet so the peer can classify us. */
+    void initialize(WirelessManager* wirelessManager, DeviceType deviceType = DeviceType::UNKNOWN);
 
     int processHandshakeCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen);
 
@@ -76,6 +77,7 @@ public:
 
 private:
     WirelessManager* wirelessManager;
+    DeviceType deviceType = DeviceType::UNKNOWN;
 
     std::map<SerialIdentifier, std::function<void(HandshakeCommand)>> callbacks;
 

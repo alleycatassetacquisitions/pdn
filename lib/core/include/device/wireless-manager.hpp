@@ -107,6 +107,11 @@ public:
             return;
         }
 
+        if (hasQueuedHttpRequests()) {
+            LOG_W(WM_TAG, "Deferring ESP-NOW mode — HTTP request in progress");
+            return;
+        }
+
         LOG_I(WM_TAG, "Switching to ESP-NOW mode...");
 
         // Step 1: Disconnect HTTP client first (releases WiFi AP connection but keeps radio on)
@@ -178,6 +183,11 @@ public:
      * @return 0 on success, negative on error
      */
     int sendEspNowData(const uint8_t* dst, PktType packetType, const uint8_t* data, size_t length) {
+        if (currentMode != WirelessMode::ESPNOW && hasQueuedHttpRequests()) {
+            LOG_D(WM_TAG, "Deferring ESP-NOW send — HTTP request in progress");
+            return -1;
+        }
+
         // Auto-switch to ESP-NOW mode if needed
         if (currentMode != WirelessMode::ESPNOW) {
             LOG_I(WM_TAG, "Auto-switching to ESP-NOW mode for peer communication");

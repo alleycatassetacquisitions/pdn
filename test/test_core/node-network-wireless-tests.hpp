@@ -30,11 +30,11 @@ public:
 inline NodeNetworkPacket makeNodeNetworkPacket(NodeNetworkCommand command, bool senderIsInitiator) {
     NodeNetworkPacket packet;
     packet.protocolVersion = NODE_NETWORK_PROTOCOL_VERSION;
-    packet.command = command;
+    packet.command = static_cast<uint8_t>(command);
     packet.senderIsInitiator = senderIsInitiator ? 1 : 0;
-    packet.matchId = makeTestUuid(DUEL_TEST_MATCH_ID);
-    packet.senderPlayerId = makeTestUuid(DUEL_TEST_PEER_ID);
-    packet.senderTeamId = makeTestUuid(DUEL_TEST_PEER_TEAM);
+    nodeNetworkPacketSetUuid(packet.matchId, makeTestUuid(DUEL_TEST_MATCH_ID));
+    nodeNetworkPacketSetUuid(packet.senderPlayerId, makeTestUuid(DUEL_TEST_PEER_ID));
+    nodeNetworkPacketSetUuid(packet.senderTeamId, makeTestUuid(DUEL_TEST_PEER_TEAM));
     packet.drawTimeMs = 0;
     packet.occurredAtUnixMs = 0;
     return packet;
@@ -47,7 +47,7 @@ struct ReceivedNodeNetworkPacket {
 };
 
 inline void nodeNetworkPacketLayoutIsPinned() {
-    EXPECT_EQ(sizeof(NodeNetworkPacket), 67u);
+    EXPECT_EQ(sizeof(NodeNetworkPacket), NODE_NETWORK_PACKET_WIRE_SIZE);
 }
 
 inline void nodeNetworkWirelessDeliversDecodedPacket() {
@@ -68,11 +68,13 @@ inline void nodeNetworkWirelessDeliversDecodedPacket() {
     EXPECT_EQ(result, 1);
     ASSERT_EQ(received.callCount, 1);
     EXPECT_EQ(memcmp(received.senderMac.data(), DUEL_TEST_PEER_MAC, 6), 0);
-    EXPECT_EQ(received.packet.command, NodeNetworkCommand::DRAW);
+    EXPECT_EQ(static_cast<NodeNetworkCommand>(received.packet.command), NodeNetworkCommand::DRAW);
     EXPECT_EQ(received.packet.senderIsInitiator, 0);
-    EXPECT_EQ(received.packet.matchId, sent.matchId);
-    EXPECT_EQ(received.packet.senderPlayerId, sent.senderPlayerId);
-    EXPECT_EQ(received.packet.senderTeamId, sent.senderTeamId);
+    EXPECT_EQ(nodeNetworkPacketGetUuid(received.packet.matchId), nodeNetworkPacketGetUuid(sent.matchId));
+    EXPECT_EQ(nodeNetworkPacketGetUuid(received.packet.senderPlayerId),
+              nodeNetworkPacketGetUuid(sent.senderPlayerId));
+    EXPECT_EQ(nodeNetworkPacketGetUuid(received.packet.senderTeamId),
+              nodeNetworkPacketGetUuid(sent.senderTeamId));
     EXPECT_EQ(received.packet.drawTimeMs, 215u);
     EXPECT_EQ(received.packet.occurredAtUnixMs, DUEL_TEST_UNIX_MS);
 }

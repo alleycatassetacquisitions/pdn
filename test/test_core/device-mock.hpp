@@ -163,6 +163,8 @@ public:
     MOCK_METHOD(void, end, (), (override));
     MOCK_METHOD(uint8_t, readUChar, (const std::string&, const std::string&, uint8_t), (override));
     MOCK_METHOD(size_t, writeUChar, (const std::string&, const std::string&, uint8_t), (override));
+    MOCK_METHOD(size_t, writeBlob, (const std::string&, const std::string&, const std::string&), (override));
+    MOCK_METHOD(std::string, readBlob, (const std::string&, const std::string&), (override));
 };
 
 class FakeRemoteDeviceCoordinator : public RemoteDeviceCoordinator {

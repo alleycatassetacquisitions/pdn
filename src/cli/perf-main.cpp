@@ -92,6 +92,8 @@ public:
     void end() override {}
     uint8_t readUChar(const std::string&, const std::string&, uint8_t def) override { return def; }
     size_t writeUChar(const std::string&, const std::string&, uint8_t) override { return 0; }
+    size_t writeBlob(const std::string&, const std::string&, const std::string&) override { return 0; }
+    std::string readBlob(const std::string&, const std::string&) override { return std::string(); }
 };
 
 class StubHttpClient : public HttpClientInterface {

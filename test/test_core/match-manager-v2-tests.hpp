@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstring>
 
 #include "device-mock.hpp"
 #include "node-network-wireless-tests.hpp"
@@ -106,7 +107,7 @@ public:
         manager->setLocalLinkSide(DuelLinkSide::INITIATOR);
         ASSERT_TRUE(manager->startMatch(DUEL_TEST_PEER_MAC));
         NodeNetworkPacket accept = makeNodeNetworkPacket(NodeNetworkCommand::ACCEPT, false);
-        accept.matchId = manager->getSession().getMatchId();
+        nodeNetworkPacketSetUuid(accept.matchId, manager->getSession().getMatchId());
         manager->onPacket(DUEL_TEST_PEER_MAC, accept);
         ASSERT_TRUE(manager->isHandshakeComplete());
     }
@@ -124,7 +125,7 @@ public:
     void deliverRemoteDraw(uint64_t timeMs) {
         const bool peerIsInitiator = manager->getSession().getLocalSide() == DuelLinkSide::RESPONDER;
         NodeNetworkPacket draw = makeNodeNetworkPacket(NodeNetworkCommand::DRAW, peerIsInitiator);
-        draw.matchId = manager->getSession().getMatchId();
+        nodeNetworkPacketSetUuid(draw.matchId, manager->getSession().getMatchId());
         draw.drawTimeMs = timeMs;
         manager->onPacket(DUEL_TEST_PEER_MAC, draw);
     }
@@ -144,6 +145,23 @@ public:
 // startMatch
 // ============================================
 
+inline void matchManagerV2ClearFailedAttemptsOnSleepPolicy(MatchManagerV2TestSuite* suite) {
+    suite->manager->setLocalLinkSide(DuelLinkSide::INITIATOR);
+    ASSERT_TRUE(suite->manager->startMatch(DUEL_TEST_PEER_MAC));
+    suite->manager->recordLinkOutcome(false);
+    suite->manager->recordLinkOutcome(false);
+    EXPECT_EQ(suite->manager->getFailedAttempts(), 2u);
+    suite->manager->clearFailedAttemptsForCurrentPeer();
+    EXPECT_EQ(suite->manager->getFailedAttempts(), 0u);
+    EXPECT_EQ(suite->manager->getRetriesRemaining(), MAX_FAILED_ATTEMPTS);
+}
+
+inline void matchManagerV2RetriesRemainingAfterFailure(MatchManagerV2TestSuite* suite) {
+    suite->completeDuelAsInitiator(100, 500);
+    suite->manager->recordLinkOutcome(false);
+    EXPECT_EQ(suite->manager->getRetriesRemaining(), MAX_FAILED_ATTEMPTS - 1);
+}
+
 inline void matchManagerV2StartMatchSendsOffer(MatchManagerV2TestSuite* suite) {
     suite->manager->setLocalLinkSide(DuelLinkSide::INITIATOR);
 
@@ -153,13 +171,13 @@ inline void matchManagerV2StartMatchSendsOffer(MatchManagerV2TestSuite* suite) {
     const FakeNodeNetworkWirelessManager::SentPacket& sent = suite->device->wireless.sent[0];
     EXPECT_EQ(memcmp(sent.destinationMac.data(), DUEL_TEST_PEER_MAC, 6), 0);
     EXPECT_EQ(sent.packet.protocolVersion, NODE_NETWORK_PROTOCOL_VERSION);
-    EXPECT_EQ(sent.packet.command, NodeNetworkCommand::OFFER);
+    EXPECT_EQ(sent.packet.command, static_cast<uint8_t>(NodeNetworkCommand::OFFER));
     EXPECT_EQ(sent.packet.senderIsInitiator, 1);
-    EXPECT_EQ(sent.packet.senderPlayerId, makeTestUuid(DUEL_TEST_LOCAL_ID));
-    EXPECT_EQ(sent.packet.senderTeamId, makeTestUuid(DUEL_TEST_LOCAL_TEAM));
+    EXPECT_TRUE(nodeNetworkPacketUuidEquals(sent.packet.senderPlayerId, makeTestUuid(DUEL_TEST_LOCAL_ID)));
+    EXPECT_TRUE(nodeNetworkPacketUuidEquals(sent.packet.senderTeamId, makeTestUuid(DUEL_TEST_LOCAL_TEAM)));
     EXPECT_EQ(sent.packet.occurredAtUnixMs, NODE_NETWORK_TEST_INITIATOR_MS);
-    EXPECT_FALSE(sent.packet.matchId.isZero());
-    EXPECT_EQ(sent.packet.matchId, suite->manager->getSession().getMatchId());
+    EXPECT_FALSE(nodeNetworkPacketUuidIsZero(sent.packet.matchId));
+    EXPECT_EQ(nodeNetworkPacketGetUuid(sent.packet.matchId), suite->manager->getSession().getMatchId());
     EXPECT_TRUE(suite->manager->getSession().isActive());
     EXPECT_FALSE(suite->manager->isHandshakeComplete());
 }
@@ -252,7 +270,7 @@ inline void matchManagerV2InitiatorIgnoresAcceptFromOtherMac(MatchManagerV2TestS
     suite->manager->setLocalLinkSide(DuelLinkSide::INITIATOR);
     ASSERT_TRUE(suite->manager->startMatch(DUEL_TEST_PEER_MAC));
     NodeNetworkPacket accept = makeNodeNetworkPacket(NodeNetworkCommand::ACCEPT, false);
-    accept.matchId = suite->manager->getSession().getMatchId();
+    nodeNetworkPacketSetUuid(accept.matchId, suite->manager->getSession().getMatchId());
 
     suite->manager->onPacket(DUEL_TEST_OTHER_MAC, accept);
 
@@ -273,7 +291,7 @@ inline void matchManagerV2InitiatorIgnoresAcceptClaimingInitiator(MatchManagerV2
     suite->manager->setLocalLinkSide(DuelLinkSide::INITIATOR);
     ASSERT_TRUE(suite->manager->startMatch(DUEL_TEST_PEER_MAC));
     NodeNetworkPacket accept = makeNodeNetworkPacket(NodeNetworkCommand::ACCEPT, true);
-    accept.matchId = suite->manager->getSession().getMatchId();
+    nodeNetworkPacketSetUuid(accept.matchId, suite->manager->getSession().getMatchId());
 
     suite->manager->onPacket(DUEL_TEST_PEER_MAC, accept);
 
@@ -284,8 +302,8 @@ inline void matchManagerV2InitiatorIgnoresAcceptWithNilPlayerId(MatchManagerV2Te
     suite->manager->setLocalLinkSide(DuelLinkSide::INITIATOR);
     ASSERT_TRUE(suite->manager->startMatch(DUEL_TEST_PEER_MAC));
     NodeNetworkPacket accept = makeNodeNetworkPacket(NodeNetworkCommand::ACCEPT, false);
-    accept.matchId = suite->manager->getSession().getMatchId();
-    accept.senderPlayerId = UUIDBytes();
+    nodeNetworkPacketSetUuid(accept.matchId, suite->manager->getSession().getMatchId());
+    memset(accept.senderPlayerId, 0, UUIDBytes::SIZE);
 
     suite->manager->onPacket(DUEL_TEST_PEER_MAC, accept);
 
@@ -296,7 +314,7 @@ inline void matchManagerV2RoleMismatchFromOpponentClearsSession(MatchManagerV2Te
     suite->manager->setLocalLinkSide(DuelLinkSide::INITIATOR);
     ASSERT_TRUE(suite->manager->startMatch(DUEL_TEST_PEER_MAC));
     NodeNetworkPacket mismatch = makeNodeNetworkPacket(NodeNetworkCommand::ROLE_MISMATCH, false);
-    mismatch.matchId = suite->manager->getSession().getMatchId();
+    nodeNetworkPacketSetUuid(mismatch.matchId, suite->manager->getSession().getMatchId());
 
     suite->manager->onPacket(DUEL_TEST_PEER_MAC, mismatch);
 
@@ -307,7 +325,7 @@ inline void matchManagerV2RoleMismatchFromStrangerIsIgnored(MatchManagerV2TestSu
     suite->manager->setLocalLinkSide(DuelLinkSide::INITIATOR);
     ASSERT_TRUE(suite->manager->startMatch(DUEL_TEST_PEER_MAC));
     NodeNetworkPacket mismatch = makeNodeNetworkPacket(NodeNetworkCommand::ROLE_MISMATCH, false);
-    mismatch.matchId = suite->manager->getSession().getMatchId();
+    nodeNetworkPacketSetUuid(mismatch.matchId, suite->manager->getSession().getMatchId());
 
     suite->manager->onPacket(DUEL_TEST_OTHER_MAC, mismatch);
 
@@ -328,7 +346,7 @@ inline void matchManagerV2ResponderPrimesAndAccepts(MatchManagerV2TestSuite* sui
     const DuelSession& session = suite->manager->getSession();
     EXPECT_TRUE(session.isActive());
     EXPECT_EQ(session.getLocalSide(), DuelLinkSide::RESPONDER);
-    EXPECT_EQ(session.getMatchId(), offer.matchId);
+    EXPECT_EQ(session.getMatchId(), nodeNetworkPacketGetUuid(offer.matchId));
     EXPECT_EQ(session.getOccurredAtUnixMs(), NODE_NETWORK_TEST_INITIATOR_MS);
     EXPECT_EQ(session.getOpponentParticipant().playerId, makeTestUuid(DUEL_TEST_PEER_ID));
     EXPECT_EQ(session.getOpponentParticipant().teamId, makeTestUuid(DUEL_TEST_PEER_TEAM));
@@ -337,11 +355,11 @@ inline void matchManagerV2ResponderPrimesAndAccepts(MatchManagerV2TestSuite* sui
     ASSERT_EQ(suite->device->wireless.sent.size(), 1u);
     const FakeNodeNetworkWirelessManager::SentPacket& reply = suite->device->wireless.sent[0];
     EXPECT_EQ(memcmp(reply.destinationMac.data(), DUEL_TEST_PEER_MAC, 6), 0);
-    EXPECT_EQ(reply.packet.command, NodeNetworkCommand::ACCEPT);
+    EXPECT_EQ(reply.packet.command, static_cast<uint8_t>(NodeNetworkCommand::ACCEPT));
     EXPECT_EQ(reply.packet.senderIsInitiator, 0);
-    EXPECT_EQ(reply.packet.matchId, offer.matchId);
-    EXPECT_EQ(reply.packet.senderPlayerId, makeTestUuid(DUEL_TEST_LOCAL_ID));
-    EXPECT_EQ(reply.packet.senderTeamId, makeTestUuid(DUEL_TEST_LOCAL_TEAM));
+    EXPECT_EQ(nodeNetworkPacketGetUuid(reply.packet.matchId), nodeNetworkPacketGetUuid(offer.matchId));
+    EXPECT_TRUE(nodeNetworkPacketUuidEquals(reply.packet.senderPlayerId, makeTestUuid(DUEL_TEST_LOCAL_ID)));
+    EXPECT_TRUE(nodeNetworkPacketUuidEquals(reply.packet.senderTeamId, makeTestUuid(DUEL_TEST_LOCAL_TEAM)));
 }
 
 inline void matchManagerV2ResponderIgnoresOfferFromStranger(MatchManagerV2TestSuite* suite) {
@@ -378,7 +396,7 @@ inline void matchManagerV2ResponderIgnoresOfferWithNilPlayerId(MatchManagerV2Tes
     suite->manager->setLocalLinkSide(DuelLinkSide::RESPONDER);
     NodeNetworkPacket offer = makeNodeNetworkPacket(NodeNetworkCommand::OFFER, true);
     offer.occurredAtUnixMs = NODE_NETWORK_TEST_INITIATOR_MS;
-    offer.senderPlayerId = UUIDBytes();
+    memset(offer.senderPlayerId, 0, UUIDBytes::SIZE);
 
     suite->manager->onPacket(DUEL_TEST_PEER_MAC, offer);
 
@@ -400,7 +418,7 @@ inline void matchManagerV2ResponderIgnoresOfferWhileActive(MatchManagerV2TestSui
     const UUIDBytes activeMatchId = suite->manager->getSession().getMatchId();
     suite->device->wireless.sent.clear();
     NodeNetworkPacket second = makeNodeNetworkPacket(NodeNetworkCommand::OFFER, true);
-    second.matchId = makeTestUuid(DUEL_TEST_PEER_ID);
+    nodeNetworkPacketSetUuid(second.matchId, makeTestUuid(DUEL_TEST_PEER_ID));
     second.occurredAtUnixMs = NODE_NETWORK_TEST_INITIATOR_MS;
 
     suite->manager->onPacket(DUEL_TEST_PEER_MAC, second);
@@ -418,8 +436,10 @@ inline void matchManagerV2OfferWhileInitiatorRepliesRoleMismatch(MatchManagerV2T
 
     EXPECT_FALSE(suite->manager->getSession().isActive());
     ASSERT_EQ(suite->device->wireless.sent.size(), 1u);
-    EXPECT_EQ(suite->device->wireless.sent[0].packet.command, NodeNetworkCommand::ROLE_MISMATCH);
-    EXPECT_EQ(suite->device->wireless.sent[0].packet.matchId, offer.matchId);
+    EXPECT_EQ(suite->device->wireless.sent[0].packet.command,
+              static_cast<uint8_t>(NodeNetworkCommand::ROLE_MISMATCH));
+    EXPECT_EQ(nodeNetworkPacketGetUuid(suite->device->wireless.sent[0].packet.matchId),
+              nodeNetworkPacketGetUuid(offer.matchId));
     EXPECT_EQ(memcmp(suite->device->wireless.sent[0].destinationMac.data(), DUEL_TEST_PEER_MAC, 6), 0);
 }
 
@@ -471,9 +491,9 @@ inline void matchManagerV2ResponderCorrectsImplausibleOffer(MatchManagerV2TestSu
     EXPECT_FALSE(suite->manager->getSession().isActive());
     ASSERT_EQ(suite->device->wireless.sent.size(), 1u);
     const FakeNodeNetworkWirelessManager::SentPacket& reply = suite->device->wireless.sent[0];
-    EXPECT_EQ(reply.packet.command, NodeNetworkCommand::TIME_CORRECTION);
+    EXPECT_EQ(reply.packet.command, static_cast<uint8_t>(NodeNetworkCommand::TIME_CORRECTION));
     EXPECT_EQ(reply.packet.occurredAtUnixMs, NODE_NETWORK_TEST_INITIATOR_MS);
-    EXPECT_EQ(reply.packet.matchId, offer.matchId);
+    EXPECT_EQ(nodeNetworkPacketGetUuid(reply.packet.matchId), nodeNetworkPacketGetUuid(offer.matchId));
     EXPECT_EQ(memcmp(reply.destinationMac.data(), DUEL_TEST_PEER_MAC, 6), 0);
 }
 
@@ -496,15 +516,15 @@ inline void matchManagerV2InitiatorResendsOfferOnceAfterCorrection(MatchManagerV
     const UUIDBytes matchId = suite->manager->getSession().getMatchId();
     suite->device->wireless.sent.clear();
     NodeNetworkPacket correction = makeNodeNetworkPacket(NodeNetworkCommand::TIME_CORRECTION, false);
-    correction.matchId = matchId;
+    nodeNetworkPacketSetUuid(correction.matchId, matchId);
     correction.occurredAtUnixMs = NODE_NETWORK_TEST_RESPONDER_MS;
 
     suite->manager->onPacket(DUEL_TEST_PEER_MAC, correction);
 
     ASSERT_EQ(suite->device->wireless.sent.size(), 1u);
     const FakeNodeNetworkWirelessManager::SentPacket& resent = suite->device->wireless.sent[0];
-    EXPECT_EQ(resent.packet.command, NodeNetworkCommand::OFFER);
-    EXPECT_EQ(resent.packet.matchId, matchId);
+    EXPECT_EQ(resent.packet.command, static_cast<uint8_t>(NodeNetworkCommand::OFFER));
+    EXPECT_EQ(nodeNetworkPacketGetUuid(resent.packet.matchId), matchId);
     EXPECT_EQ(resent.packet.occurredAtUnixMs, NODE_NETWORK_TEST_RESPONDER_MS);
     EXPECT_EQ(suite->manager->getSession().getOccurredAtUnixMs(), NODE_NETWORK_TEST_RESPONDER_MS);
 
@@ -518,7 +538,7 @@ inline void matchManagerV2InitiatorIgnoresCorrectionFromStranger(MatchManagerV2T
     ASSERT_TRUE(suite->manager->startMatch(DUEL_TEST_PEER_MAC));
     suite->device->wireless.sent.clear();
     NodeNetworkPacket correction = makeNodeNetworkPacket(NodeNetworkCommand::TIME_CORRECTION, false);
-    correction.matchId = suite->manager->getSession().getMatchId();
+    nodeNetworkPacketSetUuid(correction.matchId, suite->manager->getSession().getMatchId());
     correction.occurredAtUnixMs = NODE_NETWORK_TEST_RESPONDER_MS;
 
     suite->manager->onPacket(DUEL_TEST_OTHER_MAC, correction);
@@ -532,7 +552,7 @@ inline void matchManagerV2InitiatorIgnoresNonPositiveCorrection(MatchManagerV2Te
     ASSERT_TRUE(suite->manager->startMatch(DUEL_TEST_PEER_MAC));
     suite->device->wireless.sent.clear();
     NodeNetworkPacket correction = makeNodeNetworkPacket(NodeNetworkCommand::TIME_CORRECTION, false);
-    correction.matchId = suite->manager->getSession().getMatchId();
+    nodeNetworkPacketSetUuid(correction.matchId, suite->manager->getSession().getMatchId());
     correction.occurredAtUnixMs = 0;
 
     suite->manager->onPacket(DUEL_TEST_PEER_MAC, correction);
@@ -563,10 +583,10 @@ inline void matchManagerV2LocalDrawRecordsAndSends(MatchManagerV2TestSuite* suit
     EXPECT_EQ(suite->manager->getSession().getInitiatorDrawTimeMs(), 215u);
     ASSERT_EQ(suite->device->wireless.sent.size(), 1u);
     const FakeNodeNetworkWirelessManager::SentPacket& sent = suite->device->wireless.sent[0];
-    EXPECT_EQ(sent.packet.command, NodeNetworkCommand::DRAW);
+    EXPECT_EQ(sent.packet.command, static_cast<uint8_t>(NodeNetworkCommand::DRAW));
     EXPECT_EQ(sent.packet.senderIsInitiator, 1);
     EXPECT_EQ(sent.packet.drawTimeMs, 215u);
-    EXPECT_EQ(sent.packet.matchId, suite->manager->getSession().getMatchId());
+    EXPECT_EQ(nodeNetworkPacketGetUuid(sent.packet.matchId), suite->manager->getSession().getMatchId());
     EXPECT_EQ(memcmp(sent.destinationMac.data(), DUEL_TEST_PEER_MAC, 6), 0);
 }
 
@@ -614,7 +634,7 @@ inline void matchManagerV2DuplicateRemoteDrawIsIgnored(MatchManagerV2TestSuite* 
 inline void matchManagerV2RemoteDrawClaimingOwnSideIsIgnored(MatchManagerV2TestSuite* suite) {
     suite->completeHandshakeAsInitiator();
     NodeNetworkPacket draw = makeNodeNetworkPacket(NodeNetworkCommand::DRAW, true);
-    draw.matchId = suite->manager->getSession().getMatchId();
+    nodeNetworkPacketSetUuid(draw.matchId, suite->manager->getSession().getMatchId());
     draw.drawTimeMs = 260;
 
     suite->manager->onPacket(DUEL_TEST_PEER_MAC, draw);
@@ -636,7 +656,7 @@ inline void matchManagerV2RemoteDrawForOtherMatchIsIgnored(MatchManagerV2TestSui
 inline void matchManagerV2RemoteDrawFromStrangerIsIgnored(MatchManagerV2TestSuite* suite) {
     suite->completeHandshakeAsInitiator();
     NodeNetworkPacket draw = makeNodeNetworkPacket(NodeNetworkCommand::DRAW, false);
-    draw.matchId = suite->manager->getSession().getMatchId();
+    nodeNetworkPacketSetUuid(draw.matchId, suite->manager->getSession().getMatchId());
     draw.drawTimeMs = 260;
 
     suite->manager->onPacket(DUEL_TEST_OTHER_MAC, draw);
@@ -648,7 +668,7 @@ inline void matchManagerV2RemoteDrawBeforeHandshakeIsIgnored(MatchManagerV2TestS
     suite->manager->setLocalLinkSide(DuelLinkSide::INITIATOR);
     ASSERT_TRUE(suite->manager->startMatch(DUEL_TEST_PEER_MAC));
     NodeNetworkPacket draw = makeNodeNetworkPacket(NodeNetworkCommand::DRAW, false);
-    draw.matchId = suite->manager->getSession().getMatchId();
+    nodeNetworkPacketSetUuid(draw.matchId, suite->manager->getSession().getMatchId());
     draw.drawTimeMs = 260;
 
     suite->manager->onPacket(DUEL_TEST_PEER_MAC, draw);
@@ -660,7 +680,7 @@ inline void matchManagerV2RemoteNeverPressedRecordsTimeAndFlag(MatchManagerV2Tes
     suite->completeHandshakeAsInitiator();
     ASSERT_TRUE(suite->manager->onLocalDrawTimeMs(215));
     NodeNetworkPacket never = makeNodeNetworkPacket(NodeNetworkCommand::NEVER_PRESSED, false);
-    never.matchId = suite->manager->getSession().getMatchId();
+    nodeNetworkPacketSetUuid(never.matchId, suite->manager->getSession().getMatchId());
     never.drawTimeMs = 4000;
 
     suite->manager->onPacket(DUEL_TEST_PEER_MAC, never);
@@ -680,7 +700,8 @@ inline void matchManagerV2LocalGraceExpirySendsNeverPressed(MatchManagerV2TestSu
     EXPECT_TRUE(suite->manager->getSession().didGraceExpireWithoutPress());
     EXPECT_TRUE(suite->manager->isExchangeComplete());
     ASSERT_EQ(suite->device->wireless.sent.size(), 1u);
-    EXPECT_EQ(suite->device->wireless.sent[0].packet.command, NodeNetworkCommand::NEVER_PRESSED);
+    EXPECT_EQ(suite->device->wireless.sent[0].packet.command,
+              static_cast<uint8_t>(NodeNetworkCommand::NEVER_PRESSED));
     EXPECT_EQ(suite->device->wireless.sent[0].packet.senderIsInitiator, 1);
     EXPECT_EQ(suite->device->wireless.sent[0].packet.drawTimeMs, 4000u);
     EXPECT_FALSE(suite->manager->didSync());

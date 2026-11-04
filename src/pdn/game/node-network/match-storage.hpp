@@ -5,6 +5,9 @@
 #include "alleycat-server/quickdraw-match-codec.hpp"
 #include "device/drivers/storage-interface.hpp"
 
+/** NVS namespace for pending NodeNetwork upload records (`MatchStorage`). */
+inline constexpr const char PENDING_MATCHES_PREFS_NAMESPACE[] = "evtmatches";
+
 /** Persists finished duel records until the server confirms them. Usually holds zero or one. */
 class MatchStorage {
 public:

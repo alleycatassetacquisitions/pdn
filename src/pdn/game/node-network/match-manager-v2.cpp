@@ -5,6 +5,7 @@
 #include "id-generator.hpp"
 #define TAG "MMV2"
 #include "device/drivers/logger.hpp"
+#include "wireless/mac-functions.hpp"
 
 MatchManagerV2::MatchManagerV2(PlayerProvider* playerProvider, StorageInterface* storageInterface,
                                NodeNetworkWirelessManager* nodeNetworkWirelessManager,
@@ -34,6 +35,11 @@ MatchManagerV2::~MatchManagerV2() {
 
 void MatchManagerV2::setLocalLinkSide(DuelLinkSide side) {
     localLinkSide = side;
+    localLinkSideAssigned = true;
+}
+
+void MatchManagerV2::clearLocalLinkSide() {
+    localLinkSideAssigned = false;
 }
 
 bool MatchManagerV2::buildLocalParticipant(DuelParticipant& participant) const {
@@ -57,16 +63,18 @@ void MatchManagerV2::trackPeer(const uint8_t* peerMac) {
 void MatchManagerV2::sendReply(const uint8_t* destinationMac, NodeNetworkCommand command,
                                const UUIDBytes& matchId, int64_t unixMs) const {
     NodeNetworkPacket packet;
-    packet.command = command;
+    packet.command = static_cast<uint8_t>(command);
     packet.senderIsInitiator = localLinkSide == DuelLinkSide::INITIATOR ? 1 : 0;
-    packet.matchId = matchId;
+    nodeNetworkPacketSetUuid(packet.matchId, matchId);
     packet.occurredAtUnixMs = unixMs;
     DuelParticipant local;
     if (buildLocalParticipant(local)) {
-        packet.senderPlayerId = local.playerId;
-        packet.senderTeamId = local.teamId;
+        nodeNetworkPacketSetUuid(packet.senderPlayerId, local.playerId);
+        nodeNetworkPacketSetUuid(packet.senderTeamId, local.teamId);
     }
-    nodeNetworkWirelessManager->sendPacket(destinationMac, packet);
+    if (nodeNetworkWirelessManager->sendPacket(destinationMac, packet) < 0) {
+        LOG_E(TAG, "send cmd %u to %s failed", packet.command, MacToString(destinationMac));
+    }
 }
 
 void MatchManagerV2::sendOffer() {
@@ -76,18 +84,18 @@ void MatchManagerV2::sendOffer() {
 
 void MatchManagerV2::sendToOpponent(NodeNetworkCommand command, uint64_t drawTimeMs) {
     NodeNetworkPacket packet;
-    packet.command = command;
+    packet.command = static_cast<uint8_t>(command);
     packet.senderIsInitiator = session.getLocalSide() == DuelLinkSide::INITIATOR ? 1 : 0;
-    packet.matchId = session.getMatchId();
-    packet.senderPlayerId = session.getLocalParticipant().playerId;
-    packet.senderTeamId = session.getLocalParticipant().teamId;
+    nodeNetworkPacketSetUuid(packet.matchId, session.getMatchId());
+    nodeNetworkPacketSetUuid(packet.senderPlayerId, session.getLocalParticipant().playerId);
+    nodeNetworkPacketSetUuid(packet.senderTeamId, session.getLocalParticipant().teamId);
     packet.drawTimeMs = drawTimeMs;
     packet.occurredAtUnixMs = session.getOccurredAtUnixMs();
     nodeNetworkWirelessManager->sendPacket(session.getOpponentMac(), packet);
 }
 
 bool MatchManagerV2::startMatch(const uint8_t* opponentMac) {
-    if (localLinkSide != DuelLinkSide::INITIATOR || session.isActive()) {
+    if (!localLinkSideAssigned || localLinkSide != DuelLinkSide::INITIATOR || session.isActive()) {
         return false;
     }
 
@@ -111,12 +119,13 @@ bool MatchManagerV2::startMatch(const uint8_t* opponentMac) {
     trackPeer(opponentMac);
     timeCorrectionApplied = false;
     session.prime(DuelLinkSide::INITIATOR, matchId, opponentMac, local, unixMs);
+    LOG_I(TAG, "OFFER -> %s", MacToString(opponentMac));
     sendOffer();
     return true;
 }
 
 void MatchManagerV2::onPacket(const uint8_t* senderMac, const NodeNetworkPacket& packet) {
-    switch (packet.command) {
+    switch (static_cast<NodeNetworkCommand>(packet.command)) {
         case NodeNetworkCommand::OFFER:
             onOffer(senderMac, packet);
             break;
@@ -124,7 +133,8 @@ void MatchManagerV2::onPacket(const uint8_t* senderMac, const NodeNetworkPacket&
             onAccept(senderMac, packet);
             break;
         case NodeNetworkCommand::ROLE_MISMATCH:
-            if (session.isFromOpponent(senderMac, packet.matchId)) {
+            if (session.isFromOpponent(senderMac, nodeNetworkPacketGetUuid(packet.matchId))) {
+                LOG_W(TAG, "ROLE_MISMATCH from %s: dropping session", MacToString(senderMac));
                 clearCurrentMatch();
             }
             break;
@@ -141,44 +151,62 @@ void MatchManagerV2::onPacket(const uint8_t* senderMac, const NodeNetworkPacket&
 }
 
 void MatchManagerV2::onOffer(const uint8_t* senderMac, const NodeNetworkPacket& packet) {
-    if (!remoteDeviceCoordinator->isDirectPeer(senderMac)) {
+    // Our serial handshake may finish after the peer's; the initiator re-offers on timeout.
+    if (!localLinkSideAssigned) {
+        LOG_W(TAG, "OFFER from %s dropped: link side not assigned", MacToString(senderMac));
         return;
     }
+
+    if (!remoteDeviceCoordinator->isDirectPeer(senderMac)) {
+        LOG_W(TAG, "OFFER from %s dropped: not a direct peer", MacToString(senderMac));
+        return;
+    }
+
+    const UUIDBytes offerMatchId = nodeNetworkPacketGetUuid(packet.matchId);
 
     if (localLinkSide == DuelLinkSide::INITIATOR) {
-        sendReply(senderMac, NodeNetworkCommand::ROLE_MISMATCH, packet.matchId, 0);
+        LOG_W(TAG, "OFFER from %s while initiator: ROLE_MISMATCH", MacToString(senderMac));
+        sendReply(senderMac, NodeNetworkCommand::ROLE_MISMATCH, offerMatchId, 0);
         return;
     }
 
-    if (packet.senderIsInitiator != 1 || session.isActive() || packet.senderPlayerId.isZero()) {
+    if (packet.senderIsInitiator != 1 || session.isActive() ||
+        nodeNetworkPacketUuidIsZero(packet.senderPlayerId)) {
+        LOG_W(TAG, "OFFER from %s dropped: invalid or session already active",
+              MacToString(senderMac));
         return;
     }
 
     DuelParticipant local;
     if (!buildLocalParticipant(local)) {
+        LOG_W(TAG, "OFFER dropped: local player not registered");
         return;
     }
 
     const int64_t localUnixMs = platformClock->unixMilliseconds();
     if (packet.occurredAtUnixMs <= 0 || localUnixMs <= 0) {
+        LOG_W(TAG, "OFFER dropped: no valid unix time (offer=%lld local=%lld)",
+              static_cast<long long>(packet.occurredAtUnixMs),
+              static_cast<long long>(localUnixMs));
         return;
     }
 
     if (packet.occurredAtUnixMs < localUnixMs / TIME_IMPLAUSIBLE_RATIO) {
-        sendReply(senderMac, NodeNetworkCommand::TIME_CORRECTION, packet.matchId, localUnixMs);
+        LOG_I(TAG, "OFFER time implausible: TIME_CORRECTION -> %s", MacToString(senderMac));
+        sendReply(senderMac, NodeNetworkCommand::TIME_CORRECTION, offerMatchId, localUnixMs);
         return;
     }
 
     DuelParticipant opponent;
-    opponent.playerId = packet.senderPlayerId;
-    opponent.teamId = packet.senderTeamId;
+    opponent.playerId = nodeNetworkPacketGetUuid(packet.senderPlayerId);
+    opponent.teamId = nodeNetworkPacketGetUuid(packet.senderTeamId);
 
     trackPeer(senderMac);
-    session.prime(DuelLinkSide::RESPONDER, packet.matchId, senderMac, local,
-                  packet.occurredAtUnixMs);
+    session.prime(DuelLinkSide::RESPONDER, offerMatchId, senderMac, local, packet.occurredAtUnixMs);
     session.setOpponentParticipant(opponent);
     session.markHandshakeComplete();
-    sendReply(senderMac, NodeNetworkCommand::ACCEPT, packet.matchId, packet.occurredAtUnixMs);
+    LOG_I(TAG, "OFFER from %s accepted: handshake complete (responder)", MacToString(senderMac));
+    sendReply(senderMac, NodeNetworkCommand::ACCEPT, offerMatchId, packet.occurredAtUnixMs);
 }
 
 bool MatchManagerV2::isOpponentSideSender(const NodeNetworkPacket& packet) const {
@@ -187,21 +215,24 @@ bool MatchManagerV2::isOpponentSideSender(const NodeNetworkPacket& packet) const
 }
 
 void MatchManagerV2::onAccept(const uint8_t* senderMac, const NodeNetworkPacket& packet) {
-    if (!session.isFromOpponent(senderMac, packet.matchId) ||
+    const UUIDBytes acceptMatchId = nodeNetworkPacketGetUuid(packet.matchId);
+    if (!session.isFromOpponent(senderMac, acceptMatchId) ||
         session.getLocalSide() != DuelLinkSide::INITIATOR || session.isHandshakeComplete() ||
-        !isOpponentSideSender(packet) || packet.senderPlayerId.isZero()) {
+        !isOpponentSideSender(packet) || nodeNetworkPacketUuidIsZero(packet.senderPlayerId)) {
+        LOG_W(TAG, "ACCEPT from %s dropped", MacToString(senderMac));
         return;
     }
 
     DuelParticipant opponent;
-    opponent.playerId = packet.senderPlayerId;
-    opponent.teamId = packet.senderTeamId;
+    opponent.playerId = nodeNetworkPacketGetUuid(packet.senderPlayerId);
+    opponent.teamId = nodeNetworkPacketGetUuid(packet.senderTeamId);
     session.setOpponentParticipant(opponent);
     session.markHandshakeComplete();
+    LOG_I(TAG, "ACCEPT from %s: handshake complete (initiator)", MacToString(senderMac));
 }
 
 void MatchManagerV2::onTimeCorrection(const uint8_t* senderMac, const NodeNetworkPacket& packet) {
-    if (!session.isFromOpponent(senderMac, packet.matchId) ||
+    if (!session.isFromOpponent(senderMac, nodeNetworkPacketGetUuid(packet.matchId)) ||
         session.getLocalSide() != DuelLinkSide::INITIATOR || session.isHandshakeComplete() ||
         timeCorrectionApplied || packet.occurredAtUnixMs <= 0) {
         return;
@@ -209,20 +240,21 @@ void MatchManagerV2::onTimeCorrection(const uint8_t* senderMac, const NodeNetwor
 
     timeCorrectionApplied = true;
     session.setOccurredAtUnixMs(packet.occurredAtUnixMs);
+    LOG_I(TAG, "TIME_CORRECTION from %s: re-sending OFFER", MacToString(senderMac));
     sendOffer();
 }
 
 void MatchManagerV2::onDraw(const uint8_t* senderMac, const NodeNetworkPacket& packet) {
-    if (!session.isFromOpponent(senderMac, packet.matchId) || !session.isHandshakeComplete() ||
-        !isOpponentSideSender(packet)) {
+    if (!session.isFromOpponent(senderMac, nodeNetworkPacketGetUuid(packet.matchId)) ||
+        !session.isHandshakeComplete() || !isOpponentSideSender(packet)) {
         return;
     }
     session.recordRemoteDrawTimeMs(packet.drawTimeMs);
 }
 
 void MatchManagerV2::onNeverPressed(const uint8_t* senderMac, const NodeNetworkPacket& packet) {
-    if (!session.isFromOpponent(senderMac, packet.matchId) || !session.isHandshakeComplete() ||
-        !isOpponentSideSender(packet)) {
+    if (!session.isFromOpponent(senderMac, nodeNetworkPacketGetUuid(packet.matchId)) ||
+        !session.isHandshakeComplete() || !isOpponentSideSender(packet)) {
         return;
     }
     if (session.recordRemoteDrawTimeMs(packet.drawTimeMs)) {
@@ -271,12 +303,23 @@ bool MatchManagerV2::didSync() const {
 
 bool MatchManagerV2::finalizeMatch() {
     if (!didSync()) {
+        LOG_W(TAG, "finalizeMatch: duel did not sync, nothing stored");
         return false;
     }
     QuickdrawMatchRecord record;
-    if (!session.tryBuildUploadRecord(record) || !matchStorage->append(record)) {
+    if (!session.tryBuildUploadRecord(record)) {
+        LOG_E(TAG, "finalizeMatch: cannot build upload record (handshake, times or player ids missing)");
         return false;
     }
+    if (!matchStorage->append(record)) {
+        LOG_E(TAG, "finalizeMatch: storing record failed (pending=%lu)",
+              static_cast<unsigned long>(matchStorage->getCount()));
+        return false;
+    }
+
+    LOG_I(TAG, "finalizeMatch: stored record, pending=%lu occurredAt=%lld",
+          static_cast<unsigned long>(matchStorage->getCount()),
+          static_cast<long long>(record.occurredAtUnixMs));
     clearCurrentMatch();
     return true;
 }
@@ -295,6 +338,25 @@ uint32_t MatchManagerV2::getFailedAttempts() const {
 
 bool MatchManagerV2::hasExhaustedAttempts() const {
     return failedAttempts >= MAX_FAILED_ATTEMPTS;
+}
+
+uint32_t MatchManagerV2::getRetriesRemaining() const {
+    if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+        return 0;
+    }
+    return MAX_FAILED_ATTEMPTS - failedAttempts;
+}
+
+DuelLinkSide MatchManagerV2::getLocalLinkSide() const {
+    return localLinkSide;
+}
+
+void MatchManagerV2::clearFailedAttemptsForCurrentPeer() {
+    failedAttempts = 0;
+}
+
+const uint8_t* MatchManagerV2::getTrackedPeerMac() const {
+    return hasTrackedPeer ? trackedPeerMac : nullptr;
 }
 
 size_t MatchManagerV2::getPendingRecordCount() const {

@@ -18,22 +18,20 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
 #include "device/crash/crash-logger.hpp"
+#include "game/node-network/match-storage.hpp"
+#include "game/node-network/node-network-stats.hpp"
 
 #include "pdn-constants.hpp"
 #include "utils/simple-timer.hpp"
-#include "game/player-provider.hpp"
 #include "state/state-machine.hpp"
 #include "device/pdn.hpp"
-#include "game/quickdraw.hpp"
 #include "id-generator.hpp"
-#include "wireless/remote-player-manager.hpp"
-#include "game/match-manager.hpp"
-#include "wireless/wireless-types.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
-#include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "game/node-network/node-network.hpp"
+#include "wireless/node-network-wireless-manager.hpp"
+#include "wireless/symbol-wireless-manager.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template
@@ -66,48 +64,11 @@ EspNowDriver* peerCommsDriver = nullptr;
 Esp32S3Logger* loggerDriver = nullptr;
 Esp32S3PrefsDriver* storageDriver = nullptr;
 
-// Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
-PlayerProvider* playerProvider = nullptr;
-
-// Game instance
-Quickdraw* game = nullptr;
-
-// Remote player management
-QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
+NodeNetwork* nodeNetworkApp = nullptr;
+NodeNetworkWirelessManager* nodeNetworkWirelessManager = nullptr;
 SymbolWirelessManager* symbolWirelessManager = nullptr;
 RemoteDebugManager* remoteDebugManager = nullptr;
-
-void setupEspNow(
-    QuickdrawWirelessManager* quickdrawWirelessManager,
-    RemoteDebugManager* remoteDebugManager,
-    SymbolWirelessManager* symbolWirelessManager,
-    PeerCommsInterface* peerCommsDriver) {
-    // Register packet handlers
-    peerCommsDriver->setPacketHandler(
-        PktType::kQuickdrawCommand,
-        [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-            ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
-        },
-        quickdrawWirelessManager
-    );
-    
-    peerCommsDriver->setPacketHandler(
-        PktType::kDebugPacket,
-        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
-            ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr, data, len);
-        },
-        remoteDebugManager
-    );
-
-    peerCommsDriver->setPacketHandler(
-        PktType::kSymbolMatchCommand,
-        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
-            ((SymbolWirelessManager*)userArg)->processSymbolMatchCommand(srcAddr, data, len);
-        },
-        symbolWirelessManager
-    );
-}
 
 static void setup() {
     const uint32_t crashedBootUptimeMs = CrashLogger::takeCrashedBootUptime();
@@ -147,7 +108,9 @@ static void setup() {
     wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
-    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
+    storageDriver = new Esp32S3PrefsDriver(
+        STORAGE_DRIVER_NAME, {PENDING_MATCHES_PREFS_NAMESPACE, NODE_NETWORK_STATS_PREFS_NAMESPACE,
+                              CRASH_LOG_NAMESPACE});
 
     // Create driver configuration
     DriverConfig pdnConfig = {
@@ -166,36 +129,31 @@ static void setup() {
         {FIRMWARE_STORE_DRIVER_NAME, firmwareStore},
     };
 
-    // Create core game objects
     pdn = PDN::createPDN(pdnConfig);
     
     IdGenerator::initialize(clockDriver->milliseconds());
-    playerProvider = new PlayerProvider();
-    playerProvider->getPlayer()->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
-    // Create wireless managers
-    LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
-    quickdrawWirelessManager = new QuickdrawWirelessManager();
-    LOG_I("SETUP", "Creating SymbolWirelessManager...");
-    symbolWirelessManager = new SymbolWirelessManager();
+
     LOG_I("SETUP", "Creating RemoteDebugManager...");
     remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
-    
-    // WiFi credentials are compile-time constants from build flags
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
-    quickdrawWirelessManager->initialize(playerProvider->getPlayer(), pdn->getWirelessManager(), 1000);
-    symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
-    
-    // Register ESP-NOW packet handlers
-    setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
+    peerCommsDriver->setPacketHandler(
+        PktType::kDebugPacket,
+        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
+            static_cast<RemoteDebugManager*>(userArg)->ProcessDebugPacket(srcAddr, data, len);
+        },
+        remoteDebugManager);
+
+    LOG_I("SETUP", "Creating NodeNetworkWirelessManager...");
+    nodeNetworkWirelessManager = new NodeNetworkWirelessManager();
+    LOG_I("SETUP", "Creating SymbolWirelessManager...");
+    symbolWirelessManager = new SymbolWirelessManager();
+    nodeNetworkApp = new NodeNetwork(pdn, nodeNetworkWirelessManager, symbolWirelessManager);
 
     crashLogger = new CrashLogger(storageDriver, pdn->getWirelessManager());
     crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
-
-    game = new Quickdraw(playerProvider, pdn, quickdrawWirelessManager, remoteDebugManager,
-                         symbolWirelessManager);
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
@@ -209,11 +167,10 @@ static void setup() {
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 
-    // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
-        {StateId(QUICKDRAW_APP_ID), game}
+        {StateId(NODE_NETWORK_APP_ID), nodeNetworkApp}
     };
-    pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
+    pdn->loadAppConfig(apps, StateId(NODE_NETWORK_APP_ID));
 }
 
 void loop() {

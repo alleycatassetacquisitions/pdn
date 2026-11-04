@@ -1,4 +1,5 @@
 #include "device/remote-device-coordinator.hpp"
+#include "device/device.hpp"
 #include "apps/handshake/handshake-states.hpp"
 #include "apps/handshake/handshake.hpp"
 #include "protocol-constants.hpp"
@@ -23,7 +24,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
     this->serialManager = serialManager;
     this->wirelessManager_ = wirelessManager;
 
-    handshakeWirelessManager.initialize(wirelessManager);
+    handshakeWirelessManager.initialize(wirelessManager, PDN->getDeviceType());
 
     inputPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
     inputPortHandshake->initialize(PDN);
