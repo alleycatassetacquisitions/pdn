@@ -51,11 +51,8 @@ public:
     Phase getPhase() const;
 
     // Returns the set of MACs that participate in the current loop. Returns
-    // empty when not in a loop and no test override is set.
+    // empty when not in a loop.
     std::vector<std::array<uint8_t, 6>> getLoopMembers() const;
-
-    // Test-only: override the loop-member set. Pass an empty vector to clear.
-    void setLoopMembersForTest(const std::vector<std::array<uint8_t, 6>>& members);
 
     void onRingClosed();
     void onRingClosedReceived(const uint8_t* fromMac,
@@ -95,7 +92,6 @@ public:
      * Zero once every one of them has answered or been given up on.
      */
     size_t getPendingAckCount(uint8_t seqId) const;
-    uint8_t getLastBracketSeqId() const;
 
     int getCurrentMatchIndex() const;
     /**
@@ -126,11 +122,7 @@ public:
     void onMatchResultReceived(const uint8_t* winner, const uint8_t* loser,
                                uint8_t matchIndex, uint8_t seqId,
                                const uint8_t* fromMac);
-    /** seqId of the MATCH_RESULT this device most recently sent. */
-    uint8_t getLastMatchResultSeqId() const { return lastMatchResultSeqId; }
     bool isEliminated(const uint8_t* mac) const;
-
-    uint8_t getLastMatchStartSeqId() const;
 
     /**
      * Inbound TOURNAMENT_END, admitted on `fromMac` for the same reason as
@@ -138,8 +130,6 @@ public:
      */
     void onTournamentEndReceived(const uint8_t* fromMac, const uint8_t* winner,
                                  uint8_t seqId);
-    /** seqId of the TOURNAMENT_END this device most recently sent. */
-    uint8_t getLastTournamentEndSeqId() const { return lastTournamentEndSeqId; }
     /**
      * Tears down on a peer's ABORT. fromMac identifies the sending ring: the
      * command carries no MACs of its own, and a broadcast reaches every ring
@@ -233,8 +223,6 @@ private:
         const std::vector<std::array<uint8_t, 6>>& peers) const;
     void sendReliablyToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
                              uint8_t seqId, const uint8_t* packet, size_t len);
-    std::vector<std::array<uint8_t, 6>> testLoopMembers;
-    bool testLoopMembersOverride = false;
     std::vector<std::array<uint8_t, 6>> confirmedSet;
 
     // The ring roster as of closure. Read live from the RDC on the head that
@@ -301,7 +289,6 @@ private:
     // duelist pair separately to stay valid on non-coordinators too.
     std::array<uint8_t, 6> currentDuelistA{};
     std::array<uint8_t, 6> currentDuelistB{};
-    uint8_t lastMatchStartSeqId = 0;
     SimpleTimer bracketRevealTimer;
     /**
      * Advances the bracket. Called only from sync(), on the main loop — a second
@@ -309,7 +296,7 @@ private:
      */
     void maybeStartNextMatch();
     void sendMatchStartToPeers(int matchIndex);
-    std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
+    std::vector<uint8_t> buildMatchStartPacket(int matchIndex, uint8_t seqId) const;
 
     std::vector<std::array<uint8_t, 6>> eliminated;
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
@@ -319,7 +306,6 @@ private:
     // names a different index and gets its own attempt. A device flag would have
     // to be reset wherever a match turns over, which differs by role.
     int matchResultResentIndex = -1;
-    uint8_t lastMatchResultSeqId = 0;
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,
                                 uint8_t matchIndex);
     /**
@@ -331,10 +317,10 @@ private:
                           bool endsCurrentBout = true);
     std::vector<uint8_t> buildMatchResultPacket(const uint8_t* winner,
                                                 const uint8_t* loser,
-                                                uint8_t matchIndex) const;
+                                                uint8_t matchIndex,
+                                                uint8_t seqId) const;
 
     std::array<uint8_t, 6> tournamentWinner{};
-    uint8_t lastTournamentEndSeqId = 0;
     // The ABORT or TOURNAMENT_END this device sent to report the tournament
     // ending, which a teardown spares — see resetTournamentState. Zero until one
     // is armed, and zero on a device that only ever received the news.

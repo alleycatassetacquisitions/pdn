@@ -53,7 +53,7 @@ public:
     }
 
     bool isConnected() override {
-        return connected && httpClientState == HttpClientState::CONNECTED;
+        return httpClientState == HttpClientState::CONNECTED;
     }
 
     bool queueRequest(HttpRequest& request) override {
@@ -63,7 +63,6 @@ public:
     }
 
     void disconnect() override {
-        connected = false;
         httpClientState = HttpClientState::DISCONNECTED;
     }
 
@@ -75,7 +74,6 @@ public:
         // Simulate successful reconnection
         if (httpClientState == HttpClientState::DISCONNECTED) {
             httpClientState = HttpClientState::CONNECTED;
-            connected = true;
         }
     }
 
@@ -84,12 +82,10 @@ public:
     }
 
     void setHttpClientState(HttpClientState state) override {
-        if (state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
-            // Simulate connection
-            connected = true;
-            httpClientState = HttpClientState::CONNECTED;
-        } else if (state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
+        if (state == HttpClientState::DISCONNECTED) {
             disconnect();
+        } else {
+            httpClientState = state;
         }
     }
 
@@ -97,35 +93,15 @@ public:
         return httpClientState;
     }
 
-    // Test helper methods
-    void setConnected(bool isConnected) { 
-        connected = isConnected;
-        if (isConnected) {
-            httpClientState = HttpClientState::CONNECTED;
-        }
-    }
     uint8_t getCurrentChannel() const { return currentChannel; }
-    
-    /**
-     * Enable or disable mock server mode.
-     * When enabled, requests are processed through the CLI MockHttpServer.
-     * When disabled, requests fail immediately (original behavior).
-     */
-    void setMockServerEnabled(bool enabled) {
-        mockServerEnabled_ = enabled;
-    }
-    
-    bool isMockServerEnabled() const {
-        return mockServerEnabled_;
-    }
-    
+
     /**
      * Get request/response history for CLI display.
      */
     const std::deque<HttpRequestHistoryEntry>& getRequestHistory() const {
         return requestHistory_;
     }
-    
+
     /**
      * Get the number of pending requests.
      */
@@ -135,16 +111,14 @@ public:
 
 private:
     WifiConfig wifiConfig;
-    bool connected = false;
     uint8_t currentChannel = 0;
     uint8_t macAddress[6];
     HttpClientState httpClientState = HttpClientState::DISCONNECTED;
-    
+
     std::queue<HttpRequest> pendingRequests_;
     std::deque<HttpRequestHistoryEntry> requestHistory_;
     static constexpr size_t MAX_HISTORY = 5;
-    bool mockServerEnabled_ = false;
-    
+
     void addToHistory(const HttpRequestHistoryEntry& entry) {
         requestHistory_.push_back(entry);
         while (requestHistory_.size() > MAX_HISTORY) {

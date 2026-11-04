@@ -122,7 +122,7 @@ void httpServerClearHistory(MockHttpServerTestSuite* suite) {
 class NativeHttpClientDriverTestSuite : public testing::Test {
 public:  // Public for test function access
     void SetUp() override {
-        driver_ = new NativeHttpClientDriver("TestHttpClient");
+        driver = new NativeHttpClientDriver("TestHttpClient");
         successCallbackCalled_ = false;
         errorCallbackCalled_ = false;
         lastResponseBody_ = "";
@@ -130,10 +130,10 @@ public:  // Public for test function access
     }
     
     void TearDown() override {
-        delete driver_;
+        delete driver;
     }
-    
-    NativeHttpClientDriver* driver_;
+
+    NativeHttpClientDriver* driver;
     bool successCallbackCalled_;
     bool errorCallbackCalled_;
     std::string lastResponseBody_;
@@ -155,11 +155,11 @@ void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
             suite->lastErrorCode_ = error.code;
         }
     );
-    
-    suite->driver_->setMockServerEnabled(true);
-    suite->driver_->queueRequest(request);
-    suite->driver_->exec();  // Process the queue
-    
+
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
+    suite->driver->queueRequest(request);
+    suite->driver->exec();  // Process the queue
+
     // One of success or error should be called
     ASSERT_TRUE(suite->successCallbackCalled_ || suite->errorCallbackCalled_);
 }
@@ -179,11 +179,11 @@ void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
             suite->errorCallbackCalled_ = true;
         }
     );
-    
-    suite->driver_->setMockServerEnabled(true);
-    suite->driver_->queueRequest(request);
-    suite->driver_->exec();
-    
+
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
+    suite->driver->queueRequest(request);
+    suite->driver->exec();
+
     // With mock server in online mode (default), requests succeed
     // The offline behavior depends on driver implementation
     cli::MockHttpServer::getInstance().setOffline(false);
@@ -198,19 +198,20 @@ void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
         [](const std::string&) {},
         [](const WirelessErrorInfo&) {}
     );
-    
-    suite->driver_->setMockServerEnabled(true);
-    suite->driver_->queueRequest(request);
-    suite->driver_->exec();
-    
-    const auto& history = suite->driver_->getRequestHistory();
+
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
+    suite->driver->queueRequest(request);
+    suite->driver->exec();
+
+    const std::deque<HttpRequestHistoryEntry>& history =
+        suite->driver->getRequestHistory();
     ASSERT_GE(history.size(), 1);
 }
 
 // Test: Client fails when mock server is disabled
 void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
-    suite->driver_->setMockServerEnabled(false);
-    
+    suite->driver->setHttpClientState(HttpClientState::DISCONNECTED);
+
     HttpRequest request(
         "/api/players/0010",
         "GET",
@@ -222,11 +223,11 @@ void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
             suite->errorCallbackCalled_ = true;
         }
     );
-    
-    suite->driver_->queueRequest(request);
-    suite->driver_->exec();
-    
+
+    suite->driver->queueRequest(request);
+    suite->driver->exec();
+
     // Without mock server, the request should fail (no actual HTTP)
     // Re-enable for other tests
-    suite->driver_->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
 }

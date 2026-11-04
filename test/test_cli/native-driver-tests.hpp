@@ -960,8 +960,7 @@ void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
     ASSERT_NE(state->getStateId(), FETCH_USER_DATA);
 
     // Reboot: same sequence as cmdReboot
-    suite->device.httpClientDriver->setMockServerEnabled(true);
-    suite->device.httpClientDriver->setConnected(true);
+    suite->device.httpClientDriver->setHttpClientState(HttpClientState::CONNECTED);
     suite->device.stateHistory.clear();
     suite->device.lastStateId = -1;
     suite->device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
@@ -984,8 +983,7 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device.getCurrentState()->getStateId(), WELCOME_MESSAGE);
 
     // Reboot
-    suite->device.httpClientDriver->setMockServerEnabled(true);
-    suite->device.httpClientDriver->setConnected(true);
+    suite->device.httpClientDriver->setHttpClientState(HttpClientState::CONNECTED);
     suite->device.stateHistory.clear();
     suite->device.lastStateId = -1;
     suite->device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
@@ -1131,8 +1129,7 @@ void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device.lastStateId, 7);
 
     // Reboot
-    suite->device.httpClientDriver->setMockServerEnabled(true);
-    suite->device.httpClientDriver->setConnected(true);
+    suite->device.httpClientDriver->setHttpClientState(HttpClientState::CONNECTED);
     suite->device.stateHistory.clear();
     suite->device.lastStateId = -1;
 

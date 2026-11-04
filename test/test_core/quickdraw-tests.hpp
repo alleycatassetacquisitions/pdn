@@ -51,7 +51,7 @@ inline std::array<uint8_t, 6> mountShootoutBoutWithBountySlot(
 
     device.fakeRemoteDeviceCoordinator.ringHeadMac = coordinator;
     shootout.setMatchManager(matchManager);
-    shootout.setLoopMembersForTest({me, coordinator, spectator});
+    shootout.onRingClosedReceived(coordinator.data(), {me, coordinator, spectator});
     shootout.startProposal();
     for (const std::array<uint8_t, 6>& m : {me, coordinator, spectator}) {
         shootout.onConfirmReceived(m.data());

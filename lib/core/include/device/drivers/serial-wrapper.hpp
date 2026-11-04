@@ -37,4 +37,11 @@ class HWSerialWrapper {
      * pump and are mutually exclusive per jack.
      */
     virtual void setByteCallback(const SerialByteCallback& callback) = 0;
+
+    /**
+     * Wire this jack's TX output directly into a peer jack's RX buffer, or pass
+     * nullptr to disconnect. Hardware drivers ignore this; native simulation
+     * drivers push written bytes straight into the peer's RX queue.
+     */
+    virtual void routeTo(HWSerialWrapper* peer) { (void)peer; }
 };

@@ -62,7 +62,6 @@ public:
         }
         currentState = findEntryState();
         asLifecycle(currentState)->mount(PDN);
-        launched = true;
     }
 
     /**
@@ -157,10 +156,6 @@ public:
         pendingTransition = nullptr;
     }
 
-    bool hasLaunched() const {
-        return launched;
-    }
-
 protected:
     // initial state is 0 in the list here
     std::vector<State *> stateMap;
@@ -197,6 +192,5 @@ private:
         return stateMap[0];
     }
 
-    bool launched = false;
     StateId entryStateId = StateId(-1);
 };
