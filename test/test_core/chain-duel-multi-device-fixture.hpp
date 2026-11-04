@@ -545,7 +545,7 @@ protected:
                         if (cmd == ShootoutCmd::BRACKET) {
                             m->onBracketReceived(fromMac, macs, seqId);
                         } else {
-                            m->onRingClosedReceived(fromMac, macs);
+                            m->onRingClosedReceived(fromMac, macs, seqId);
                         }
                         break;
                     }
@@ -560,7 +560,8 @@ protected:
                         if (payloadLen >= 6) m->onTournamentEndReceived(fromMac, payload, seqId);
                         break;
                     case ShootoutCmd::ABORT:
-                        m->onAbortReceived(fromMac, seqId);
+                        m->onAbortReceived(fromMac, seqId,
+                                           payloadLen >= 1 ? payload[0] : 0);
                         break;
                 }
             },

@@ -58,13 +58,20 @@ public:
     void setLoopMembersForTest(const std::vector<std::array<uint8_t, 6>>& members);
 
     void onRingClosed();
+    /**
+     * Adopts the ring roster announced by the ring head on closure, along with
+     * the head's tournament epoch when nonzero.
+     */
     void onRingClosedReceived(const uint8_t* fromMac,
-                              const std::vector<std::array<uint8_t, 6>>& members);
+                              const std::vector<std::array<uint8_t, 6>>& members,
+                              uint8_t epoch = 0);
     /**
      * True while this device sits on a closed ring and no tournament is running:
      * the Idle -> ShootoutProposal transition predicate.
      */
     bool shouldEnterProposal() const;
+    /** Monotonic nonzero epoch identifying the current tournament instance. */
+    uint8_t getTournamentEpoch() const { return tournamentEpoch; }
 
     void startProposal();
     void confirmLocal();
@@ -143,9 +150,11 @@ public:
     /**
      * Tears down on a peer's ABORT. fromMac identifies the sending ring: the
      * command carries no MACs of its own, and a broadcast reaches every ring
-     * in radio range.
+     * in radio range. An epoch from an earlier tournament is acked and ignored
+     * so a retransmit cannot abort a newly formed proposal.
      */
-    void onAbortReceived(const uint8_t* fromMac, uint8_t seqId);
+    void onAbortReceived(const uint8_t* fromMac, uint8_t seqId,
+                         uint8_t epoch = 0);
     std::array<uint8_t, 6> getTournamentWinner() const;
 
     // Reset all tournament state back to IDLE phase so a subsequent loop
@@ -203,6 +212,11 @@ private:
         std::string name;
     };
 
+    struct RxSeqEntry {
+        std::array<uint8_t, 6> mac;
+        uint8_t lastSeqId;
+    };
+
     Player* player;
     WirelessManager* wirelessManager;
     RemoteDeviceCoordinator* rdc;
@@ -213,6 +227,11 @@ private:
     void resetTournamentState();
 
     uint8_t nextSeqId();
+    bool isDuplicateRx(const uint8_t* fromMac, uint8_t seqId);
+    void advanceTournamentEpoch();
+    std::vector<RxSeqEntry> rxSeqBySender;
+    uint8_t tournamentEpoch = 1;
+    bool tournamentEpochSpent = false;
     static bool containsMac(const std::vector<std::array<uint8_t, 6>>& set,
                             const uint8_t* mac);
     /** True when `mac` is the coordinator this device is following. */
@@ -297,6 +316,7 @@ private:
     void sendShootoutAck(ShootoutCmd cmd, uint8_t seqId, const uint8_t* toMac);
 
     int currentMatchIndex = -1;
+    int roundPairIndex = -1;
     // bracket shrinks on round advancement (coordinator only), so cache the
     // duelist pair separately to stay valid on non-coordinators too.
     std::array<uint8_t, 6> currentDuelistA{};
@@ -308,8 +328,12 @@ private:
      * caller on the packet path would need its own guard against double-advance.
      */
     void maybeStartNextMatch();
-    void sendMatchStartToPeers(int matchIndex);
-    std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
+    void sendMatchStartToPeers(int matchIndex,
+                               const std::array<uint8_t, 6>& a,
+                               const std::array<uint8_t, 6>& b);
+    std::vector<uint8_t> buildMatchStartPacket(int matchIndex,
+                                               const std::array<uint8_t, 6>& a,
+                                               const std::array<uint8_t, 6>& b) const;
 
     std::vector<std::array<uint8_t, 6>> eliminated;
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;

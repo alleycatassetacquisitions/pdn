@@ -232,7 +232,7 @@ void GameSession::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t*
         case ShootoutCmd::RING_CLOSED: {
             std::vector<std::array<uint8_t, 6>> members;
             if (!decodeMacList(payload, payloadLen, members)) break;
-            shootoutManager->onRingClosedReceived(fromMac, members);
+            shootoutManager->onRingClosedReceived(fromMac, members, seqId);
             break;
         }
         case ShootoutCmd::MATCH_START:
@@ -249,7 +249,8 @@ void GameSession::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t*
                 shootoutManager->onTournamentEndReceived(fromMac, payload, seqId);
             break;
         case ShootoutCmd::ABORT:
-            shootoutManager->onAbortReceived(fromMac, seqId);
+            shootoutManager->onAbortReceived(fromMac, seqId,
+                                             payloadLen >= 1 ? payload[0] : 0);
             break;
     }
 }
