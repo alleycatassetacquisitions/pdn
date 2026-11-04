@@ -326,9 +326,11 @@ inline void cdmSendConfirmIncrementsSeqId(ChainDuelManagerTests* suite) {
     cdm.sendConfirm();
     cdm.sendConfirm();
     ASSERT_EQ(seqIds.size(), 3u);
-    EXPECT_EQ(seqIds[0], 1u);
-    EXPECT_EQ(seqIds[1], 2u);
-    EXPECT_EQ(seqIds[2], 3u);
+    ASSERT_NE(seqIds[0], 0u);
+    const uint8_t expected1 = seqIds[0] == 255 ? 1 : seqIds[0] + 1;
+    const uint8_t expected2 = expected1 == 255 ? 1 : expected1 + 1;
+    EXPECT_EQ(seqIds[1], expected1);
+    EXPECT_EQ(seqIds[2], expected2);
 }
 
 // sendConfirm is a noop when championMac is not set.

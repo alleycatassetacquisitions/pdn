@@ -106,25 +106,15 @@ protected:
     WirelessManager* wirelessManager;
     Resender::SendMode sendMode;
 
-    // How long a seqId stays claimed by the frame that used it. seqIds restart at
-    // 1 on a fresh channel, so without an expiring claim the first frame after a
-    // peer reboots carries the seqId the receiver already holds — on a channel
-    // that sends one frame per peer, that is every reboot, not a rare collision.
-    //
-    // Read from the transport so it stays wider than the span a frame can
-    // retransmit over: no retransmit outlives the claim its first copy was
-    // delivered under.
-    static constexpr unsigned long RX_SEQ_CLAIM_MS = Resender::STALE_AFTER_MS;
-
 private:
     struct RxSeqRecord {
         std::array<uint8_t, 6> mac;
         uint8_t lastSeqId;
-        // Re-armed whenever this sender's cursor moves; see RX_SEQ_CLAIM_MS.
-        SimpleTimer claim;
     };
     OnAbandon onAbandon;
-    uint8_t lastSentSeqId = 0;
+    // Seeded at construction so a rebooted peer does not systematically restart
+    // on the same seqId a receiver's cursor is already holding.
+    uint8_t lastSentSeqId;
     // Last nonzero seqId delivered per sender. Receiving costs no peer-table
     // slot, so nothing bounds this but MAX_RX_SENDERS.
     std::vector<RxSeqRecord> rxSeq;
