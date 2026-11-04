@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -18,6 +19,8 @@ constexpr uint8_t OP_HELLO = 0x00;
 // HelloPayload struct below; the constant lets the parser frame the payload
 // without depending on the struct in switch tables.
 constexpr size_t HELLO_PAYLOAD_LEN = 14;
+// Total wire bytes for a framed HELLO: 2 preamble + 1 opcode + payload + 2 CRC.
+constexpr size_t HELLO_FRAME_LEN = 2 + 1 + HELLO_PAYLOAD_LEN + 2;
 
 // Set once this device's context exchange with the head it currently holds has
 // been delivered; cleared by a head change until re-confirmed under the new one.
@@ -41,6 +44,10 @@ struct HelloPayload {
 
 static_assert(sizeof(HelloPayload) == HELLO_PAYLOAD_LEN,
               "HelloPayload must match the 14-byte HELLO wire layout");
+
+// Serializes a HelloPayload into a fixed-size 19-byte HELLO frame with no heap
+// allocation, suitable for the periodic emit task.
+std::array<uint8_t, HELLO_FRAME_LEN> encodeHelloFrame(const HelloPayload& hello);
 
 // Wraps a raw payload in the framed wire format: preamble, opcode, payload,
 // CRC-16 over (opcode + payload). The inverse of SerialFrameParser.

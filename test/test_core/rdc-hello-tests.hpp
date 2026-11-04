@@ -112,6 +112,19 @@ public:
      */
     ReliableTransport* transport() { return rdc.transport; }
 
+    /**
+     * Overrides the published atomic snapshot directly so a test can verify that
+     * emitHello() reads only the published word and never reaches into main-loop
+     * chain fields or per-jack link machines.
+     */
+    void overridePublishedHelloState(const uint8_t* headMac, bool confirmed, bool ringClosed) {
+        uint64_t snapshot =
+            headMac != nullptr ? (MacToUInt64(headMac) & RemoteDeviceCoordinator::HEAD_MAC_MASK) : 0;
+        if (confirmed) snapshot |= RemoteDeviceCoordinator::CONFIRMED_BIT;
+        if (ringClosed) snapshot |= RemoteDeviceCoordinator::RING_CLOSED_BIT;
+        rdc.publishedHelloState.store(snapshot);
+    }
+
     MockDevice device;
     FakePlatformClock* fakeClock = nullptr;
     NativeSerialDriver outJack{"hello-out"};
@@ -2856,4 +2869,37 @@ inline void rdcHeadTransferCarriesFullCapRoster(RDCHelloTests* suite) {
                                         handoff.data(), handoff.size());
 
     EXPECT_EQ(suite->rdc.getChainMembers().size(), static_cast<size_t>(MAX_CHAIN_MEMBERS));
+}
+
+// emitHello() runs on the periodic connectivity task and must read only the
+// published atomic snapshot — never main-loop chain fields or per-jack link
+// machines. Overriding the snapshot while main-loop state says the opposite
+// proves emitHello() derives nothing on the fly.
+inline void rdcEmitHelloReadsPublishedSnapshotOnly(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t realHead[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t snapshotHead[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
+
+    // Main loop holds realHead on a Connected INPUT, with OUTPUT Idle (not in ring).
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, realHead));
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), realHead, 6));
+    ASSERT_FALSE(suite->rdc.isInRing());
+
+    // Override the published word to advertise snapshotHead + confirmed + ringClosed.
+    suite->overridePublishedHelloState(snapshotHead, /*confirmed=*/true, /*ringClosed=*/true);
+
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    const std::string raw = suite->outJack.getOutput();
+    EXPECT_EQ(raw.size(), HELLO_FRAME_LEN);
+    HelloPayload emitted = parseEmittedHello(raw);
+    EXPECT_EQ(0, memcmp(emitted.headMac, snapshotHead, 6));
+    EXPECT_EQ(emitted.flags,
+              static_cast<uint8_t>(HELLO_FLAG_CONFIRMED | HELLO_FLAG_RING_CLOSED));
+
+    // Main-loop accessor still reads main-loop state, unaffected by the snapshot.
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), realHead, 6));
 }

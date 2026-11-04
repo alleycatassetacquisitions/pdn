@@ -11,6 +11,22 @@ constexpr size_t PREAMBLE_BYTES = 2;
 constexpr size_t CRC_BYTES = 2;
 }
 
+std::array<uint8_t, HELLO_FRAME_LEN> encodeHelloFrame(const HelloPayload& hello) {
+    const uint8_t opcode = OP_HELLO;
+    const uint8_t* payload = reinterpret_cast<const uint8_t*>(&hello);
+    uint16_t crc = crc16(&opcode, 1);
+    crc = crc16Update(crc, payload, sizeof(hello));
+
+    std::array<uint8_t, HELLO_FRAME_LEN> frame{};
+    frame[0] = FRAME_PREAMBLE_0;
+    frame[1] = FRAME_PREAMBLE_1;
+    frame[2] = opcode;
+    std::memcpy(&frame[3], payload, sizeof(hello));
+    frame[3 + sizeof(hello)] = static_cast<uint8_t>(crc >> 8);
+    frame[3 + sizeof(hello) + 1] = static_cast<uint8_t>(crc & 0xFF);
+    return frame;
+}
+
 std::vector<uint8_t> encodeFramed(uint8_t opcode, const std::vector<uint8_t>& payload) {
     // CRC covers opcode + payload, folded as two spans so the frame is built
     // in a single buffer (mirrors the parser's RX-side computation).
@@ -29,8 +45,8 @@ std::vector<uint8_t> encodeFramed(uint8_t opcode, const std::vector<uint8_t>& pa
 }
 
 std::vector<uint8_t> encodeFramed(const HelloPayload& hello) {
-    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&hello);
-    return encodeFramed(OP_HELLO, std::vector<uint8_t>(bytes, bytes + sizeof(hello)));
+    const std::array<uint8_t, HELLO_FRAME_LEN> frame = encodeHelloFrame(hello);
+    return std::vector<uint8_t>(frame.begin(), frame.end());
 }
 
 unsigned long SerialFrameParser::nowMs() {

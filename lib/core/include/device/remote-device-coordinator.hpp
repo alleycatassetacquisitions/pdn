@@ -248,8 +248,11 @@ public:
 
     /**
      * The connectivity task's sole action: emit one HELLO frame on every jack.
-     * TX only — touches no SM state and fires no callback, so it is safe to run
-     * on a separate FreeRTOS task while the main loop owns everything else.
+     * Reads `selfMac` and `selfDeviceType` (written once in initialize() before
+     * the task spawns), loads the published `publishedHelloState` atomic
+     * snapshot, encodes a fixed-size frame on the stack, and writes it to each
+     * serial jack — touching no link machine or main-loop state and firing no
+     * callback.
      */
     void emitHello();
 
@@ -416,12 +419,11 @@ private:
     static unsigned long nowMs();
 
     // ---- Device-level chain state machine (#156) ----
-    // headMac (48 bits) + a confirmed bit packed into one atomic: the emit task
-    // reads it while the main loop writes it. The confirmed bit rises only when the
-    // announce to the head currently held is delivered.
-    static constexpr uint64_t HEAD_MAC_MASK = 0xFFFFFFFFFFFFULL;
-    static constexpr uint64_t CONFIRMED_BIT = 1ULL << 48;
-    std::atomic<uint64_t> chainHeadState{0};
+    // Main-loop-owned chain state: the adopted head MAC (all-zero when this
+    // device is the head or standalone) and whether the announce to that head
+    // has been delivered.
+    std::array<uint8_t, 6> chainHeadMac{};
+    bool chainHeadConfirmed = false;
     // Latched when this structural head sees its own MAC return on the INPUT jack;
     // cleared when any ring link drops. Dominates getChainRole().
     bool ringLatched = false;
@@ -431,20 +433,25 @@ private:
     // single-sourced: the latching device holds no head, so its own flag is
     // never fed back to it and a cleared latch drains round the loop.
     bool upstreamRingClosed = false;
+    // Packed snapshot for the HELLO emit task: headMac (48 bits), confirmed, and
+    // ring-closed in one atomic word written only by publishHelloState() on the
+    // main loop, so emitHello() reads a consistent view in a single load.
+    static constexpr uint64_t HEAD_MAC_MASK = 0xFFFFFFFFFFFFULL;
+    static constexpr uint64_t CONFIRMED_BIT = 1ULL << 48;
+    static constexpr uint64_t RING_CLOSED_BIT = 1ULL << 49;
+    std::atomic<uint64_t> publishedHelloState{0};
     // Last time the own-MAC head returned on INPUT while latched (seeded at
     // closure): the ring-latch evidence stamp checked against RING_EVIDENCE_TIMEOUT_MS.
     unsigned long lastSelfHeadReturnMs = 0;
-    // Stable storage backing getHeadMac()'s returned pointer.
-    mutable std::array<uint8_t, 6> headMacScratch{};
     // Last role reported to chainRoleChangeCallback, for edge-triggered firing.
     ChainRole lastChainRole = ChainRole::STANDALONE;
     // The effective head the INPUT peer last advertised (all-zero = none), kept
-    // apart from chainHeadState: a HELLO can advertise a head long before the
+    // apart from chainHeadMac: a HELLO can advertise a head long before the
     // link carrying it is established, and only the latter may be acted on.
     std::array<uint8_t, 6> upstreamAdvertisedHead{};
 
-    static uint64_t packHead(const uint8_t* mac, bool confirmed);
     static void unpackMac(uint64_t value, uint8_t* out);
+    void publishHelloState();
     // Ring detection and the latched-head conflict, driven by any INPUT HELLO;
     // taking on a foreign head is left to adoptUpstreamHead.
     void applyUpstreamHead(const HelloPayload& hello);
@@ -455,7 +462,7 @@ private:
     void maybeFireChainRoleChange();
     // Roster traffic is addressed to the head as head, so it dies with the role.
     // A surviving retransmit would address a device that is no longer the head.
-    void cancelHeadRosterTraffic(uint64_t headMac48);
+    void cancelHeadRosterTraffic(const uint8_t* headMac);
 
     // ---- Head roster (#158) ----
     // member MAC -> its direct upstream MAC. Only the roster authority (see
