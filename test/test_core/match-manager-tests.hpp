@@ -18,11 +18,9 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(1000);
 
-        matchManager = new MatchManager(device.wirelessManager);
         player = new Player();
         char playerId[] = "test";
         player->setUserID(playerId);
-        matchManager->initialize(player, &mockStorage);
         using ::testing::_;
         ON_CALL(mockStorage, write(_, _, _))
             .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
@@ -36,7 +34,7 @@ public:
         // direct peer so the MAC-peering gate passes.
         uint8_t defaultHunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
         fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, defaultHunterMac);
-        matchManager->setRemoteDeviceCoordinator(&fakeRdc);
+        matchManager = new MatchManager(player, &mockStorage, device.wirelessManager, &fakeRdc);
         matchManager->clearCurrentMatch();
     }
 

@@ -38,22 +38,26 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // Subscribed here rather than by whoever builds this manager: an owner that
     // wires it is an owner every other caller has to imitate, and one that forgets
     // gets a manager that compiles, runs, and silently never reacts.
-    rdc->setChainChangeCallback([this]() { onChainStateChanged(); });
-    rdc->setOnContextReceived([this](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
-        if (jack == supporterJack() && supporterAnnounce.has_value()) {
-            roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
-            supporterAnnounce.reset();
-        }
-        onChainStateChanged();
-        if (jack == opponentJack()) resendConfirm();
-    });
+    rdc->setChainChangeCallback([this]() { onChainStateChanged(); }, this);
+    rdc->setOnContextReceived(
+        [this](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
+            if (jack == supporterJack() && supporterAnnounce.has_value()) {
+                roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
+                supporterAnnounce.reset();
+            }
+            onChainStateChanged();
+            if (jack == opponentJack()) resendConfirm();
+        },
+        this);
     // The ring latch moves with both cables still seated — applyUpstreamHead sets
     // and clears it off the HELLO parse, no jack edge — so a standing confirm has
     // to be re-sent from the role edge; no jack edge would carry it.
-    rdc->setOnChainRoleChange([this](ChainRole) {
-        if (isLoop() != wasInLoop) onChainStateChanged();
-        resendConfirm();
-    });
+    rdc->setOnChainRoleChange(
+        [this](ChainRole) {
+            if (isLoop() != wasInLoop) onChainStateChanged();
+            resendConfirm();
+        },
+        this);
     wasInLoop = isLoop();
     // Armed here because SimpleTimer::expired() is false while unarmed, so an
     // unarmed backstop never fires at all.
@@ -61,9 +65,9 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
 }
 
 ChainDuelManager::~ChainDuelManager() {
-    rdc->setChainChangeCallback(nullptr);
-    rdc->setOnContextReceived(nullptr);
-    rdc->setOnChainRoleChange(nullptr);
+    rdc->setChainChangeCallback(nullptr, this);
+    rdc->setOnContextReceived(nullptr, this);
+    rdc->setOnChainRoleChange(nullptr, this);
 }
 
 SerialIdentifier ChainDuelManager::opponentJack() const {

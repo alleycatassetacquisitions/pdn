@@ -129,11 +129,20 @@ public:
     }
 
     /** Rebinds `shootout` to `memberRdc` as a relayed ring child under `head`. */
-    void followRingHead(const std::array<uint8_t, 6>& head) {
+    void followRingHead(const std::array<uint8_t, 6>& head,
+                        MatchManager* matchManager = nullptr) {
         memberRdc.chainRole = ChainRole::CHILD;
         memberRdc.headMac = head;
         delete shootout;
-        shootout = new ShootoutManager(&player, device.wirelessManager, &memberRdc);
+        shootout = new ShootoutManager(
+            &player, device.wirelessManager, &memberRdc, matchManager);
+    }
+
+    /** Rebinds `shootout` to `rdc` with the given `matchManager`. */
+    void bindMatchManager(MatchManager* matchManager) {
+        delete shootout;
+        shootout = new ShootoutManager(
+            &player, device.wirelessManager, &rdc, matchManager);
     }
 
     /** Rebinds `shootout` to `memberRdc` as a latched ring head serving `served`. */
@@ -1677,10 +1686,8 @@ inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(1));
 
     MockStorage storage;
-    MatchManager matchManager(nullptr);
-    matchManager.initialize(&suite->player, &storage);
-    suite->followRingHead(opMac);
-    suite->shootout->setMatchManager(&matchManager);
+    MatchManager matchManager(&suite->player, &storage, nullptr, nullptr);
+    suite->followRingHead(opMac, &matchManager);
 
     suite->player.setIsHunter(true);
 
@@ -1705,7 +1712,8 @@ inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
         << "the bout's draw slot was rewritten underneath a live duel";
 
     matchManager.clearCurrentMatch();
-    suite->shootout->setMatchManager(nullptr);
+    delete suite->shootout;
+    suite->shootout = nullptr;
 }
 
 // One execDrivers drain can carry both a MATCH_START and the ABORT that ends the
@@ -1725,9 +1733,8 @@ inline void anAbortRetiresTheBoutTheTournamentPrimed(ShootoutManagerTests* suite
         .WillByDefault(testing::Return(1));
 
     MockStorage storage;
-    MatchManager matchManager(nullptr);
-    matchManager.initialize(&suite->player, &storage);
-    suite->shootout->setMatchManager(&matchManager);
+    MatchManager matchManager(&suite->player, &storage, nullptr, nullptr);
+    suite->bindMatchManager(&matchManager);
 
     suite->joinRelayedRing(coord.data());
     suite->shootout->setLoopMembersForTest({me, coord, third});
@@ -1746,7 +1753,8 @@ inline void anAbortRetiresTheBoutTheTournamentPrimed(ShootoutManagerTests* suite
     EXPECT_FALSE(matchManager.getCurrentMatch().has_value())
         << "the next tournament cannot prime a bout over the abandoned one";
 
-    suite->shootout->setMatchManager(nullptr);
+    delete suite->shootout;
+    suite->shootout = nullptr;
 }
 
 // The bout the cable handshake owns is not the tournament's to retire, and a
@@ -1758,9 +1766,8 @@ inline void aTournamentResetLeavesACableBoutAlone(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(selfMac));
 
     MockStorage storage;
-    MatchManager matchManager(nullptr);
-    matchManager.initialize(&suite->player, &storage);
-    suite->shootout->setMatchManager(&matchManager);
+    MatchManager matchManager(&suite->player, &storage, nullptr, nullptr);
+    suite->bindMatchManager(&matchManager);
 
     matchManager.receiveMatch("b5f1c0de-0000-4000-8000-00000000cafe", "opponent",
                               /*opponentIsHunter=*/true, opponent);
@@ -1772,7 +1779,8 @@ inline void aTournamentResetLeavesACableBoutAlone(ShootoutManagerTests* suite) {
         << "a tournament ending took the cable handshake's bout with it";
 
     matchManager.clearCurrentMatch();
-    suite->shootout->setMatchManager(nullptr);
+    delete suite->shootout;
+    suite->shootout = nullptr;
 }
 
 // The two terminal screens run resetToIdle on dismount, which is what lets the

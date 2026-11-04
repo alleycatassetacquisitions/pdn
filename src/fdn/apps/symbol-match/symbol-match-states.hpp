@@ -57,7 +57,6 @@ public:
 
     bool transitionToSelection();
     bool transitionToMatchSuccess();
-    bool transitionToMainMenu();
 
 private:
     void renderSymbolScreen(FDN* fdn);
@@ -68,8 +67,7 @@ private:
     SymbolWirelessManager* symbolWirelessManager;
     FDN* mountedFdn = nullptr;
 
-    bool transitionToSelectionState   = false;
-    bool transitionToMainMenuApp      = false;
+    bool transitionToSelectionState = false;
     bool leftConnected  = false;
     bool rightConnected = false;
     bool lastSideLightLeft_  = false;

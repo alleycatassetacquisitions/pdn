@@ -1844,6 +1844,10 @@ TEST_F(ChainDuelManagerTests, gameEventAbandonsWhenSpanRunsOut) {
     cdmGameEventAbandonsWhenSpanRunsOut(this);
 }
 
+TEST_F(ChainDuelManagerTests, destroyingCoexistingManagerPreservesSurvivingRdcCallbacks) {
+    destroyingCoexistingManagerPreservesSurvivingRdcCallbacks(this);
+}
+
 // ============================================
 // CHAIN DUEL MULTI-DEVICE FIXTURE TESTS
 // ============================================

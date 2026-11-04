@@ -65,12 +65,14 @@ public:
         return entryStateId;
     };
 
-    std::function<bool()> condition; // Function pointer that returns true based on the global state
-    State* nextState = nullptr;      // Pointer to the next state, null on an app transition
-    /** Negative when this edge stays inside the machine. */
-    StateId targetAppId = StateId(-1);
-    /** Negative to enter the target app at whichever state it registered first. */
-    StateId entryStateId = StateId(-1);
+private:
+    // Private so the two constructors are the only way to build an edge: each
+    // sets exactly one destination, and a transition carrying both a nextState
+    // and a target app would satisfy the hand-off check while naming a sibling.
+    std::function<bool()> condition;     // Returns true when this edge should be taken
+    State* nextState = nullptr;          // The sibling state, null on an app transition
+    StateId targetAppId = StateId(-1);   // Negative when the edge stays in the machine
+    StateId entryStateId = StateId(-1);  // Negative to enter the target at its first state
 };
 
 /*
@@ -160,12 +162,6 @@ protected:
     std::vector<StateTransition*> transitions;
 
 private:
-    struct AppTransitionEntry {
-        std::function<bool()> condition;
-        StateId targetAppId;
-    };
-    std::vector<AppTransitionEntry> appTransitions;
-
     StateId name;
 
     void mount(Device* device) override = 0;

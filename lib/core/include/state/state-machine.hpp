@@ -38,19 +38,23 @@
  * reachable via virtual dispatch from StateMachine.
  */
 
-class StateMachine : public TypedState<Device> {
+class StateMachine {
 public:
     /**
      * @param stateId This app's id, the same value as its AppConfig key.
      */
     explicit StateMachine(int stateId)
-        : TypedState<Device>(stateId) {}
+        : appId(stateId) {}
 
-    ~StateMachine() override {
-        for (auto state: stateMap) {
+    /** Frees every state registered in `stateMap`. */
+    virtual ~StateMachine() {
+        for (State* state : stateMap) {
             delete state;
         }
     };
+
+    /** This app's numeric identifier. */
+    int getStateId() const { return appId.id; }
 
     void initialize(Device *PDN) {
         // Populate once. onStateMounted lands here on every swap back to this
@@ -127,19 +131,21 @@ public:
         return currentState;
     }
 
-    void onStateMounted(Device *PDN) override {
-        initialize(PDN);
+    /** Mounts this app on `pdn`, populating its state map on first launch. */
+    virtual void onStateMounted(Device* pdn) {
+        initialize(pdn);
     }
 
-    void onStateLoop(Device *PDN) override {
-        asLifecycle(currentState)->loop(PDN);
+    /** Steps the mounted state and evaluates its outgoing transitions. */
+    virtual void onStateLoop(Device* pdn) {
+        asLifecycle(currentState)->loop(pdn);
         checkStateTransitions();
         if (pendingTransition == nullptr) {
             return;
         }
         // A null next state is what marks the winning edge as a hand-off.
         if (pendingTransition->getNextState() != nullptr) {
-            commitState(PDN);
+            commitState(pdn);
             return;
         }
 
@@ -148,11 +154,12 @@ public:
         // returns without dismounting, and the same edge wins again next tick.
         StateId nextApp = pendingTransition->getTargetAppId();
         StateId entryState = pendingTransition->getEntryStateId();
-        PDN->setActiveApp(nextApp, entryState);
+        pdn->setActiveApp(nextApp, entryState);
     }
 
-    void onStateDismounted(Device *PDN) override {
-        asLifecycle(currentState)->dismount(PDN);
+    /** Dismounts the active state when this app leaves the device. */
+    virtual void onStateDismounted(Device* pdn) {
+        asLifecycle(currentState)->dismount(pdn);
         currentState = nullptr;
         pendingTransition = nullptr;
     }
@@ -198,5 +205,6 @@ private:
     }
 
     bool launched = false;
+    StateId appId;
     StateId entryStateId = StateId(-1);
 };

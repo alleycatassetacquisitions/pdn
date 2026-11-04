@@ -182,8 +182,8 @@ PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
     return mapHelloLinkToStatus(port);
 }
 
-void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callback) {
-    chainChangeCallback = std::move(callback);
+void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callback, void* owner) {
+    chainChangeCallbacks.set(std::move(callback), owner);
 }
 
 DeviceType RemoteDeviceCoordinator::getPeerDeviceType(SerialIdentifier port) const {
@@ -213,11 +213,7 @@ bool RemoteDeviceCoordinator::isDirectPeer(const uint8_t* mac) const {
 }
 
 void RemoteDeviceCoordinator::notifyChainChange() {
-    // Copied before the call for the same reason the jack-change dispatch does
-    // it: a handler that reacts by tearing its own state down clears this slot,
-    // destroying the std::function whose operator() frame is still live.
-    std::function<void()> handler = chainChangeCallback;
-    if (handler) handler();
+    chainChangeCallbacks.fire();
 }
 
 // ---- Per-jack HELLO connectivity (#155) ----
@@ -265,11 +261,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             // head becomes adoptable, and the game layer must see the resulting
             // chain state on the connect it is told about — so adopt first (#158).
             if (connected && j == SerialIdentifier::INPUT_JACK) adoptUpstreamHead();
-            // Copied before the call: a handler that reacts by dismounting its own
-            // state clears this slot, which would destroy the std::function whose
-            // operator() frame is still live.
-            JackChangeCallback handler = jackChangeCallback;
-            if (handler) handler(j, connected);
+            jackChangeCallbacks.fire(j, connected);
             // Connects only. A disconnect reaches here during the Connected
             // state's dismount, while this jack still names its departing peer
             // and still reads CONNECTED, so the chain state a subscriber would
@@ -461,14 +453,13 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
                         !isContextSendPending(fromMac);
     if (resend) sendSelfContext(fromMac);
 
-    ContextReceivedCallback handler = contextReceivedCallback;
     for (SerialIdentifier port : HELLO_JACKS) {
         JackHelloLink& link = helloByPort[portIndex(port)];
         if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
             continue;
         if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
         if (resend) link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
-        if (handler) handler(port, peerType, profile, len);
+        contextReceivedCallbacks.fire(port, peerType, profile, len);
     }
 }
 
@@ -495,7 +486,7 @@ void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceT
     recordJackContext(jack, peerType, chainRole, peerUserId, profile, len);
     JackHelloLink& link = helloByPort[portIndex(jack)];
     if (link.machine != nullptr && link.machine->didMarkContextComplete()) return;
-    if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
+    contextReceivedCallbacks.fire(jack, peerType, profile, len);
     onContextExchangeComplete(jack);
 }
 
@@ -695,12 +686,7 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         pendingReportMac.fill(0);
         pendingReportSeqId = 0;
         cancelHeadRosterTraffic(formingHead);
-        // Copied before the call, as the chain-change dispatch is:
-        // the subscriber is a game-layer manager that clears this slot in its own
-        // destructor, so a handler reaching a teardown would free the std::function
-        // whose operator() frame is still live.
-        RingClosedCallback ringClosed = ringClosedCallback;
-        if (ringClosed) ringClosed();
+        ringClosedCallbacks.fire();
         return;
     }
 
@@ -787,9 +773,7 @@ void RemoteDeviceCoordinator::maybeFireChainRoleChange() {
     const ChainRole role = getChainRole();
     if (role == lastChainRole) return;
     lastChainRole = role;
-    // Copied before the call; see the ring-closed dispatch for why.
-    ChainRoleChangeCallback roleChange = chainRoleChangeCallback;
-    if (roleChange) roleChange(role);
+    chainRoleChangeCallbacks.fire(role);
 }
 
 // ---- Head roster (#158) ----
@@ -841,7 +825,7 @@ void RemoteDeviceCoordinator::reportDownstreamLoss(const uint8_t* lostMac) {
         // upstream path had gone gappy and a subtree walk would miss.
         if (!chainRoster.empty()) {
             chainRoster.clear();
-            if (membershipChangeCallback) membershipChangeCallback();
+            membershipChangeCallbacks.fire();
         }
         return;
     }
@@ -888,7 +872,7 @@ void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {
             }
         }
     }
-    if (changed && membershipChangeCallback) membershipChangeCallback();
+    if (changed) membershipChangeCallbacks.fire();
 }
 
 void RemoteDeviceCoordinator::transferRosterTo(const uint8_t* newHeadMac) {
@@ -904,7 +888,7 @@ void RemoteDeviceCoordinator::transferRosterTo(const uint8_t* newHeadMac) {
     }
     headTransferChannel->sendReliable(newHeadMac, transfer);
     chainRoster.clear();
-    if (membershipChangeCallback) membershipChangeCallback();
+    membershipChangeCallbacks.fire();
 }
 
 void RemoteDeviceCoordinator::onConnectionAnnounce(const uint8_t* fromMac,
@@ -936,7 +920,7 @@ void RemoteDeviceCoordinator::onConnectionAnnounce(const uint8_t* fromMac,
         return;
     }
     chainRoster[member] = upstream;
-    if (membershipChangeCallback) membershipChangeCallback();
+    membershipChangeCallbacks.fire();
 }
 
 void RemoteDeviceCoordinator::evictStaleUpstreamClaimant(
@@ -1026,5 +1010,5 @@ void RemoteDeviceCoordinator::onHeadTransfer(const uint8_t* /*fromMac*/,
         chainRoster[member] = upstream;
         changed = true;
     }
-    if (changed && membershipChangeCallback) membershipChangeCallback();
+    if (changed) membershipChangeCallbacks.fire();
 }

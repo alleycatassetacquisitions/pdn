@@ -43,7 +43,7 @@ public:
     void sync();
 
     /** The manager bundle every gameplay state is constructed from. */
-    GameContext getContext();
+    const GameContext& getContext() const { return context; }
 
 private:
     /**
@@ -81,14 +81,8 @@ private:
         (static_cast<GameSession*>(ctx)->*Handler)(fromMac, data, dataLen);
     }
 
-    Player* player = nullptr;
     Device* pdn = nullptr;
-    WirelessManager* wirelessManager = nullptr;
-    RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
-    SymbolWirelessManager* symbolWirelessManager = nullptr;
-    MatchManager* matchManager = nullptr;
-    ChainDuelManager* chainDuelManager = nullptr;
-    ShootoutManager* shootoutManager = nullptr;
+    GameContext context;
 
     // Every STATS_LOG_INTERVAL_MS we emit one line of the chain-duel retry
     // counters under the "STATS" tag. Intended for venue deployment: `cat`ing the

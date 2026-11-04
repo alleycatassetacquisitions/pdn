@@ -227,13 +227,6 @@ void SymbolMatch::populateStateMap() {
     symbolIdle->addTransition(new StateTransition(
         std::bind(&SymbolIdle::transitionToMatchSuccess, symbolIdle),
         matchSuccess));
-    // Below the match-success edge because app and intra-machine edges share one
-    // priority list, so declaring it first would outrank every edge under it.
-    // Inert either way: transitionToMainMenuApp is never assigned true.
-    symbolIdle->addAppTransition(
-        std::bind(&SymbolIdle::transitionToMainMenu, symbolIdle),
-        StateId(MAIN_MENU_APP_ID));
-
     matchSuccess->addAppTransition(
         std::bind(&MatchSuccess::transitionToMainMenu, matchSuccess),
         StateId(MAIN_MENU_APP_ID));

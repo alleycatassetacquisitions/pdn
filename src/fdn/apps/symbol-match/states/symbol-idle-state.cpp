@@ -156,7 +156,6 @@ void SymbolIdle::onStateLoop(FDN* fdn) {
 
 void SymbolIdle::onStateDismounted(FDN* fdn) {
     transitionToSelectionState = false;
-    transitionToMainMenuApp    = false;
     mountedFdn                 = nullptr;
     lastTimeRendered           = 0;
     symbolSentLeft             = false;
@@ -230,8 +229,4 @@ bool SymbolIdle::transitionToMatchSuccess() {
     return symbolManager->isMatched(SerialIdentifier::INPUT_JACK)
         && symbolManager->isMatched(SerialIdentifier::INPUT_JACK_SECONDARY)
         && symbolSentLeft && symbolSentRight;
-}
-
-bool SymbolIdle::transitionToMainMenu() {
-    return transitionToMainMenuApp;
 }

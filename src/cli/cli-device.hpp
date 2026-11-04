@@ -99,10 +99,7 @@ struct DeviceInstance {
     Player* player = nullptr;
     GameSession* gameSession = nullptr;
     PlayerRegistrationApp* playerRegistrationApp = nullptr;
-    HubApp* hubApp = nullptr;
-    DuelApp* duelApp = nullptr;
-    ShootoutApp* shootoutApp = nullptr;
-    SymbolApp* symbolApp = nullptr;
+    AppConfig apps;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
 
     // State history (circular buffer, most recent at back)
@@ -223,22 +220,12 @@ public:
         instance.playerRegistrationApp = new PlayerRegistrationApp(
             instance.player, instance.pdn->getWirelessManager(),
             gameContext.matchManager, nullptr);
-        instance.hubApp = new HubApp(gameContext);
-        instance.duelApp = new DuelApp(gameContext);
-        instance.shootoutApp = new ShootoutApp(gameContext);
-        instance.symbolApp = new SymbolApp(gameContext);
-
-        AppConfig apps = {
-            {StateId(PLAYER_REGISTRATION_APP_ID), instance.playerRegistrationApp},
-            {StateId(HUB_APP_ID), instance.hubApp},
-            {StateId(DUEL_APP_ID), instance.duelApp},
-            {StateId(SHOOTOUT_APP_ID), instance.shootoutApp},
-            {StateId(SYMBOL_APP_ID), instance.symbolApp},
-        };
+        instance.apps = makeGameplayApps(gameContext);
+        instance.apps[StateId(PLAYER_REGISTRATION_APP_ID)] = instance.playerRegistrationApp;
         // Skip the entire registration flow: launch straight into the hub's first
         // state (AwakenSequence). The player is already configured with ID, role,
         // and allegiance from DeviceFactory.
-        instance.pdn->loadAppConfig(apps, StateId(HUB_APP_ID));
+        instance.pdn->loadAppConfig(instance.apps, StateId(HUB_APP_ID));
 
         // Register with SerialCableBroker for cable simulation
         SerialCableBroker::getInstance().registerDevice(
@@ -260,11 +247,11 @@ public:
         // Apps before the session, which owns the managers their GameContext
         // copies point at. No state destructor dereferences one today, so this is
         // ordering hygiene rather than a fix for a live use-after-free.
-        delete device.playerRegistrationApp;
-        delete device.hubApp;
-        delete device.duelApp;
-        delete device.shootoutApp;
-        delete device.symbolApp;
+        for (const std::pair<const StateId, StateMachine*>& entry : device.apps) {
+            delete entry.second;
+        }
+        device.apps.clear();
+        device.playerRegistrationApp = nullptr;
         delete device.gameSession;
         delete device.symbolWirelessManager;
         delete device.player;

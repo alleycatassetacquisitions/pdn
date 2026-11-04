@@ -164,8 +164,7 @@ struct DeviceCtx {
         player.setIsHunter(isHunter);
 
         wirelessMgr = new WirelessManager(&peerComms, &httpClient);
-        matchMgr = new MatchManager(wirelessMgr);
-        matchMgr->initialize(&player, &storage);
+        matchMgr = new MatchManager(&player, &storage, wirelessMgr, nullptr);
     }
 
     void destroy() {
