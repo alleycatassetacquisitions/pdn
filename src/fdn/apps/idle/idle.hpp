@@ -6,13 +6,12 @@
 #include "device/remote-device-coordinator.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
 
-class Idle : public StateMachine {
+class IdleApp : public StateMachine {
 public:
-    Idle(RemotePlayerManager* remotePlayerManager,
-         HackedPlayersManager* hackedPlayersManager,
-         FDNConnectWirelessManager* fdnConnectWirelessManager,
-         RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~Idle();
+    /** Constructs the FDN idle app state machine. */
+    IdleApp(RemotePlayerManager* remotePlayerManager, HackedPlayersManager* hackedPlayersManager,
+            FDNConnectWirelessManager* fdnConnectWirelessManager,
+            RemoteDeviceCoordinator* remoteDeviceCoordinator);
 
     void populateStateMap() override;
 

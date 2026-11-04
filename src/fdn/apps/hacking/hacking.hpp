@@ -5,12 +5,12 @@
 #include "wireless/fdn-connect-wireless-manager.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
 
-class Hacking : public StateMachine {
+class HackingApp : public StateMachine {
 public:
-    Hacking(FDNConnectWirelessManager* fdnConnectWirelessManager,
-            HackedPlayersManager* hackedPlayersManager,
-            RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~Hacking();
+    /** Constructs the FDN hacking app state machine. */
+    HackingApp(FDNConnectWirelessManager* fdnConnectWirelessManager,
+               HackedPlayersManager* hackedPlayersManager,
+               RemoteDeviceCoordinator* remoteDeviceCoordinator);
 
     void populateStateMap() override;
 
