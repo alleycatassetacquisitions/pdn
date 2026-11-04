@@ -322,7 +322,10 @@ TEST(ReliableTransportTest, ackRoutesByPktType) {
     TransportTestPayload p{};
     // Send B first so its pending entry sits ahead of A's in the Resender vector.
     uint8_t seqB = chB->sendReliable(target, p);
-    uint8_t seqA = chA->sendReliable(target, p);
+    uint8_t seqA = 0;
+    do {
+        seqA = chA->sendReliable(target, p);
+    } while (seqA != seqB);
     ASSERT_EQ(seqA, seqB);
     ASSERT_TRUE(chA->isPending(target));
     ASSERT_TRUE(chB->isPending(target));

@@ -2,21 +2,35 @@
 #include "device/wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
 
+#ifdef NATIVE_BUILD
+#include <random>
+#else
+#include <esp_random.h>
+#endif
+
 namespace {
 constexpr const char* RELIABLE_CHANNEL_TAG = "ReliableChannel";
 constexpr size_t MAX_RX_SENDERS = 32;
+
+uint8_t seedInitialSeqId() {
+#ifdef NATIVE_BUILD
+    const uint32_t raw = std::random_device{}();
+#else
+    const uint32_t raw = esp_random();
+#endif
+    return static_cast<uint8_t>(1 + (raw % 255));
+}
 }
 
-ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager,
-                                         Resender* resender,
-                                         PktType type,
-                                         OnAbandon onAbandon,
+ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager, Resender* resender,
+                                         PktType type, OnAbandon onAbandon,
                                          Resender::SendMode sendMode)
     : resender(resender)
     , packetType(type)
     , wirelessManager(wirelessManager)
     , sendMode(sendMode)
-    , onAbandon(std::move(onAbandon)) {
+    , onAbandon(std::move(onAbandon))
+    , lastSentSeqId(seedInitialSeqId()) {
     // Owning the PktType is the whole registration. This channel already holds
     // both things the wiring needs, and a channel whose send results never
     // arrive retries to exhaustion in silence — so leaving the install to
@@ -72,19 +86,14 @@ bool ReliableChannelBase::isDuplicateReliableRx(const uint8_t* fromMac, uint8_t 
     if (seqId == 0 || fromMac == nullptr) return false;
     for (RxSeqRecord& r : rxSeq) {
         if (std::memcmp(r.mac.data(), fromMac, 6) == 0) {
-            // Same seqId AND still inside the window this sender could still be
-            // retransmitting in. Past it, an identical seqId is a fresh frame
-            // from a sender whose counter restarted, not a repeat.
-            if (r.lastSeqId == seqId && !r.claim.expired()) return true;
+            if (r.lastSeqId == seqId) return true;
             r.lastSeqId = seqId;
-            r.claim.setTimer(RX_SEQ_CLAIM_MS);
             return false;
         }
     }
     RxSeqRecord rec;
     std::memcpy(rec.mac.data(), fromMac, 6);
     rec.lastSeqId = seqId;
-    rec.claim.setTimer(RX_SEQ_CLAIM_MS);
     if (rxSeq.size() >= MAX_RX_SENDERS) {
         rxSeq.erase(rxSeq.begin());
     }
