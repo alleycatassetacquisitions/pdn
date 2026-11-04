@@ -94,3 +94,9 @@ public:
 private:
     GameContext context;
 };
+
+/**
+ * Builds the four gameplay apps keyed by their app IDs. Caller owns the
+ * allocated StateMachine instances (typically handed to Device::loadAppConfig).
+ */
+AppConfig makeGameplayApps(const GameContext& context);

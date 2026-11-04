@@ -137,13 +137,14 @@ public:
     virtual bool isInRing() const;
 
     /**
-     * Registers the per-jack connect/disconnect observer. The connect fires
+     * Registers the per-jack connect/disconnect observer, keyed on `owner` so a
+     * subscriber's teardown clears only its own registration. The connect fires
      * after the chain state it implies is in place; the disconnect fires BEFORE
      * chain-state teardown, so handlers must not read chain state there —
      * consistent chain facts arrive via setOnChainRoleChange.
      */
-    void setOnJackChange(JackChangeCallback callback) {
-        jackChangeCallback = std::move(callback);
+    void setOnJackChange(JackChangeCallback callback, void* owner = nullptr) {
+        jackChangeCallbacks.set(std::move(callback), owner);
     }
 
     // ---- Per-jack HELLO connectivity ----
@@ -188,9 +189,9 @@ public:
     using ContextReceivedCallback =
         std::function<void(SerialIdentifier jack, DeviceType peerType,
                            const uint8_t* profile, size_t len)>;
-    /** Registers the opaque peer-context consumer. */
-    void setOnContextReceived(ContextReceivedCallback callback) {
-        contextReceivedCallback = std::move(callback);
+    /** Registers the opaque peer-context consumer, keyed on `owner`. */
+    void setOnContextReceived(ContextReceivedCallback callback, void* owner = nullptr) {
+        contextReceivedCallbacks.set(std::move(callback), owner);
     }
 
     /**
@@ -200,13 +201,21 @@ public:
     using SelfProfileProvider = std::function<PlayerProfile()>;
 
     /**
-     * Registers the outgoing-profile source. A provider rather than a stored
-     * copy because the id, name, faction and role each settle at a different
-     * point in registration: reading at send time keeps a context honest
-     * without every one of those setters having to re-push here.
+     * Registers the outgoing-profile source, keyed on `owner`. A provider rather
+     * than a stored copy because the id, name, faction and role each settle at a
+     * different point in registration: reading at send time keeps a context
+     * honest without every one of those setters having to re-push here.
      */
-    void setSelfProfileProvider(SelfProfileProvider provider) {
+    void setSelfProfileProvider(SelfProfileProvider provider, void* owner = nullptr) {
+        if (!provider) {
+            if (owner == nullptr || selfProfileProviderOwner == owner) {
+                selfProfileProvider = nullptr;
+                selfProfileProviderOwner = nullptr;
+            }
+            return;
+        }
         selfProfileProvider = std::move(provider);
+        selfProfileProviderOwner = owner;
     }
 
     /**
@@ -272,29 +281,72 @@ public:
     /** This jack's HELLO link state (observability / tests). */
     HelloLinkState getHelloLinkState(SerialIdentifier jack) const;
 
-    /** Registers the chain-role transition observer. */
-    void setOnChainRoleChange(ChainRoleChangeCallback callback) {
-        chainRoleChangeCallback = std::move(callback);
+    /** Registers the chain-role transition observer, keyed on `owner`. */
+    void setOnChainRoleChange(ChainRoleChangeCallback callback, void* owner = nullptr) {
+        chainRoleChangeCallbacks.set(std::move(callback), owner);
     }
 
-    /** Registers the head-only roster observer. */
-    void setOnMembershipChange(MembershipChangeCallback callback) {
-        membershipChangeCallback = std::move(callback);
+    /** Registers the head-only roster observer, keyed on `owner`. */
+    void setOnMembershipChange(MembershipChangeCallback callback, void* owner = nullptr) {
+        membershipChangeCallbacks.set(std::move(callback), owner);
     }
 
-    /** Registers the head-only ring-closure observer. */
-    void setOnRingClosed(RingClosedCallback callback) {
-        ringClosedCallback = std::move(callback);
+    /** Registers the head-only ring-closure observer, keyed on `owner`. */
+    void setOnRingClosed(RingClosedCallback callback, void* owner = nullptr) {
+        ringClosedCallbacks.set(std::move(callback), owner);
     }
 
     /**
-     * Registers an observer for any jack connect/disconnect. Coarser than
-     * setOnJackChange: it says the chain moved, not which jack or which way.
+     * Registers an observer for any jack connect/disconnect, keyed on `owner`.
+     * Coarser than setOnJackChange: it says the chain moved, not which jack or
+     * which way.
      */
-    void setChainChangeCallback(std::function<void()> callback);
+    void setChainChangeCallback(std::function<void()> callback, void* owner = nullptr);
 
 private:
     static constexpr size_t NUM_JACKS = 3;
+
+    // Owner-keyed observer list. A subscriber passes `this` on install and on
+    // clear so a second manager or state built on the same coordinator neither
+    // displaces the first nor empties its slot when either is destroyed. An
+    // unkeyed call (`owner == nullptr`) addresses the unkeyed slot in place.
+    template <typename Callback>
+    struct CallbackList {
+        struct Entry {
+            void* owner = nullptr;
+            Callback callback;
+        };
+        std::vector<Entry> entries;
+
+        /** Installs or replaces `owner`'s callback, or removes it when null. */
+        void set(Callback callback, void* owner) {
+            if (!callback) {
+                entries.erase(
+                    std::remove_if(entries.begin(), entries.end(),
+                                   [owner](const Entry& entry) { return entry.owner == owner; }),
+                    entries.end());
+                return;
+            }
+            for (Entry& entry : entries) {
+                if (entry.owner == owner) {
+                    entry.callback = std::move(callback);
+                    return;
+                }
+            }
+            entries.push_back({owner, std::move(callback)});
+        }
+
+        /** Invokes every registered callback on a snapshot of the current list. */
+        template <typename... Args>
+        void fire(Args&&... args) const {
+            // Copied before calling: a handler that reacts by tearing its own
+            // state or manager down unregisters from inside operator().
+            std::vector<Entry> snapshot = entries;
+            for (const Entry& entry : snapshot) {
+                if (entry.callback) entry.callback(args...);
+            }
+        }
+    };
 
     size_t jackIndex(SerialIdentifier jack) const;
 
@@ -304,11 +356,11 @@ private:
 
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
-    std::function<void()> chainChangeCallback;
-    JackChangeCallback jackChangeCallback;
-    ChainRoleChangeCallback chainRoleChangeCallback;
-    MembershipChangeCallback membershipChangeCallback;
-    RingClosedCallback ringClosedCallback;
+    CallbackList<std::function<void()>> chainChangeCallbacks;
+    CallbackList<JackChangeCallback> jackChangeCallbacks;
+    CallbackList<ChainRoleChangeCallback> chainRoleChangeCallbacks;
+    CallbackList<MembershipChangeCallback> membershipChangeCallbacks;
+    CallbackList<RingClosedCallback> ringClosedCallbacks;
 
     // ---- HELLO connectivity internals ----
     struct JackHelloLink {
@@ -328,8 +380,9 @@ private:
     };
     std::array<JackHelloLink, NUM_JACKS> helloByJack;
     bool externalConnectivityTask = false;
-    ContextReceivedCallback contextReceivedCallback;
+    CallbackList<ContextReceivedCallback> contextReceivedCallbacks;
     SelfProfileProvider selfProfileProvider;
+    void* selfProfileProviderOwner = nullptr;
     std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 

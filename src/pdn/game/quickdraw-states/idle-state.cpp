@@ -14,7 +14,8 @@
 #include <cstring>
 
 Idle::Idle(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, IDLE) {
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, IDLE)
+    , shootoutManager(ctx.shootoutManager) {
     this->matchManager = ctx.matchManager;
     this->player = ctx.player;
     this->chainDuelManager = ctx.chainDuelManager;
@@ -23,6 +24,8 @@ Idle::Idle(const GameContext& ctx)
 Idle::~Idle() {
     player = nullptr;
     matchManager = nullptr;
+    chainDuelManager = nullptr;
+    shootoutManager = nullptr;
 }
 
 void Idle::onStateMounted(PDN* pdn) {
@@ -71,8 +74,7 @@ void Idle::onStateLoop(PDN* pdn) {
         displayIsDirty = false;
     }
 
-    ShootoutManager* shMgr = matchManager->getShootoutManager();
-    bool shootoutActive = shMgr && shMgr->active();
+    bool shootoutActive = shootoutManager && shootoutManager->active();
     if (!shootoutActive && isConnected()) {
         if (chainDuelManager->canInitiateMatch()) {
             if (!matchInitialized) {
@@ -93,8 +95,7 @@ void Idle::onStateLoop(PDN* pdn) {
 }
 
 void Idle::onStateDismounted(PDN* pdn) {
-    ShootoutManager* shMgr = matchManager->getShootoutManager();
-    if (!matchManager->isMatchReady() || (shMgr && shMgr->shouldEnterProposal())) {
+    if (!matchManager->isMatchReady() || (shootoutManager && shootoutManager->shouldEnterProposal())) {
         matchManager->clearCurrentMatch();
     }
     statsIndex = 0;

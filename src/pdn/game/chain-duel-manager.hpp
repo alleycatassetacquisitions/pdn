@@ -37,7 +37,7 @@ struct ChainGameEventPayload {
 
 class ChainDuelManager {
 public:
-    /** Requires a live rdc and owns its single-subscriber topology/context callback slots. */
+    /** Requires a live rdc and subscribes to its topology/context callbacks under `this`. */
     ChainDuelManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
     /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
     virtual ~ChainDuelManager();

@@ -15,7 +15,7 @@
  * Owns the managers the gameplay apps share and the wireless plumbing that
  * feeds them, and sits above every app so neither is tied to one state machine.
  *
- * getContext() hands those managers out by value, so an app built from one — and
+ * getContext() exposes raw manager pointers, so an app built from one — and
  * any state of that app which keeps a manager — holds a pointer the session frees.
  * Destroy the apps before the session. No state destructor dereferences one today,
  * so that is ordering hygiene rather than a live use-after-free.
@@ -28,10 +28,10 @@
 class GameSession {
 public:
     /**
-     * Builds the shared managers, wires every RDC callback and ESP-NOW handler
-     * that feeds them, and installs its own per-tick pump. The device and its
-     * wireless manager outlive the session, so the destructor empties every slot
-     * holding `this`.
+     * Builds the shared managers, wires the self-profile provider and ESP-NOW
+     * handlers that feed them, and installs its own per-tick pump. The device and
+     * its wireless manager outlive the session, so the destructor empties every
+     * slot holding `this`.
      */
     GameSession(Player* player,
                 Device* pdn,
@@ -43,7 +43,7 @@ public:
     void sync();
 
     /** The manager bundle every gameplay state is constructed from. */
-    GameContext getContext();
+    const GameContext& getContext() const { return context; }
 
 private:
     /**
@@ -81,14 +81,8 @@ private:
         (static_cast<GameSession*>(ctx)->*Handler)(fromMac, data, dataLen);
     }
 
-    Player* player = nullptr;
     Device* pdn = nullptr;
-    WirelessManager* wirelessManager = nullptr;
-    RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
-    SymbolWirelessManager* symbolWirelessManager = nullptr;
-    MatchManager* matchManager = nullptr;
-    ChainDuelManager* chainDuelManager = nullptr;
-    ShootoutManager* shootoutManager = nullptr;
+    GameContext context;
 
     SimpleTimer statsLogTimer;
     static constexpr unsigned long STATS_LOG_INTERVAL_MS = 5000;

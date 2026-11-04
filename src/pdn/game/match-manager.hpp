@@ -23,8 +23,6 @@
 #include "wireless/resender.hpp"
 #include "device/drivers/storage-interface.hpp"
 
-class ShootoutManager;
-
 // Preferences namespace and keys
 inline constexpr const char MATCHES_PREFS_NAMESPACE[] = "matches";
 
@@ -57,8 +55,15 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    /** Claims the kQuickdrawCommand channel on wirelessManager (may be nullptr in tests). */
-    explicit MatchManager(WirelessManager* wirelessManager);
+    /**
+     * Binds the player, storage and coordinator this manager records and gates
+     * matches against, and claims the kQuickdrawCommand channel on
+     * wirelessManager (may be nullptr in tests).
+     */
+    MatchManager(Player* player,
+                 StorageInterface* storage,
+                 WirelessManager* wirelessManager,
+                 RemoteDeviceCoordinator* rdc);
     ~MatchManager();
     
 
@@ -150,21 +155,7 @@ public:
      */
     const LastMatchDisplay& getLastMatchDisplay() const { return lastMatchDisplay; }
 
-    // Required for SEND_MATCH_ID to be accepted: sender MAC must match one
-    // of the RDC's direct-peer MACs (cable-established neighbor). If unset,
-    // SEND_MATCH_ID is refused — no match initiation from an unknown MAC.
-    void setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc);
-
-    // Shootout tournament suppresses the hunter/bounty role-mismatch rejection
-    // so same-role duels in the bracket proceed. Injected by GameSession after
-    // both managers are built.
-    void setShootoutManager(ShootoutManager* shootoutManager);
-    ShootoutManager* getShootoutManager() const;
-
     void listenForMatchEvents(const QuickdrawCommand& command);
-
-    /** Binds the player and storage this manager records matches against. */
-    void initialize(Player* player, StorageInterface* storage);
 
     /** Drives the duel channel's retries. */
     void sync();
@@ -188,9 +179,8 @@ private:
 
     Player* player;
 
-    std::function<unsigned long()> boostProvider_;
-    RemoteDeviceCoordinator* rdc_ = nullptr;
-    ShootoutManager* shootoutManager_ = nullptr;
+    std::function<unsigned long()> boostProvider;
+    RemoteDeviceCoordinator* rdc = nullptr;
 
     ActiveDuelState activeDuelState;
     LastMatchDisplay lastMatchDisplay;

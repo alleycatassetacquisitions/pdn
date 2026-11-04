@@ -115,6 +115,7 @@ private:
     Player *player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
+    ShootoutManager* shootoutManager;
     bool matchInitialized = false;
     bool displayIsDirty = false;
     int statsIndex = 0;

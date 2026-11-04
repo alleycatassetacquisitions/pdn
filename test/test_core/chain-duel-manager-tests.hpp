@@ -1453,3 +1453,29 @@ inline void cdmGameEventAbandonsWhenSpanRunsOut(ChainDuelManagerTests* suite) {
     EXPECT_EQ(cdm.getRetryStats().abandons, 1u);
 }
 
+// Constructing two managers on one RemoteDeviceCoordinator and destroying one
+// must not clear the surviving manager's owner-keyed RDC callbacks.
+inline void destroyingCoexistingManagerPreservesSurvivingRdcCallbacks(
+    ChainDuelManagerTests* suite) {
+    ChainDuelManager surviving(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    {
+        ChainDuelManager transient(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    }
+
+    int roleAnnounces = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
+            if (memcmp(mac, suite->supporterMac, 6) == 0) roleAnnounces++;
+            return 1;
+        });
+
+    // Drive the live RDC jack-connect and context-exchange edges without calling
+    // surviving.onChainStateChanged() directly: only the RDC callbacks reach it.
+    suite->setupHunterChampion();
+
+    EXPECT_TRUE(surviving.isChampion());
+    ASSERT_NE(surviving.getChampionMac(), nullptr);
+    EXPECT_EQ(memcmp(surviving.getChampionMac(), suite->localMac, 6), 0);
+    EXPECT_GE(roleAnnounces, 1);
+}
