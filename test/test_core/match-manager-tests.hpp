@@ -444,13 +444,24 @@ inline void matchManagerClearCurrentMatchResetsMasherCount(MatchManager* mm, Pla
     masherCallback(mm);
     masherCallback(mm);
 
-    mm->clearCurrentMatch();
+    mm->clearButtonMasherCount();
+    masherCallback(mm);
 
-    mm->initializeMatch(dummyMac);
+    mm->setMatchLocalStartTime(1000);
+    mm->getMatchButtonPush()(mm);
+    ASSERT_TRUE(mm->getCurrentMatch().has_value());
+    EXPECT_EQ(mm->getCurrentMatch()->getHunterDrawTime(), 75u);
 
-    EXPECT_TRUE(mm->getCurrentMatch().has_value());
+    masherCallback(mm);
+    masherCallback(mm);
     mm->clearCurrentMatch();
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
+
+    mm->initializeMatch(dummyMac);
+    ASSERT_TRUE(mm->getCurrentMatch().has_value());
+    mm->setMatchLocalStartTime(1000);
+    mm->getMatchButtonPush()(mm);
+    EXPECT_EQ(mm->getCurrentMatch()->getHunterDrawTime(), 0u);
 }
 
 // ============================================

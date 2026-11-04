@@ -72,8 +72,8 @@ void SupporterReady::onStateMounted(PDN* pdn) {
         self->displayIsDirty = true;
         self->ledsAreDirty = true;
     };
-    pdn->getPrimaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
-    pdn->getSecondaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
+    pdn->getPrimaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::PRESS);
+    pdn->getSecondaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::PRESS);
     cachedPDN = pdn;
 }
 
