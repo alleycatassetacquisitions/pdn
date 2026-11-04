@@ -1,0 +1,8 @@
+CompileFlags:
+  Add:
+    - -DUNIT_TEST
+    - -DPIO_UNIT_TESTING
+    - -Itest/test_core
+    - -Itest/test_cli
+    - -I.pio/libdeps/native/googletest/googletest/include
+    - -I.pio/libdeps/native/googletest/googlemock/include

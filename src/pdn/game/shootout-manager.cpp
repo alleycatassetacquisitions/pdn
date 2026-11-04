@@ -66,10 +66,6 @@ size_t ShootoutManager::getPendingAckCount(uint8_t seqId) const {
     return resender.pendingCount(PktType::kShootoutCommand, seqId);
 }
 
-uint8_t ShootoutManager::getLastBracketSeqId() const {
-    return lastBracketSeqId;
-}
-
 int ShootoutManager::getCurrentMatchIndex() const {
     return currentMatchIndex;
 }
@@ -211,22 +207,30 @@ std::array<uint8_t, 6> ShootoutManager::getOpponentMac() const {
     return opponentMac;
 }
 
-uint8_t ShootoutManager::getLastMatchStartSeqId() const {
-    return lastMatchStartSeqId;
-}
-
 std::array<uint8_t, 6> ShootoutManager::getTournamentWinner() const {
     return tournamentWinner;
 }
 
-void ShootoutManager::setRingMembersForTest(const std::vector<std::array<uint8_t, 6>>& members) {
-    testRingMembers = members;
-    testRingMembersOverride = !members.empty();
-}
-
 std::vector<std::array<uint8_t, 6>> ShootoutManager::getRingMembers() const {
-    if (testRingMembersOverride) return testRingMembers;
-    return buildRingMemberSet();
+    // The RDC serves a roster only where it is the authority, which inside a ring
+    // is the head that latched it. Every other member holds the copy that head
+    // sent with RING_CLOSED.
+    if (rdc == nullptr || rdc->getChainRole() != ChainRole::RING) return ringMembers;
+
+    std::vector<std::array<uint8_t, 6>> members = rdc->getChainMembers();
+    // getChainMembers() enumerates the devices that announced to the head, never
+    // the head itself, and the coordinator is a participant like any other.
+    const uint8_t* selfMac = wirelessManager->getMacAddress();
+    if (selfMac != nullptr && !containsMac(members, selfMac)) {
+        std::array<uint8_t, 6> self;
+        memcpy(self.data(), selfMac, 6);
+        members.push_back(self);
+    }
+    // Retain ringMembers across transient RDC roster drops; a real departure breaks the ring and aborts.
+    for (const auto& m : ringMembers) {
+        if (!containsMac(members, m.data())) members.push_back(m);
+    }
+    return members;
 }
 
 void ShootoutManager::resetToIdle() {
@@ -620,10 +624,11 @@ ShootoutManager::getCurrentMatchPair() const {
     return {currentDuelistA, currentDuelistB};
 }
 
-std::vector<uint8_t> ShootoutManager::buildMatchStartPacket(int matchIndex) const {
+std::vector<uint8_t> ShootoutManager::buildMatchStartPacket(int matchIndex,
+                                                            uint8_t seqId) const {
     std::vector<uint8_t> packet;
     packet.push_back(static_cast<uint8_t>(ShootoutCmd::MATCH_START));
-    packet.push_back(lastMatchStartSeqId);
+    packet.push_back(seqId);
     const std::array<uint8_t, 6>& a = currentRound[matchIndex * 2];
     const std::array<uint8_t, 6>& b = currentRound[matchIndex * 2 + 1];
     packet.insert(packet.end(), a.begin(), a.end());
@@ -633,9 +638,9 @@ std::vector<uint8_t> ShootoutManager::buildMatchStartPacket(int matchIndex) cons
 }
 
 void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
-    lastMatchStartSeqId = nextSeqId();
+    const uint8_t seqId = nextSeqId();
 
-    auto packet = buildMatchStartPacket(matchIndex);
+    std::vector<uint8_t> packet = buildMatchStartPacket(matchIndex, seqId);
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     const std::array<uint8_t, 6>& a = currentRound[matchIndex * 2];
     const std::array<uint8_t, 6>& b = currentRound[matchIndex * 2 + 1];
@@ -651,7 +656,7 @@ void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
         memcpy(opponentMac.data(), opp, 6);
         primeMatchManagerForMatch();
     }
-    sendReliablyToPeers(bracket, lastMatchStartSeqId, packet.data(), packet.size());
+    sendReliablyToPeers(bracket, seqId, packet.data(), packet.size());
 }
 
 bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const {
@@ -777,10 +782,11 @@ void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* los
 }
 
 std::vector<uint8_t> ShootoutManager::buildMatchResultPacket(
-    const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex) const {
+    const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex,
+    uint8_t seqId) const {
     std::vector<uint8_t> packet;
     packet.push_back(static_cast<uint8_t>(ShootoutCmd::MATCH_RESULT));
-    packet.push_back(lastMatchResultSeqId);
+    packet.push_back(seqId);
     packet.insert(packet.end(), winner, winner + 6);
     packet.insert(packet.end(), loser, loser + 6);
     packet.push_back(matchIndex);
@@ -789,8 +795,8 @@ std::vector<uint8_t> ShootoutManager::buildMatchResultPacket(
 
 void ShootoutManager::sendMatchResultToPeers(
     const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex) {
-    lastMatchResultSeqId = nextSeqId();
-    auto packet = buildMatchResultPacket(winner, loser, matchIndex);
+    const uint8_t seqId = nextSeqId();
+    std::vector<uint8_t> packet = buildMatchResultPacket(winner, loser, matchIndex, seqId);
     // Targets bracket, not confirmedSet. Both reach eliminated players — only
     // currentRound shrinks — but confirmedSet is each device's own tally of the
     // CONFIRMs it happened to hear, and those are unacked broadcasts sent once
@@ -798,7 +804,7 @@ void ShootoutManager::sendMatchResultToPeers(
     // as a recipient, so its result could never abandon against the coordinator
     // and the recovery below could never fire. The bracket is the coordinator's
     // own roster, acked on arrival.
-    sendReliablyToPeers(bracket, lastMatchResultSeqId, packet.data(), packet.size());
+    sendReliablyToPeers(bracket, seqId, packet.data(), packet.size());
 }
 
 void ShootoutManager::reportLocalWin() {
@@ -845,15 +851,15 @@ void ShootoutManager::onMatchResultReceived(
 
 void ShootoutManager::sendTournamentEndToPeers(const uint8_t* winner) {
     LOG_W(TAG, "tournamentEnd winner=%s", MacToString(winner));
-    lastTournamentEndSeqId = nextSeqId();
+    const uint8_t seqId = nextSeqId();
     uint8_t packet[8];
     packet[0] = static_cast<uint8_t>(ShootoutCmd::TOURNAMENT_END);
-    packet[1] = lastTournamentEndSeqId;
+    packet[1] = seqId;
     memcpy(&packet[2], winner, 6);
     // Targets confirmedSet rather than bracket: eliminated players need the
     // tournament-end transition or they stall in BETWEEN_MATCHES.
-    sendReliablyToPeers(confirmedSet, lastTournamentEndSeqId, packet, sizeof(packet));
-    terminalFanOutSeqId = lastTournamentEndSeqId;
+    sendReliablyToPeers(confirmedSet, seqId, packet, sizeof(packet));
+    terminalFanOutSeqId = seqId;
     memcpy(tournamentWinner.data(), winner, 6);
     phase = Phase::ENDED;
 }
@@ -888,26 +894,4 @@ void ShootoutManager::onAbortReceived(const uint8_t* fromMac, uint8_t seqId) {
     if (isTerminalPhase() || phase == Phase::IDLE) return;
     resetToIdle();
     phase = Phase::ABORTED;
-}
-
-std::vector<std::array<uint8_t, 6>> ShootoutManager::buildRingMemberSet() const {
-    // The RDC serves a roster only where it is the authority, which inside a ring
-    // is the head that latched it. Every other member holds the copy that head
-    // sent with RING_CLOSED.
-    if (rdc == nullptr || rdc->getChainRole() != ChainRole::RING) return ringMembers;
-
-    std::vector<std::array<uint8_t, 6>> members = rdc->getChainMembers();
-    // getChainMembers() enumerates the devices that announced to the head, never
-    // the head itself, and the coordinator is a participant like any other.
-    const uint8_t* selfMac = wirelessManager->getMacAddress();
-    if (selfMac != nullptr && !containsMac(members, selfMac)) {
-        std::array<uint8_t, 6> self;
-        memcpy(self.data(), selfMac, 6);
-        members.push_back(self);
-    }
-    // Retain ringMembers across transient RDC roster drops; a real departure breaks the ring and aborts.
-    for (const auto& m : ringMembers) {
-        if (!containsMac(members, m.data())) members.push_back(m);
-    }
-    return members;
 }

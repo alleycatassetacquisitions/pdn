@@ -115,8 +115,8 @@ TEST_F(NativeHttpClientDriverTestSuite, TracksHistory) {
     httpClientTracksHistory(this);
 }
 
-TEST_F(NativeHttpClientDriverTestSuite, DisabledMockServerFails) {
-    httpClientDisabledMockServerFails(this);
+TEST_F(NativeHttpClientDriverTestSuite, DisconnectedFails) {
+    httpClientDisconnectedFails(this);
 }
 
 TEST_F(NativeHttpClientDriverTestSuite, UploadsEncodedCrashLog) {

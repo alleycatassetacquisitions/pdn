@@ -90,8 +90,6 @@ public:
 
 protected:
     uint8_t nextSeqId();
-    // nullptr in probe-style unit tests; every use is null-tolerant.
-    WirelessManager* getWirelessManager() const { return wirelessManager; }
     // Defined in the .cpp so the logger stays out of this template header.
     static void logLengthMismatch(PktType type, size_t got, size_t want);
     // Suppress re-dispatch of a duplicate reliable delivery from the same

@@ -70,7 +70,7 @@ public:
         ds.outputJack = outputJack;
         ds.inputJack = inputJack;
         ds.isHunter = isHunter;
-        devices_[deviceIndex] = ds;
+        devices[deviceIndex] = ds;
     }
     
     /**
@@ -79,33 +79,33 @@ public:
     void unregisterDevice(int deviceIndex) {
         // Remove any connections involving this device
         disconnectDevice(deviceIndex);
-        devices_.erase(deviceIndex);
+        devices.erase(deviceIndex);
     }
-    
+
     /**
      * Connect two devices with a serial cable.
      * Automatically determines jack routing based on device roles:
-     * - Different roles (Hunter ↔ Bounty): output ↔ output (PRIMARY to PRIMARY)
+     * - Different roles (Hunter ↔ Bounty): Hunter.output ↔ Bounty.input (PRIMARY to PRIMARY)
      * - Same roles: output ↔ input (PRIMARY to AUXILIARY)
-     * 
+     *
      * @return true if connection was made, false if invalid devices
      */
     bool connect(int deviceA, int deviceB) {
-        auto itA = devices_.find(deviceA);
-        auto itB = devices_.find(deviceB);
-        
-        if (itA == devices_.end() || itB == devices_.end()) {
+        auto itA = devices.find(deviceA);
+        auto itB = devices.find(deviceB);
+
+        if (itA == devices.end() || itB == devices.end()) {
             return false;
         }
-        
+
         // Check if already connected
-        for (const auto& conn : connections_) {
+        for (const auto& conn : connections) {
             if ((conn.deviceA == deviceA && conn.deviceB == deviceB) ||
                 (conn.deviceA == deviceB && conn.deviceB == deviceA)) {
                 return true;  // Already connected
             }
         }
-        
+
         bool sameRole = (itA->second.isHunter == itB->second.isHunter);
         bool aIsHunter = itA->second.isHunter;
         bool bIsHunter = itB->second.isHunter;
@@ -138,8 +138,15 @@ public:
             conn.jackA = aIsHunter ? JackType::OUTPUT_JACK : JackType::INPUT_JACK;
             conn.jackB = bIsHunter ? JackType::OUTPUT_JACK : JackType::INPUT_JACK;
         }
-        
-        connections_.push_back(conn);
+
+        NativeSerialDriver* jackA = getJack(itA->second, conn.jackA);
+        NativeSerialDriver* jackB = getJack(itB->second, conn.jackB);
+        if (jackA != nullptr && jackB != nullptr) {
+            jackA->routeTo(jackB);
+            jackB->routeTo(jackA);
+        }
+
+        connections.push_back(conn);
         return true;
     }
     
@@ -148,10 +155,12 @@ public:
      * @return true if disconnected, false if not connected
      */
     bool disconnect(int deviceA, int deviceB) {
-        for (auto it = connections_.begin(); it != connections_.end(); ++it) {
+        for (std::vector<CableConnection>::iterator it = connections.begin();
+             it != connections.end(); ++it) {
             if ((it->deviceA == deviceA && it->deviceB == deviceB) ||
                 (it->deviceA == deviceB && it->deviceB == deviceA)) {
-                connections_.erase(it);
+                unrouteConnection(*it);
+                connections.erase(it);
                 return true;
             }
         }
@@ -162,43 +171,25 @@ public:
      * Disconnect all cables from a device.
      */
     void disconnectDevice(int deviceIndex) {
-        connections_.erase(
-            std::remove_if(connections_.begin(), connections_.end(),
-                [deviceIndex](const CableConnection& c) {
-                    return c.deviceA == deviceIndex || c.deviceB == deviceIndex;
-                }),
-            connections_.end());
-    }
-    
-    /**
-     * Transfer pending serial data between connected devices.
-     * Should be called from the main loop.
-     */
-    void transferData() {
-        for (const auto& conn : connections_) {
-            auto itA = devices_.find(conn.deviceA);
-            auto itB = devices_.find(conn.deviceB);
-            
-            if (itA == devices_.end() || itB == devices_.end()) continue;
-            
-            // Get the appropriate jacks based on connection type
-            NativeSerialDriver* jackA = getJack(itA->second, conn.jackA);
-            NativeSerialDriver* jackB = getJack(itB->second, conn.jackB);
-            
-            // Transfer A → B: A's jack output goes to B's jack input
-            transferFromTo(jackA, jackB);
-            
-            // Transfer B → A: B's jack output goes to A's jack input
-            transferFromTo(jackB, jackA);
+        for (const CableConnection& conn : connections) {
+            if (conn.deviceA == deviceIndex || conn.deviceB == deviceIndex) {
+                unrouteConnection(conn);
+            }
         }
+        connections.erase(
+            std::remove_if(connections.begin(), connections.end(),
+                           [deviceIndex](const CableConnection& c) {
+                               return c.deviceA == deviceIndex || c.deviceB == deviceIndex;
+                           }),
+            connections.end());
     }
-    
+
     /**
      * Check if a device is connected to another.
      * @return The index of the connected device, or -1 if not connected
      */
     int getConnectedDevice(int deviceIndex) const {
-        for (const auto& conn : connections_) {
+        for (const auto& conn : connections) {
             if (conn.deviceA == deviceIndex) return conn.deviceB;
             if (conn.deviceB == deviceIndex) return conn.deviceA;
         }
@@ -209,14 +200,14 @@ public:
      * Get all current connections.
      */
     const std::vector<CableConnection>& getConnections() const {
-        return connections_;
+        return connections;
     }
     
     /**
      * Get connection count.
      */
     size_t getConnectionCount() const {
-        return connections_.size();
+        return connections.size();
     }
     
     /**
@@ -240,42 +231,25 @@ private:
         NativeSerialDriver* inputJack;
         bool isHunter;
     };
-    
-    std::map<int, DeviceSerial> devices_;
-    std::vector<CableConnection> connections_;
-    
+
+    std::map<int, DeviceSerial> devices;
+    std::vector<CableConnection> connections;
+
     NativeSerialDriver* getJack(const DeviceSerial& device, JackType type) {
         return (type == JackType::OUTPUT_JACK) ? device.outputJack : device.inputJack;
     }
-    
-    /**
-     * Transfer data from one jack's output buffer to another jack's input.
-     */
-    void transferFromTo(NativeSerialDriver* from, NativeSerialDriver* to) {
-        std::string data = from->getOutput();
-        if (data.empty()) return;
 
-        // Byte/binary mode (HELLO): deliver the raw stream; the receiver's
-        // byte-mode exec() feeds it to the frame parser. The STRING_START
-        // re-framing below only applies to a jack still in string mode.
-        if (to->hasByteCallback()) {
-            to->injectBytes(std::vector<uint8_t>(data.begin(), data.end()));
-            from->clearOutput();
-            return;
+    void unrouteConnection(const CableConnection& conn) {
+        std::map<int, DeviceSerial>::iterator itA = devices.find(conn.deviceA);
+        std::map<int, DeviceSerial>::iterator itB = devices.find(conn.deviceB);
+        if (itA != devices.end()) {
+            NativeSerialDriver* jackA = getJack(itA->second, conn.jackA);
+            if (jackA != nullptr) jackA->routeTo(nullptr);
         }
-
-        // Parse into messages (split by newlines, which is how println works)
-        size_t pos = 0;
-        while ((pos = data.find('\n')) != std::string::npos) {
-            std::string msg = data.substr(0, pos);
-            if (!msg.empty()) {
-                // The message already has STRING_START (*) prepended by writeString
-                // Just add the terminator that DeviceSerial expects
-                to->injectInput(msg + "\r");
-            }
-            data.erase(0, pos + 1);
+        if (itB != devices.end()) {
+            NativeSerialDriver* jackB = getJack(itB->second, conn.jackB);
+            if (jackB != nullptr) jackB->routeTo(nullptr);
         }
-        from->clearOutput();
     }
 };
 

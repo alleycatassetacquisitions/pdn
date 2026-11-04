@@ -152,6 +152,7 @@ public:
         driver = new NativeHttpClientDriver("test_http");
         successCallbackCalled = false;
         errorCallbackCalled = false;
+        lastResponseBody = "";
         lastErrorCode = WirelessError::TIMEOUT;
         configurePinPlayer(&cli::MockHttpServer::getInstance(), "0010", "CLI");
     }
@@ -183,7 +184,7 @@ void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
             suite->lastErrorCode = error.code;
         });
 
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
@@ -203,7 +204,7 @@ void httpClientDisconnectFailsQueuedRequests(NativeHttpClientDriverTestSuite* su
     }
 
     suite->driver->disconnect();
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->exec();
 
     EXPECT_EQ(errors, 2);
@@ -227,7 +228,7 @@ void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
             suite->errorCallbackCalled = true;
         });
 
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
@@ -244,7 +245,7 @@ void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
         [](const std::string&) {},
         [](const WirelessErrorInfo&) {});
 
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
@@ -277,7 +278,7 @@ void httpClientUploadsEncodedCrashLog(NativeHttpClientDriverTestSuite* suite) {
         }
     );
 
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
@@ -285,8 +286,8 @@ void httpClientUploadsEncodedCrashLog(NativeHttpClientDriverTestSuite* suite) {
     ASSERT_FALSE(suite->errorCallbackCalled);
 }
 
-void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
-    suite->driver->setMockServerEnabled(false);
+void httpClientDisconnectedFails(NativeHttpClientDriverTestSuite* suite) {
+    suite->driver->setHttpClientState(HttpClientState::DISCONNECTED);
 
     HttpRequest request(
         "/device/players/by-pin/0010",
@@ -303,5 +304,5 @@ void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
 }

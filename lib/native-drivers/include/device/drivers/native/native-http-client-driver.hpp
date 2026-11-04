@@ -5,13 +5,6 @@
 #include <queue>
 #include <deque>
 
-// Forward declaration - the mock server is only used in CLI builds
-#ifdef NATIVE_BUILD
-namespace cli {
-class MockHttpServer;
-}
-#endif
-
 /**
  * Structure to track HTTP request/response history for display.
  */
@@ -55,7 +48,7 @@ public:
     }
 
     bool isConnected() override {
-        return connected && httpClientState == HttpClientState::CONNECTED;
+        return httpClientState == HttpClientState::CONNECTED;
     }
 
     /** True until every queued request has had its callback. */
@@ -69,7 +62,6 @@ public:
     }
 
     void disconnect() override {
-        connected = false;
         httpClientState = HttpClientState::DISCONNECTED;
         // As the ESP32 driver does: every request still queued belongs to the
         // WiFi trip that is ending.
@@ -90,7 +82,6 @@ public:
         // Simulate successful reconnection
         if (httpClientState == HttpClientState::DISCONNECTED) {
             httpClientState = HttpClientState::CONNECTED;
-            connected = true;
         }
     }
 
@@ -99,40 +90,15 @@ public:
     }
 
     void setHttpClientState(HttpClientState state) override {
-        if (state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
-            // Simulate connection
-            connected = true;
-            httpClientState = HttpClientState::CONNECTED;
-        } else if (state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
+        if (state == HttpClientState::DISCONNECTED) {
             disconnect();
+        } else {
+            httpClientState = state;
         }
     }
 
     HttpClientState getHttpClientState() override {
         return httpClientState;
-    }
-
-    // Test helper methods
-    /** Simulates WiFi/HTTP connectivity for unit tests and CLI. */
-    void setConnected(bool isConnected) {
-        connected = isConnected;
-        if (isConnected) {
-            httpClientState = HttpClientState::CONNECTED;
-        }
-    }
-    uint8_t getCurrentChannel() const { return currentChannel; }
-
-    /**
-     * Enable or disable mock server mode.
-     * When enabled, requests are processed through the CLI MockHttpServer.
-     * When disabled, requests fail immediately (original behavior).
-     */
-    void setMockServerEnabled(bool enabled) {
-        mockServerEnabled_ = enabled;
-    }
-
-    bool isMockServerEnabled() const {
-        return mockServerEnabled_;
     }
 
     /**
@@ -151,15 +117,12 @@ public:
 
 private:
     WifiConfig wifiConfig;
-    bool connected = false;
-    uint8_t currentChannel = 0;
     uint8_t macAddress[6];
     HttpClientState httpClientState = HttpClientState::DISCONNECTED;
 
     std::queue<HttpRequest> pendingRequests;
     std::deque<HttpRequestHistoryEntry> requestHistory_;
     static constexpr size_t MAX_HISTORY = 5;
-    bool mockServerEnabled_ = false;
 
     void addToHistory(const HttpRequestHistoryEntry& entry) {
         requestHistory_.push_back(entry);

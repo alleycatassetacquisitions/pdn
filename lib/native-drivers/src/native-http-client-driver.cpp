@@ -9,17 +9,17 @@ void NativeHttpClientDriver::processPendingRequests() {
         HttpRequest request = std::move(pendingRequests.front());
         pendingRequests.pop();
 
-        if (!mockServerEnabled_) {
-            // Mock server disabled - fail immediately (original behavior)
+        if (!isConnected()) {
             if (request.onError) {
                 WirelessErrorInfo error;
                 error.code = WirelessError::WIFI_NOT_CONNECTED;
-                error.message = "Mock server disabled";
+                error.message = "HTTP client disconnected";
+                error.willRetry = false;
                 request.onError(error);
             }
             continue;
         }
-        
+
         // Check if mock server is simulating offline
         cli::MockHttpServer& server = cli::MockHttpServer::getInstance();
         if (server.isOffline()) {
