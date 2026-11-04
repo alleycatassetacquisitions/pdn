@@ -163,6 +163,9 @@ public:
 
     parameterizedCallbackFunction getButtonMasher();
 
+    /** Resets the early-press penalty counter at the start of a new countdown. */
+    void clearButtonMasherCount();
+
     void sendNeverPressed(unsigned long pityTime);
 
     // For testing purposes only DO NOT USE IN PRODUCTION

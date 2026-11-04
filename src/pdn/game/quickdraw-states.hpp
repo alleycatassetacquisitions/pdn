@@ -306,7 +306,10 @@ private:
     Player* player;
     MatchManager* matchManager;
     SimpleTimer gracePeriodTimer;
-    static constexpr int MATCH_RESULT_GRACE_PERIOD = 900;
+    // Covers the opponent's 750ms BUTTON_PUSH_GRACE_PERIOD in MatchReceivedResult,
+    // a 1500ms reliable-send retry budget for their NEVER_PRESSED, and 250ms of
+    // entry/schedule margin.
+    static constexpr int MATCH_RESULT_GRACE_PERIOD = 2500;
 };
 
 class MatchReceivedResult : public ConnectState<PDN> {

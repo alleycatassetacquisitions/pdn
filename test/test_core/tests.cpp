@@ -1251,6 +1251,12 @@ TEST_F(MatchCountdownTests, multipleEarlyPressesAccumulatePenalty) {
     countdownMultipleEarlyPressesAccumulatePenalty(this);
 }
 
+TEST_F(MatchCountdownTests, bindsMasherOnPressAndResetsStaleCount) {
+    countdownBindsMasherOnPressAndResetsStaleCount(this);
+}
+
+TEST_F(MatchCountdownTests, dismountDetachesMasher) { countdownDismountDetachesMasher(this); }
+
 TEST_F(MatchCountdownTests, progressesThroughStages) { countdownProgressesThroughStages(this); }
 
 TEST_F(MatchCountdownTests, battleTransitionSetsFlag) { countdownBattleTransitionSetsFlag(this); }
@@ -1266,6 +1272,10 @@ TEST_F(MatchStateTests, shootoutTimeoutForfeitsTheMatchHunter) {
 }
 
 // Scenario 1: DUT presses button first
+TEST_F(MatchStateTests, scoresOnButtonPressAndIgnoresClick) {
+    matchScoresOnButtonPressAndIgnoresClick(this);
+}
+
 TEST_F(MatchStateTests, buttonPressTransitionsToMatchPushed) {
     matchButtonPressTransitionsToMatchPushed(this);
 }

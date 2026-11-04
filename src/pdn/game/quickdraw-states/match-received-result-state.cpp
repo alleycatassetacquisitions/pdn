@@ -22,9 +22,9 @@ void MatchReceivedResult::onStateMounted(PDN* pdn) {
 
     parameterizedCallbackFunction matchButtonPush = matchManager->getMatchButtonPush();
     pdn->getPrimaryButton()->setButtonPress(matchButtonPush, matchManager,
-                                            ButtonInteraction::CLICK);
+                                            ButtonInteraction::PRESS);
     pdn->getSecondaryButton()->setButtonPress(matchButtonPush, matchManager,
-                                              ButtonInteraction::CLICK);
+                                              ButtonInteraction::PRESS);
 
     buttonPushGraceTimer.setTimer(BUTTON_PUSH_GRACE_PERIOD);
 }

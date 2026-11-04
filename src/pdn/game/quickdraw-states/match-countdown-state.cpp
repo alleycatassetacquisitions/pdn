@@ -34,10 +34,13 @@ void MatchCountdown::onStateMounted(PDN* pdn) {
     countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
     currentStepIndex++;
 
-    pdn->getPrimaryButton()->setButtonPress(matchManager->getButtonMasher(), matchManager,
-                                            ButtonInteraction::CLICK);
+    matchManager->clearButtonMasherCount();
 
-    pdn->getSecondaryButton()->setButtonPress(matchManager->getButtonMasher(), matchManager);
+    pdn->getPrimaryButton()->setButtonPress(matchManager->getButtonMasher(), matchManager,
+                                            ButtonInteraction::PRESS);
+
+    pdn->getSecondaryButton()->setButtonPress(matchManager->getButtonMasher(), matchManager,
+                                              ButtonInteraction::PRESS);
 
     pdn->getHaptics()->setIntensity(HAPTIC_INTENSITY);
     hapticTimer.setTimer(HAPTIC_DURATION);
