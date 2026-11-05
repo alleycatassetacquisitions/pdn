@@ -17,47 +17,6 @@ protected:
 };
 
 // ============================================
-// JSON Serialization Tests
-// ============================================
-
-inline void playerJsonRoundTripPreservesAllFields(Player* player) {
-    // Set up player with all fields populated
-    char testId[] = "test-uuid-1234";
-    player->setUserID(testId);
-    player->setName("TestPlayer");
-    player->setAllegiance(Allegiance::HELIX);
-    player->setFaction("TestFaction");
-    player->setIsHunter(true);
-
-    // Serialize to JSON
-    std::string json = player->toJson();
-
-    // Create new player and deserialize
-    Player restored;
-    restored.fromJson(json);
-
-    // Verify all fields preserved
-    EXPECT_EQ(restored.getUserID(), "test-uuid-1234");
-    EXPECT_EQ(restored.getName(), "TestPlayer");
-    EXPECT_EQ(restored.getFaction(), "TestFaction");
-    EXPECT_TRUE(restored.isHunter());
-}
-
-inline void playerJsonRoundTripWithBountyRole(Player* player) {
-    char testId[] = "bounty-player-id";
-    player->setUserID(testId);
-    player->setIsHunter(false);
-
-    std::string json = player->toJson();
-
-    Player restored;
-    restored.fromJson(json);
-
-    EXPECT_EQ(restored.getUserID(), "bounty-player-id");
-    EXPECT_FALSE(restored.isHunter());
-}
-
-// ============================================
 // Stats Tracking Tests
 // ============================================
 
@@ -191,8 +150,9 @@ inline void playerRoleChangeFiresOnlyOnFlip(Player* player) {
     EXPECT_TRUE(player->isHunter());
 
     // A fetched profile is the other role write path and must notify too.
-    Player source("1234", Allegiance::HELIX, false);
-    player->fromJson(source.toJson());
+    Team bountyTeam;
+    std::snprintf(bountyTeam.name, sizeof(bountyTeam.name), "%s", "Bounty");
+    player->applyRegistrationProfile(UUIDBytes{}, "Ada", bountyTeam, {});
     EXPECT_EQ(flips, 3);
     EXPECT_FALSE(player->isHunter());
 }

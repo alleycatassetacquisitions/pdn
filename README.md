@@ -68,7 +68,7 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    ```bash
    cp wifi_credentials.ini.example wifi_credentials.ini
    ```
-   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL. This file is excluded from version control for security.
+   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL, and for an FDN, its symbol-match codeword. This file is excluded from version control for security.
 
 5. Build the project using PlatformIO:
    ```bash
@@ -153,10 +153,18 @@ If you want to contribute to the PDN Project, follow these steps to set up your 
 
 ### Code Structure
 
-- `include/device/`: This is the hardware abstraction layer that hides all the hardware implementation.
-- `include/device/drivers/`: Provides the concrete implementation of hardware peripherals. The native drivers are used for running the CLI tool. 
-- `include/game/`: Contains code for game experiences.
-- `include/state/`: The core plumbing of the State Machine, the core class that powers games.
+#### `libraries`
+- `core/`: Fundamental architecture for Alleycat embedded devices. This library is platform agnostic.
+- `esp32-drivers/`: drivers for the esp32-s3 family of chips. Relies on `core/device/drivers/`
+- `native-drivers/`: drivers that simulate the hardware of the pdn for our testing and simulator platform.
+- `alleycat-server/`: api's for the alleycat-rs backend.
+
+#### `src`
+- `cli`: `core/` + `native-drivers` TUI app for simulating up to 16 pdn's.
+- `fdn`: `core/` + `esp32-drivers` Game & Application Logic for the Alleycat Fixed Data Node.
+- `pdn`: `core/` + `esp32-drivers` Game & Application Logic for the Alleycat Portable Data Node.
+
+#### other
 - `test/`: Unit testing files for ensuring code stability.
 - `platformio.ini`: Project configuration file for PlatformIO, defining build environments and dependencies.
 

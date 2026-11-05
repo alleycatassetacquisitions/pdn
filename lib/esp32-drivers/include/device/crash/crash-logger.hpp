@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <optional>
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -8,41 +9,25 @@
 #include <cstdlib>
 #include <cstdarg>
 #include <esp_system.h>
-#include <esp_timer.h>
 #include <esp_core_dump.h>
 #include <driver/usb_serial_jtag.h>
 #include <ArduinoJson.h>
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
-#include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
+#include "device/crash/crash-record.hpp"
+#include "device/wireless-manager.hpp"
+#include "utils/simple-timer.hpp"
+#include "alleycat-server/crash-api.hpp"
 
 #ifndef FIRMWARE_COMMIT_HASH
 #define FIRMWARE_COMMIT_HASH "unknown"
 #endif
-
-constexpr size_t  TASK_NAME_LENGTH   = 16;
-constexpr size_t  COMMIT_HASH_LENGTH = 9;
-constexpr uint8_t MAX_CRASH_ENTRIES = 10;
 
 /** NVS namespace for persisted crash records (shared with Esp32S3PrefsDriver registration). */
 inline constexpr const char CRASH_LOG_NAMESPACE[] = "crashlog";
 
 /** USB serial command (line-terminated) to dump the crash log via flushToSerial(). */
 inline constexpr const char CRASH_LOG_SERIAL_COMMAND[] = "CRASHLOG";
-
-struct CrashRecord {
-    // Monotonic crash count for this device (1 = first crash ever recorded).
-    uint32_t crashNumber;
-
-    // Milliseconds since boot at the moment the crash is detected on reboot.
-    uint32_t timestamp;
-
-    uint8_t resetReason;
-    uint32_t programCounter;
-    uint32_t exceptionCause;
-    char taskName[TASK_NAME_LENGTH];
-    char commitHash[COMMIT_HASH_LENGTH];
-};
 
 struct CrashPacket {
     uint32_t crashNumber;
@@ -55,7 +40,7 @@ struct CrashPacket {
 } __attribute__((packed));
 
 /**
- * Captures and persists crash records across reboots, then transmits when wireless is up.
+ * Captures and persists crash records across reboots, then transmits them.
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
  * storage is initialized; poll serial and call transmitPending() in loop(), which waits
  * for the radio itself and offers each pending record once per boot.
@@ -63,9 +48,9 @@ struct CrashPacket {
 class CrashLogger {
 public:
     /** Reports over HTTP. Capture still works before the radio is up. */
-    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, Esp32S3HttpClient* httpClientDriver)
+    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, WirelessManager* wirelessManager)
         : prefsDriver(prefsDriver)
-        , httpClientDriver(httpClientDriver)
+        , wirelessManager(wirelessManager)
         , espNowDriver(nullptr)
         , hasCaptured(false)
         , useHttp(true)
@@ -76,7 +61,7 @@ public:
     /** Reports over ESP-NOW, for devices with no route to the server. */
     explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, EspNowDriver* espNowDriver)
         : prefsDriver(prefsDriver)
-        , httpClientDriver(nullptr)
+        , wirelessManager(nullptr)
         , espNowDriver(espNowDriver)
         , hasCaptured(false)
         , useHttp(false)
@@ -102,41 +87,61 @@ public:
             this);
     }
 
+    /** Call first in setup(): returns the uptime the last boot noted, and clears it. */
+    static uint32_t takeCrashedBootUptime();
+
+    /** Call every loop() pass. */
+    static void noteUptime();
+
     /**
      * Records the last reset if it was not a clean one. Runs once; safe to
      * call before the radio exists, since it only touches storage.
+     * `crashedBootUptimeMs` comes from takeCrashedBootUptime().
      */
-    void capture() {
+    void capture(uint32_t crashedBootUptimeMs) {
         if (hasCaptured) return;
         hasCaptured = true;
 
         esp_reset_reason_t reason = esp_reset_reason();
-        if (isCleanReason(reason)) return;
-
-        CrashRecord rec{};
-        rec.resetReason = static_cast<uint8_t>(reason);
-        rec.timestamp = static_cast<uint32_t>(esp_timer_get_time() / 1000);
 
         bool hadCoreDumpSummary = false;
         esp_core_dump_summary_t summary{};
         if (esp_core_dump_get_summary(&summary) == ESP_OK) {
             hadCoreDumpSummary = true;
-            rec.programCounter = summary.exc_pc;
-            rec.exceptionCause = summary.ex_info.exc_cause;
-            strncpy(rec.taskName, summary.exc_task, TASK_NAME_LENGTH - 1);
-            rec.taskName[TASK_NAME_LENGTH - 1] = '\0';
-        } else {
-            rec.programCounter = 0;
-            rec.exceptionCause = 0;
-            strncpy(rec.taskName, "unknown", TASK_NAME_LENGTH - 1);
+        }
+
+        if (!shouldCaptureReset(reason, hadCoreDumpSummary)) {
+            LOG_I(CRASH_LOG_TAG, "Reset reason %u (%s) — not recording crash",
+                  static_cast<unsigned>(reason), resetReasonName(static_cast<uint8_t>(reason)));
+            return;
+        }
+
+        CrashRecord rec{};
+        rec.resetReason = static_cast<uint8_t>(reason);
+        rec.timestamp = crashedBootUptimeMs;
+
+        // A summary can hold placeholders: no task when the dump stopped before the
+        // note pointing at the crashed task or skipped that task's TCB, and a fake PC
+        // with an invalid cause when the crashed task's stack was unusable.
+        if (hadCoreDumpSummary && summary.exc_task[0] != '\0' &&
+            summary.ex_info.exc_cause != CORE_DUMP_INVALID_CAUSE) {
+            CoreDumpDetails& details = rec.coreDumpDetails.emplace();
+            details.programCounter = summary.exc_pc;
+            // A task watchdog panic hands the core dump the running task's interrupt
+            // frame, and interrupt entry never stores an exception cause in it.
+            if (reason != ESP_RST_TASK_WDT) {
+                details.exceptionCause = summary.ex_info.exc_cause;
+            }
+            strncpy(details.taskName, summary.exc_task, TASK_NAME_LENGTH - 1);
+            details.taskName[TASK_NAME_LENGTH - 1] = '\0';
         }
 
         copyBuildCommitHash(rec.commitHash);
 
         persistRecord(rec);
-        LOG_I(CRASH_LOG_TAG, "Captured crash #%lu: reason=%u pc=0x%08X ec=%u task=%s commit=%s",
-              static_cast<unsigned long>(rec.crashNumber),
-              rec.resetReason, rec.programCounter, rec.exceptionCause, rec.taskName, rec.commitHash);
+        LOG_I(CRASH_LOG_TAG, "Captured crash #%lu: reason=%u %s commit=%s",
+              static_cast<unsigned long>(rec.crashNumber), rec.resetReason, describeCoreDump(rec.coreDumpDetails).c_str(),
+              rec.commitHash);
 
         eraseCoreDumpAfterCapture(hadCoreDumpSummary);
     }
@@ -154,16 +159,35 @@ public:
      */
     void transmitPending() {
         if (offeredThisBoot) return;
-        // A send offered while the radio is down is accepted by the driver's queue
-        // and then dropped with no report, so the one pass has to wait for the radio
-        // rather than be spent against it.
-        if (espNowDriver != nullptr &&
-            espNowDriver->getPeerCommsState() != PeerCommsState::CONNECTED) return;
+        // A send offered while ESP-NOW is down is accepted by the driver's queue and
+        // then dropped with no report, so the one pass has to wait for ESP-NOW rather
+        // than be spent against it.
+        if (!useHttp && espNowDriver != nullptr &&
+            espNowDriver->getPeerCommsState() != PeerCommsState::CONNECTED) {
+            return;
+        }
         offeredThisBoot = true;
         if (!hasPending()) return;
         useHttp ? transmitHttp() : transmitEspNow();
     }
 
+    /**
+     * Call every loop() pass: returns the radio to ESP-NOW once the uploads end and
+     * no other HTTP request is queued, or after UPLOAD_TIMEOUT_MS.
+     */
+    void restoreEspNowAfterUploads() {
+        if (!uploadTimer.isRunning()) {
+            return;
+        }
+        if (wirelessManager->hasQueuedHttpRequests()) {
+            if (!uploadTimer.expired()) {
+                return;
+            }
+            LOG_W(CRASH_LOG_TAG, "Crash uploads timed out");
+        }
+        uploadTimer.invalidate();
+        wirelessManager->enablePeerCommsMode();
+    }
     /** Dumps every stored record to the USB monitor, for a device on a bench. */
     void flushToSerial() const {
         const uint32_t crashSeq = readCrashSeq();
@@ -193,19 +217,14 @@ public:
 
             const char* status = (n <= sentSeq) ? "sent   " : "pending";
 
-            usbMonitorPrintf(
-                "[#%lu][%s] reason=%-2u %-12s | ts=%ums | pc=0x%08X | ec=%-2u %-18s | task=%s | commit=%s\n",
-                static_cast<unsigned long>(rec.crashNumber),
-                status,
-                rec.resetReason,
-                resetReasonName(rec.resetReason),
-                rec.timestamp,
-                rec.programCounter,
-                rec.exceptionCause,
-                exceptionCauseName(rec.exceptionCause),
-                rec.taskName,
-                rec.commitHash[0] != '\0' ? rec.commitHash : "unknown"
-            );
+            usbMonitorPrintf("[#%lu][%s] reason=%-2u %-12s | ts=%ums | %s | commit=%s\n",
+                             static_cast<unsigned long>(rec.crashNumber),
+                             status,
+                             rec.resetReason,
+                             resetReasonName(rec.resetReason),
+                             rec.timestamp,
+                             describeCoreDump(rec.coreDumpDetails).c_str(),
+                             rec.commitHash[0] != '\0' ? rec.commitHash : "unknown");
         }
 
         usbMonitorWrite("=================\n\n");
@@ -215,7 +234,11 @@ public:
      * Poll the USB Serial/JTAG port (same link as esp_log) for the CRASHLOG command.
      */
     void pollSerialCommand() {
-        ensureUsbSerialJtagDriver();
+        // A failed install (it allocates from internal RAM) leaves the driver's
+        // state null, and reading through it then faults.
+        if (!ensureUsbSerialJtagDriver()) {
+            return;
+        }
 
         uint8_t chunk[16];
         const int bytesRead = usb_serial_jtag_read_bytes(chunk, sizeof(chunk), 0);
@@ -278,16 +301,17 @@ private:
         }
     }
 
-    static void ensureUsbSerialJtagDriver() {
+    static bool ensureUsbSerialJtagDriver() {
         static bool driverReady = false;
         if (driverReady) {
-            return;
+            return true;
         }
         usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
         esp_err_t err = usb_serial_jtag_driver_install(&cfg);
         if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) {
             driverReady = true;
         }
+        return driverReady;
     }
 
     static void usbMonitorWrite(const char* text) {
@@ -331,17 +355,34 @@ private:
         trimSerialCommandBuffer(serialCommandBuffer, serialCommandLength);
     }
 
+    // IDF's COREDUMP_INVALID_CAUSE_VALUE, which espcoredump does not export.
+    static constexpr uint32_t CORE_DUMP_INVALID_CAUSE = 0xFFFF;
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
     bool offeredThisBoot = false;
+    SimpleTimer uploadTimer;
+    // With no AP in range, a queued HTTP request never fails.
+    static constexpr unsigned long UPLOAD_TIMEOUT_MS = 15000;
 
-    bool isCleanReason(esp_reset_reason_t reason) const {
-        return reason == ESP_RST_POWERON
-            || reason == ESP_RST_SW
-            || reason == ESP_RST_EXT
-            || reason == ESP_RST_DEEPSLEEP
-            || reason == ESP_RST_USB
-            || reason == ESP_RST_JTAG;
+    /**
+     * Panics often reboot as ESP_RST_SW; capture when a core dump exists or the
+     * reset reason is an explicit fault (not a deliberate esp_restart()).
+     */
+    bool shouldCaptureReset(esp_reset_reason_t reason, bool hasCoreDumpSummary) const {
+        if (hasCoreDumpSummary) {
+            return true;
+        }
+        switch (reason) {
+            case ESP_RST_PANIC:
+            case ESP_RST_INT_WDT:
+            case ESP_RST_TASK_WDT:
+            case ESP_RST_WDT:
+            case ESP_RST_BROWNOUT:
+            case ESP_RST_CPU_LOCKUP:
+                return true;
+            default:
+                return false;
+        }
     }
 
     uint32_t readCrashSeq() const { return readUint32Pref(SEQ_KEY); }
@@ -390,9 +431,14 @@ private:
         doc["id"]              = rec.crashNumber;
         doc["timestamp"]       = rec.timestamp;
         doc["resetReason"]     = rec.resetReason;
-        doc["programCounter"]  = rec.programCounter;
-        doc["exceptionCause"]  = rec.exceptionCause;
-        doc["task"]        = rec.taskName;
+        if (rec.coreDumpDetails) {
+            JsonObject details = doc["coreDumpDetails"].to<JsonObject>();
+            details["programCounter"] = rec.coreDumpDetails->programCounter;
+            if (rec.coreDumpDetails->exceptionCause.has_value()) {
+                details["exceptionCause"] = *rec.coreDumpDetails->exceptionCause;
+            }
+            details["task"] = rec.coreDumpDetails->taskName;
+        }
         doc["commitHash"]  = rec.commitHash;
         serializeJson(doc, buf, bufSize);
     }
@@ -405,11 +451,18 @@ private:
         out.crashNumber    = doc["id"] | 0u;
         out.timestamp      = doc["timestamp"] | doc["ts"] | 0u;
         out.resetReason    = doc["resetReason"] | doc["rr"] | static_cast<uint8_t>(0);
-        out.programCounter = doc["programCounter"] | doc["pc"] | 0u;
-        out.exceptionCause = doc["exceptionCause"] | doc["ec"] | 0u;
-        const char* task   = doc["task"] | "unknown";
-        strncpy(out.taskName, task, TASK_NAME_LENGTH - 1);
-        out.taskName[TASK_NAME_LENGTH - 1] = '\0';
+        out.coreDumpDetails.reset();
+        if (doc["coreDumpDetails"].is<JsonObject>()) {
+            JsonObject stored = doc["coreDumpDetails"];
+            CoreDumpDetails& details = out.coreDumpDetails.emplace();
+            details.programCounter = stored["programCounter"] | 0u;
+            if (stored["exceptionCause"].is<uint32_t>()) {
+                details.exceptionCause = stored["exceptionCause"].as<uint32_t>();
+            }
+            const char* task = stored["task"] | "";
+            strncpy(details.taskName, task, TASK_NAME_LENGTH - 1);
+            details.taskName[TASK_NAME_LENGTH - 1] = '\0';
+        }
         const char* commitHash = doc["commitHash"] | "";
         strncpy(out.commitHash, commitHash, COMMIT_HASH_LENGTH - 1);
         out.commitHash[COMMIT_HASH_LENGTH - 1] = '\0';
@@ -430,7 +483,41 @@ private:
     }
 
     void transmitHttp() {
-        LOG_W(CRASH_LOG_TAG, "HTTP crash transmission not yet implemented.");
+        if (!wirelessManager) return;
+        uploadTimer.setTimer(UPLOAD_TIMEOUT_MS);
+        uploadFrom(readSentSeq() + 1);
+    }
+
+    // One at a time, since sentSeq is a high-water mark.
+    void uploadFrom(uint32_t first) {
+        const uint32_t crashSeq = readCrashSeq();
+        uint8_t* mac = wirelessManager->getMacAddress();
+
+        for (uint32_t n = first; n <= crashSeq; n++) {
+            CrashRecord rec{};
+            if (!loadRecordByNumber(n, rec)) {
+                LOG_W(CRASH_LOG_TAG, "Crash #%lu not in ring buffer — skipping",
+                      static_cast<unsigned long>(n));
+                writeSentSeq(n);
+                continue;
+            }
+
+            CrashApi::uploadCrash(
+                wirelessManager,
+                rec,
+                mac,
+                [this, n](const std::string&) {
+                    LOG_I(CRASH_LOG_TAG, "Uploaded crash #%lu",
+                          static_cast<unsigned long>(n));
+                    writeSentSeq(n);
+                    uploadFrom(n + 1);
+                },
+                [n](const WirelessErrorInfo& err) {
+                    LOG_E(CRASH_LOG_TAG, "Failed to upload crash #%lu: %s — will retry on next boot",
+                          static_cast<unsigned long>(n), err.message.c_str());
+                });
+            return;
+        }
     }
 
     void transmitEspNow() {
@@ -451,9 +538,13 @@ private:
             pkt.crashNumber    = rec.crashNumber;
             pkt.timestamp      = rec.timestamp;
             pkt.resetReason    = rec.resetReason;
-            pkt.programCounter = rec.programCounter;
-            pkt.exceptionCause = rec.exceptionCause;
-            memcpy(pkt.taskName, rec.taskName, TASK_NAME_LENGTH);
+            // CrashPacket has no presence flags: an empty task name marks a record
+            // without details, and CORE_DUMP_INVALID_CAUSE one with details but no cause.
+            if (rec.coreDumpDetails) {
+                pkt.programCounter = rec.coreDumpDetails->programCounter;
+                pkt.exceptionCause = rec.coreDumpDetails->exceptionCause.value_or(CORE_DUMP_INVALID_CAUSE);
+                memcpy(pkt.taskName, rec.coreDumpDetails->taskName, TASK_NAME_LENGTH);
+            }
             memcpy(pkt.commitHash, rec.commitHash, COMMIT_HASH_LENGTH);
 
             const int result = espNowDriver->sendData(
@@ -479,7 +570,7 @@ private:
     }
 
     Esp32S3PrefsDriver* prefsDriver;
-    Esp32S3HttpClient*  httpClientDriver;
+    WirelessManager*    wirelessManager;
     EspNowDriver*       espNowDriver;
     bool                hasCaptured;
     bool                useHttp;
@@ -488,6 +579,21 @@ private:
     size_t serialCommandLength;
 
     static const char* const CRASH_LOG_TAG;
+
+    static std::string describeCoreDump(const std::optional<CoreDumpDetails>& details) {
+        if (!details) {
+            return "no core dump details";
+        }
+        char cause[40] = "ec=-";
+        if (details->exceptionCause.has_value()) {
+            snprintf(cause, sizeof(cause), "ec=%-2u %s", static_cast<unsigned>(*details->exceptionCause),
+                     exceptionCauseName(*details->exceptionCause));
+        }
+        char text[80];
+        snprintf(text, sizeof(text), "pc=0x%08X | %-24s | task=%s", static_cast<unsigned>(details->programCounter),
+                 cause, details->taskName);
+        return text;
+    }
 
     static const char* resetReasonName(uint8_t reason) {
         switch (static_cast<esp_reset_reason_t>(reason)) {

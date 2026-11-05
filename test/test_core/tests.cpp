@@ -7,6 +7,7 @@
 #include "device-tests.hpp"
 
 // New test headers
+#include "firmware-transport-tests.hpp"
 #include "player-tests.hpp"
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
@@ -26,6 +27,12 @@
 #include "reliable-transport-tests.hpp"
 #include "storage-tests.hpp"
 #include "symbol-wireless-tests.hpp"
+#include "crash-encoder-tests.hpp"
+#include "device-player-decoder-tests.hpp"
+#include "player-fetch-tests.hpp"
+#include "player-provider-tests.hpp"
+#include "quickdraw-match-codec-tests.hpp"
+#include "uuid-bytes-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -655,14 +662,6 @@ TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
 // PLAYER TESTS
 // ============================================
 
-TEST_F(PlayerTestSuite, jsonRoundTripPreservesAllFields) {
-    playerJsonRoundTripPreservesAllFields(player);
-}
-
-TEST_F(PlayerTestSuite, jsonRoundTripWithBountyRole) {
-    playerJsonRoundTripWithBountyRole(player);
-}
-
 TEST_F(PlayerTestSuite, roleChangeFiresOnlyOnFlip) {
     playerRoleChangeFiresOnlyOnFlip(player);
 }
@@ -763,6 +762,30 @@ TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
     uuidGeneratorProducesValidFormat();
 }
 
+TEST(UUIDBytes, parsesKnownValue) {
+    uuidBytesParsesKnownValue();
+}
+
+TEST(UUIDBytes, acceptsEitherCase) {
+    uuidBytesAcceptsEitherCase();
+}
+
+TEST(UUIDBytes, formatsLowercaseRoundTrip) {
+    uuidBytesFormatsLowercaseRoundTrip();
+}
+
+TEST(UUIDBytes, rejectsMalformedText) {
+    uuidBytesRejectsMalformedText();
+}
+
+TEST(UUIDBytes, reportsNil) {
+    uuidBytesReportsNil();
+}
+
+TEST(UUIDBytes, comparesByValue) {
+    uuidBytesComparesByValue();
+}
+
 // ============================================
 // MAC ADDRESS TESTS
 // ============================================
@@ -813,6 +836,22 @@ TEST_F(TimerTestSuite, elapsedTimeIsAccurate) {
 
 TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
     timerWithNullClockHandlesGracefully();
+}
+
+TEST_F(TimerTestSuite, unaffectedByWallClockJump) {
+    timerUnaffectedByWallClockJump(fakeClock);
+}
+
+TEST(HttpDate, parsesValidImfFixdate) {
+    httpDateParsesValidImfFixdate();
+}
+
+TEST(HttpDate, handlesLeapYearsCorrectly) {
+    httpDateHandlesLeapYearsCorrectly();
+}
+
+TEST(HttpDate, rejectsPre2025AndMalformedStrings) {
+    httpDateRejectsPre2025AndMalformedStrings();
 }
 
 // ============================================
@@ -961,6 +1000,184 @@ TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
 }
 
 // ============================================
+// CRASH ENCODER TESTS
+// ============================================
+
+TEST_F(CrashEncoderTestSuite, roundTripPopulatesAllFields) {
+    encoderRoundTripPopulatesAllFields(this);
+}
+
+TEST_F(CrashEncoderTestSuite, omitsUnsetOptionalFields) {
+    encoderOmitsUnsetOptionalFields(this);
+}
+
+TEST_F(CrashEncoderTestSuite, keepsExceptionCauseZero) {
+    encoderKeepsExceptionCauseZero(this);
+}
+
+TEST_F(CrashEncoderTestSuite, omitsMissingExceptionCause) {
+    encoderOmitsMissingExceptionCause(this);
+}
+
+TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) {
+    encoderReturnZeroWhenBufferTooSmall(this);
+}
+
+// ============================================
+// DEVICE PLAYER (PROTOBUF) TESTS
+// ============================================
+
+TEST(DevicePlayerDecoder, decodesTeamAndAffiliations) {
+    devicePlayerDecodesTeamAndAffiliations();
+}
+
+TEST(DevicePlayerDecoder, decodesUnassignedPlayer) {
+    devicePlayerDecodesUnassignedPlayer();
+}
+
+TEST(DevicePlayerDecoder, decodesMaximumLengthName) {
+    devicePlayerDecodesMaximumLengthName();
+}
+
+TEST(DevicePlayerDecoder, truncatesLongDisplayNames) {
+    devicePlayerTruncatesLongDisplayNames();
+}
+
+TEST(DevicePlayerDecoder, decodesAbsentName) {
+    devicePlayerDecodesAbsentName();
+}
+
+TEST(DevicePlayerDecoder, decodesMaximumAffiliations) {
+    devicePlayerDecodesMaximumAffiliations();
+}
+
+TEST(DevicePlayerDecoder, dropsAffiliationsPastLimit) {
+    devicePlayerDropsAffiliationsPastLimit();
+}
+
+TEST(DevicePlayerDecoder, rejectsWrongLengthUuids) {
+    devicePlayerRejectsWrongLengthUuids();
+}
+
+TEST(DevicePlayerDecoder, rejectsMissingRequiredUuids) {
+    devicePlayerRejectsMissingRequiredUuids();
+}
+
+TEST(DevicePlayerDecoder, rejectsGarbageBody) {
+    devicePlayerRejectsGarbageBody();
+}
+
+TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
+    playerApiQueuesDevicePlayerLookup(this);
+}
+
+// ============================================
+// PLAYER PROVIDER TESTS
+// ============================================
+
+TEST(PlayerProvider, startsEmpty) { playerProviderStartsEmpty(); }
+
+TEST(PlayerProvider, returnsEmptyRegistrationFields) {
+    playerProviderReturnsEmptyRegistrationFields();
+}
+
+TEST(PlayerProvider, storesProfile) { playerProviderStoresProfile(); }
+
+TEST(PlayerProvider, overwriteReplacesProfile) { playerProviderOverwriteReplacesProfile(); }
+
+TEST(PlayerProvider, clearDropsProfile) { playerProviderClearDropsProfile(); }
+
+TEST(PlayerRegistrationShim, mapsHelixAffiliation) { playerLegacyShimMapsHelixAffiliation(); }
+
+TEST(PlayerRegistrationShim, mapsHunterTeamName) { playerLegacyShimMapsHunterTeamName(); }
+
+TEST(PlayerRegistrationShim, formatsServerIdAsUserId) { playerLegacyShimFormatsServerIdAsUserId(); }
+
+// ============================================
+// PLAYER FETCH APP TESTS
+// ============================================
+
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesNonDemoPinToFetch) {
+    pinEntryRoutesNonDemoPinToFetch(this);
+}
+
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
+    pinEntryRoutesDemoPinToChooseTeam(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserQueuesDevicePlayerLookup) {
+    fetchUserQueuesDevicePlayerLookup(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserStoresDevicePlayerOnSuccess) {
+    fetchUserStoresDevicePlayerOnSuccess(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
+    fetchUserFailureReturnsToPinAfterPageTimeout(this);
+}
+
+TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
+    chooseTeamConfirmReachesDemoStub(this);
+}
+
+// ============================================
+// QUICKDRAW MATCH UPLOAD (PROTOBUF) TESTS
+// ============================================
+
+TEST(QuickdrawMatchCodec, roundTripsAllFields) {
+    matchCodecRoundTripsAllFields();
+}
+
+TEST(QuickdrawMatchCodec, keepsZeroDrawTimePresent) {
+    matchCodecKeepsZeroDrawTimePresent();
+}
+
+TEST(QuickdrawMatchCodec, omitsUnassignedTeams) {
+    matchCodecOmitsUnassignedTeams();
+}
+
+TEST(QuickdrawMatchCodec, failsWhenSourceFails) {
+    matchCodecFailsWhenSourceFails();
+}
+
+TEST(QuickdrawMatchCodec, treatsEmptyBodyAsFullyAccepted) {
+    matchCodecTreatsEmptyBodyAsFullyAccepted();
+}
+
+TEST(QuickdrawMatchCodec, decodesRejection) {
+    matchCodecDecodesRejection();
+}
+
+TEST(QuickdrawMatchCodec, deliversRejectionsInOrder) {
+    matchCodecDeliversRejectionsInOrder();
+}
+
+TEST(QuickdrawMatchCodec, keepsUnknownErrorCode) {
+    matchCodecKeepsUnknownErrorCode();
+}
+
+TEST(QuickdrawMatchCodec, rejectsTooManyFieldsWithoutDelivering) {
+    matchCodecRejectsTooManyFieldsWithoutDelivering();
+}
+
+TEST(QuickdrawMatchCodec, rejectsMalformedMatchIdWithoutDelivering) {
+    matchCodecRejectsMalformedMatchIdWithoutDelivering();
+}
+
+TEST(QuickdrawMatchCodec, rejectsGarbageBody) {
+    matchCodecRejectsGarbageBody();
+}
+
+TEST_F(AlleycatApiTestSuite, matchesApiRejectsOutOfRangeCounts) {
+    matchesApiRejectsOutOfRangeCounts(this);
+}
+
+TEST_F(AlleycatApiTestSuite, matchesApiQueuesProtobufPost) {
+    matchesApiQueuesProtobufPost(this);
+}
+
+// ============================================
 // MATCH MANAGER CONCURRENCY TESTS (TSan)
 // ============================================
 
@@ -1014,6 +1231,30 @@ TEST_F(IdleStateTests, stateClearsOnDismount) {
 
 TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
+    pairingCodeFirmwareHoldStartsAnUpdate(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeLeavesTheRadioAlone) {
+    pairingCodeLeavesTheRadioAlone(this);
+}
+
+TEST_F(IdleStateTests, fetchExitPutsTheRadioBackOnEspNow) {
+    fetchExitPutsTheRadioBackOnEspNow(this);
+}
+
+TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) {
+    aSeedRunTakesTheRadioForEspNow(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeFirmwareHoldCarriedInDoesNotFire) {
+    pairingCodeFirmwareHoldCarriedInDoesNotFire(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) {
+    pairingCodeTakesUpdatesWhileUp(this);
 }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {

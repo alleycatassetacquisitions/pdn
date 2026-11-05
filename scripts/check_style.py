@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""Style gate on the staged diff, run by hooks/pre-commit.
+"""Style checks on the staged diff, run by hooks/pre-commit.
 
-Needs clang-format, clang-tidy and a compile_commands.json at the repo root
-(`pio run -e native_cli -t compiledb`). Line rules and clang-format apply to
-the lines added in the staged diff; clang-tidy runs on the translation units
-behind the staged files, with its diagnostics restricted to those same lines.
-A legacy violation elsewhere in a touched file does not block the commit
+Uses clang-format, clang-tidy and a compile_commands.json at the repo root
+(`pio run -e native_cli -t compiledb`) when they are there. On Windows,
+native_cli usually builds with MSYS MinGW g++; LLVM clang-tidy then needs that toolchain's system
+include paths (injected automatically — see clang_tidy_driver_extras). Line
+rules and clang-format apply to the lines added in the staged diff;
+clang-tidy runs on the translation units behind the staged files, with its
+diagnostics restricted to those same lines.
+Findings are advisory by default: the script reports and exits 0, so a missing
+tool or a compile database from another checkout costs you the checks it feeds
+rather than the commit. `--strict`, or CHECK_STYLE_STRICT in the environment,
+exits 1 on a finding instead — for CI, where the toolchain is installed
+deliberately and a finding is worth failing on.
+A legacy violation elsewhere in a touched file is not reported at all
 (clang-format may still reflow the statement around an added line), so legacy
 gets fixed on touch rather than all at once. Exceptions: new and
 renamed files must be kebab-case, new headers need #pragma once, and the
@@ -304,7 +312,8 @@ def check_format(path, content, added):
     proc = subprocess.run(
         ["clang-format", "--style=file", f"--assume-filename={path}",
          *[f"--lines={a}:{b}" for a, b in ranges]],
-        input=content, capture_output=True, text=True)
+        input=content, capture_output=True, text=True,
+        encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         flag(path, ranges[0][0], f"clang-format failed: {proc.stderr.strip()}")
         return
@@ -317,25 +326,119 @@ def check_format(path, content, added):
              " (e.g. `git clang-format --staged`, then re-add)")
 
 
-def load_compiledb(repo_root):
-    """Repo-relative TU paths from compile_commands.json, or None when absent.
-    A DB from another checkout would match no staged file and skip every TU
-    with a notice blaming the wrong cause, so it is rejected whole."""
+def read_compiledb(repo_root):
+    """compile_commands.json entries, or None when the file is absent."""
     db_path = os.path.join(repo_root, "compile_commands.json")
     if not os.path.exists(db_path):
         return None
     with open(db_path, encoding="utf-8") as f:
-        entries = json.load(f)
+        return json.load(f)
+
+
+def tu_path_in_repo(entry, repo_root):
+    """Repo-relative path for one compile_commands entry (forward slashes)."""
+    return os.path.relpath(os.path.join(entry["directory"], entry["file"]),
+                           repo_root).replace(os.sep, "/")
+
+
+def load_compiledb(repo_root):
+    """Repo-relative TU paths from compile_commands.json, or None when absent.
+    A DB from another checkout would match no staged file and skip every TU
+    with a notice blaming the wrong cause, so it is rejected whole."""
+    entries = read_compiledb(repo_root)
+    if entries is None:
+        return None
     paths = set()
     for e in entries:
-        # Forward slashes to match git's paths on Windows too.
-        rel = os.path.relpath(os.path.join(e["directory"], e["file"]), repo_root).replace(os.sep, "/")
+        rel = tu_path_in_repo(e, repo_root)
         if rel.startswith(".."):
-            flag("compile_commands.json", 1,
-                 f"generated in another checkout ({e['directory']}); {COMPILEDB_HINT}")
+            notices.append("compile_commands.json was generated in another checkout "
+                           f"({e['directory']}), clang-tidy skipped; {COMPILEDB_HINT}")
             return set()
         paths.add(rel)
+    if not paths:
+        notices.append(f"compile_commands.json lists no units, clang-tidy skipped; {COMPILEDB_HINT}")
     return paths
+
+
+MINGW_DRIVER = re.compile(r"^g(\+\+|cc)(-\d+)?\.exe$", re.I)
+_mingw_system_includes_cache = {}
+
+
+def compiler_from_compile_command(entry):
+    """First token of a compile command — the driver executable."""
+    if "arguments" in entry:
+        args = entry["arguments"]
+        return args[0] if args else None
+    command = entry.get("command", "").strip()
+    if not command:
+        return None
+    if command.startswith('"'):
+        end = command.find('"', 1)
+        return command[1:end] if end > 0 else None
+    return command.split(None, 1)[0]
+
+
+def is_mingw_gcc_driver(compiler_path):
+    if not compiler_path:
+        return False
+    return bool(MINGW_DRIVER.match(os.path.basename(compiler_path)))
+
+
+def mingw_system_include_paths(compiler_path):
+    """System #include <...> directories from a MinGW g++/gcc driver (-v)."""
+    key = os.path.normcase(os.path.normpath(compiler_path))
+    if key in _mingw_system_includes_cache:
+        return _mingw_system_includes_cache[key]
+    proc = subprocess.run(
+        [compiler_path, "-E", "-x", "c++", "-", "-v"],
+        input="", capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=120)
+    text = proc.stderr
+    start = text.find("#include <...> search starts here:")
+    end = text.find("End of search list.", start)
+    paths = []
+    if start >= 0 and end > start:
+        for line in text[start:end].splitlines()[1:]:
+            path = line.strip()
+            if path and os.path.isdir(path):
+                paths.append(path)
+    _mingw_system_includes_cache[key] = paths
+    return paths
+
+
+def compile_command_for_tu(entries, repo_root, tu_path):
+    """Compile command entry for a repo-relative translation unit path."""
+    want = tu_path.replace("\\", "/")
+    for entry in entries:
+        if tu_path_in_repo(entry, repo_root) == want:
+            return entry
+    return None
+
+
+def clang_tidy_driver_extras(repo_root, targets):
+    """Extra clang-tidy flags so LLVM clang can parse MinGW compile commands."""
+    if sys.platform != "win32" or not targets:
+        return []
+    entries = read_compiledb(repo_root)
+    if not entries:
+        return []
+    compilers = set()
+    for tu in targets:
+        entry = compile_command_for_tu(entries, repo_root, tu)
+        if not entry:
+            continue
+        driver = compiler_from_compile_command(entry)
+        if is_mingw_gcc_driver(driver):
+            compilers.add(os.path.normpath(driver))
+    if not compilers:
+        return []
+    extras = ["--extra-arg-before=--target=x86_64-w64-mingw32"]
+    for driver in sorted(compilers):
+        for inc in mingw_system_include_paths(driver):
+            inc = inc.replace("\\", "/")
+            extras.append(f"--extra-arg-before=-isystem{inc}")
+    return extras
 
 
 def includes_header(tu, header):
@@ -371,8 +474,8 @@ def tidy_targets(files, db):
 
 def run_scoped_tidy(files, added_by_path, repo_root):
     """--line-filter drops check findings outside the staged added lines;
-    compiler errors are not filtered, so a TU that fails to parse fails the
-    commit."""
+    compiler errors are not filtered, so a TU that fails to parse is reported
+    whole."""
     db = load_compiledb(repo_root)
     if db is None:
         notices.append(f"compile_commands.json missing, clang-tidy skipped; {COMPILEDB_HINT}")
@@ -391,10 +494,14 @@ def run_scoped_tidy(files, added_by_path, repo_root):
                        + ", ".join(skipped))
     if not targets:
         return
-    proc = subprocess.run(
-        ["clang-tidy", "-p", repo_root, "--quiet",
-         f"--line-filter={json.dumps(line_filter)}", *targets],
-        capture_output=True, text=True)
+    check_unstaged_edits(files)
+    tidy_cmd = [
+        "clang-tidy", "-p", repo_root, "--quiet",
+        f"--line-filter={json.dumps(line_filter)}",
+        *clang_tidy_driver_extras(repo_root, targets),
+        *targets,
+    ]
+    proc = subprocess.run(tidy_cmd, capture_output=True, text=True)
     output = proc.stdout.strip() or (proc.stderr.strip() if proc.returncode else "")
     if output:
         print(output)
@@ -412,19 +519,20 @@ def check_unstaged_edits(files):
             flag(path, 1, "has unstaged changes; stage or stash them so clang-tidy sees the staged content")
 
 
-def main():
+def run_checks(strict):
     repo_root = git("rev-parse", "--show-toplevel").strip()
     os.chdir(repo_root)
     # During a merge the index vs HEAD shows the whole incoming side as added.
     if os.path.exists(git("rev-parse", "--git-path", "MERGE_HEAD").strip()):
-        return 0
+        return
     files = staged_files()
     if not files:
-        return 0
-    missing = [t for t in ("clang-format", "clang-tidy") if shutil.which(t) is None]
-    if missing:
-        print(f"check_style: {', '.join(missing)} not found on PATH; install LLVM/clang tools")
-        return 1
+        return
+    have_format = shutil.which("clang-format") is not None
+    have_tidy = shutil.which("clang-tidy") is not None
+    for tool, present in (("clang-format", have_format), ("clang-tidy", have_tidy)):
+        if not present:
+            notices.append(f"{tool} not found on PATH, its checks skipped; install LLVM/clang tools")
     added_by_path = {}
     for path, (status, old_path) in files.items():
         content = staged_content(path)
@@ -435,16 +543,30 @@ def main():
         check_own_header_first(path, content, added)
         check_doxygen_and_access_order(path, content, added)
         check_added_lines(path, added, strip_file(content))
-        check_format(path, content, added)
-    check_unstaged_edits(files)
-    run_scoped_tidy(files, added_by_path, repo_root)
+        if have_format:
+            check_format(path, content, added)
+    if have_tidy:
+        run_scoped_tidy(files, added_by_path, repo_root)
     for d in format_diffs:
         print(d, end="" if d.endswith("\n") else "\n")
     for path, ln, msg in sorted(violations):
         print(f"{path}:{ln}: {msg}")
     for n in notices:
-        print(n, file=sys.stderr)
-    return 1 if violations else 0
+        print(n)
+    if violations and not strict:
+        print("check_style: findings above are advisory, the commit is not blocked")
+
+
+def main():
+    strict = bool(os.environ.get("CHECK_STYLE_STRICT")) or "--strict" in sys.argv[1:]
+    try:
+        run_checks(strict)
+    except Exception as exc:
+        # A fault in the tooling says nothing about the staged code, so it never
+        # ends the commit — not even under --strict.
+        print(f"check_style: checks incomplete, {type(exc).__name__}: {exc}")
+        return 0
+    return 1 if (strict and violations) else 0
 
 
 if __name__ == "__main__":

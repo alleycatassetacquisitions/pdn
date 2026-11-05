@@ -26,7 +26,8 @@
 #include "game/quickdraw-apps.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
-#include "apps/player-registration/player-registration.hpp"
+#include "apps/player-fetch/player-fetch.hpp"
+#include "game/player-provider.hpp"
 
 // CLI components
 #include "apps/player-registration/player-registration-states.hpp"
@@ -100,9 +101,10 @@ struct DeviceInstance {
     
     // Game objects
     PDN* pdn = nullptr;
+    PlayerProvider* playerProvider = nullptr;
     Player* player = nullptr;
     GameSession* gameSession = nullptr;
-    PlayerRegistrationApp* playerRegistrationApp = nullptr;
+    PlayerFetchApp* playerFetchApp = nullptr;
     HubApp* hubApp = nullptr;
     DuelApp* duelApp = nullptr;
     ShootoutApp* shootoutApp = nullptr;
@@ -183,6 +185,7 @@ public:
         playerConfig.isHunter = isHunter;
         playerConfig.allegiance = 1;  // RESISTANCE
         playerConfig.faction = isHunter ? "Guild" : "Rebels";
+        UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", playerConfig.wirePlayerId);
         MockHttpServer::getInstance().configurePlayer(instance.deviceId, playerConfig);
         
         // Create driver configuration
@@ -204,14 +207,15 @@ public:
         // Create PDN
         instance.pdn = PDN::createPDN(pdnConfig);
         instance.pdn->begin();
-        
-        // Create and configure player
-        instance.player = new Player();
+
+        instance.playerProvider = new PlayerProvider();
+        instance.player = instance.playerProvider->getPlayer();
         char* idPtr = new char[5];
         strcpy(idPtr, instance.deviceId.c_str());
         instance.player->setUserID(idPtr);
         instance.player->setIsHunter(isHunter);
         instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
+        instance.playerProvider->setRegistrationPin(instance.deviceId.c_str());
 
         instance.symbolWirelessManager = new SymbolWirelessManager(
             instance.pdn->getWirelessManager(),
@@ -224,16 +228,17 @@ public:
             instance.symbolWirelessManager);
 
         GameContext gameContext = instance.gameSession->getContext();
-        instance.playerRegistrationApp = new PlayerRegistrationApp(
-            instance.player, instance.pdn->getWirelessManager(),
-            gameContext.matchManager, nullptr);
+        instance.playerFetchApp = new PlayerFetchApp(
+            instance.pdn->getWirelessManager(),
+            instance.pdn->getFirmwareUpdateManager(),
+            instance.playerProvider);
         instance.hubApp = new HubApp(gameContext);
         instance.duelApp = new DuelApp(gameContext);
         instance.shootoutApp = new ShootoutApp(gameContext);
         instance.symbolApp = new SymbolApp(gameContext);
 
         AppConfig apps = {
-            {StateId(PLAYER_REGISTRATION_APP_ID), instance.playerRegistrationApp},
+            {StateId(PLAYER_FETCH_APP_ID), instance.playerFetchApp},
             {StateId(HUB_APP_ID), instance.hubApp},
             {StateId(DUEL_APP_ID), instance.duelApp},
             {StateId(SHOOTOUT_APP_ID), instance.shootoutApp},
@@ -243,7 +248,6 @@ public:
         // state (AwakenSequence). The player is already configured with ID, role,
         // and allegiance from DeviceFactory.
         instance.pdn->loadAppConfig(apps, StateId(HUB_APP_ID));
-
         // Register with SerialCableBroker for cable simulation
         SerialCableBroker::getInstance().registerDevice(
             deviceIndex, instance.serialOutDriver, instance.serialInDriver, isHunter);
@@ -264,14 +268,14 @@ public:
         // Apps before the session, which owns the managers their GameContext
         // copies point at. No state destructor dereferences one today, so this is
         // ordering hygiene rather than a fix for a live use-after-free.
-        delete device.playerRegistrationApp;
+        delete device.playerFetchApp;
         delete device.hubApp;
         delete device.duelApp;
         delete device.shootoutApp;
         delete device.symbolApp;
         delete device.gameSession;
         delete device.symbolWirelessManager;
-        delete device.player;
+        delete device.playerProvider;
         delete device.pdn;
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted
     }

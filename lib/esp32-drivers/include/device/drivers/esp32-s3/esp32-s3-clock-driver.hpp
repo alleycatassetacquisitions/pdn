@@ -3,6 +3,7 @@
 #include "device/drivers/driver-interface.hpp"
 
 #include <esp_timer.h>
+#include <sys/time.h>
 
 class Esp32S3Clock : public PlatformClockDriverInterface {
 public:
@@ -25,5 +26,12 @@ public:
         // converts units; narrowing to 32 bits is what makes this wrap where a
         // 32-bit millisecond count does.
         return static_cast<unsigned long>(esp_timer_get_time() / 1000);
+    }
+
+    /** Returns UTC milliseconds from the POSIX system clock. */
+    int64_t unixMilliseconds() override {
+        struct timeval tv = {};
+        gettimeofday(&tv, nullptr);
+        return static_cast<int64_t>(tv.tv_sec) * 1000 + static_cast<int64_t>(tv.tv_usec) / 1000;
     }
 };

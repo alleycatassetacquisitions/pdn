@@ -60,11 +60,11 @@ TEST_F(NativePeerBrokerTestSuite, DisconnectedPeerNoReceive) {
 // ============================================
 
 TEST_F(MockHttpServerTestSuite, GetPlayerReturnsCorrectData) {
-    httpServerGetPlayerReturnsCorrectData(this);
+    httpServerGetDevicePlayerByPinReturnsData(this);
 }
 
 TEST_F(MockHttpServerTestSuite, GetPlayerReturnsDefaults) {
-    httpServerGetPlayerReturnsDefaults(this);
+    httpServerGetDevicePlayerByPinReturns404(this);
 }
 
 TEST_F(MockHttpServerTestSuite, PutMatchesAccepts) {
@@ -87,12 +87,24 @@ TEST_F(MockHttpServerTestSuite, ClearHistory) {
     httpServerClearHistory(this);
 }
 
+TEST_F(MockHttpServerTestSuite, DeviceLogsReturns204) {
+    httpServerDeviceLogsReturns204(this);
+}
+
+TEST_F(MockHttpServerTestSuite, DeviceLogsEmptyBodyReturns400) {
+    httpServerDeviceLogsEmptyBodyReturns400(this);
+}
+
 // ============================================
 // NATIVE HTTP CLIENT DRIVER TESTS
 // ============================================
 
 TEST_F(NativeHttpClientDriverTestSuite, ProcessesRequests) {
     httpClientProcessesRequests(this);
+}
+
+TEST_F(NativeHttpClientDriverTestSuite, DisconnectFailsQueuedRequests) {
+    httpClientDisconnectFailsQueuedRequests(this);
 }
 
 TEST_F(NativeHttpClientDriverTestSuite, HandlesOfflineServer) {
@@ -105,6 +117,10 @@ TEST_F(NativeHttpClientDriverTestSuite, TracksHistory) {
 
 TEST_F(NativeHttpClientDriverTestSuite, DisabledMockServerFails) {
     httpClientDisabledMockServerFails(this);
+}
+
+TEST_F(NativeHttpClientDriverTestSuite, UploadsEncodedCrashLog) {
+    httpClientUploadsEncodedCrashLog(this);
 }
 
 // ============================================

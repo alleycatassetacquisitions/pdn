@@ -111,7 +111,7 @@ class StubHttpClient : public HttpClientInterface {
 public:
     void setWifiConfig(WifiConfig*) override {}
     bool isConnected() override { return false; }
-    bool queueRequest(HttpRequest&) override { return false; }
+    bool queueRequest(HttpRequest&&) override { return false; }
     void disconnect() override {}
     void updateConfig(WifiConfig*) override {}
     void retryConnection() override {}
@@ -120,6 +120,8 @@ public:
     HttpClientState getHttpClientState() override {
         return HttpClientState::DISCONNECTED;
     }
+    bool hasQueuedRequests() override { return false; }
+
 private:
     uint8_t mac_[6] = {0};
 };

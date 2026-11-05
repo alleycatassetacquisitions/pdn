@@ -32,6 +32,7 @@ void UploadPendingHacksState::onStateMounted(FDN* fdn) {
         HttpRequest req(
             "/api/boxes",
             "POST",
+            "application/json",
             payload,
             [this, playerId](const std::string&) {
                 LOG_I(TAG, "Upload succeeded for %s", playerId.c_str());
@@ -43,7 +44,7 @@ void UploadPendingHacksState::onStateMounted(FDN* fdn) {
                 completedCount++;
             });
 
-        fdn->getHttpClient()->queueRequest(req);
+        fdn->getHttpClient()->queueRequest(std::move(req));
     }
 
     fallbackTimer.setTimer(FALLBACK_TIMEOUT_MS);

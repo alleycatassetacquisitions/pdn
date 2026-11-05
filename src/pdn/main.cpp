@@ -16,16 +16,17 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
 #include "device/crash/crash-logger.hpp"
 
 #include "pdn-constants.hpp"
 #include "utils/simple-timer.hpp"
-#include "game/player.hpp"
+#include "game/player-provider.hpp"
 #include "state/state-machine.hpp"
 #include "device/pdn.hpp"
 #include "game/game-session.hpp"
 #include "game/quickdraw-apps.hpp"
-#include "apps/player-registration/player-registration.hpp"
+#include "apps/player-fetch/player-fetch.hpp"
 #include "id-generator.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
@@ -50,7 +51,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 WifiConfig* wifiConfig = nullptr;
 
 CrashLogger* crashLogger = nullptr;
-
+Esp32S3FirmwareStore* firmwareStore = nullptr;
 
 // ESP32-s3 Drivers (declare as pointers, construct in setup())
 Esp32S3Clock* clockDriver = nullptr;
@@ -68,11 +69,11 @@ Esp32S3PrefsDriver* storageDriver = nullptr;
 
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
-Player* player = nullptr;
+PlayerProvider* playerProvider = nullptr;
 
 // Shared game managers, and the apps the device swaps between
 GameSession* gameSession = nullptr;
-PlayerRegistrationApp* playerRegistrationApp = nullptr;
+PlayerFetchApp* playerFetchApp = nullptr;
 HubApp* hubApp = nullptr;
 DuelApp* duelApp = nullptr;
 ShootoutApp* shootoutApp = nullptr;
@@ -94,6 +95,7 @@ void setupEspNow(RemoteDebugManager* remoteDebugManager,
 }
 
 static void setup() {
+    const uint32_t crashedBootUptimeMs = CrashLogger::takeCrashedBootUptime();
     // Before any driver, because two of them need it and neither can bring it
     // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
     // and the preferences driver cannot open a namespace.
@@ -113,6 +115,8 @@ static void setup() {
     // Initialize platform abstractions immediately after constructing them
     g_logger = loggerDriver;
     SimpleTimer::setPlatformClock(clockDriver);
+    // Next, so its watchdog covers the rest of setup() on an unconfirmed image.
+    firmwareStore = new Esp32S3FirmwareStore(FIRMWARE_STORE_DRIVER_NAME);
 
     // Now construct remaining drivers (safe to use logging and timers now)
     displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME, displayCS, displayDC, displayRST);
@@ -144,14 +148,15 @@ static void setup() {
         {PLATFORM_CLOCK_DRIVER_NAME, clockDriver},
         {LOGGER_DRIVER_NAME, loggerDriver},
         {STORAGE_DRIVER_NAME, storageDriver},
+        {FIRMWARE_STORE_DRIVER_NAME, firmwareStore},
     };
 
     // Create core game objects
     pdn = PDN::createPDN(pdnConfig);
     
     IdGenerator::initialize(clockDriver->milliseconds());
-    player = new Player();
-    player->setUserID(IdGenerator::getInstance().generateId());
+    playerProvider = new PlayerProvider();
+    playerProvider->getPlayer()->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
     // Create wireless managers
     LOG_I("SETUP", "Creating SymbolWirelessManager...");
@@ -166,39 +171,50 @@ static void setup() {
     // Register ESP-NOW packet handlers
     setupEspNow(remoteDebugManager, peerCommsDriver);
 
-    crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
-    crashLogger->capture();
+    crashLogger = new CrashLogger(storageDriver, pdn->getWirelessManager());
+    crashLogger->capture(crashedBootUptimeMs);
+    crashLogger->transmitPending();
 
-    gameSession = new GameSession(player, pdn, symbolWirelessManager);
+    gameSession = new GameSession(playerProvider->getPlayer(), pdn, symbolWirelessManager);
 
     GameContext gameContext = gameSession->getContext();
-    playerRegistrationApp = new PlayerRegistrationApp(player, pdn->getWirelessManager(), gameContext.matchManager, remoteDebugManager);
+    playerFetchApp = new PlayerFetchApp(pdn->getWirelessManager(),
+                                        pdn->getFirmwareUpdateManager(), playerProvider);
     hubApp = new HubApp(gameContext);
     duelApp = new DuelApp(gameContext);
     shootoutApp = new ShootoutApp(gameContext);
     symbolApp = new SymbolApp(gameContext);
-
 
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
         render();
-    vTaskDelay(pdMS_TO_TICKS(SPLASH_HOLD_MS));
+    // Lets a crash upload finish before the output jack's handshake takes the radio back.
+    SimpleTimer splashTimer;
+    splashTimer.setTimer(SPLASH_HOLD_MS);
+    while (!splashTimer.expired()) {
+        httpClientDriver->exec();
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
 
     // Register the swappable state machines and boot into registration
     AppConfig apps = {
-        {StateId(PLAYER_REGISTRATION_APP_ID), playerRegistrationApp},
+        {StateId(PLAYER_FETCH_APP_ID), playerFetchApp},
         {StateId(HUB_APP_ID), hubApp},
         {StateId(DUEL_APP_ID), duelApp},
         {StateId(SHOOTOUT_APP_ID), shootoutApp},
         {StateId(SYMBOL_APP_ID), symbolApp},
     };
-    pdn->loadAppConfig(apps, StateId(PLAYER_REGISTRATION_APP_ID));
+    pdn->loadAppConfig(apps, StateId(PLAYER_FETCH_APP_ID));
 }
 
 void loop() {
-    if (crashLogger != nullptr) crashLogger->pollSerialCommand();
+    if (crashLogger != nullptr) {
+        CrashLogger::noteUptime();
+        crashLogger->pollSerialCommand();
+        crashLogger->restoreEspNowAfterUploads();
+    }
     pdn->loop();
     // After the device loop, so the one offer per boot runs with exec() having
     // pumped the radio at least once: the channel pin is retried from there, and a

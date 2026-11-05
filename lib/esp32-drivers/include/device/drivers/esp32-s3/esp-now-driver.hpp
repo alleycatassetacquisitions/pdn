@@ -39,18 +39,14 @@ constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 // one send — no multi-frame clustering.
 constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN_V2 - sizeof(DataPktHdr);
 
-// pktLen carries the total packet length on the wire, so it has to be able to
-// express a full frame or a large payload would arrive as a corrupt short buffer.
-static_assert(ESP_NOW_MAX_DATA_LEN_V2 <=
-                  std::numeric_limits<decltype(DataPktHdr::pktLen)>::max(),
-              "DataPktHdr::pktLen cannot express a full ESP-NOW v2 frame");
-
 // The head-roster handoff is the largest reliable payload and grows with
 // MAX_CHAIN_MEMBERS. A cap bump that overflows this budget must break the build
 // here, not silently fail sendData at runtime.
 static_assert(sizeof(HeadTransferPayload) <= MAX_PKT_DATA_SIZE,
               "HeadTransferPayload exceeds the reliable-payload budget; "
               "lower MAX_CHAIN_MEMBERS or split the transfer across frames");
+static_assert(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE <= MAX_PKT_DATA_SIZE,
+              "a firmware chunk must fit one ESP-NOW v2 frame");
 
 //Singleton class that handles communication over ESP-NOW protocol.
 class EspNowDriver : public PeerCommsDriverInterface
@@ -99,7 +95,14 @@ public:
         std::queue<DeferredPacket> pending;
         xSemaphoreTake(recvMutex, portMAX_DELAY);
         std::swap(pending, recvQueue);
+        recvQueueBytes = 0;
+        const uint32_t dropped = droppedRecvPackets;
+        droppedRecvPackets = 0;
         xSemaphoreGive(recvMutex);
+        if (dropped > 0) {
+            LOG_W("ENC", "Dropped %lu received packets: receive queue over %u bytes",
+                  static_cast<unsigned long>(dropped), static_cast<unsigned>(RECV_QUEUE_MAX_BYTES));
+        }
 
         while (!pending.empty()) {
             auto& pkt = pending.front();
@@ -273,14 +276,13 @@ public:
         }
 
         DataPktHdr* hdr = reinterpret_cast<DataPktHdr*>(buf);
-        hdr->pktLen = sizeof(DataPktHdr) + length;
         hdr->packetType = packetType;
         memcpy(buf + sizeof(DataPktHdr), data, length);
 
         DataSendBuffer buffer;
         memcpy(buffer.dstMac, dst, ESP_NOW_ETH_ALEN);
         buffer.ptr = buf;
-        buffer.len = hdr->pktLen;
+        buffer.len = sizeof(DataPktHdr) + length;
 
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         sendQueue.push(buffer);
@@ -328,6 +330,14 @@ public:
     /** Removes the send-result handler for a packet type. */
     void clearSendStatusHandler(PktType packetType) override {
         sendStatusHandlers[(int)packetType].first = nullptr;
+    }
+
+    /** True when no frame is queued or awaiting its send report. */
+    bool isSendQueueEmpty() override {
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        const bool empty = sendQueue.empty();
+        xSemaphoreGive(sendMutex);
+        return empty && inFlight.ptr == nullptr;
     }
 
     // Called by DriverManager at startup - we don't initialize ESP-NOW here
@@ -442,26 +452,10 @@ private:
 
         const auto* pktHdr = reinterpret_cast<const DataPktHdr*>(data);
 
-        // pktLen comes off the wire and is what bounds the copy handed to the packet
-        // handlers, so it has to agree with what the radio actually delivered.
-        // sendData is the sole writer and sets the two equal. Below the header size it
-        // would also underflow handleSinglePacket's subtraction to about SIZE_MAX.
-        if (pktHdr->pktLen < sizeof(DataPktHdr) ||
-            static_cast<size_t>(pktHdr->pktLen) != static_cast<size_t>(data_len)) {
-            LOG_E("ENC", "Declared pktLen %u disagrees with received %i from %X:%X:%X:%X:%X:%X\n",
-                  pktHdr->pktLen, data_len,
-                  esp_now_info->src_addr[0], esp_now_info->src_addr[1], esp_now_info->src_addr[2],
-                  esp_now_info->src_addr[3], esp_now_info->src_addr[4], esp_now_info->src_addr[5]);
-            return;
-        }
-
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "Packet Type: %i\n", pktHdr->packetType);
 #endif
 
-        // Below the length checks, so a frame whose declared length disagrees with
-        // what arrived cannot seed an entry. The packet type is validated later, in
-        // HandlePktCallback, so a well-framed frame with a junk type still does.
         // Shares recvMutex: the main loop reads this through getRssiForPeer.
         if (esp_now_info->rx_ctrl != nullptr) {
             const uint64_t srcMac64 = MacToUInt64(esp_now_info->src_addr);
@@ -470,12 +464,8 @@ private:
             xSemaphoreGive(manager->recvMutex);
         }
 
-        manager->handleSinglePacket(esp_now_info->src_addr, data, pktHdr);
-    }
-
-    // Helper methods for packet reception
-    void handleSinglePacket(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr) {
-        HandlePktCallback(pktHdr->packetType, mac_addr, data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
+        manager->HandlePktCallback(pktHdr->packetType, esp_now_info->src_addr,
+                                   data + sizeof(DataPktHdr), data_len - sizeof(DataPktHdr));
     }
 
     static void EspNowSendCallback(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
@@ -692,6 +682,11 @@ private:
 
     SemaphoreHandle_t recvMutex;
     std::queue<DeferredPacket> recvQueue;
+    // Queued buffers are under SPIRAM_MALLOC_ALWAYSINTERNAL, so internal RAM; a seed's
+    // chunks during setup's splash hold, before the first exec(), would exhaust it.
+    size_t recvQueueBytes = 0;
+    uint32_t droppedRecvPackets = 0;
+    static constexpr size_t RECV_QUEUE_MAX_BYTES = 16384;
 
     SemaphoreHandle_t sendMutex;
 
@@ -707,13 +702,17 @@ private:
             return;
         }
 
-        DeferredPacket pkt;
-        pkt.type = packetType;
-        memcpy(pkt.srcMac, srcMacAddr, 6);
-        pkt.data.assign(pktData, pktData + pktLen);
-
         xSemaphoreTake(recvMutex, portMAX_DELAY);
-        recvQueue.push(std::move(pkt));
+        if (recvQueueBytes + pktLen > RECV_QUEUE_MAX_BYTES) {
+            droppedRecvPackets++;
+        } else {
+            recvQueueBytes += pktLen;
+            DeferredPacket pkt;
+            pkt.type = packetType;
+            memcpy(pkt.srcMac, srcMacAddr, 6);
+            pkt.data.assign(pktData, pktData + pktLen);
+            recvQueue.push(std::move(pkt));
+        }
         xSemaphoreGive(recvMutex);
     }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 //PktType determines which callback will handle the packet on the receiving end
@@ -30,6 +31,8 @@ enum class PktType : uint8_t {
     // rather than renumbering the context types every handler already uses.
     // NOLINTNEXTLINE(readability-identifier-naming)
     kCrashLog = 21,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kFirmwareUpdate = 22,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -68,14 +71,13 @@ struct FdnConnectionContext {
     FdnProfile fdn;
 } __attribute__((packed));
 
+// Frozen: older builds must parse a newer build's firmware frames (this header, kFirmwareUpdate,
+// FirmwareChunkHeader, FIRMWARE_CHUNK_SIZE, ESPNOW_CHANNEL) or they can only be updated over USB.
 struct DataPktHdr
 {
-    // Total packet length including header. Wide enough for a full ESP-NOW v2
-    // frame: the fleet is single-firmware on IDF 5.5, so every link negotiates
-    // v2 and a payload can exceed 255 bytes.
-    uint16_t pktLen;
     PktType packetType;
 } __attribute__((packed));
+static_assert(sizeof(DataPktHdr) == 1, "older builds parse firmware frames with a one-byte header");
 
 struct ChainConfirmPayload
 {
@@ -173,4 +175,20 @@ struct HeadTransferPayload {
     uint8_t memberCount;
     uint8_t memberMacs[MAX_CHAIN_MEMBERS][6];
     uint8_t upstreamMacs[MAX_CHAIN_MEMBERS][6];
+} __attribute__((packed));
+
+constexpr uint16_t FIRMWARE_CHUNK_SIZE = 1400;
+
+constexpr size_t FIRMWARE_IMAGE_ID_LENGTH = 32;
+
+/**
+ * Unsigned: IDF checks the assembled image's signature, so a forged frame can spoil a download
+ * or wipe the spare slot but cannot install an image.
+ */
+struct FirmwareChunkHeader {
+    /** The image's esp_app_desc_t::app_elf_sha256. */
+    uint8_t imageId[FIRMWARE_IMAGE_ID_LENGTH];
+    /** Length of the whole image, signature sector included. */
+    uint32_t imageLength;
+    uint16_t index;
 } __attribute__((packed));

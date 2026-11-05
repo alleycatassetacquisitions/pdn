@@ -36,5 +36,6 @@ class Button {
 
     virtual bool isLongPressed() = 0;
 
+    /** Time since press-down while the button is in a long press; 0 otherwise. */
     virtual unsigned long longPressedMillis() = 0;
 };

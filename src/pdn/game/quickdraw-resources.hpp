@@ -192,16 +192,10 @@ inline const LEDState BOUNTY_IDLE_STATE_ALTERNATE = [](){
     return state;
 }();
 
-// Test/debug player IDs used by player-registration to bypass network auth.
-inline const std::string TEST_BOUNTY_ID     = "9999";
-inline const std::string TEST_HUNTER_ID     = "8888";
-inline const std::string BROADCAST_WIFI     = "1111";
-inline const std::string FORCE_MATCH_UPLOAD = "6969";
-
 // Easing curve lookup tables have moved to lib/core/include/utils/easing-curves.hpp.
 #include "utils/easing-curves.hpp"
 
-static const ImageCollection* getCollectionForAllegiance(Allegiance allegiance) {
+inline const ImageCollection* getCollectionForAllegiance(Allegiance allegiance) {
     switch(allegiance) {
         case Allegiance::HELIX:
             return &helixImageCollection;
@@ -214,11 +208,11 @@ static const ImageCollection* getCollectionForAllegiance(Allegiance allegiance) 
     }
 }
 
-static Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {
+inline Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {
     return getCollectionForAllegiance(allegiance)->at(whichImage);
 }
 
-static const char* digitGlyphs[] = {
+inline const char* digitGlyphs[] = {
     "\u0030",
     "\u0031",
     "\u0032",
@@ -229,10 +223,9 @@ static const char* digitGlyphs[] = {
     "\u0037",
     "\u0038",
     "\u0039",
-    "\u0040"
-};
+    "\u0040"};
 
-static const char* loadingGlyphs[] = {
+inline const char* loadingGlyphs[] = {
     "\u2630",
     "\u2631",
     "\u2632",
@@ -240,10 +233,9 @@ static const char* loadingGlyphs[] = {
     "\u2634",
     "\u2635",
     "\u2636",
-    "\u2637"
-};
+    "\u2637"};
 
-static void renderLoadingScreen(Display* display) {
+inline void renderLoadingScreen(Display* display) {
     const int GLYPH_SIZE = 14;
     const int SCREEN_WIDTH = 128;
     const int SCREEN_HEIGHT = 64;

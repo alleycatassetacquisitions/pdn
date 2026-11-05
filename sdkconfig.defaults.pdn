@@ -1,0 +1,12 @@
+# PDN-only, layered over sdkconfig.defaults by CMakeLists.txt.
+
+# An update that resets before the store confirms it (PENDING_IMAGE_CONFIRM_MS into loop()) rolls back.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Covers an unconfirmed image's main task, so it must outlast the slowest loop pass
+# (a blocking WiFi connect, an HTTP perform()).
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+
+# An unsigned app aborts at startup under this, so scripts/sign_image.py signs every PDN build.
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=n

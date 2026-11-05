@@ -1,12 +1,14 @@
 #pragma once
 
-#include <functional>
-#include <memory>
-#include <string>
-#include <iostream>
-#include <cstdint>
 #include "device/drivers/peer-comms-types.hpp"
+#include "game/player-types.hpp"
 #include "symbol.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
 
 enum class Allegiance {
     ALLEYCAT = 0,
@@ -15,6 +17,8 @@ enum class Allegiance {
     RESISTANCE = 3
 };
 
+/** Gameplay session object: server registration fields, legacy allegiance/hunter, stats, and
+ * symbol. */
 class Player {
 public:
     /** Fires after the hunter/bounty role flips. */
@@ -24,10 +28,6 @@ public:
     ~Player() = default;
 
     Player(const std::string& id, Allegiance allegiance, bool isHunter);
-
-    std::string toJson() const;
-
-    void fromJson(const std::string &json);
 
     bool isHunter() const;
 
@@ -67,29 +67,33 @@ public:
 
     void setFaction(const std::string& faction);
 
-    void setUserID(char *newId);
+    /** Soon to be deprecated */
+    void setUserID(char* newId);
 
-    /**
-     * Reseed libc `rand` from the decimal value of `id` and re-roll the PDN symbol. Call after
-     * the pairing code is entered (PlayerRegistrationState), so gameplay RNG matches the player.
-     */
-    void applyRngSeedFromUserId();
+    /** Reseed libc `rand` from a decimal string (e.g. registration PIN) and re-roll the symbol. */
+    void applyRngSeedFromDecimalString(const char* decimalString);
 
     std::string getUserID() const;
 
     void clearUserID();
 
-    unsigned long getLastReactionTime();
+    /** @return Milliseconds for the most recent duel reaction sample. */
+    unsigned long getLastReactionTime() const;
 
-    unsigned long getAverageReactionTime();
+    /** @return Mean reaction time across recorded matches, or 0 when none played. */
+    unsigned long getAverageReactionTime() const;
 
-    int getStreak();
+    /** @return Current consecutive win count. */
+    int getStreak() const;
 
-    int getMatchesPlayed();
+    /** @return Total matches recorded for this session profile. */
+    int getMatchesPlayed() const;
 
-    int getWins();
+    /** @return Win count for this session profile. */
+    int getWins() const;
 
-    int getLosses();
+    /** @return Loss count for this session profile. */
+    int getLosses() const;
 
     Symbol* getSymbol();
 
@@ -105,12 +109,47 @@ public:
 
     void addReactionTime(unsigned long reactionTime);
 
+    /** @return true when a server registration profile is stored. */
+    bool hasRegistrationProfile() const;
+
+    /** @return Server player id from the active event registration. */
+    const UUIDBytes& getServerPlayerId() const;
+
+    /** @return Display name from registration (fixed buffer; empty when none). */
+    const char* getServerPlayerName() const;
+
+    /** @return Team assignment from registration. */
+    const Team& getRegistrationTeam() const;
+
+    /** @return Category affiliations from registration. */
+    const std::vector<Affiliation>& getRegistrationAffiliations() const;
+
+    /** @return true when registration includes a non-nil team id. */
+    bool hasTeam() const;
+
+    /**
+     * Replaces registration fields and syncs legacy gameplay fields. Used by the device player
+     * decoder and demo registration paths.
+     */
+    void applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
+                                  const Team& team, const std::vector<Affiliation>& affiliations);
+
+    /** Clears registration fields only; does not reset duel stats or legacy fields. */
+    void clearRegistrationProfile();
+
 private:
     // Sole write path for `hunter`, so every flip notifies exactly once no
     // matter which public setter produced it.
     void applyRole(bool isHunter);
+    void syncLegacyFieldsFromRegistration();
 
     RoleChangedCallback roleChangedCallback;
+
+    UUIDBytes serverPlayerId;
+    char serverPlayerName[PlayerLimits::NAME_BUFFER_SIZE] = {};
+    Team registrationTeam;
+    std::vector<Affiliation> registrationAffiliations;
+    bool registrationProfileStored = false;
 
     std::string id = "default";
     std::string name = "";
@@ -132,6 +171,6 @@ private:
     Allegiance allegiance = Allegiance::RESISTANCE;
 
     Symbol symbol;
-    
+
     bool hunter = true;
 };

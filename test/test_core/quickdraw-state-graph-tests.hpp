@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "apps/pdn-app-ids.hpp"
-#include "apps/player-registration/player-registration.hpp"
-#include "apps/player-registration/player-registration-states.hpp"
+#include "apps/player-fetch/player-fetch.hpp"
+#include "apps/player-fetch/player-fetch-states.hpp"
 #include "game/quickdraw-apps.hpp"
 #include "game/quickdraw-states.hpp"
 #include "state/state.hpp"
@@ -129,7 +129,7 @@ inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>>
 // Holds the five apps, populated but never mounted. Each app owns the states it
 // registered and frees them; this only owns the apps.
 struct QuickdrawAppsForTest {
-    PlayerRegistrationApp* playerRegistration = nullptr;
+    PlayerFetchApp* playerFetch = nullptr;
     HubApp* hub = nullptr;
     DuelApp* duel = nullptr;
     ShootoutApp* shootout = nullptr;
@@ -138,12 +138,12 @@ struct QuickdrawAppsForTest {
     /** Constructs and populates the five apps without mounting any of them. */
     QuickdrawAppsForTest() {
         GameContext context;
-        playerRegistration = new PlayerRegistrationApp(nullptr, nullptr, nullptr, nullptr);
+        playerFetch = new PlayerFetchApp(nullptr, nullptr, nullptr);
         hub = new HubApp(context);
         duel = new DuelApp(context);
         shootout = new ShootoutApp(context);
         symbol = new SymbolApp(context);
-        playerRegistration->populateStateMap();
+        playerFetch->populateStateMap();
         hub->populateStateMap();
         duel->populateStateMap();
         shootout->populateStateMap();
@@ -152,7 +152,7 @@ struct QuickdrawAppsForTest {
 
     /** Frees the apps, and with them every state they registered. */
     ~QuickdrawAppsForTest() {
-        delete playerRegistration;
+        delete playerFetch;
         delete hub;
         delete duel;
         delete shootout;
@@ -307,8 +307,8 @@ inline void registrationHandsOffFromWelcomeMessage() {
     QuickdrawAppsForTest apps;
 
     State* welcomeMessage = nullptr;
-    for (State* state : apps.playerRegistration->getStateMap()) {
-        if (state->getStateId() == PlayerRegistrationStateId::WELCOME_MESSAGE) {
+    for (State* state : apps.playerFetch->getStateMap()) {
+        if (state->getStateId() == PlayerFetchStateId::WELCOME) {
             welcomeMessage = state;
         }
     }

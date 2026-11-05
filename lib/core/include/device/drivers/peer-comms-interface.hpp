@@ -30,6 +30,10 @@ public:
     virtual void clearPacketHandler(PktType packetType) = 0;
     virtual void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) { (void)packetType; (void)callback; (void)ctx; }
     virtual void clearSendStatusHandler(PktType packetType) { (void)packetType; }
+
+    /** True when no frame is queued or awaiting its send report; transports without send reports answer true. */
+    virtual bool isSendQueueEmpty() { return true; }
+
     virtual const uint8_t* getGlobalBroadcastAddress() = 0;
     virtual uint8_t* getMacAddress() = 0;
     virtual void setPeerCommsState(PeerCommsState state) = 0;

@@ -9,22 +9,26 @@
 #include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_crt_bundle.h>
 #include <esp_mac.h>
 #include <esp_http_client.h>
 #include <queue>
+#include <strings.h>
+#include <sys/time.h>
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/wireless-types.hpp"
+#include "utils/http-date.hpp"
 #include "utils/simple-timer.hpp"
 
 // Forward declaration for the event handler
 class Esp32S3HttpClient;
 static const char* const HTTP_TAG = "HttpClient";
 
-inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
+inline esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt);
 
 /**
  * Handles WiFi connection and HTTP requests using ESP-IDF's esp_http_client.
- * 
+ *
  * This class manages:
  * - WiFi connection establishment and monitoring
  * - HTTP client initialization and cleanup
@@ -50,7 +54,7 @@ public:
         wifiConnected = false;
         httpClientInitialized = false;
         wifiGivenUp = false;
-        
+
         return 0;
     }
 
@@ -59,7 +63,7 @@ public:
         wifiConnected = false;
         httpClientInitialized = false;
         wifiGivenUp = false;
-        
+
         LOG_I(HTTP_TAG, "Connecting to: %s", wifiConfig->ssid.c_str());
         startWifiConnection();
         connectionAttemptTimer.setTimer(WIFI_CONNECTION_TIMEOUT_MS);
@@ -69,8 +73,9 @@ public:
         return wifiConnected && httpClientInitialized;
     }
 
-    bool queueRequest(HttpRequest& request) override {
-        httpQueue.push(request);
+    /** Takes ownership of @p request; a large payload is moved, not copied. */
+    bool queueRequest(HttpRequest&& request) override {
+        httpQueue.push(std::move(request));
         return true;
     }
 
@@ -85,11 +90,22 @@ public:
         }
     }
 
+    /** True until every queued request has had its callback. */
+    bool hasQueuedRequests() override { return !httpQueue.empty(); }
+
     void disconnect() override {
         cleanupHttpClient();
+        // Every request still queued, whether in flight, waiting out a retry
+        // backoff or not yet started, belongs to the WiFi trip that is ending,
+        // and its caller has moved on with the radio. Replaying one on a later
+        // trip would deliver an answer to a caller that no longer expects it. A
+        // callback that queues a new request from here has it failed too.
+        while (!httpQueue.empty()) {
+            completeFront(false, {WirelessError::CONNECTION_FAILED, "Disconnected before an answer"});
+        }
         autoReconnect.store(false);
         esp_wifi_disconnect();  // Leave the AP but keep the radio on for ESP-NOW
-        
+
         wifiConnected = false;
         httpClientInitialized = false;
         wifiGivenUp = false;
@@ -98,11 +114,11 @@ public:
     }
 
     void updateConfig(WifiConfig* config) override {
-        bool needsReconnect = wifiConnected && 
-            (config->ssid != wifiConfig->ssid || config->password != wifiConfig->password);
-        
+        bool needsReconnect = wifiConnected &&
+                              (config->ssid != wifiConfig->ssid || config->password != wifiConfig->password);
+
         wifiConfig = config;
-        
+
         if (needsReconnect) {
             disconnect();
             setWifiConfig(config);
@@ -124,10 +140,9 @@ public:
     }
 
     void setHttpClientState(HttpClientState state) override {
-        if(state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
+        if (state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
             connect();
-        }
-        else if(state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
+        } else if (state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
             disconnect();
         }
         httpClientState = state;
@@ -139,14 +154,14 @@ public:
 
     void connect() {
         LOG_I(HTTP_TAG, "Enabling HTTP mode...");
-        
+
         if (wifiConnected && isStationConnected()) {
             LOG_D(HTTP_TAG, "Already connected to WiFi");
         }
-        
+
         // Start WiFi connection
         startWifiConnection();
-        
+
         // Wait for connection with timeout
         int attempts = 0;
         const int maxAttempts = 50;  // 5 seconds max (50 * 100ms)
@@ -154,14 +169,14 @@ public:
             vTaskDelay(pdMS_TO_TICKS(CONNECT_POLL_MS));
             attempts++;
         }
-        
+
         if (isStationConnected()) {
             wifiConnected = true;
             wifiGivenUp = false;
             channel = stationChannel();
-            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", 
+            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d",
                   stationIpString().c_str(), channel);
-            
+
             if (!httpClientInitialized) {
                 httpClientInitialized = initializeHttpClient();
             }
@@ -171,14 +186,18 @@ public:
         }
     }
 
-    friend esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
+    friend esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt);
 
 private:
     /**
      * Station states this driver distinguishes. IDF only delivers these as
      * events, so the current state is tracked here for callers that poll.
      */
-    enum class StationStatus { DISCONNECTED, NO_SSID_AVAIL, CONNECT_FAILED, CONNECTION_LOST, CONNECTED };
+    enum class StationStatus { DISCONNECTED,
+                               NO_SSID_AVAIL,
+                               CONNECT_FAILED,
+                               CONNECTION_LOST,
+                               CONNECTED };
 
     // Written from the WiFi event task and read from exec() on the main loop.
     static inline std::atomic<StationStatus> stationStatus{StationStatus::DISCONNECTED};
@@ -300,7 +319,7 @@ private:
 
     void checkWifiConnection() {
         connectionAttemptTimer.updateTime();
-        
+
         // Check if we've connected
         if (isStationConnected()) {
             channel = stationChannel();
@@ -312,14 +331,14 @@ private:
             // Leave auto-reconnect ON so WiFi recovers from disconnections
             return;
         }
-        
+
         // Check if connection timeout expired
         if (connectionAttemptTimer.expired()) {
             logWifiStatusError();
             wifiGivenUp = true;
             LOG_W(HTTP_TAG, "WiFi connection timeout after %dms. Device will work offline with ESP-NOW only.", WIFI_CONNECTION_TIMEOUT_MS);
             autoReconnect.store(false);  // Stop the retry spam
-            esp_wifi_disconnect();  // Leave the AP but keep the radio on for ESP-NOW
+            esp_wifi_disconnect();       // Leave the AP but keep the radio on for ESP-NOW
 
             connectionAttemptTimer.invalidate();
         }
@@ -327,15 +346,15 @@ private:
 
     void logWifiStatusError() {
         const char* msg = "Unknown error";
-        
+
         switch (stationStatus.load()) {
-            case StationStatus::NO_SSID_AVAIL:  msg = "SSID not found";    break;
+            case StationStatus::NO_SSID_AVAIL: msg = "SSID not found"; break;
             case StationStatus::CONNECT_FAILED: msg = "Connection failed"; break;
-            case StationStatus::CONNECTION_LOST: msg = "Connection lost";  break;
-            case StationStatus::DISCONNECTED:   msg = "Disconnected";      break;
+            case StationStatus::CONNECTION_LOST: msg = "Connection lost"; break;
+            case StationStatus::DISCONNECTED: msg = "Disconnected"; break;
             default: break;
         }
-        
+
         LOG_E(HTTP_TAG, "WiFi failed: %s (%s)", msg, wifiConfig->ssid.c_str());
     }
 
@@ -346,16 +365,17 @@ private:
         config.user_data = this;
         config.keep_alive_enable = true;
         config.url = wifiConfig->baseUrl.c_str();
-        config.skip_cert_common_name_check = true;
-        config.cert_pem = nullptr;
+        // The server certificate is checked against the CA bundle compiled into
+        // IDF, hostname included.
+        config.crt_bundle_attach = esp_crt_bundle_attach;
         config.is_async = true;
-        
+
         httpClient = esp_http_client_init(&config);
-        
+
         if (!httpClient) {
             LOG_E(HTTP_TAG, "Failed to init HTTP client");
         }
-        
+
         return httpClient != nullptr;
     }
 
@@ -366,29 +386,35 @@ private:
         }
     }
 
-    void processQueuedRequests() {
-        if (httpQueue.empty() || httpQueue.front().inProgress) {
-            return;
-        }
-
-        HttpRequest& request = httpQueue.front();
-        unsigned long currentTime = SimpleTimer::getPlatformClock()->milliseconds();
-        unsigned long timeSinceLastAttempt = 
-            request.lastAttemptTime > 0 ? currentTime - request.lastAttemptTime : ULONG_MAX;
-            
-        if (timeSinceLastAttempt > 1000 || request.lastAttemptTime == 0) {
-            initiateHttpRequest(request);
+    // Headers persist on the reused handle. Delete by name: delete_all would drop Host/User-Agent.
+    void deleteRequestHeaders(const HttpRequest& request) {
+        for (const std::pair<std::string, std::string>& header : request.requestHeaders) {
+            esp_http_client_delete_header(httpClient, header.first.c_str());
         }
     }
 
-    void initiateHttpRequest(HttpRequest& request) {
+    static void logHttpErrorBody(const std::string& body) {
+        constexpr size_t MAX_TEXT_LOG = 120;
+        if (body.empty()) {
+            LOG_W(HTTP_TAG, "HTTP error response body empty");
+            return;
+        }
+        if (body.size() <= MAX_TEXT_LOG) {
+            LOG_W(HTTP_TAG, "HTTP error response (%zu bytes): %s", body.size(), body.c_str());
+        } else {
+            LOG_W(HTTP_TAG, "HTTP error response (%zu bytes, first %zu): %.120s", body.size(),
+                  MAX_TEXT_LOG, body.c_str());
+        }
+    }
+
+    std::string buildRequestUrl(const HttpRequest& request) const {
         std::string fullUrl = wifiConfig->baseUrl;
-        
-        if (fullUrl.find("http://") == std::string::npos && 
+
+        if (fullUrl.find("http://") == std::string::npos &&
             fullUrl.find("https://") == std::string::npos) {
             fullUrl = "http://" + fullUrl;
         }
-        
+
         if (!fullUrl.empty() && !request.path.empty()) {
             if (fullUrl.back() == '/' && request.path.front() == '/') {
                 fullUrl += request.path.substr(1);
@@ -398,14 +424,31 @@ private:
                 fullUrl += request.path;
             }
         }
-        
+        return fullUrl;
+    }
+
+    void processQueuedRequests() {
+        if (httpQueue.empty() || httpQueue.front().inProgress) {
+            return;
+        }
+        const unsigned long now = SimpleTimer::getPlatformClock()->milliseconds();
+        // Signed difference, so the comparison survives the clock wrapping.
+        if (retryAt != 0 && static_cast<long>(now - retryAt) < 0) {
+            return;
+        }
+        initiateHttpRequest(httpQueue.front());
+    }
+
+    void initiateHttpRequest(HttpRequest& request) {
+        const std::string fullUrl = buildRequestUrl(request);
+
         if (!isStationConnected()) {
-            handleRequestError(request, {WirelessError::WIFI_NOT_CONNECTED, "WiFi lost", false});
+            completeFront(false, {WirelessError::WIFI_NOT_CONNECTED, "WiFi lost"});
             return;
         }
 
         if (!httpClient && !initializeHttpClient()) {
-            handleRequestError(request, {WirelessError::CONNECTION_FAILED, "HTTP init failed", false});
+            completeFront(false, {WirelessError::CONNECTION_FAILED, "HTTP init failed"});
             return;
         }
 
@@ -415,7 +458,7 @@ private:
         currentRequest = &request;
 
         esp_http_client_set_url(httpClient, fullUrl.c_str());
-        
+
         if (request.method == "POST") {
             esp_http_client_set_method(httpClient, HTTP_METHOD_POST);
         } else if (request.method == "PUT") {
@@ -424,23 +467,56 @@ private:
             esp_http_client_set_method(httpClient, HTTP_METHOD_GET);
         }
 
-        if (request.method == "POST" || request.method == "PUT") {
-            esp_http_client_set_header(httpClient, "Content-Type", "application/json");
-            esp_http_client_set_post_field(httpClient, request.payload.c_str(), request.payload.length());
+        for (const std::pair<std::string, std::string>& header : request.requestHeaders) {
+            esp_http_client_set_header(httpClient, header.first.c_str(), header.second.c_str());
         }
 
-        esp_err_t err = esp_http_client_perform(httpClient);
-        
-        if (err != ESP_OK) {
-            LOG_E(HTTP_TAG, "Request failed: %s", esp_err_to_name(err));
-            handleRequestError(request, {
-                WirelessError::CONNECTION_FAILED,
-                esp_err_to_name(err),
-                request.retryCount < MAX_RETRIES
-            });
-            cleanupHttpClient();
-            initializeHttpClient();
+        if (request.method == "POST" || request.method == "PUT") {
+            esp_http_client_set_header(httpClient, "Content-Type", request.contentType.c_str());
+            esp_http_client_set_post_field(httpClient, request.payload.c_str(), request.payload.length());
+        } else {
+            // The client keeps the post field across requests: without this a GET
+            // after a POST sends the old body, whose buffer was freed with that
+            // request. A null field also clears Content-Type.
+            esp_http_client_set_post_field(httpClient, nullptr, 0);
         }
+
+        LOG_D(HTTP_TAG, "Starting %s %s", request.method.c_str(), request.path.c_str());
+        // The first perform() runs in checkOngoingRequests() on the same exec() tick.
+    }
+
+    // In async mode perform() returns ESP_ERR_HTTP_EAGAIN until the transfer is
+    // done, so it is called once per tick. Only connecting is non-blocking: once
+    // connected, each read and write can still block for up to timeout_ms. Its
+    // return is the only outcome this driver acts on, though IDF also reports a
+    // failure as HTTP_EVENT_ERROR.
+    void pumpHttpTransfer() {
+        const esp_err_t err = esp_http_client_perform(httpClient);
+        if (err == ESP_ERR_HTTP_EAGAIN) {
+            return;
+        }
+        HttpRequest& request = httpQueue.front();
+        if (err != ESP_OK) {
+            LOG_E(HTTP_TAG, "Request failed: %s (%s)", esp_err_to_name(err), request.path.c_str());
+            resetHttpClient();
+            endAttempt({WirelessError::CONNECTION_FAILED, esp_err_to_name(err)});
+            return;
+        }
+        deleteRequestHeaders(request);
+
+        const int statusCode = esp_http_client_get_status_code(httpClient);
+        if (statusCode >= 200 && statusCode < 300) {
+            completeFront(true, {});
+            return;
+        }
+        LOG_E(HTTP_TAG, "HTTP %d for: %s (%s)", statusCode, request.path.c_str(),
+              buildRequestUrl(request).c_str());
+        logHttpErrorBody(request.responseData);
+        char errorMsg[64] = {0};
+        snprintf(errorMsg, sizeof(errorMsg), "HTTP Error: %d", statusCode);
+        const WirelessError errorType =
+            statusCode >= 500 ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
+        completeFront(false, {errorType, errorMsg});
     }
 
     void checkOngoingRequests() {
@@ -448,52 +524,50 @@ private:
             return;
         }
 
-        HttpRequest& request = httpQueue.front();
-        unsigned long currentTime = SimpleTimer::getPlatformClock()->milliseconds();
-        unsigned long elapsedTime = currentTime - request.lastAttemptTime;
-        
-        if (elapsedTime > 15000) {
+        const HttpRequest& request = httpQueue.front();
+        const unsigned long elapsedTime =
+            SimpleTimer::getPlatformClock()->milliseconds() - request.lastAttemptTime;
+        if (elapsedTime > REQUEST_TIMEOUT_MS) {
             LOG_E(HTTP_TAG, "Timeout: %s", request.path.c_str());
-            
-            request.retryCount++;
-            request.inProgress = false;
-            currentRequest = nullptr;
-            
-            if (request.retryCount >= MAX_RETRIES) {
-                if (request.onError) {
-                    request.onError({WirelessError::TIMEOUT, "Request timed out", false});
-                }
-                httpQueue.pop();
-            }
-            
-            cleanupHttpClient();
-            initializeHttpClient();
+            resetHttpClient();
+            endAttempt({WirelessError::TIMEOUT, "Request timed out"});
+            return;
         }
+
+        pumpHttpTransfer();
     }
 
-    void handleRequestError(HttpRequest& request, const WirelessErrorInfo& error) {
-        if (request.onError) {
-            request.onError(error);
-        }
-        
+    void resetHttpClient() {
+        cleanupHttpClient();
+        initializeHttpClient();
+    }
+
+    void endAttempt(const WirelessErrorInfo& error) {
+        HttpRequest& request = httpQueue.front();
         request.inProgress = false;
         currentRequest = nullptr;
-        
-        if (error.code != WirelessError::CONNECTION_FAILED || request.retryCount >= MAX_RETRIES) {
-            httpQueue.pop();
-        } else {
+        if (request.retryCount < MAX_RETRIES) {
             request.retryCount++;
-            unsigned long backoffTime = (1UL << request.retryCount) * 1000;
-            request.lastAttemptTime = SimpleTimer::getPlatformClock()->milliseconds() + backoffTime - 1000;
+            retryAt = SimpleTimer::getPlatformClock()->milliseconds() + (1UL << request.retryCount) * 1000;
+            LOG_W(HTTP_TAG, "Retrying %s (attempt %d)", request.path.c_str(), request.retryCount + 1);
+            return;
         }
+        completeFront(false, error);
     }
 
-    // HTTP event handlers - called from esp32_http_event_handler
-    void handleHttpError(HttpRequest* request) {
-        LOG_E(HTTP_TAG, "HTTP error for: %s", request->path.c_str());
-        request->retryCount++;
-        if (request->retryCount >= MAX_RETRIES && request->onError) {
-            request->onError({WirelessError::CONNECTION_FAILED, "HTTP error - max retries", false});
+    // Pops the front request before calling back, so a callback may queue the
+    // next request and the queue is never touched again for this one.
+    void completeFront(bool success, const WirelessErrorInfo& error) {
+        HttpRequest done = std::move(httpQueue.front());
+        httpQueue.pop();
+        currentRequest = nullptr;
+        retryAt = 0;
+        if (success) {
+            if (done.onSuccess) {
+                done.onSuccess(done.responseData);
+            }
+        } else if (done.onError) {
+            done.onError(error);
         }
     }
 
@@ -503,62 +577,12 @@ private:
         }
     }
 
-    void handleHttpFinish(HttpRequest* request, int statusCode) {
-        if (statusCode >= 200 && statusCode < 300) {
-            if (request->onSuccess) {
-                request->onSuccess(request->responseData);
-            }
-        } else {
-            handleHttpStatusError(request, statusCode);
-        }
-        
-        finalizeRequest(request);
-    }
-
-    void handleHttpStatusError(HttpRequest* request, int statusCode) {
-        LOG_E(HTTP_TAG, "HTTP %d for: %s", statusCode, request->path.c_str());
-        if (request->onError) {
-            char errorMsg[64] = {0};
-            snprintf(errorMsg, sizeof(errorMsg), "HTTP Error: %d", statusCode);
-            WirelessError errorType = (statusCode >= 500) 
-                ? WirelessError::SERVER_ERROR 
-                : WirelessError::INVALID_RESPONSE;
-            request->onError({errorType, errorMsg, false});
-        }
-    }
-
-    void handleHttpDisconnect(HttpRequest* request) {
-        if (!request->inProgress) {
-            return;
-        }
-        
-        LOG_W(HTTP_TAG, "Disconnected during request: %s", request->path.c_str());
-        request->inProgress = false;
-        currentRequest = nullptr;
-        
-        bool shouldRemoveFromQueue = (request->retryCount >= MAX_RETRIES) || 
-                                      !request->responseData.empty();
-        
-        if (shouldRemoveFromQueue) {
-            if (request->onError) {
-                request->onError({WirelessError::CONNECTION_FAILED, "Connection closed", false});
-            }
-            httpQueue.pop();
-        } else {
-            request->retryCount++;
-        }
-    }
-
-    void finalizeRequest(HttpRequest* request) {
-        request->inProgress = false;
-        currentRequest = nullptr;
-        httpQueue.pop();
-    }
+    static constexpr unsigned long REQUEST_TIMEOUT_MS = 15000;
 
     // Configuration
     WifiConfig* wifiConfig = nullptr;
     uint8_t macAddress_[6];
-    
+
     // WiFi connection state
     bool wifiConnected = false;
     bool httpClientInitialized = false;
@@ -571,38 +595,29 @@ private:
     esp_http_client_handle_t httpClient = nullptr;
     HttpRequest* currentRequest = nullptr;
     HttpClientState httpClientState = HttpClientState::DISCONNECTED;
+    // When the front request may be attempted again after a failure; 0 = now.
+    unsigned long retryAt = 0;
 };
 
-// Event handler must be defined after the class
-inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt) {
+// Defined after the class: syncs clock from the Date header, collects the
+// response body; outcomes are decided from perform()'s return in exec().
+inline esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt) {
     auto* client = static_cast<Esp32S3HttpClient*>(evt->user_data);
-    auto* request = client->currentRequest;
-    
-    if (!request) {
-        LOG_E(HTTP_TAG, "HTTP event with no active request");
-        return ESP_OK;
+    if (evt->event_id == HTTP_EVENT_ON_HEADER && evt->header_key != nullptr &&
+        strcasecmp(evt->header_key, "Date") == 0) {
+        const std::optional<int64_t> epochSec = parseHttpDate(evt->header_value);
+        if (epochSec.has_value()) {
+            struct timeval tv = {};
+            tv.tv_sec = static_cast<time_t>(*epochSec);
+            settimeofday(&tv, nullptr);
+            PlatformClock* clock = SimpleTimer::getPlatformClock();
+            LOG_I(HTTP_TAG, "Synced clock from HTTP Date: %lld (unixMs=%lld, uptimeMs=%lu)",
+                  static_cast<long long>(*epochSec),
+                  static_cast<long long>(clock ? clock->unixMilliseconds() : 0),
+                  clock ? clock->milliseconds() : 0UL);
+        }
+    } else if (evt->event_id == HTTP_EVENT_ON_DATA && client->currentRequest != nullptr) {
+        client->handleHttpData(client->currentRequest, evt->data, evt->data_len);
     }
-    
-    switch (evt->event_id) {
-        case HTTP_EVENT_ERROR:
-            client->handleHttpError(request);
-            break;
-            
-        case HTTP_EVENT_ON_DATA:
-            client->handleHttpData(request, evt->data, evt->data_len);
-            break;
-            
-        case HTTP_EVENT_ON_FINISH:
-            client->handleHttpFinish(request, esp_http_client_get_status_code(client->httpClient));
-            break;
-            
-        case HTTP_EVENT_DISCONNECTED:
-            client->handleHttpDisconnect(request);
-            break;
-            
-        default:
-            break;
-    }
-    
     return ESP_OK;
 }

@@ -134,13 +134,14 @@ class MockHttpClient : public HttpClientInterface {
 public:
     MOCK_METHOD(void, setWifiConfig, (WifiConfig*), (override));
     MOCK_METHOD(bool, isConnected, (), (override));
-    MOCK_METHOD(bool, queueRequest, (HttpRequest&), (override));
+    MOCK_METHOD(bool, queueRequest, (HttpRequest&&), (override));
     MOCK_METHOD(void, disconnect, (), (override));
     MOCK_METHOD(void, updateConfig, (WifiConfig*), (override));
     MOCK_METHOD(void, retryConnection, (), (override));
     MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
     MOCK_METHOD(void, setHttpClientState, (HttpClientState), (override));
     MOCK_METHOD(HttpClientState, getHttpClientState, (), (override));
+    MOCK_METHOD(bool, hasQueuedRequests, (), (override));
 };
 
 class MockPeerComms : public PeerCommsInterface {
@@ -413,6 +414,8 @@ public:
     WirelessManager* getWirelessManager() override { return wirelessManager; }
     SerialManager* getSerialManager() override { return serialManager; }
     RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override { return &fakeRemoteDeviceCoordinator; }
+    /** The manager a test sets, or null. */
+    FirmwareUpdateManager* getFirmwareUpdateManager() override { return firmwareUpdateManager; }
 
     std::string getHead() {
         return serialManager->getOutputHead();
@@ -434,4 +437,5 @@ public:
     FakeHWSerialWrapper outputJackSerial;
     FakeHWSerialWrapper inputJackSerial;
     FakeRemoteDeviceCoordinator fakeRemoteDeviceCoordinator;
+    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
 };
