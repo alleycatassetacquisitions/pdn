@@ -3,8 +3,8 @@
 SymbolManager::SymbolManager() {
     symbols[SerialIdentifier::INPUT_JACK] = new Symbol();
     symbols[SerialIdentifier::INPUT_JACK_SECONDARY] = new Symbol();
-    matchedByPort[SerialIdentifier::INPUT_JACK] = false;
-    matchedByPort[SerialIdentifier::INPUT_JACK_SECONDARY] = false;
+    matchedByJack[SerialIdentifier::INPUT_JACK] = false;
+    matchedByJack[SerialIdentifier::INPUT_JACK_SECONDARY] = false;
 
     std::srand(35);
     refreshSymbols();
@@ -30,12 +30,12 @@ void SymbolManager::refreshSymbols() {
           || symbols[SerialIdentifier::INPUT_JACK_SECONDARY]->getSymbolId() == prevRight);
 }
 
-Symbol* SymbolManager::getSymbol(SerialIdentifier port) {
-    return symbols[port];
+Symbol* SymbolManager::getSymbol(SerialIdentifier jack) {
+    return symbols[jack];
 }
 
-const char* SymbolManager::getSymbolGlyph(SerialIdentifier port) {
-    return symbols[port]->getSymbolGlyph();
+const char* SymbolManager::getSymbolGlyph(SerialIdentifier jack) {
+    return symbols[jack]->getSymbolGlyph();
 }
 
 SimpleTimer* SymbolManager::getRefreshTimer() {
@@ -50,11 +50,11 @@ void SymbolManager::resetRefreshTimer() {
     refreshTimer.setTimer(refreshInterval);
 }
 
-void SymbolManager::setMatched(const SerialIdentifier port, const bool matched) {
-    matchedByPort[port] = matched;
+void SymbolManager::setMatched(const SerialIdentifier jack, const bool matched) {
+    matchedByJack[jack] = matched;
 }
 
-bool SymbolManager::isMatched(const SerialIdentifier port) const {
-    const auto it = matchedByPort.find(port);
-    return it != matchedByPort.end() && it->second;
+bool SymbolManager::isMatched(const SerialIdentifier jack) const {
+    const auto it = matchedByJack.find(jack);
+    return it != matchedByJack.end() && it->second;
 }

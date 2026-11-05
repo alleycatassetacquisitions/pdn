@@ -51,7 +51,7 @@ public:
      */
     void onStateMounted(Device*) override {
         mountedCount++;
-        setOnJackChange([this](SerialIdentifier jack, const JackConnectionState& state) {
+        setOnJackState([this](SerialIdentifier jack, const JackConnectionState& state) {
             record(jack, state);
         });
     }
@@ -88,7 +88,7 @@ public:
     ConstructorRegisteredConnectState(RemoteDeviceCoordinator* remoteDeviceCoordinator,
                                       int stateId)
         : ConnectState<Device>(remoteDeviceCoordinator, stateId) {
-        setOnJackChange([this](SerialIdentifier, const JackConnectionState& state) {
+        setOnJackState([this](SerialIdentifier, const JackConnectionState& state) {
             if (state.connected) {
                 connects++;
             } else {
@@ -250,15 +250,15 @@ inline void connectStateReplaysConnectedJackAtMount(RDCHelloTests* suite) {
         << "the replay ran before the state's own mount hook";
 }
 
-// The replay gate is the port's live CONNECTED status, not "was ever connected":
+// The replay gate is the jack's live CONNECTED status, not "was ever connected":
 // a jack whose link died is skipped, the same jack once revived is replayed. Both
 // halves are needed — the empty case alone also passes if replay never runs.
 inline void connectStateReplaysOnlyConnectedJacks(RDCHelloTests* suite) {
     connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK),
-              PortStatus::DISCONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK),
+              JackStatus::DISCONNECTED);
 
     RecordingConnectState afterLinkDeath(&suite->rdc, /*stateId=*/1);
     mountState(&afterLinkDeath, &suite->device);
@@ -266,8 +266,8 @@ inline void connectStateReplaysOnlyConnectedJacks(RDCHelloTests* suite) {
         << "a disconnected jack was replayed as connected";
 
     connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234, /*seqId=*/10);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK),
-              PortStatus::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK),
+              JackStatus::CONNECTED);
 
     RecordingConnectState afterRevival(&suite->rdc, /*stateId=*/2);
     mountState(&afterRevival, &suite->device);
@@ -323,7 +323,7 @@ inline void connectStateClearedHandlerStopsReceiving(RDCHelloTests* suite) {
     connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
     ASSERT_EQ(state.events.size(), 1u);
 
-    state.setOnJackChange(nullptr);
+    state.setOnJackState(nullptr);
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
 

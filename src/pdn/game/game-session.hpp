@@ -90,12 +90,9 @@ private:
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
 
-    // Every STATS_LOG_INTERVAL_MS we emit one line of the chain-duel retry
-    // counters under the "STATS" tag. Intended for venue deployment: `cat`ing the
-    // serial port gives a rolling view of retry-machine health.
     SimpleTimer statsLogTimer;
     static constexpr unsigned long STATS_LOG_INTERVAL_MS = 5000;
 
-    // Diagnostic: track isLoop() transitions to expose ring re-formation timing.
-    bool lastIsLoop = false;
+    // Diagnostic: track isInRing() transitions to expose ring re-formation timing.
+    bool lastIsInRing = false;
 };

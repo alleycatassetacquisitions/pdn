@@ -240,7 +240,7 @@ public:
             memcpy(mac.data(), n->mac, 6);
             roster.push_back(mac);
         }
-        nodes[headIndex]->shootout->setLoopMembersForTest(roster);
+        nodes[headIndex]->shootout->setRingMembersForTest(roster);
         nodes[headIndex]->shootout->onRingClosed();
         deliverAllPackets();
         for (auto& n : nodes) {
@@ -301,9 +301,8 @@ public:
     }
 
     /**
-     * Hands every node the ring's member list. Ring detection is local and
-     * real here; the member list is not — it lives on the head only, and no
-     * coordinator broadcast (#169) hands it to followers yet.
+     * Seeds every node's ring roster directly because dispatch() drops
+     * kConnectionAnnounce before it reaches the head.
      */
     void seedRingRoster() {
         std::vector<std::array<uint8_t, 6>> members;
@@ -313,7 +312,7 @@ public:
             members.push_back(mac);
         }
         for (auto& n : nodes)
-            n->shootout->setLoopMembersForTest(members);
+            n->shootout->setRingMembersForTest(members);
     }
 
     // Pump all captured outgoing packets into the intended recipient's handlers
@@ -782,8 +781,8 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
 
     // Every device should now see the ring as closed.
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        ASSERT_TRUE(suite->node(i).cdm->isLoop())
-            << "node " << i << " does not see loop";
+        ASSERT_TRUE(suite->node(i).rdc->isInRing())
+            << "node " << i << " does not see the ring";
     }
 
     suite->claimRing();
@@ -1055,18 +1054,18 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
             << "reset node " << i;
     }
 
-    // CDM loop must still be intact for tournament 2.
+    // The ring must still be intact for tournament 2.
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        ASSERT_TRUE(suite->node(i).cdm->isLoop())
-            << "post-reset loop broken on node " << i;
+        ASSERT_TRUE(suite->node(i).rdc->isInRing())
+            << "post-reset ring broken on node " << i;
     }
 
     // Run tournament 2. runOne re-claims the ring, which is what re-seeds the
-    // loop-member set that resetToIdle just dropped.
+    // ring-member set that resetToIdle just dropped.
     int matchesTwo = runOne();
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        ASSERT_EQ(suite->node(i).shootout->getLoopMembers().size(), 4u)
-            << "loop members wrong on node " << i;
+        ASSERT_EQ(suite->node(i).shootout->getRingMembers().size(), 4u)
+            << "ring members wrong on node " << i;
     }
     EXPECT_EQ(matchesTwo, 3) << "tournament 2 did not run 3 matches";
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
@@ -1107,8 +1106,8 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
         suite->pumpHelloCycleDropping(/*upperIdx=*/1, /*lowerIdx=*/0);
     }
 
-    ASSERT_EQ(d0.rdc->getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
-    ASSERT_EQ(d1.rdc->getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+    ASSERT_EQ(d0.rdc->getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
+    ASSERT_EQ(d1.rdc->getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
     ASSERT_TRUE(d1.cdm->isChampion());
 
     suite->settleLinks();
@@ -1134,8 +1133,8 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
         suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
         suite->pumpHelloCycleDropping(/*upperIdx=*/1, /*lowerIdx=*/0, /*dropUpperToLower=*/true);
     }
-    ASSERT_EQ(d0.rdc->getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::DISCONNECTED);
-    ASSERT_EQ(d1.rdc->getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+    ASSERT_EQ(d0.rdc->getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::DISCONNECTED);
+    ASSERT_EQ(d1.rdc->getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     ASSERT_EQ(d0.cdm->getConfirmedSupporterCount(), 0u);
 
     suite->settleLinks();
@@ -1170,8 +1169,8 @@ inline void cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(
         suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
         suite->pumpHelloCycleDropping(/*upperIdx=*/1, /*lowerIdx=*/0);
     }
-    ASSERT_EQ(d0.rdc->getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
-    ASSERT_EQ(d1.rdc->getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+    ASSERT_EQ(d0.rdc->getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
+    ASSERT_EQ(d1.rdc->getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
     EXPECT_FALSE(d1.cdm->canInitiateMatch());
 
     suite->settleLinks();

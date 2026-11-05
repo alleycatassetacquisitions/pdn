@@ -70,7 +70,7 @@ public:
     /**
      * Radio send-result for one of this channel's outbound packets. The typed
      * subclass reads the stamped seqId back from `data` and, on success,
-     * clears the pending entry (replacing the old ack round-trip).
+     * clears the pending entry.
      */
     virtual void onSendResult(const uint8_t* toMac, const uint8_t* data,
                               size_t len, bool success) = 0;

@@ -176,7 +176,7 @@ inline void rdcHelloWatchdogFiresAcrossClockRollover(RDCHelloTests* suite) {
 
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
-    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
     EXPECT_EQ(suite->disconnectCount, 1);
 }
 
@@ -190,7 +190,7 @@ inline void rdcHelloNewMacDrivesConnecting(RDCHelloTests* suite) {
 
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
-    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTING);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
     // A distinct jack is untouched.
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
@@ -208,7 +208,7 @@ inline void rdcHelloContextCompleteConnects(RDCHelloTests* suite) {
 
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     EXPECT_EQ(suite->connectCount, 1);
     EXPECT_EQ(suite->lastConnectJack, SerialIdentifier::OUTPUT_JACK);
     EXPECT_EQ(suite->disconnectCount, 0);
@@ -228,7 +228,7 @@ inline void rdcHelloSilentLinkDisconnects(RDCHelloTests* suite) {
 
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
-    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
     EXPECT_EQ(suite->disconnectCount, 1);
     EXPECT_EQ(suite->lastDisconnectJack, SerialIdentifier::OUTPUT_JACK);
 }
@@ -901,7 +901,7 @@ inline void rdcChainInheritsAndReadvertisesHead(RDCHelloTests* suite) {
 }
 
 // A structural head whose MAC is NOT the lowest still latches the ring, because
-// inheritance carries its own MAC around the loop unchallenged.
+// inheritance carries its own MAC around the ring unchallenged.
 inline void rdcChainNonLowestHeadDetectsRing(RDCHelloTests* suite) {
     int ringClosedCount = 0;
     suite->rdc.setOnRingClosed([&]() { ringClosedCount++; });
@@ -1013,7 +1013,7 @@ inline void rdcChainRingOpensOnInputDrop(RDCHelloTests* suite) {
 }
 
 // Ring opens when the peer drops on the OUTPUT side, not just the INPUT side: a
-// closed loop breaks whichever link fails.
+// closed ring breaks whichever link fails.
 inline void rdcChainRingOpensOnOutputDrop(RDCHelloTests* suite) {
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
                 suite->helloFrame(0xB1));
@@ -1034,7 +1034,7 @@ inline void rdcChainRingOpensOnOutputDrop(RDCHelloTests* suite) {
 // Non-adjacent break: the INPUT peer stays put but, having lost ITS own upstream,
 // stops echoing our head and advertises itself. The head returning on INPUT no
 // longer matches ours, so the ring must open even though neither of our links
-// dropped — the break was further around the loop.
+// dropped — the break was further around the ring.
 inline void rdcChainRingOpensWhenReturnedHeadChanges(RDCHelloTests* suite) {
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
                 suite->helloFrame(0xB1));
@@ -1362,7 +1362,7 @@ inline void rdcRingMembershipReachesEveryMember() {
     ASSERT_FALSE(a.rdc.isInRing()) << "an open chain is not a ring";
     ASSERT_FALSE(c.rdc.isInRing());
 
-    cables.push_back({2, 0});  // C.out -> A.in closes the loop
+    cables.push_back({2, 0});  // C.out -> A.in closes the ring
     run(6);
 
     EXPECT_EQ(a.ringClosedCount, 1);
@@ -1371,7 +1371,7 @@ inline void rdcRingMembershipReachesEveryMember() {
     EXPECT_EQ(a.rdc.getChainRole(), ChainRole::RING);
     EXPECT_EQ(b.rdc.getChainRole(), ChainRole::CHILD);
     EXPECT_EQ(c.rdc.getChainRole(), ChainRole::CHILD);
-    // Membership is not singular: all three are on the loop.
+    // Membership is not singular: all three are on the ring.
     EXPECT_TRUE(a.rdc.isInRing());
     EXPECT_TRUE(b.rdc.isInRing()) << "closure never reached the first relay";
     EXPECT_TRUE(c.rdc.isInRing()) << "closure never reached the far side";
@@ -1382,7 +1382,7 @@ inline void rdcRingMembershipReachesEveryMember() {
     EXPECT_EQ(parseEmittedHello(a.out.getOutput()).flags & HELLO_FLAG_RING_CLOSED,
               HELLO_FLAG_RING_CLOSED);
 
-    // Pull the B-C cable. B and C each lose a chain link, so the loop provably
+    // Pull the B-C cable. B and C each lose a chain link, so the ring provably
     // cannot run through them any more and they drop membership on their own
     // evidence — not by waiting for A, whose latch is still inside its window.
     cables.erase(cables.begin() + 1);
@@ -1400,7 +1400,7 @@ inline void rdcRingMembershipReachesEveryMember() {
     // exec()-to-parse gap, which nothing caps, so the count is spelled out rather
     // than derived from the two constants.
     run(40);
-    EXPECT_FALSE(a.rdc.isInRing()) << "the latch outlived the loop";
+    EXPECT_FALSE(a.rdc.isInRing()) << "the latch outlived the ring";
     a.out.clearOutput();
     a.rdc.emitHello();
     EXPECT_EQ(parseEmittedHello(a.out.getOutput()).flags & HELLO_FLAG_RING_CLOSED, 0);
@@ -1432,7 +1432,7 @@ inline void rdcHelloOneWayCableTimesOutInsteadOfGhostChild() {
     B.rdc.sync(&B.device);
     ASSERT_EQ(A.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
-    ASSERT_EQ(A.rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTING);
+    ASSERT_EQ(A.rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTING);
     ASSERT_EQ(A.rdc.getChainRole(), ChainRole::STANDALONE);
 
     // Hold the link at HELLO cadence right up to the context timeout.
@@ -1459,7 +1459,7 @@ inline void rdcHelloOneWayCableTimesOutInsteadOfGhostChild() {
 
     EXPECT_EQ(A.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
-    EXPECT_EQ(A.rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::DISCONNECTED);
+    EXPECT_EQ(A.rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::DISCONNECTED);
     EXPECT_EQ(A.rdc.getChainRole(), ChainRole::STANDALONE);
     EXPECT_EQ(A.rdc.getHeadMac(), nullptr);
     // The head adopted from that HELLO is off the wire too: A must stop telling
@@ -2391,7 +2391,7 @@ inline void rdcPeerUserIdLiftedFromContext(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::PEER_USER_ID_NONE);
 }
 
-// An FDN peer carries no player id, so its context must leave the port's id
+// An FDN peer carries no player id, so its context must leave the jack's id
 // absent rather than lifting the first bytes of an FdnProfile.
 inline void rdcPeerUserIdAbsentForFdnContext(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -2441,7 +2441,7 @@ inline void rdcChainRoleChangeFiresOnConnectAndLinkDeath(RDCHelloTests* suite) {
 
 // Ring closure reaches the role observer too (the shootout coordinator claim
 // reads getChainRole() when onRingClosed fires), and the latch opening on a
-// broken loop reports the fallback role.
+// broken ring reports the fallback role.
 inline void rdcChainRoleChangeReportsRingLatch(RDCHelloTests* suite) {
     std::vector<ChainRole> roles;
     suite->rdc.setOnChainRoleChange([&](ChainRole role) { roles.push_back(role); });
@@ -2452,7 +2452,7 @@ inline void rdcChainRoleChangeReportsRingLatch(RDCHelloTests* suite) {
     ASSERT_EQ(roles.size(), 1u);
     EXPECT_EQ(roles[0], ChainRole::HEAD);
 
-    // Our own MAC returns as the INPUT peer's head: the loop closed through us.
+    // Our own MAC returns as the INPUT peer's head: the ring closed through us.
     const uint8_t lowNeighbour[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
     suite->deliverHello(suite->inJack, chainHelloFrame(lowNeighbour, suite->localMac));
     suite->rdc.sync(&suite->device);
@@ -2462,7 +2462,7 @@ inline void rdcChainRoleChangeReportsRingLatch(RDCHelloTests* suite) {
     ASSERT_EQ(roles.size(), 2u);
     EXPECT_EQ(roles[1], ChainRole::RING);
 
-    // The OUTPUT link dies: the loop is broken and only the INPUT link remains.
+    // The OUTPUT link dies: the ring is broken and only the INPUT link remains.
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->deliverHello(suite->inJack, chainHelloFrame(lowNeighbour, suite->localMac));
     suite->rdc.sync(&suite->device);

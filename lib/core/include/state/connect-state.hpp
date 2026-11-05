@@ -59,14 +59,13 @@ public:
         remoteDeviceCoordinator = nullptr;
     }
 
-    using JackChangeHandler =
+    using JackStateHandler =
         std::function<void(SerialIdentifier jack, const JackConnectionState& state)>;
 
     /**
      * Registers the handler for every jack edge during this state's tenure: a
      * connect or disconnect on a jack this device owns, plus a replay of each
-     * already-connected jack at mount. Both come from the HELLO link machine, so
-     * neither fires while HELLO is off — which is every shipping build today.
+     * already-connected jack at mount.
      *
      * Register once, from the constructor or from onStateMounted — the mount replay
      * runs after both, and the slot is not cleared on dismount, so one registration
@@ -77,18 +76,18 @@ public:
      * *connected* jacks are replayed — a disconnect between tenures is never
      * delivered, so reset per-jack state in onStateDismounted rather than waiting
      * for a clear. On a disconnect the polled surface has not caught up yet:
-     * getPortStatus and isConnected() still read CONNECTED for that jack.
+     * getJackStatus and isConnected() still read CONNECTED for that jack.
      *
      * The context is read at dispatch time rather than captured when it arrived,
      * so a state mounted long after the peer connected still gets it.
      */
-    void setOnJackChange(JackChangeHandler handler) {
-        jackChangeHandler = std::move(handler);
+    void setOnJackState(JackStateHandler handler) {
+        jackStateHandler = std::move(handler);
     }
 
-    /** The direct peer's hardware kind on the given port. */
-    DeviceType getPeerDeviceType(SerialIdentifier port) const {
-        return remoteDeviceCoordinator->getPeerDeviceType(port);
+    /** The direct peer's hardware kind on the given jack. */
+    DeviceType getPeerDeviceType(SerialIdentifier jack) const {
+        return remoteDeviceCoordinator->getPeerDeviceType(jack);
     }
 
     /**
@@ -140,13 +139,13 @@ private:
     void subscribe() {
         remoteDeviceCoordinator->setOnJackChange(
             [this](SerialIdentifier jack, bool connected) {
-                dispatchJackChange(jack, connected);
+                dispatchJackState(jack, connected);
             });
         subscribed = true;
     }
 
-    void dispatchJackChange(SerialIdentifier jack, bool connected) {
-        if (jackChangeHandler) jackChangeHandler(jack, buildJackState(jack, connected));
+    void dispatchJackState(SerialIdentifier jack, bool connected) {
+        if (jackStateHandler) jackStateHandler(jack, buildJackState(jack, connected));
     }
 
     // On a disconnect the link is mid-teardown, so the peer facts still describe
@@ -182,18 +181,17 @@ private:
         for (SerialIdentifier jack : RemoteDeviceCoordinator::HELLO_JACKS) {
             if (remoteDeviceCoordinator->getHelloLinkState(jack) ==
                 RemoteDeviceCoordinator::HelloLinkState::CONNECTED) {
-                dispatchJackChange(jack, true);
+                dispatchJackState(jack, true);
             }
         }
     }
 
-    /** True when the given jack's port status is CONNECTED. */
     bool isJackConnected(SerialIdentifier jack) const {
-        return remoteDeviceCoordinator->getPortStatus(jack) == PortStatus::CONNECTED;
+        return remoteDeviceCoordinator->getJackStatus(jack) == JackStatus::CONNECTED;
     }
 
     static constexpr unsigned long DISCONNECT_DEBOUNCE_MS = 500;
     DebouncedCondition disconnectDebounce;
-    JackChangeHandler jackChangeHandler;
+    JackStateHandler jackStateHandler;
     bool subscribed = false;
 };

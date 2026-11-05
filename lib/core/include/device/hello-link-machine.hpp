@@ -10,7 +10,7 @@
 #include "device/serial-manager.hpp"
 #include "device/serial-frame-parser.hpp"
 
-// Per-jack HELLO link state machine (#155). One instance per jack, driven by the
+// Per-jack HELLO link state machine. One instance per jack, driven by the
 // RDC. Three states — Idle / Connecting / Connected — on the project's StateMachine
 // framework.
 //

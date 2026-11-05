@@ -109,7 +109,7 @@ bool ShootoutManager::isFromCoordinator(const uint8_t* mac) const {
 bool ShootoutManager::isRingMember(const uint8_t* mac) const {
     if (containsMac(bracket, mac)) return true;
     if (containsMac(confirmedSet, mac)) return true;
-    return containsMac(getLoopMembers(), mac);
+    return containsMac(getRingMembers(), mac);
 }
 
 void ShootoutManager::broadcastCommand(const uint8_t* packet, size_t len) {
@@ -186,7 +186,7 @@ void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac
         // Nothing on the coordinator's side notices a result that never lands: it
         // advances only on receiving one, so it waits with nothing owed. This
         // device is the one that knows, so it says so again. One attempt per
-        // bout — a second abandonment cannot distinguish a lost result from a
+        // match — a second abandonment cannot distinguish a lost result from a
         // lost ack, and guessing is worse than staying quiet.
         if (matchResultResentIndex != static_cast<int>(packet[14])) {
             matchResultResentIndex = static_cast<int>(packet[14]);
@@ -219,14 +219,14 @@ std::array<uint8_t, 6> ShootoutManager::getTournamentWinner() const {
     return tournamentWinner;
 }
 
-void ShootoutManager::setLoopMembersForTest(const std::vector<std::array<uint8_t, 6>>& members) {
-    testLoopMembers = members;
-    testLoopMembersOverride = !members.empty();
+void ShootoutManager::setRingMembersForTest(const std::vector<std::array<uint8_t, 6>>& members) {
+    testRingMembers = members;
+    testRingMembersOverride = !members.empty();
 }
 
-std::vector<std::array<uint8_t, 6>> ShootoutManager::getLoopMembers() const {
-    if (testLoopMembersOverride) return testLoopMembers;
-    return buildLoopMemberSet();
+std::vector<std::array<uint8_t, 6>> ShootoutManager::getRingMembers() const {
+    if (testRingMembersOverride) return testRingMembers;
+    return buildRingMemberSet();
 }
 
 void ShootoutManager::resetToIdle() {
@@ -238,8 +238,8 @@ void ShootoutManager::resetToIdle() {
 
 void ShootoutManager::resetTournamentState() {
     phase = Phase::IDLE;
-    // Retire a bout this tournament primed: the duel app's dismount is the only
-    // other path and cannot run for a bout abandoned before that app mounts,
+    // Retire a match this tournament primed: the duel app's dismount is the only
+    // other path and cannot run for a match abandoned before that app mounts,
     // and Idle mounts a duel from whatever match is ready.
     if (matchManager) matchManager->clearShootoutMatch();
     confirmedSet.clear();
@@ -310,7 +310,7 @@ bool ShootoutManager::shouldEnterProposal() const {
 }
 
 void ShootoutManager::sendRingClosed() {
-    ringMembers = getLoopMembers();
+    ringMembers = getRingMembers();
     LOG_W(TAG, "ring closed; announcing members=%zu", ringMembers.size());
     std::vector<uint8_t> packet = buildMacListPacket(ShootoutCmd::RING_CLOSED, 0, ringMembers);
     broadcastToRing(ringMembers, packet.data(), packet.size());
@@ -347,7 +347,7 @@ void ShootoutManager::onConfirmReceived(const uint8_t* fromMac, const char* name
     // Fast path: already-confirmed peers bypass the loop-membership scan (this
     // is the common case during 1Hz rebroadcasts — the gate only needs to
     // block first-time stray CONFIRMs from outside the ring).
-    if (!hasConfirmed(fromMac) && !containsMac(getLoopMembers(), fromMac)) return;
+    if (!hasConfirmed(fromMac) && !containsMac(getRingMembers(), fromMac)) return;
     recordName(fromMac, name);
     bool added = !hasConfirmed(fromMac);
     if (added) {
@@ -395,7 +395,7 @@ bool ShootoutManager::hasConfirmed(const uint8_t* mac) const {
 }
 
 bool ShootoutManager::allMembersConfirmed() const {
-    return allMembersConfirmed(getLoopMembers());
+    return allMembersConfirmed(getRingMembers());
 }
 
 bool ShootoutManager::allMembersConfirmed(
@@ -431,7 +431,7 @@ bool ShootoutManager::isCoordinator() const {
 }
 
 void ShootoutManager::generateBracket() {
-    bracket = getLoopMembers();
+    bracket = getRingMembers();
     // std::random_device is deterministic under newlib on ESP32, so seed
     // from platform clock XOR self-MAC to get real variation.
     unsigned long seed = 0;
@@ -454,8 +454,8 @@ void ShootoutManager::primeMatchManagerForMatch() {
 
     // Role-for-this-match from MAC ordering: both sides compute the same
     // ordering so the hunter_draw_time and bounty_time slots in MatchManager
-    // are written by exactly one duelist each. It goes to the bout, never to the
-    // Player: the standing role outlives the bout and answers other questions.
+    // are written by exactly one duelist each. It goes to the match, never to the
+    // Player: the standing role outlives the match and answers other questions.
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     bool localIsHunterForMatch = selfMac != nullptr &&
                                  memcmp(selfMac, opponentMac.data(), 6) < 0;
@@ -551,7 +551,7 @@ void ShootoutManager::sendLocalConfirm() {
         memcpy(&payload[8], n.data(), copyLen);
     }
 
-    broadcastToRing(getLoopMembers(), payload, sizeof(payload));
+    broadcastToRing(getRingMembers(), payload, sizeof(payload));
     confirmRebroadcastTimer.setTimer(kConfirmRebroadcastMs);
 }
 
@@ -562,15 +562,15 @@ void ShootoutManager::sync() {
     // because heldFor has to be sampled every tick or its window ages unwatched.
     const bool ringBrokeDuringTournament = active() && !isTerminalPhase() &&
                                            rdc != nullptr && !rdc->isInRing();
-    if (ringBreakDebounce.heldFor(ringBrokeDuringTournament, LOOP_BREAK_DEBOUNCE_MS)) {
+    if (ringBreakDebounce.heldFor(ringBrokeDuringTournament, RING_BREAK_DEBOUNCE_MS)) {
         abortTournament();
     }
 
     if (phase == Phase::PROPOSAL) {
-        // One rebuild per tick, shared by everything below: getLoopMembers goes to
+        // One rebuild per tick, shared by everything below: getRingMembers goes to
         // the RDC for a fresh vector on the coordinator, and the proposal asks the
         // same question three times.
-        const std::vector<std::array<uint8_t, 6>> members = getLoopMembers();
+        const std::vector<std::array<uint8_t, 6>> members = getRingMembers();
         const bool everyoneIn = headsRing() && allMembersConfirmed(members);
         const uint8_t* selfMac = wirelessManager->getMacAddress();
         const bool confirmedLocally = selfMac != nullptr && hasConfirmed(selfMac);
@@ -674,7 +674,7 @@ void ShootoutManager::maybeStartNextMatch() {
             if (!isEliminated(m.data())) survivors.push_back(m);
         }
         if (survivors.empty()) {
-            // Reachable: both duelists of one bout can report a win, eliminating
+            // Reachable: both duelists of one match can report a win, eliminating
             // each other. currentRound starts as the bracket and only ever
             // narrows to survivors, so nobody is left anywhere to crown.
             LOG_E(TAG, "no survivor to crown; aborting");
@@ -725,7 +725,7 @@ void ShootoutManager::onMatchStartReceived(
     if (!isFromCoordinator(fromMac)) return;
     // A tournament this device has already ended stays ended: TOURNAMENT_END
     // leaves the anchor and the bracket standing, so every other gate below
-    // would admit a fresh-seqId bout into a finished tournament.
+    // would admit a fresh-seqId match into a finished tournament.
     if (isTerminalPhase()) return;
     // Admitted on the sender, so the ack is owed however the payload reads.
     sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
@@ -760,14 +760,14 @@ bool ShootoutManager::isEliminated(const uint8_t* mac) const {
 }
 
 void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* loser,
-                                       bool endsCurrentBout) {
+                                       bool endsCurrentMatch) {
     if (!isEliminated(loser)) {
         std::array<uint8_t, 6> mac;
         memcpy(mac.data(), loser, 6);
         eliminated.push_back(mac);
     }
-    if (!endsCurrentBout) return;
-    // A duelist still mounted when the tournament ended resolves its own bout and
+    if (!endsCurrentMatch) return;
+    // A duelist still mounted when the tournament ended resolves its own match and
     // reports it. Walking ENDED back reopens a round that no longer exists;
     // walking ABORTED back is worse, because the abort edge is read later in the
     // same tick and would then read false, stranding this device in a tournament
@@ -812,7 +812,7 @@ void ShootoutManager::reportLocalWin() {
     // The round advances on the next sync(), not from here. On the timeout path
     // this is called from Duel::onStateLoop, and that state dismounts later in
     // the same tick through clearCurrentMatch() — anything primed for the next
-    // bout from here is torn down by the bout that is still being left.
+    // match from here is torn down by the match that is still being left.
 }
 
 void ShootoutManager::onMatchResultReceived(
@@ -836,13 +836,11 @@ void ShootoutManager::onMatchResultReceived(
         return;
     }
     LOG_W(TAG, "onMatchResultReceived matchIndex=%u", matchIndex);
-    // Record the elimination, but only let a result end the bout it belongs to.
-    // A result can arrive late — its sender re-sends when the coordinator misses
-    // one — and a device that has since been paired into a newer match would
-    // otherwise be pulled out of it mid-duel by a result about the previous one.
-    const bool namesCurrentBout =
+    // Late sender retries for an older match still record the elimination but
+    // must not end the current match.
+    const bool namesCurrentMatch =
         currentMatchIndex < 0 || static_cast<int>(matchIndex) == currentMatchIndex;
-    applyMatchResult(winner, loser, namesCurrentBout);
+    applyMatchResult(winner, loser, namesCurrentMatch);
 }
 
 void ShootoutManager::sendTournamentEndToPeers(const uint8_t* winner) {
@@ -892,7 +890,7 @@ void ShootoutManager::onAbortReceived(const uint8_t* fromMac, uint8_t seqId) {
     phase = Phase::ABORTED;
 }
 
-std::vector<std::array<uint8_t, 6>> ShootoutManager::buildLoopMemberSet() const {
+std::vector<std::array<uint8_t, 6>> ShootoutManager::buildRingMemberSet() const {
     // The RDC serves a roster only where it is the authority, which inside a ring
     // is the head that latched it. Every other member holds the copy that head
     // sent with RING_CLOSED.

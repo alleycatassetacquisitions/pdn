@@ -49,8 +49,8 @@ public:
     void populateStateMap() override;
 
     /**
-     * Ends the bout. Runs only when the device leaves the duel entirely, which
-     * is what "the bout is over" means — the states inside it hand the match to
+     * Ends the match. Runs only when the device leaves the duel entirely, which
+     * is what "the match is over" means — the states inside it hand the match to
      * each other and must not tear it down on the way.
      */
     void onStateDismounted(Device* device) override;

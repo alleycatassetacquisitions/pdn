@@ -50,12 +50,14 @@ public:
     bool active() const;
     Phase getPhase() const;
 
-    // Returns the set of MACs that participate in the current loop. Returns
-    // empty when not in a loop and no test override is set.
-    std::vector<std::array<uint8_t, 6>> getLoopMembers() const;
+    /**
+     * Participants in the current ring: live RDC roster + self on the ring head,
+     * or the latched RING_CLOSED roster.
+     */
+    std::vector<std::array<uint8_t, 6>> getRingMembers() const;
 
-    // Test-only: override the loop-member set. Pass an empty vector to clear.
-    void setLoopMembersForTest(const std::vector<std::array<uint8_t, 6>>& members);
+    /** Overrides the ring member roster for tests (empty clears). */
+    void setRingMembersForTest(const std::vector<std::array<uint8_t, 6>>& members);
 
     void onRingClosed();
     void onRingClosedReceived(const uint8_t* fromMac,
@@ -171,7 +173,7 @@ public:
      * RDC's propagation window even though both are 500 — widening this one is a
      * rig question and does not imply widening that one.
      */
-    static constexpr unsigned long LOOP_BREAK_DEBOUNCE_MS = 500;
+    static constexpr unsigned long RING_BREAK_DEBOUNCE_MS = 500;
     /**
      * Confirmed members needed to draw a bracket. Two is the structural floor —
      * a duel needs two duelists — so a two-device ring is exactly at it and runs.
@@ -233,8 +235,8 @@ private:
         const std::vector<std::array<uint8_t, 6>>& peers) const;
     void sendReliablyToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
                              uint8_t seqId, const uint8_t* packet, size_t len);
-    std::vector<std::array<uint8_t, 6>> testLoopMembers;
-    bool testLoopMembersOverride = false;
+    std::vector<std::array<uint8_t, 6>> testRingMembers;
+    bool testRingMembersOverride = false;
     std::vector<std::array<uint8_t, 6>> confirmedSet;
 
     // The ring roster as of closure. Read live from the RDC on the head that
@@ -252,7 +254,7 @@ private:
 
     bool headsRing() const;
     const uint8_t* ringHead() const;
-    std::vector<std::array<uint8_t, 6>> buildLoopMemberSet() const;
+    std::vector<std::array<uint8_t, 6>> buildRingMemberSet() const;
     void sendLocalConfirm();
     bool allMembersConfirmed() const;
     /**
@@ -315,7 +317,7 @@ private:
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
     bool reportedLocalWin = false;
     // The match whose result this device has already re-sent once, or -1. Keyed
-    // on the bout rather than a flag, so it needs no clearing: a later match
+    // on the match rather than a flag, so it needs no clearing: a later match
     // names a different index and gets its own attempt. A device flag would have
     // to be reset wherever a match turns over, which differs by role.
     int matchResultResentIndex = -1;
@@ -323,12 +325,12 @@ private:
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,
                                 uint8_t matchIndex);
     /**
-     * Applies an elimination. `endsCurrentBout` false records it without
-     * leaving MATCH_IN_PROGRESS — a late result for an older bout must not pull
+     * Applies an elimination. `endsCurrentMatch` false records it without
+     * leaving MATCH_IN_PROGRESS — a late result for an older match must not pull
      * this device out of the one it is fighting now.
      */
     void applyMatchResult(const uint8_t* winner, const uint8_t* loser,
-                          bool endsCurrentBout = true);
+                          bool endsCurrentMatch = true);
     std::vector<uint8_t> buildMatchResultPacket(const uint8_t* winner,
                                                 const uint8_t* loser,
                                                 uint8_t matchIndex) const;

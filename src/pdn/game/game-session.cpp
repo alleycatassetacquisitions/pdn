@@ -112,10 +112,10 @@ void GameSession::sync() {
     if (chainDuelManager) {
         chainDuelManager->sync();
 
-        bool loopNow = chainDuelManager->isLoop();
-        if (loopNow != lastIsLoop) {
-            LOG_W("CDM", "isLoop %d -> %d", (int)lastIsLoop, (int)loopNow);
-            lastIsLoop = loopNow;
+        bool inRingNow = remoteDeviceCoordinator->isInRing();
+        if (inRingNow != lastIsInRing) {
+            LOG_W("RDC", "isInRing %d -> %d", (int)lastIsInRing, (int)inRingNow);
+            lastIsInRing = inRingNow;
         }
     }
     // Driven here rather than from the shootout states so a tournament's own

@@ -30,6 +30,10 @@
  * The current state is dismounted through a call to onStateDismounted.
  * Then, the current state is set to the state attached to the StateTransition.
  *
+ * A transition can also name another app rather than a sibling state. That edge
+ * leaves this machine entirely: the device dismounts the whole app and mounts
+ * the named one, at its named entry state or its boot state.
+ *
  * The new state's onStateMounted call is then invoked, at which point we return to
  * our loop function and continue with the new state's onStateLoop function.
  *

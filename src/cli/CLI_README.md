@@ -59,7 +59,7 @@ The selected device displays a detailed panel showing:
 - **State**: Current game state with history
 - **Display**: Simulated 128x64 OLED content (text mode)
 - **LEDs**: Left/Right light strips with RGB values
-- **Serial Ports**: Buffer sizes, connection status, TX/RX history
+- **Serial Jacks**: Buffer sizes, connection status, TX/RX history
 - **ESP-NOW**: Connection state, MAC address, packet history
 - **HTTP**: Mock server status, request history
 - **Errors**: Recent LOG_E messages

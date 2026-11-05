@@ -22,7 +22,7 @@ constexpr size_t HELLO_PAYLOAD_LEN = 14;
 // Set once this device's context exchange with the head it currently holds has
 // been delivered; cleared by a head change until re-confirmed under the new one.
 constexpr uint8_t HELLO_FLAG_CONFIRMED = 0x01;
-// Asserted by the device whose own MAC came back around the loop and relayed
+// Asserted by the device whose own MAC came back around the ring and relayed
 // downstream by every child. Ring closure is visible only at that one device,
 // yet every member has to know it sits on a ring, so the fact is propagated
 // rather than rediscovered.

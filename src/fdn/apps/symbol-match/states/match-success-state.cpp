@@ -28,11 +28,11 @@ void MatchSuccess::onStateMounted(FDN* fdn) {
     cfg.speed = 20;
     fdn->getLightManager()->startAnimation(new FDNMatchSuccessAnimation(), cfg);
 
-    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
+    for (SerialIdentifier jack : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(jack);
         if (peerMac) {
             symbolWirelessManager->setMacPeer(peerMac);
-            symbolWirelessManager->sendPacket(SMCommand::SYMBOL_MATCH_SUCCESS, SymbolId::SYMBOL_A, port);
+            symbolWirelessManager->sendPacket(SMCommand::SYMBOL_MATCH_SUCCESS, SymbolId::SYMBOL_A, jack);
         }
     }
 }

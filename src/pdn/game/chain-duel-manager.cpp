@@ -8,6 +8,7 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
+    , wasInRing(rdc->isInRing())
     , resender(wirelessManager)
     // No abandon handler: a role announce that ran out its span is repaired by the
     // backstop in sync(), not by a callback.
@@ -51,10 +52,9 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // and clears it off the HELLO parse, no jack edge — so a standing confirm has
     // to be re-sent from the role edge; no jack edge would carry it.
     rdc->setOnChainRoleChange([this](ChainRole) {
-        if (isLoop() != wasInLoop) onChainStateChanged();
+        if (this->rdc->isInRing() != wasInRing) onChainStateChanged();
         resendConfirm();
     });
-    wasInLoop = isLoop();
     // Armed here because SimpleTimer::expired() is false while unarmed, so an
     // unarmed backstop never fires at all.
     roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);
@@ -74,10 +74,10 @@ SerialIdentifier ChainDuelManager::supporterJack() const {
     return player->isHunter() ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
 }
 
-std::optional<bool> ChainDuelManager::peerIsHunter(SerialIdentifier port) const {
-    if (rdc->getPeerDeviceType(port) != DeviceType::PDN) return std::nullopt;
+std::optional<bool> ChainDuelManager::peerIsHunter(SerialIdentifier jack) const {
+    if (rdc->getPeerDeviceType(jack) != DeviceType::PDN) return std::nullopt;
     size_t len = 0;
-    const uint8_t* raw = rdc->getPeerProfile(port, len);
+    const uint8_t* raw = rdc->getPeerProfile(jack, len);
     if (raw == nullptr || len < sizeof(PlayerProfile)) return std::nullopt;
     return reinterpret_cast<const PlayerProfile*>(raw)->gameRole != 0;
 }
@@ -102,40 +102,34 @@ void ChainDuelManager::recordMac(MacSlots& slots, std::atomic<size_t>& count,
     writeIndex = (writeIndex + 1) % MAX_CHAIN_SUPPORTERS;
 }
 
-bool ChainDuelManager::isLoop() const {
-    // Ring membership is the RDC's fact: every device on a closed loop reads true
-    // here, not only the one that detected the closure.
-    return rdc->isInRing();
-}
-
 bool ChainDuelManager::isSupporter() const {
     auto opponentRole = peerIsHunter(opponentJack());
     if (!opponentRole.has_value()) return false;
     if (*opponentRole != player->isHunter()) return false;
-    return !isLoop();
+    return !rdc->isInRing();
 }
 
 bool ChainDuelManager::isChampion() const {
     // Default-champion: head of own-role chain. Demoted to supporter only
-    // when a same-role peer sits on our opponent jack. Rings resolved by
-    // isLoop() check (no champion inside a ring).
-    return !isSupporter() && !isLoop();
+    // when a same-role peer sits on our opponent jack. Rings resolved by the
+    // ring check: no champion inside a ring.
+    return !isSupporter() && !rdc->isInRing();
 }
 
 bool ChainDuelManager::canInitiateMatch() const {
     if (!player->isHunter()) return false;
     // A closed ring is the shootout's topology; no 1v1 pairing forms inside one.
-    if (isLoop()) return false;
+    if (rdc->isInRing()) return false;
     // Half-open gate. Connected means the peer's context landed over the radio,
     // so a path back exists. A jack that only reached Connecting has a peer MAC
     // off one inbound serial frame and nothing proving the peer can answer, and
     // a match pushed across it strands the initiator waiting for an ack.
-    if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return false;
+    if (rdc->getJackStatus(opponentJack()) != JackStatus::CONNECTED) return false;
     return peerIsHunter(opponentJack()) == false;
 }
 
 std::vector<std::array<uint8_t, 6>> ChainDuelManager::getSupporterChainPeers() const {
-    if (isLoop()) return {};
+    if (rdc->isInRing()) return {};
     // A cable is the strongest evidence of membership there is, so the device on
     // our own supporter jack never has to announce itself to be counted.
     const uint8_t* directPeer = rdc->getPeerMac(supporterJack());
@@ -297,7 +291,7 @@ void ChainDuelManager::announceToChampion() {
 }
 
 void ChainDuelManager::onChainStateChanged() {
-    wasInLoop = isLoop();
+    wasInRing = rdc->isInRing();
 
     // Losing the supporter-jack cable strands the entire chain below it, however
     // deep, so both the roll call and the roster it is scored against go with it.
@@ -365,7 +359,7 @@ size_t ChainDuelManager::getConfirmedSupporterCount() const {
 }
 
 const uint8_t* ChainDuelManager::getChampionMac() const {
-    if (isLoop()) return nullptr;
+    if (rdc->isInRing()) return nullptr;
     return championMac.has_value() ? championMac->data() : nullptr;
 }
 
@@ -379,7 +373,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
     const uint8_t* announcedChampionMac) {
     const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
     if (opponentPeer == nullptr || memcmp(opponentPeer, fromMac, 6) != 0) return;
-    if (isLoop() || peerIsHunter(opponentJack()) == !player->isHunter()) return;
+    if (rdc->isInRing() || peerIsHunter(opponentJack()) == !player->isHunter()) return;
 
     // Wire input: the field is always present, so a sender with no champion sends
     // it zeroed, and a two-bounty ring does exactly that: both clear their champion,
@@ -445,7 +439,7 @@ void ChainDuelManager::broadcastRoleAndChampion() {
     // direct peer. The radio would still report the frame delivered, so the retry
     // clears and the announce is simply lost. Connected means its context came back
     // over the radio, which it could only send having already recorded us.
-    if (rdc->getPortStatus(supporterJack()) != PortStatus::CONNECTED) return;
+    if (rdc->getJackStatus(supporterJack()) != JackStatus::CONNECTED) return;
 
     RoleAnnouncePayload payload{};
     memcpy(payload.championMac, content.champion.data(), 6);
@@ -458,7 +452,7 @@ void ChainDuelManager::broadcastRoleAndChampion() {
 void ChainDuelManager::sync() {
     // Non-latching members learn of a ring from HELLO with both jacks already
     // connected, so neither the jack nor the role callback fires.
-    if (isLoop() != wasInLoop) {
+    if (rdc->isInRing() != wasInRing) {
         onChainStateChanged();
     }
 

@@ -182,15 +182,17 @@ public:
     }
     std::array<uint8_t, 6> ringHeadMac{};
 
-    void setPortStatus(SerialIdentifier id, PortStatus status) {
+    /** Sets the stubbed status reported for `id`. */
+    void setJackStatus(SerialIdentifier id, JackStatus status) {
         if (id == SerialIdentifier::OUTPUT_JACK) outputStatus = status;
         else if (id == SerialIdentifier::INPUT_JACK) inputStatus = status;
     }
 
-    PortStatus getPortStatus(SerialIdentifier id) override {
+    /** Returns the stubbed status for `id`. */
+    JackStatus getJackStatus(SerialIdentifier id) override {
         if (id == SerialIdentifier::OUTPUT_JACK) return outputStatus;
         if (id == SerialIdentifier::INPUT_JACK) return inputStatus;
-        return PortStatus::DISCONNECTED;
+        return JackStatus::DISCONNECTED;
     }
 
     void setPeerDeviceType(SerialIdentifier id, DeviceType type) {
@@ -245,19 +247,19 @@ public:
     }
 
     // Production RDC reads its per-jack link machines. The fake stubs peer MACs
-    // directly without standing any up, so iterate the ports here.
+    // directly without standing any up, so iterate the jacks here.
     bool isDirectPeer(const uint8_t* mac) const override {
         if (!mac) return false;
-        for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
-            const uint8_t* peer = getPeerMac(port);
+        for (SerialIdentifier jack : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
+            const uint8_t* peer = getPeerMac(jack);
             if (peer && memcmp(peer, mac, 6) == 0) return true;
         }
         return false;
     }
 
 private:
-    PortStatus outputStatus = PortStatus::DISCONNECTED;
-    PortStatus inputStatus = PortStatus::DISCONNECTED;
+    JackStatus outputStatus = JackStatus::DISCONNECTED;
+    JackStatus inputStatus = JackStatus::DISCONNECTED;
     DeviceType outputDeviceType = DeviceType::UNKNOWN;
     DeviceType inputDeviceType = DeviceType::UNKNOWN;
     std::optional<PlayerProfile> outputProfile;

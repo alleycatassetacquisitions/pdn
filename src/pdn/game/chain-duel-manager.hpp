@@ -44,7 +44,6 @@ public:
 
     bool isChampion() const;
     bool isSupporter() const;
-    virtual bool isLoop() const;
     bool canInitiateMatch() const;
     /**
      * This champion's supporter chain at any depth: the direct supporter-jack
@@ -142,7 +141,7 @@ private:
     // discover a supporter it shares no cable with any other way.
     void announceToChampion();
 
-    std::optional<bool> peerIsHunter(SerialIdentifier port) const;
+    std::optional<bool> peerIsHunter(SerialIdentifier jack) const;
 
     // Ceiling shared by the roll call and the supporter roster: the longest
     // supporter chain a duel is built for. Both buffers hold one MAC per
@@ -159,7 +158,7 @@ private:
     static bool containsMac(const MacSlots& slots, size_t count, const uint8_t* mac);
 
     size_t lastSupporterChainCount = 0;
-    bool wasInLoop = false;
+    bool wasInRing = false;
 
     std::atomic<bool> confirmSent{false};
 
