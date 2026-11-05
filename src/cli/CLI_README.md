@@ -82,7 +82,6 @@ disconnect 0       # Disconnect device 0's cable
 The simulator includes a mock HTTP server that handles:
 
 - `GET /api/players/{id}` - Returns player data
-- `PUT /api/matches` - Accepts match uploads
 
 Use `http offline` to simulate network failures.
 

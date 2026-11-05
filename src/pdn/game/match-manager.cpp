@@ -1,5 +1,4 @@
 #include "game/match-manager.hpp"
-#include <ArduinoJson.h>
 #include "device/drivers/logger.hpp"
 #include "wireless/quickdraw-packet.hpp"
 #include "game/shootout-manager.hpp"
@@ -9,7 +8,10 @@
 
 static constexpr const char* PREF_COUNT_KEY = "count";
 static constexpr const char* PREF_MATCH_KEY  = "match_";
-static constexpr uint8_t     MAX_MATCHES      = 255;
+// Ring buffer size: divides 256 so uint8_t count wrap preserves slot rotation
+// (though getStoredMatchCount() under-reports after wrap), and capped at 32
+// because the 20KB nvs partition is shared with the crash log.
+static constexpr uint8_t MAX_MATCHES = 32;
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
@@ -204,7 +206,7 @@ bool MatchManager::finalizeMatch() {
 
     std::string match_id = activeDuelState.match->getMatchId();
 
-    // Shootout matches are local-ephemeral: no save, no upload.
+    // Shootout matches are local-ephemeral: never written to storage.
     if (currentMatchIsShootout()) {
         clearCurrentMatch();
         return true;
@@ -212,8 +214,6 @@ bool MatchManager::finalizeMatch() {
 
     // Save to storage
     if (appendMatchToStorage(&*activeDuelState.match)) {
-        // Update stored count
-        updateStoredMatchCount(getStoredMatchCount() + 1);
         clearCurrentMatch();
         LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", match_id.c_str());
         return true;
@@ -259,80 +259,50 @@ bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
     return true;
 }
 
-std::string MatchManager::toJson() {
-    // Create JSON document with an object at the root
-    JsonDocument doc;  // Adjust size based on max matches
-    
-    // Create a "matches" array within the root object
-    JsonArray matchArray = doc["matches"].to<JsonArray>();
-
-    // Read all matches from storage
-    uint8_t count = getStoredMatchCount();
-    for (uint8_t i = 0; i < count; i++) {
-        Match* match = readMatchFromStorage(i);
-        if (match) {
-            // Add match to array
-            std::string matchJson = match->toJson();
-            JsonDocument matchDoc;
-            deserializeJson(matchDoc, matchJson);
-            matchArray.add(matchDoc.as<JsonObject>());
-            delete match;
-        }
+Match* MatchManager::readMatchFromStorage(uint8_t index) {
+    if (index >= getStoredMatchCount()) {
+        return nullptr;
     }
 
-    // Serialize to string
-    std::string output;
-    serializeJson(doc, output);
-    return output;
+    char key[16];
+    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
+
+    std::string matchJson = storage->read(MATCHES_PREFS_NAMESPACE, key, "");
+    if (matchJson.empty()) {
+        return nullptr;
+    }
+
+    Match* match = new Match();
+    match->fromJson(matchJson);
+    return match;
 }
 
-void MatchManager::clearStorage() {
-    storage->clear(MATCHES_PREFS_NAMESPACE);
-    updateStoredMatchCount(0);
-    LOG_I("PDN", "Cleared match storage\n");
+uint8_t MatchManager::savedMatchTotal() {
+    return storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, 0);
 }
 
 size_t MatchManager::getStoredMatchCount() {
-    return storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, 0);
+    const uint8_t saved = savedMatchTotal();
+    return saved < MAX_MATCHES ? saved : MAX_MATCHES;
 }
 
 bool MatchManager::appendMatchToStorage(const Match* match) {
     if (!match) return false;
 
-    uint8_t count = getStoredMatchCount();
-    if (count >= MAX_MATCHES) {
-        LOG_E("PDN", "Cannot save match - storage full\n");
-        return false;
-    }
+    const uint8_t saved = savedMatchTotal();
+    const uint8_t slot = static_cast<uint8_t>(saved % MAX_MATCHES);
+    const std::string matchJson = match->toJson();
 
-    // Convert match to JSON for storage
-    std::string matchJson = match->toJson();
-    
-    // Create key for this match
     char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, count);
+    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, slot);
 
-    LOG_W(MATCH_MANAGER_TAG, "Attempting to save match to storage at key %s (JSON length: %d bytes)", 
-            key, matchJson.length());
-    LOG_W(MATCH_MANAGER_TAG, "Match JSON: %s", matchJson.c_str());
-    
-    // Try to check if preferences is working
-    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, "test_key", 123) != 1) {
-        LOG_E(MATCH_MANAGER_TAG, "NVS Preference test write failed! Potential hardware or NVS issue");
-    } else {
-        uint8_t testValue = storage->readUChar(MATCHES_PREFS_NAMESPACE, "test_key", 0);
-        LOG_W(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", testValue);
-    }
-
-    // Save match JSON to preferences
     if (storage->write(MATCHES_PREFS_NAMESPACE, key, matchJson) != matchJson.length()) {
-        LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
-                key, matchJson.length());
-        
+        LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", key,
+              matchJson.length());
         return false;
     }
 
-    LOG_W(MATCH_MANAGER_TAG, "Successfully saved match to storage at index %d", count);
+    updateStoredMatchCount(static_cast<uint8_t>(saved + 1));
     return true;
 }
 
@@ -342,27 +312,6 @@ void MatchManager::updateStoredMatchCount(uint8_t count) {
     } else {
         LOG_I("PDN", "Updated stored match count to %d\n", count);
     }
-}
-
-Match* MatchManager::readMatchFromStorage(uint8_t index) {
-    if (index >= getStoredMatchCount()) {
-        return nullptr;
-    }
-
-    // Create key for this match
-    char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
-    
-    // Read match JSON from preferences
-    std::string matchJson = storage->read(MATCHES_PREFS_NAMESPACE, key, "");
-    if (matchJson.empty()) {
-        return nullptr;
-    }
-
-    // Create and deserialize match
-    Match* match = new Match();
-    match->fromJson(matchJson);
-    return match;
 }
 
 parameterizedCallbackFunction MatchManager::getButtonMasher() {
@@ -519,8 +468,7 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
 
     activeDuelState.localIsHunter ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
     setNeverPressed();
-    // Mirror what gets uploaded: every duel contributes a draw time to the server,
-    // so on-device "average reaction" should include pity times too.
+    // Pity times are synthetic but still count toward the average.
     player->addReactionTime(pityTime);
 
     sendCommand(activeDuelState.opponentMac.data(), QDCommand::NEVER_PRESSED,

@@ -7,11 +7,14 @@
 #include "device/device.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
-#include "game/match-manager.hpp"
 
 class PlayerRegistrationApp : public StateMachine {
 public:
-    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, RemoteDebugManager* remoteDebugManager);
+    /**
+     * Boot app: id entry, the record fetch, and the offline fallback that
+     * skips it, ending at the hand-off to gameplay.
+     */
+    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
     ~PlayerRegistrationApp();
 
     void populateStateMap() override;
@@ -20,5 +23,4 @@ private:
     Player* player;
     WirelessManager* wirelessManager;
     RemoteDebugManager* remoteDebugManager;
-    MatchManager* matchManager;
 };

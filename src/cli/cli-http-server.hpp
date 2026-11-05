@@ -84,8 +84,6 @@ public:
         // Route the request
         if (method == "GET" && path.find("/api/players/") == 0) {
             statusCode = handleGetPlayer(path, responseBody);
-        } else if (method == "PUT" && path == "/api/matches") {
-            statusCode = handlePutMatches(body, responseBody);
         } else {
             statusCode = 404;
             responseBody = R"({"errors":["Not found"]})";
@@ -217,16 +215,6 @@ private:
             config.allegiance,
             config.faction.c_str());
         responseBody = buf;
-        return 200;
-    }
-    
-    /**
-     * Handle PUT /api/matches
-     */
-    int handlePutMatches(const std::string& body, std::string& responseBody) {
-        // Just acknowledge the match upload
-        // In a real server, we'd parse and store the matches
-        responseBody = R"({"success":true,"message":"Matches uploaded"})";
         return 200;
     }
 };

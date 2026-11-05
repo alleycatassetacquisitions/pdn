@@ -952,6 +952,14 @@ TEST(StorageDriver, registeredNamespaceRoundTripsString) {
     storageRegisteredNamespaceRoundTripsString();
 }
 
+TEST(StorageDriver, matchStoreCapsWithoutLosingRecords) {
+    storageMatchStoreCapsWithoutLosingRecords();
+}
+
+TEST(StorageDriver, clampsAMatchCountLeftByOlderFirmware) {
+    storageClampsAMatchCountLeftByOlderFirmware();
+}
+
 TEST(StorageDriver, unknownNamespaceThrowsOnRead) {
     storageUnknownNamespaceThrowsOnRead();
 }

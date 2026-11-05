@@ -866,7 +866,10 @@ public:
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(storage, write(_, _, _)).WillByDefault(Return(100));
+        ON_CALL(storage, write(_, _, _))
+            .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
+                return value.size();
+            });
         ON_CALL(storage, writeUChar(_, _, _)).WillByDefault(Return(1));
         ON_CALL(storage, readUChar(_, _, _)).WillByDefault(Return(0));
 
@@ -1032,10 +1035,12 @@ inline void resultPlayerStatsUpdatedOnLoss(DuelResultTests* suite) {
 // Test: Match finalized on result
 inline void resultMatchFinalizedOnResult(DuelResultTests* suite) {
     suite->player->setIsHunter(true);
-    
+
     EXPECT_CALL(suite->storage, write(_, _, _))
         .Times(testing::AtLeast(1))
-        .WillRepeatedly(Return(100));
+        .WillRepeatedly([](const std::string&, const std::string&, const std::string& value) {
+            return value.size();
+        });
     EXPECT_CALL(suite->storage, writeUChar(_, _, _))
         .Times(testing::AtLeast(1))
         .WillRepeatedly(Return(1));
@@ -1118,7 +1123,10 @@ public:
         ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        ON_CALL(storage, write(_, _, _)).WillByDefault(Return(100));
+        ON_CALL(storage, write(_, _, _))
+            .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
+                return value.size();
+            });
         ON_CALL(storage, writeUChar(_, _, _)).WillByDefault(Return(1));
         ON_CALL(storage, readUChar(_, _, _)).WillByDefault(Return(0));
 

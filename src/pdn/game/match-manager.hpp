@@ -1,11 +1,3 @@
-/*
-    This class is responsible for managing the matches.
-    It will be responsible for creating, updating and deleting matches.
-    In addition to creating and updating matches, this class is responsible for
-    saving and loading matches from EEPROM. In addition to saving/loading from
-    EEPROM, this class will be responsible for serializing and deserializing
-    matches to and from a JSON array.
-*/
 #pragma once
 
 #include <array>
@@ -85,8 +77,9 @@ public:
     bool isMatchReady();
 
     /**
-     * Finalizes a match by saving it to storage and removing from active matches
-     * @return true if match was found and saved
+     * Finalizes a match and removes it from the active match.
+     * @return true if a match was found and retired. A shootout match is
+     *         local-ephemeral and is retired without being saved.
      */
     bool finalizeMatch();
 
@@ -118,18 +111,15 @@ public:
     std::optional<Match>& getCurrentMatch() { return activeDuelState.match; }
 
     /**
-     * Converts all stored matches to a JSON array string
-     * @return JSON string containing all stored matches
+     * Reads the retained match in ring slot `index`, for `index` in
+     * [0, getStoredMatchCount()). Slot order is not save order.
+     * @return a Match the caller owns, or nullptr if `index` is out of range or
+     *         that slot holds nothing.
      */
-    std::string toJson();
+    Match* readMatchFromStorage(uint8_t index);
 
     /**
-     * Clears all matches from storage
-     */
-    void clearStorage();
-
-    /**
-     * Gets the number of stored matches
+     * The number of retained matches a read can reach, capped at the ring size.
      * @return Number of matches
      */
     size_t getStoredMatchCount();
@@ -215,12 +205,8 @@ private:
      */
     void updateStoredMatchCount(uint8_t count);
 
-    /**
-     * Reads a match from storage at the specified index
-     * @param index Index of the match to read
-     * @return New Match object if successful, nullptr if invalid
-     */
-    Match* readMatchFromStorage(uint8_t index);
+    /** Stored uint8_t save counter (wraps at 256); ring slot is this value modulo MAX_MATCHES. */
+    uint8_t savedMatchTotal();
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake duel commands

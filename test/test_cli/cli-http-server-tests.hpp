@@ -60,17 +60,6 @@ void httpServerGetPlayerReturnsDefaults(MockHttpServerTestSuite* suite) {
     ASSERT_TRUE(response.find("Player5678") != std::string::npos);
 }
 
-// Test: Put matches accepts request
-void httpServerPutMatchesAccepts(MockHttpServerTestSuite* suite) {
-    std::string response;
-    std::string body = R"({"matches":[{"id":"match1"}]})";
-    
-    int status = suite->server_->handleRequest("PUT", "/api/matches", body, response);
-    
-    ASSERT_EQ(status, 200);
-    ASSERT_TRUE(response.find("success") != std::string::npos);
-}
-
 // Test: Unknown endpoint returns 404
 void httpServerUnknownEndpointReturns404(MockHttpServerTestSuite* suite) {
     std::string response;

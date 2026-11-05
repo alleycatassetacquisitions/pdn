@@ -20,6 +20,8 @@ Sleep::~Sleep() {
 }
 
 void Sleep::onStateMounted(PDN* pdn) {
+    pdn->getLightManager()->stopAnimation();
+
     pdn->getDisplay()->
         invalidateScreen()->
         drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->

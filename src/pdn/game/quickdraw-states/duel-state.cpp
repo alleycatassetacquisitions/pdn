@@ -117,8 +117,9 @@ bool Duel::transitionToShootoutEliminated() {
 }
 
 void Duel::onStateDismounted(PDN* pdn) {
-    // Input goes on every exit. No successor inherits these callbacks — each
-    // registers what it wants on mount, or wants none.
+    // CountdownAnimation intentionally outlives Duel so its final frame holds
+    // through DuelPushed/DuelReceivedResult until DuelResult or another exit
+    // state stops it.
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
 
