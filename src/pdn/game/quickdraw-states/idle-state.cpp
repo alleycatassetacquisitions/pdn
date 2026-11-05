@@ -9,8 +9,6 @@
 #include "device/drivers/logger.hpp"
 #include "device/animation/idle-animation.hpp"
 #include "device/animation/vertical-chase-animation.hpp"
-#include "symbol-match/symbol-manager.hpp"
-#include "symbol-match/symbol-match.hpp"
 #include "wireless/mac-functions.hpp"
 #include "state/connect-state.hpp"
 #include <cstring>

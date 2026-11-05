@@ -79,9 +79,9 @@ void Duel::onStateLoop(PDN* pdn) {
         return;
     }
 
-    // Shootout timeout: the bout's hunter forfeits, its bounty wins. The draw
+    // Shootout timeout: the match's hunter forfeits, its bounty wins. The draw
     // slot decides, not the standing role — a shootout pairs by MAC ordering, so
-    // the two disagree for the whole bout.
+    // the two disagree for the whole match.
     if (matchManager->isLocalHunter()) {
         transitionToShootoutEliminatedState = true;
         return;
@@ -134,7 +134,7 @@ void Duel::onStateDismounted(PDN* pdn) {
     transitionToShootoutEliminatedState = false;
 }
 
-// The standing role, not the bout's draw slot: which jack must be cabled is a
+// The standing role, not the match's draw slot: which jack must be cabled is a
 // physical fact of this device's place in the chain, and the same one the whole
 // tournament through.
 bool Duel::isPrimaryRequired() {

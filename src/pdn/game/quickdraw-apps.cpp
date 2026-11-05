@@ -232,7 +232,7 @@ void ShootoutApp::populateStateMap() {
     // Cable-event reset after TOURNAMENT_END: when the physical ring opens,
     // route through Sleep so the cooldown period elapses before the next
     // proposal can fire. Going straight to Idle let stale RDC chain state
-    // (still advertising the old ring) feed back into CDM::isLoop on the
+    // (still advertising the old ring) feed back into the ring check on the
     // same loop tick as unplug, triggering a phantom Proposal with no peers
     // left to confirm.
     finalStandings->addAppTransition(

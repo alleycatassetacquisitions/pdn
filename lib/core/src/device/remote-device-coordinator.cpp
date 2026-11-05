@@ -45,11 +45,11 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
     // Drop the byte callbacks: they capture `this` and live on the externally
     // owned jacks, so a post-destruction exec() would otherwise call a lambda
     // over freed memory.
-    for (SerialIdentifier port : HELLO_JACKS) {
-        HWSerialWrapper* hw = jackWrapper(port);
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        HWSerialWrapper* hw = jackWrapper(jack);
         if (hw != nullptr) hw->setByteCallback(nullptr);
-        delete helloByPort[portIndex(port)].machine;
-        helloByPort[portIndex(port)].machine = nullptr;
+        delete helloByJack[jackIndex(jack)].machine;
+        helloByJack[jackIndex(jack)].machine = nullptr;
     }
     // Owns the channels; deletes them and their driver rx bindings.
     delete transport;
@@ -91,7 +91,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
             });
     }
 
-    // Head-roster channels (#158). Abandons are no-ops: an unreachable head means
+    // Head-roster channels. Abandons are no-ops: an unreachable head means
     // the member simply stays unconfirmed (or the roster edit is lost) until the
     // chain state changes and re-triggers the send — the accepted residual of the
     // no-ack design.
@@ -102,7 +102,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
             [this](const uint8_t* fromMac, const ConnectionAnnouncePayload& announce) {
                 onConnectionAnnounce(fromMac, announce);
             });
-        // SEND_SUCCESS on the announce IS its delivery signal (#144): only then
+        // SEND_SUCCESS on the announce IS its delivery signal: only then
         // may the HELLO confirmed bit rise. A head change mid-flight makes an
         // older announce's delivery stale — the re-announce to the current head
         // is what gates confirmed — so the seqId must match the latest announce
@@ -154,8 +154,8 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
     // here every tick. Game managers must not pump it.
     if (transport != nullptr) transport->sync();
 
-    for (SerialIdentifier port : HELLO_JACKS) {
-        HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
         if (machine) machine->onStateLoop(PDN);
     }
     // Three separate sites move the derived role: a link commits to CONNECTED in
@@ -167,8 +167,8 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
     maybeFireChainRoleChange();
 }
 
-size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
-    switch (port) {
+size_t RemoteDeviceCoordinator::jackIndex(SerialIdentifier jack) const {
+    switch (jack) {
         case SerialIdentifier::INPUT_JACK:           return 0;
         case SerialIdentifier::OUTPUT_JACK:          return 1;
         case SerialIdentifier::INPUT_JACK_SECONDARY: return 2;
@@ -176,24 +176,28 @@ size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
     }
 }
 
-PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
-    // A port is CONNECTED or it isn't. Chain position is a device-level fact
-    // (getChainRole()).
-    return mapHelloLinkToStatus(port);
+JackStatus RemoteDeviceCoordinator::getJackStatus(SerialIdentifier jack) {
+    const HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
+    if (machine == nullptr) return JackStatus::DISCONNECTED;
+    switch (machine->currentStateId()) {
+        case HELLO_LINK_CONNECTED: return JackStatus::CONNECTED;
+        case HELLO_LINK_CONNECTING: return JackStatus::CONNECTING;
+        default: return JackStatus::DISCONNECTED;
+    }
 }
 
 void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callback) {
     chainChangeCallback = std::move(callback);
 }
 
-DeviceType RemoteDeviceCoordinator::getPeerDeviceType(SerialIdentifier port) const {
+DeviceType RemoteDeviceCoordinator::getPeerDeviceType(SerialIdentifier jack) const {
     // The kind comes from the peer's context, so it reads UNKNOWN until that
     // exchange completes.
-    return helloByPort[portIndex(port)].peerDeviceType;
+    return helloByJack[jackIndex(jack)].peerDeviceType;
 }
 
-const uint8_t* RemoteDeviceCoordinator::getPeerMac(SerialIdentifier port) const {
-    const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
+const uint8_t* RemoteDeviceCoordinator::getPeerMac(SerialIdentifier jack) const {
+    const HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
     // An Idle jack has no peer. It can already hold the MAC that arms next
     // tick's commit to Connecting, and serving that would contradict the same
     // jack reporting DISCONNECTED.
@@ -205,8 +209,8 @@ const uint8_t* RemoteDeviceCoordinator::getPeerMac(SerialIdentifier port) const 
 
 bool RemoteDeviceCoordinator::isDirectPeer(const uint8_t* mac) const {
     if (!mac) return false;
-    for (SerialIdentifier port : HELLO_JACKS) {
-        const uint8_t* peer = getPeerMac(port);
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        const uint8_t* peer = getPeerMac(jack);
         if (peer && memcmp(peer, mac, 6) == 0) return true;
     }
     return false;
@@ -220,16 +224,16 @@ void RemoteDeviceCoordinator::notifyChainChange() {
     if (handler) handler();
 }
 
-// ---- Per-jack HELLO connectivity (#155) ----
+// ---- Per-jack HELLO connectivity ----
 
 unsigned long RemoteDeviceCoordinator::nowMs() {
     PlatformClock* clock = SimpleTimer::getPlatformClock();
     return clock != nullptr ? clock->milliseconds() : 0;
 }
 
-HWSerialWrapper* RemoteDeviceCoordinator::jackWrapper(SerialIdentifier port) const {
+HWSerialWrapper* RemoteDeviceCoordinator::jackWrapper(SerialIdentifier jack) const {
     if (serialManager == nullptr) return nullptr;
-    switch (port) {
+    switch (jack) {
         case SerialIdentifier::OUTPUT_JACK: return serialManager->getOutputJack();
         case SerialIdentifier::INPUT_JACK: return serialManager->getInputJack();
         case SerialIdentifier::INPUT_JACK_SECONDARY: return serialManager->getSecondaryInputJack();
@@ -243,19 +247,19 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         if (mac != nullptr) memcpy(selfMac.data(), mac, 6);
     }
 
-    for (SerialIdentifier port : HELLO_JACKS) {
-        HWSerialWrapper* hw = jackWrapper(port);
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        HWSerialWrapper* hw = jackWrapper(jack);
         if (hw == nullptr) continue;
-        JackHelloLink& link = helloByPort[portIndex(port)];
+        JackHelloLink& link = helloByJack[jackIndex(jack)];
         link.parser.setHelloFrameHandler(
-            [this, port](const HelloPayload& hello) { onHelloReceived(port, hello); });
+            [this, jack](const HelloPayload& hello) { onHelloReceived(jack, hello); });
         // exec() runs on the main loop, so the parser is fed single-threaded.
-        hw->setByteCallback([this, port](uint8_t b) {
-            helloByPort[portIndex(port)].parser.feed(&b, 1);
+        hw->setByteCallback([this, jack](uint8_t b) {
+            helloByJack[jackIndex(jack)].parser.feed(&b, 1);
         });
 
         HelloLinkContext context;
-        context.jack = port;
+        context.jack = jack;
         context.nowMs = [] { return RemoteDeviceCoordinator::nowMs(); };
         context.onContextRequest = [this](SerialIdentifier j) {
             initiateContextExchange(j);
@@ -263,7 +267,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         context.onJackChange = [this](SerialIdentifier j, bool connected) {
             // The upstream link reaching Connected is the moment its advertised
             // head becomes adoptable, and the game layer must see the resulting
-            // chain state on the connect it is told about — so adopt first (#158).
+            // chain state on the connect it is told about — so adopt first.
             if (connected && j == SerialIdentifier::INPUT_JACK) adoptUpstreamHead();
             // Copied before the call: a handler that reacts by dismounting its own
             // state clears this slot, which would destroy the std::function whose
@@ -279,15 +283,15 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         };
         // Every link-death path mounts Idle; the initial mount fires this too, a
         // no-op on zero state.
-        context.onLinkDown = [this, port](SerialIdentifier j, const std::array<uint8_t, 6>& mac) {
-            helloByPort[portIndex(port)].parser.requestReset();
+        context.onLinkDown = [this, jack](SerialIdentifier j, const std::array<uint8_t, 6>& mac) {
+            helloByJack[jackIndex(jack)].parser.requestReset();
             if (MacToUInt64(mac.data()) != 0) {
                 releaseHelloPeer(j, mac.data());
                 // Downstream (OUTPUT) departures are this device's to report: it
-                // is the only node that sees that HELLO go silent (#158).
+                // is the only node that sees that HELLO go silent.
                 if (j == SerialIdentifier::OUTPUT_JACK) reportDownstreamLoss(mac.data());
             }
-            onLinkLost(port);
+            onLinkLost(jack);
             // This is where a link death is reported: Idle is mounted, so the jack
             // now answers IDLE and hands back no peer. Reporting it from the jack
             // change instead would describe the link as still up — that callback
@@ -325,8 +329,8 @@ void RemoteDeviceCoordinator::emitHello() {
     if (isInRing()) hello.flags |= HELLO_FLAG_RING_CLOSED;
 
     const std::vector<uint8_t> frame = encodeFramed(hello);
-    for (SerialIdentifier port : HELLO_JACKS) {
-        HWSerialWrapper* hw = jackWrapper(port);
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        HWSerialWrapper* hw = jackWrapper(jack);
         if (hw == nullptr) continue;
         for (uint8_t b : frame)
             hw->print(static_cast<char>(b));
@@ -343,7 +347,7 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
 
     // The machine records the peer MAC and, for a first HELLO on any Idle jack,
     // fires onContextRequest -> initiateContextExchange as it enters Connecting.
-    JackHelloLink& link = helloByPort[portIndex(jack)];
+    JackHelloLink& link = helloByJack[jackIndex(jack)];
     if (link.machine) link.machine->onHelloReceived(hello);
 
     // Head inheritance + ring detection are directional: only the upstream (INPUT)
@@ -355,7 +359,7 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
 }
 
 void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
-    HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
+    HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
     if (machine == nullptr) return;
     const uint8_t* mac = machine->peer().data();
     // Apply any context that beat this jack's HELLO and was cached while it was still
@@ -394,10 +398,10 @@ void RemoteDeviceCoordinator::resendContext() {
     // the one we would re-queue, here it is the STALE one this call exists to
     // replace. The context channels supersede per target, so the fresh send drops
     // the unacked entry and its old bytes.
-    std::array<std::array<uint8_t, 6>, NUM_PORTS> alreadySent{};
+    std::array<std::array<uint8_t, 6>, NUM_JACKS> alreadySent{};
     size_t sentCount = 0;
-    for (SerialIdentifier port : HELLO_JACKS) {
-        JackHelloLink& link = helloByPort[portIndex(port)];
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        JackHelloLink& link = helloByJack[jackIndex(jack)];
         if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
             continue;
         link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
@@ -440,16 +444,16 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
                                                   const uint8_t* profile, size_t len) {
     bool appliedToConnectingJack = false;
     JackHelloLink* firstConnectedLink = nullptr;
-    for (SerialIdentifier port : HELLO_JACKS) {
-        JackHelloLink& link = helloByPort[portIndex(port)];
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        JackHelloLink& link = helloByJack[jackIndex(jack)];
         if (link.machine == nullptr) continue;
         if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
         const int state = link.machine->currentStateId();
         if (state == HELLO_LINK_CONNECTING) {
-            completeJackContext(port, peerType, chainRole, peerUserId, profile, len);
+            completeJackContext(jack, peerType, chainRole, peerUserId, profile, len);
             appliedToConnectingJack = true;
         } else if (state == HELLO_LINK_CONNECTED) {
-            recordJackContext(port, peerType, chainRole, peerUserId, profile, len);
+            recordJackContext(jack, peerType, chainRole, peerUserId, profile, len);
             if (firstConnectedLink == nullptr) firstConnectedLink = &link;
         }
     }
@@ -462,20 +466,20 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
     if (resend) sendSelfContext(fromMac);
 
     ContextReceivedCallback handler = contextReceivedCallback;
-    for (SerialIdentifier port : HELLO_JACKS) {
-        JackHelloLink& link = helloByPort[portIndex(port)];
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        JackHelloLink& link = helloByJack[jackIndex(jack)];
         if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
             continue;
         if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
         if (resend) link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
-        if (handler) handler(port, peerType, profile, len);
+        if (handler) handler(jack, peerType, profile, len);
     }
 }
 
 void RemoteDeviceCoordinator::recordJackContext(SerialIdentifier jack, DeviceType peerType,
                                                 uint8_t chainRole, uint16_t peerUserId,
                                                 const uint8_t* profile, size_t len) {
-    JackHelloLink& link = helloByPort[portIndex(jack)];
+    JackHelloLink& link = helloByJack[jackIndex(jack)];
     // The kind comes from the channel that decoded this context, not the HELLO
     // deviceType byte: the two are independently spoofable, and a consumer reading
     // peerDeviceType to decide how to cast the profile bytes needs the kind that
@@ -493,7 +497,7 @@ void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceT
                                                   uint8_t chainRole, uint16_t peerUserId,
                                                   const uint8_t* profile, size_t len) {
     recordJackContext(jack, peerType, chainRole, peerUserId, profile, len);
-    JackHelloLink& link = helloByPort[portIndex(jack)];
+    JackHelloLink& link = helloByJack[jackIndex(jack)];
     if (link.machine != nullptr && link.machine->didMarkContextComplete()) return;
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
     onContextExchangeComplete(jack);
@@ -544,22 +548,18 @@ void RemoteDeviceCoordinator::drainBufferedContext(SerialIdentifier jack, const 
 }
 
 void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac) {
-    // The residue is per-jack while the slot rule is per-MAC, so it clears
-    // regardless of what happens to the slot: the next peer on this jack must not
-    // inherit the departed peer's chainRole during its CONNECTING window.
-    helloByPort[portIndex(jack)].peerChainRole = 0;
-    helloByPort[portIndex(jack)].peerDeviceType = DeviceType::UNKNOWN;
-    helloByPort[portIndex(jack)].peerUserId = PEER_USER_ID_NONE;
-    helloByPort[portIndex(jack)].peerProfileLen = 0;
+    // Per-jack residue clears unconditionally: the next peer on this jack must
+    // not inherit the departed peer's chainRole during its CONNECTING window.
+    helloByJack[jackIndex(jack)].peerChainRole = 0;
+    helloByJack[jackIndex(jack)].peerDeviceType = DeviceType::UNKNOWN;
+    helloByJack[jackIndex(jack)].peerUserId = PEER_USER_ID_NONE;
+    helloByJack[jackIndex(jack)].peerProfileLen = 0;
     // Defence in depth: the zeroed length already hides the bytes from
     // getPeerProfile, but a departed peer's identity should not sit in RAM.
-    helloByPort[portIndex(jack)].peerProfile.fill(0);
-    helloByPort[portIndex(jack)].contextResendThrottleTimer.invalidate();
-    // Context exchange is per-jack, so retries survive only while some jack still
-    // faces this peer (a 2-node ring puts it on both). Once none does they are dead
-    // traffic once no jack faces the peer. This jack already reads as empty here —
-    // onLinkDown fires from Idle.
-    // cancel() is silent, no abandon callback fires.
+    helloByJack[jackIndex(jack)].peerProfile.fill(0);
+    helloByJack[jackIndex(jack)].contextResendThrottleTimer.invalidate();
+    // Keep context retries if another jack still faces this peer (2-node ring);
+    // this jack is already Idle so isDirectPeer skips it.
     if (!isDirectPeer(mac)) {
         if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
         if (fdnContextChannel != nullptr) fdnContextChannel->cancel(mac);
@@ -567,28 +567,18 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
 }
 
 void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {
-    HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
+    HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
     if (machine) machine->onContextExchangeComplete();
 }
 
 RemoteDeviceCoordinator::HelloLinkState
 RemoteDeviceCoordinator::getHelloLinkState(SerialIdentifier jack) const {
-    const HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
+    const HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
     if (machine == nullptr) return HelloLinkState::IDLE;
     switch (machine->currentStateId()) {
         case HELLO_LINK_CONNECTED:  return HelloLinkState::CONNECTED;
         case HELLO_LINK_CONNECTING: return HelloLinkState::CONNECTING;
         default:                    return HelloLinkState::IDLE;
-    }
-}
-
-PortStatus RemoteDeviceCoordinator::mapHelloLinkToStatus(SerialIdentifier port) const {
-    const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
-    if (machine == nullptr) return PortStatus::DISCONNECTED;
-    switch (machine->currentStateId()) {
-        case HELLO_LINK_CONNECTED:  return PortStatus::CONNECTED;
-        case HELLO_LINK_CONNECTING: return PortStatus::CONNECTING;
-        default:                    return PortStatus::DISCONNECTED;
     }
 }
 
@@ -614,7 +604,7 @@ bool RemoteDeviceCoordinator::isInRing() const {
     // rather than waiting for the head's own evidence window.
     // Requiring a held head is also what keeps the relay acyclic: the latching
     // device holds none, so its assertion is never fed back to it and clearing
-    // its latch drains the flag round the loop.
+    // its latch drains the flag round the ring.
     if ((chainHeadState.load() & HEAD_MAC_MASK) == 0) return false;
     if (getHelloLinkState(SerialIdentifier::OUTPUT_JACK) != HelloLinkState::CONNECTED) return false;
     return upstreamRingClosed;
@@ -652,18 +642,18 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         memcmp(peerEffectiveHead, selfMac.data(), 6) == 0;
 
     // A latched ring hears its own seeded head return on INPUT every cycle; that
-    // return IS the evidence the loop still closes through us, so stamp it.
+    // return IS the evidence the ring still closes through us, so stamp it.
     if (ringLatched && peerHeadIsSelf) lastSelfHeadReturnMs = nowMs();
 
     // A different head on INPUT while latched is a head conflict: a second
     // latched head (symmetric 2-ring boot, two heads merging) or a replacement
-    // head propagating hop-by-hop after a break elsewhere in the loop. Lower MAC
-    // wins (#144): stand down at once for a lower head — unlatching
+    // head propagating hop-by-hop after a break elsewhere in the ring. Lower MAC
+    // wins: stand down at once for a lower head — unlatching
     // unconditionally lets two latched heads depose each other and re-latch in
     // lockstep, re-firing ringClosed every cycle. For a higher head, hold the
     // latch only while self-returns are fresh: in a merge transient our own
     // claim keeps circulating and refreshing the stamp, but after a physical
-    // break it can no longer complete the loop, so the evidence times out and
+    // break it can no longer complete the ring, so the evidence times out and
     // the new head must be adopted.
     if (ringLatched && !peerHeadIsSelf) {
         if (MacToUInt64(peerEffectiveHead) > MacToUInt64(selfMac.data()) &&
@@ -674,7 +664,7 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     }
 
     // Ring: this device's own MAC returns on its INPUT jack, so the head it seeded
-    // traveled the whole loop back. Gate on OUTPUT being connected (a downstream
+    // traveled the whole ring back. Gate on OUTPUT being connected (a downstream
     // exists), NOT on role==HEAD — two already-connected sub-chains merging into a
     // ring deliver our head back on an INPUT that is already CONNECTED, where
     // role==HEAD (which demands INPUT be un-connected) would miss the closure.
@@ -732,7 +722,7 @@ void RemoteDeviceCoordinator::adoptUpstreamHead() {
     // Adopt the upstream head, dropping to confirmed=0 until re-confirmed under
     // it. The new head then propagates in our own HELLO.
     chainHeadState.store(packHead(headMac, false));
-    // A demoted head hands its roster to the successor (#158); for a plain child
+    // A demoted head hands its roster to the successor; for a plain child
     // the roster is empty and this no-ops. Then announce under the new head so
     // confirmed can rise again.
     transferRosterTo(headMac);
@@ -746,18 +736,18 @@ void RemoteDeviceCoordinator::adoptUpstreamHead() {
     }
 }
 
-void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier port) {
+void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier jack) {
     // The FDN secondary input jack is a symbol link, not part of the INPUT/OUTPUT
     // chain, so its teardown must not open the ring or clear the inherited head.
-    if (port == SerialIdentifier::INPUT_JACK_SECONDARY) return;
+    if (jack == SerialIdentifier::INPUT_JACK_SECONDARY) return;
 
     // A ring closes through both this device's chain links; losing either the
-    // upstream (INPUT) or downstream (OUTPUT) one breaks the loop, so open the ring.
+    // upstream (INPUT) or downstream (OUTPUT) one breaks the ring, so open it.
     ringLatched = false;
 
     // Only the upstream (INPUT) peer supplies the inherited head; its loss makes
     // this device its own head again.
-    if (port == SerialIdentifier::INPUT_JACK) {
+    if (jack == SerialIdentifier::INPUT_JACK) {
         const uint64_t lostHead = chainHeadState.load() & HEAD_MAC_MASK;
         chainHeadState.store(0);
         // The departed peer's claim dies with it, or the next upstream to reach
@@ -792,7 +782,7 @@ void RemoteDeviceCoordinator::maybeFireChainRoleChange() {
     if (roleChange) roleChange(role);
 }
 
-// ---- Head roster (#158) ----
+// ---- Head roster ----
 
 bool RemoteDeviceCoordinator::isRosterAuthority() const {
     // Only the device currently heading a chain (or a latched ring, its own
@@ -823,7 +813,7 @@ void RemoteDeviceCoordinator::maybeAnnounceToHead() {
     // The announce names the upstream neighbour, which is known because a head is
     // only ever held while that link is Connected (adoptUpstreamHead).
     const HelloLinkMachine* upstream =
-        helloByPort[portIndex(SerialIdentifier::INPUT_JACK)].machine;
+        helloByJack[jackIndex(SerialIdentifier::INPUT_JACK)].machine;
     if (upstream == nullptr) return;
     uint8_t headMac[6];
     unpackMac(headMac48, headMac);

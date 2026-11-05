@@ -130,7 +130,7 @@ struct ShootoutAckPayload
     uint8_t     seqId;
 } __attribute__((packed));
 
-// ---- Head roster management (#158) ----
+// ---- Head roster management ----
 // Point-to-point ReliableChannel payloads; the chain head is the sole consumer.
 // seqId is stamped by the channel on send.
 

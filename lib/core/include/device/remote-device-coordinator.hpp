@@ -23,18 +23,18 @@ class Device;
 class HelloLinkMachine;
 class RDCHelloTests;  // drives the context exchange via the owned transport in tests
 
-enum class PortStatus {
+enum class JackStatus {
     DISCONNECTED = 0,  // No HELLO peer on the jack.
     CONNECTING = 1,    // A HELLO peer is present, its context exchange unfinished.
-    CONNECTED = 2,     // Port is connected to a peer.
+    CONNECTED = 2,     // Jack is connected to a peer.
 };
 
 // This device's position in the physical chain, derived from jack state:
 // head has no in-peer, a child has one, RING is the head of a chain whose ends
 // met. RING is deliberately head-only — it is the roster/coordinator authority.
-// Ring MEMBERSHIP, which every device on the loop shares, is isInRing().
-// Device-level (not per-port): whether a connection makes this device a head
-// or child is a chain concern surfaced here, never a PortStatus.
+// Ring MEMBERSHIP, which every device on the ring shares, is isInRing().
+// Device-level (not per-jack): whether a connection makes this device a head
+// or child is a chain concern surfaced here, never a JackStatus.
 enum class ChainRole {
     STANDALONE = 0,
     HEAD = 1,
@@ -53,8 +53,10 @@ public:
     /** Fires when this device's ChainRole changes. */
     using ChainRoleChangeCallback = std::function<void(ChainRole role)>;
     /**
-     * Head-only: fires when the chain member roster changes; read the new
-     * roster via getChainMembers().
+     * Fires when the chain member roster changes; read the new roster via
+     * getChainMembers(). Only a head holds a roster, but the last firing comes
+     * as one hands its roster to a successor, so a handler may already read a
+     * role that is no longer HEAD.
      */
     using MembershipChangeCallback = std::function<void()>;
     /**
@@ -84,34 +86,34 @@ public:
      * Connection state of one jack (device-level chain facts live in
      * getChainRole(), not here).
      */
-    virtual PortStatus getPortStatus(SerialIdentifier port);
+    virtual JackStatus getJackStatus(SerialIdentifier jack);
     /** No peer id known: an FDN peer, an unregistered player, or no peer at all. */
     static constexpr uint16_t PEER_USER_ID_NONE = 0xFFFF;
 
     /**
-     * Returns a pointer to the port's direct peer MAC address, or nullptr when the
-     * port tracks no peer. Known from the first HELLO, so it is served from
+     * Returns a pointer to the jack's direct peer MAC address, or nullptr when the
+     * jack tracks no peer. Known from the first HELLO, so it is served from
      * CONNECTING onward, not only once CONNECTED.
      */
-    virtual const uint8_t* getPeerMac(SerialIdentifier port) const;
+    virtual const uint8_t* getPeerMac(SerialIdentifier jack) const;
 
-    /** The direct peer's hardware kind (PDN/FDN) for the given port. */
-    virtual DeviceType getPeerDeviceType(SerialIdentifier port) const;
+    /** The direct peer's hardware kind (PDN/FDN) for the given jack. */
+    virtual DeviceType getPeerDeviceType(SerialIdentifier jack) const;
 
     /**
-     * The direct peer's 4-digit player id for the given port, lifted from the
+     * The direct peer's 4-digit player id for the given jack, lifted from the
      * PlayerProfile its context exchange delivered; PEER_USER_ID_NONE until then.
-     * Gated on getPeerMac so the two never disagree about the port having a peer.
+     * Gated on getPeerMac so the two never disagree about the jack having a peer.
      */
-    virtual uint16_t getPeerUserId(SerialIdentifier port) const {
-        if (getPeerMac(port) == nullptr) return PEER_USER_ID_NONE;
-        return helloByPort[portIndex(port)].peerUserId;
+    virtual uint16_t getPeerUserId(SerialIdentifier jack) const {
+        if (getPeerMac(jack) == nullptr) return PEER_USER_ID_NONE;
+        return helloByJack[jackIndex(jack)].peerUserId;
     }
 
     /** Returns true iff `mac` matches the direct peer on either jack. */
     virtual bool isDirectPeer(const uint8_t* mac) const;
 
-    // ---- Chain-level surface (#154) ----
+    // ---- Chain-level surface ----
 
     /** This device's chain role, derived from jack presence plus the ring latch. */
     virtual ChainRole getChainRole() const;
@@ -144,7 +146,7 @@ public:
         jackChangeCallback = std::move(callback);
     }
 
-    // ---- Per-jack HELLO connectivity (#155) ----
+    // ---- Per-jack HELLO connectivity ----
     // HELLO is the only thing serial carries: discovery, liveness and hop-by-hop
     // chain context. Each jack runs an independent link SM fed by the real
     // exec()-driven RX byte pump.
@@ -221,7 +223,7 @@ public:
      * a peer whose only link is the one still connecting reports exactly that.
      */
     uint8_t getPeerChainRole(SerialIdentifier jack) const {
-        return helloByPort[portIndex(jack)].peerChainRole;
+        return helloByJack[jackIndex(jack)].peerChainRole;
     }
 
     /**
@@ -232,7 +234,7 @@ public:
      * the peer's identity instead of only whoever was mounted at the time.
      */
     virtual const uint8_t* getPeerProfile(SerialIdentifier jack, size_t& length) const {
-        const JackHelloLink& link = helloByPort[portIndex(jack)];
+        const JackHelloLink& link = helloByJack[jackIndex(jack)];
         length = link.peerProfileLen;
         return link.peerProfileLen == 0 ? nullptr : link.peerProfile.data();
     }
@@ -292,9 +294,9 @@ public:
     void setChainChangeCallback(std::function<void()> callback);
 
 private:
-    static constexpr size_t NUM_PORTS = 3;
+    static constexpr size_t NUM_JACKS = 3;
 
-    size_t portIndex(SerialIdentifier port) const;
+    size_t jackIndex(SerialIdentifier jack) const;
 
     void notifyChainChange();
     void recordJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
@@ -303,30 +305,28 @@ private:
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
     std::function<void()> chainChangeCallback;
-
-    // New-surface observers (#154); fired by the RDC internals as #155-#159 land.
     JackChangeCallback jackChangeCallback;
     ChainRoleChangeCallback chainRoleChangeCallback;
     MembershipChangeCallback membershipChangeCallback;
     RingClosedCallback ringClosedCallback;
 
-    // ---- HELLO connectivity internals (#155) ----
+    // ---- HELLO connectivity internals ----
     struct JackHelloLink {
         SerialFrameParser parser;  // non-copyable; default-constructed in place
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
-        // Recorded from the peer's received context; consumed by the chain SM (#156).
+        // Recorded from the peer's received context; consumed by the chain SM.
         uint8_t peerChainRole = 0;
         // Which context channel the peer's context arrived on, so the kind and the
         // profile bytes below always describe the same peer and the same moment.
         DeviceType peerDeviceType = DeviceType::UNKNOWN;
         std::array<uint8_t, MAX_PEER_PROFILE_BYTES> peerProfile{};
         size_t peerProfileLen = 0;
-        // The only profile field lifted onto the port surface; the profile itself
+        // The only profile field lifted onto the jack surface; the profile itself
         // stays opaque and reaches the game layer as raw bytes.
         uint16_t peerUserId = PEER_USER_ID_NONE;
         SimpleTimer contextResendThrottleTimer;
     };
-    std::array<JackHelloLink, NUM_PORTS> helloByPort;
+    std::array<JackHelloLink, NUM_JACKS> helloByJack;
     bool externalConnectivityTask = false;
     ContextReceivedCallback contextReceivedCallback;
     SelfProfileProvider selfProfileProvider;
@@ -410,12 +410,11 @@ private:
      */
     void enableHelloConnectivity();
 
-    HWSerialWrapper* jackWrapper(SerialIdentifier port) const;
+    HWSerialWrapper* jackWrapper(SerialIdentifier jack) const;
     void onHelloReceived(SerialIdentifier jack, const HelloPayload& hello);
-    PortStatus mapHelloLinkToStatus(SerialIdentifier port) const;
     static unsigned long nowMs();
 
-    // ---- Device-level chain state machine (#156) ----
+    // ---- Device-level chain state machine ----
     // headMac (48 bits) + a confirmed bit packed into one atomic: the emit task
     // reads it while the main loop writes it. The confirmed bit rises only when the
     // announce to the head currently held is delivered.
@@ -429,7 +428,7 @@ private:
     // observe closure, so every other member learns it from upstream and relays
     // it on. Relayed only while a head is held, which keeps the assertion
     // single-sourced: the latching device holds no head, so its own flag is
-    // never fed back to it and a cleared latch drains round the loop.
+    // never fed back to it and a cleared latch drains round the ring.
     bool upstreamRingClosed = false;
     // Last time the own-MAC head returned on INPUT while latched (seeded at
     // closure): the ring-latch evidence stamp checked against RING_EVIDENCE_TIMEOUT_MS.
@@ -451,13 +450,13 @@ private:
     // Adopts upstreamAdvertisedHead once the INPUT link reports CONNECTED: hands
     // over the roster and announces. No-op before that.
     void adoptUpstreamHead();
-    void onLinkLost(SerialIdentifier port);
+    void onLinkLost(SerialIdentifier jack);
     void maybeFireChainRoleChange();
     // Roster traffic is addressed to the head as head, so it dies with the role.
     // A surviving retransmit would address a device that is no longer the head.
     void cancelHeadRosterTraffic(uint64_t headMac48);
 
-    // ---- Head roster (#158) ----
+    // ---- Head roster ----
     // member MAC -> its direct upstream MAC. Only the roster authority (see
     // isRosterAuthority) accepts roster traffic or serves getChainMembers.
     std::map<std::array<uint8_t, 6>, std::array<uint8_t, 6>> chainRoster;

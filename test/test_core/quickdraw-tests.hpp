@@ -39,7 +39,7 @@ static const uint8_t kTestMacBytes[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 // side in the BOUNTY draw slot — the opposite of the fixtures' standing hunter
 // role, so a reader consulting the wrong one of the two is visible. Returns the
 // opponent's MAC.
-inline std::array<uint8_t, 6> mountShootoutBoutWithBountySlot(
+inline std::array<uint8_t, 6> mountShootoutMatchWithBountySlot(
     ShootoutManager& shootout, MockDevice& device, MatchManager* matchManager,
     uint8_t* selfMac) {
     std::array<uint8_t, 6> me{};
@@ -51,7 +51,7 @@ inline std::array<uint8_t, 6> mountShootoutBoutWithBountySlot(
 
     device.fakeRemoteDeviceCoordinator.ringHeadMac = coordinator;
     shootout.setMatchManager(matchManager);
-    shootout.setLoopMembersForTest({me, coordinator, spectator});
+    shootout.setRingMembersForTest({me, coordinator, spectator});
     shootout.startProposal();
     for (const std::array<uint8_t, 6>& m : {me, coordinator, spectator}) {
         shootout.onConfirmReceived(m.data());
@@ -466,10 +466,10 @@ public:
     FakePlatformClock* fakeClock;
 };
 
-// The shootout duel timeout forfeits the bout's HUNTER. Which side that is comes
-// from the bout's draw slot, not the standing role: the two disagree for the whole
-// bout, and reading the standing role here sends the wrong device to reportLocalWin.
-inline void duelShootoutTimeoutForfeitsTheBoutHunter(DuelStateTests* suite) {
+// The shootout duel timeout forfeits the match's HUNTER. Which side that is comes
+// from the match's draw slot, not the standing role: the two disagree for the whole
+// match, and reading the standing role here sends the wrong device to reportLocalWin.
+inline void duelShootoutTimeoutForfeitsTheMatchHunter(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
         .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
@@ -480,7 +480,7 @@ inline void duelShootoutTimeoutForfeitsTheBoutHunter(DuelStateTests* suite) {
     uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
     ShootoutManager shootout(suite->player, suite->device.wirelessManager,
                              &suite->device.fakeRemoteDeviceCoordinator);
-    std::array<uint8_t, 6> opponent = mountShootoutBoutWithBountySlot(
+    std::array<uint8_t, 6> opponent = mountShootoutMatchWithBountySlot(
         shootout, suite->device, suite->matchManager, selfMac);
     suite->ctx.shootoutManager = &shootout;
     ASSERT_TRUE(suite->player->isHunter()) << "the standing role should be the opposite";
@@ -492,7 +492,7 @@ inline void duelShootoutTimeoutForfeitsTheBoutHunter(DuelStateTests* suite) {
     duelState.onStateLoop(&suite->device);
 
     EXPECT_TRUE(duelState.transitionToShootoutSpectator())
-        << "the bout's bounty did not take the forfeit win";
+        << "the match's bounty did not take the forfeit win";
     EXPECT_FALSE(duelState.transitionToShootoutEliminated());
     EXPECT_TRUE(shootout.isEliminated(opponent.data()));
 
@@ -1057,14 +1057,14 @@ inline void resultMatchFinalizedOnResult(DuelResultTests* suite) {
 // The ordinary press-and-lose path, with no timeout involved. The winner's
 // MATCH_RESULT lands while this device's duel is still running — on hardware
 // that is the whole race — and DuelResult mounts after it. Resolving the outcome
-// from the standing role there put the loser on the winner branch, so one bout
+// from the standing role there put the loser on the winner branch, so one match
 // produced two eliminations and a two-player final could eliminate both
 // finalists.
 inline void resultShootoutLoserDoesNotClaimTheWin(DuelResultTests* suite) {
     uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
     ShootoutManager shootout(suite->player, suite->device.wirelessManager,
                              &suite->device.fakeRemoteDeviceCoordinator);
-    std::array<uint8_t, 6> opponent = mountShootoutBoutWithBountySlot(
+    std::array<uint8_t, 6> opponent = mountShootoutMatchWithBountySlot(
         shootout, suite->device, suite->matchManager, selfMac);
     suite->ctx.shootoutManager = &shootout;
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
@@ -1087,7 +1087,7 @@ inline void resultShootoutLoserDoesNotClaimTheWin(DuelResultTests* suite) {
         << "the loser took the winner branch";
     EXPECT_TRUE(resultState.transitionToShootoutEliminated());
     EXPECT_FALSE(shootout.isEliminated(opponent.data()))
-        << "one bout produced two eliminations";
+        << "one match produced two eliminations";
 
     suite->ctx.shootoutManager = nullptr;
 }
@@ -1178,13 +1178,13 @@ inline void cleanupCountdownClearsButtonCallbacks(StateCleanupTests* suite) {
     countdownState.onStateDismounted(&suite->device);
 }
 
-// The bout continues into DuelPushed, so the match has to survive the dismount —
+// The duel continues into DuelPushed, so the match has to survive the dismount —
 // that state reads it and writes the draw result against it.
-// Leaving the duel app is what ends a bout, so DuelApp owns the teardown. The
+// Leaving the duel app is what ends a match, so DuelApp owns the teardown. The
 // states inside it hand the match to one another and must not tear it down: which
 // edge the machine takes is decided by registration order in populateStateMap, so
 // no state can tell from its own flags whether it is handing off or leaving.
-inline void duelAppDismountEndsTheBout(StateCleanupTests* suite) {
+inline void duelAppDismountEndsTheMatch(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
@@ -1210,11 +1210,11 @@ inline void duelAppDismountEndsTheBout(StateCleanupTests* suite) {
         << "a match left ready bounces the device into a phantom duel from Idle";
 }
 
-// The other half of the same rule: a state dismounting on its own leaves the bout
+// The other half of the same rule: a state dismounting on its own leaves the match
 // alone, because it may be handing off to a sibling that needs it. Pinned on Duel,
 // whose exits used to be enumerated by flag — the case that broke was an abort
 // winning while the press flag was set.
-inline void aDuelStateDismountLeavesTheBoutToTheApp(StateCleanupTests* suite) {
+inline void aDuelStateDismountLeavesTheMatchToTheApp(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
 
@@ -1231,7 +1231,7 @@ inline void aDuelStateDismountLeavesTheBoutToTheApp(StateCleanupTests* suite) {
 
     duelState.onStateDismounted(&suite->device);
     EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
-        << "the bout's own match was torn down on the way into DuelPushed";
+        << "the match was torn down on the way into DuelPushed";
 }
 
 // Test: DuelReceivedResult state clears button callbacks on dismount
@@ -1257,8 +1257,8 @@ inline void cleanupDuelStateInvalidatesTimer(StateCleanupTests* suite) {
 
     // Player is hunter, so OUTPUT_JACK must be connected for isConnected() to return true.
     // Without this, onStateLoop would transition to idle due to disconnection, not the timer.
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
 
     Duel duelState(suite->ctx);
 
@@ -1391,11 +1391,11 @@ inline void cleanupDuelStateClearsCallbacksWhenGoingToDuelReceivedResult(StateCl
     duelState.onStateDismounted(&suite->device);
 }
 
-// A disconnect ends the bout through the app's abandon edge, not through the
+// A disconnect ends the match through the app's abandon edge, not through the
 // state. DuelPushed leaves the match alone even while disconnected, because the
 // same dismount also runs on the way to DuelResult — which scores the duel off
 // that match, and used to be handed an empty one on this exact path.
-inline void pushedLeavesTheBoutAloneWhenDisconnected(StateCleanupTests* suite) {
+inline void pushedLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setReceivedButtonPush();
@@ -1408,7 +1408,7 @@ inline void pushedLeavesTheBoutAloneWhenDisconnected(StateCleanupTests* suite) {
     pushedState.onStateDismounted(&suite->device);
 
     EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
-        << "the state cleared a bout the app had not finished with";
+        << "the state cleared a match the app had not finished with";
 }
 
 // Test: DuelReceivedResult clears match when disconnected on dismount
@@ -1419,23 +1419,23 @@ inline void pushedLeavesTheBoutAloneWhenDisconnected(StateCleanupTests* suite) {
 // false mid-match), and the spectators wait forever for a MATCH_RESULT that
 // will never arrive.
 inline void countdownDebouncesTransientDisconnect(StateCleanupTests* suite) {
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     DuelCountdown countdown(suite->ctx);
 
     // Single-tick blip: should be absorbed by the debounce.
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     // Recovery within the window clears the timer.
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     // Persistent loss past the debounce window: now the abort fires.
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));  // start debounce
     suite->fakeClock->advance(2000);
     EXPECT_TRUE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
@@ -1445,20 +1445,20 @@ inline void countdownDebouncesTransientDisconnect(StateCleanupTests* suite) {
 // arrival). A blip here threw away the duel before the grace period could
 // resolve it.
 inline void duelPushedDebouncesTransientDisconnect(StateCleanupTests* suite) {
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     DuelPushed pushed(suite->ctx);
 
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
 
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
 
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
     EXPECT_TRUE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
@@ -1466,20 +1466,20 @@ inline void duelPushedDebouncesTransientDisconnect(StateCleanupTests* suite) {
 
 // Same debounce contract on DuelReceivedResult.
 inline void duelReceivedResultDebouncesTransientDisconnect(StateCleanupTests* suite) {
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     DuelReceivedResult received(suite->ctx);
 
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
 
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
 
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
     EXPECT_TRUE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
@@ -1497,14 +1497,14 @@ inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* 
     ASSERT_TRUE(shootout.active());
     suite->ctx.shootoutManager = &shootout;
 
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     DuelCountdown countdown(suite->ctx);
 
     // Persistent loss during the tournament: suppressed, and the debounce must
     // not age even as wall-clock time passes.
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
     EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
@@ -1520,11 +1520,11 @@ inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* 
     // Ordering 2: the debounce starts BEFORE the tournament activates and
     // expires on wall clock while it is live. Without the in-flight reset the
     // first sample after the shootout ends snaps straight to Idle.
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
-    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
-        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
     EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));  // start debounce
     suite->fakeClock->advance(2000);
 
@@ -1541,7 +1541,7 @@ inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* 
     suite->ctx.shootoutManager = nullptr;
 }
 
-inline void receivedResultLeavesTheBoutAloneWhenDisconnected(StateCleanupTests* suite) {
+inline void receivedResultLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setBountyDrawTime(150);
@@ -1559,7 +1559,7 @@ inline void receivedResultLeavesTheBoutAloneWhenDisconnected(StateCleanupTests* 
     receivedState.onStateDismounted(&suite->device);
 
     EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
-        << "the state cleared a bout the app had not finished with";
+        << "the state cleared a match the app had not finished with";
 }
 
 // ============================================
@@ -1611,7 +1611,7 @@ public:
 // Create + destroy many GameSession instances; under ASAN (env:native_asan) a
 // leak in the session's ownership of matchManager / chainDuelManager would be
 // reported. Without ASAN this still catches crashes in the lifecycle path.
-// The loop between destructions is the check on the device-held slots: the tick
+// The iteration between destructions is the check on the device-held slots: the tick
 // callback captures the session and the device outlives it, so a slot the
 // destructor failed to empty is called here with a freed `this`.
 inline void gameSessionCtorDtorDoesNotLeak(GameSessionLifecycleTests* suite) {
@@ -1632,7 +1632,7 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
     // A hunter's opponent jack is OUTPUT, and only an opponent-jack announce
     // caches championMac — which is in turn what admits the game event below.
     FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
-    rdc.setPortStatus(SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
     rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
 
@@ -1680,7 +1680,7 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
     uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
 
     FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
-    rdc.setPortStatus(SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
     rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));

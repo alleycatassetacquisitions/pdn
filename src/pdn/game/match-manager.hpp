@@ -37,7 +37,7 @@ struct LastMatchDisplay {
 
 struct ActiveDuelState {
     bool matchIsReady = false;
-    // The draw slot for THIS bout, which a shootout assigns per match from MAC
+    // The draw slot for THIS match, which a shootout assigns from MAC
     // ordering rather than from the player's standing role.
     bool localIsHunter = false;
     bool hasReceivedDrawResult = false;
@@ -98,9 +98,9 @@ public:
     bool didWin();
 
     /**
-     * The draw slot this device fills for the active bout. primeMatch is the
+     * The draw slot this device fills for the active match. primeMatch is the
      * only writer and sets it alongside the match; the whole-struct reset clears
-     * both, so there is no slot without a bout behind it.
+     * both, so there is no slot without a match behind it.
      */
     bool isLocalHunter() const { return activeDuelState.localIsHunter; }
 
@@ -137,7 +137,7 @@ public:
     void clearCurrentMatch();
 
     /**
-     * Clears the active bout only when a shootout primed it, leaving a bout the
+     * Clears the active match only when a shootout primed it, leaving a match the
      * cable handshake owns untouched.
      */
     void clearShootoutMatch();
@@ -183,7 +183,7 @@ public:
 
 
 private:
-    /** True when the active bout carries a shootout-derived match id. */
+    /** True when the active match carries a shootout-derived match id. */
     bool currentMatchIsShootout() const;
 
     Player* player;

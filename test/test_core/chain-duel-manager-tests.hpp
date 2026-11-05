@@ -81,19 +81,19 @@ public:
     }
 
     /** Brings the supporter-side jack up against supporterMac. */
-    void connectInputPort(bool isHunter = true) {
+    void connectInputJack(bool isHunter = true) {
         connectJackTo(inJack, supporterMac, nullptr, isHunter);
     }
 
     /** Brings the opponent-side jack up against opponentMac. */
-    void connectOutputPort(bool isHunter = false) {
+    void connectOutputJack(bool isHunter = false) {
         connectJackTo(outJack, opponentMac, nullptr, isHunter);
     }
 
     void setupHunterChampion() {
         player.setIsHunter(true);
-        connectOutputPort(false);
-        connectInputPort(true);
+        connectOutputJack(false);
+        connectInputJack(true);
     }
 
     /**
@@ -101,7 +101,7 @@ public:
      * own MAC comes back on INPUT, which is the only local evidence of closure.
      */
     void closeRingAroundSelf() {
-        connectOutputPort();
+        connectOutputJack();
         connectJackTo(inJack, supporterMac, localMac, true);
     }
 
@@ -181,14 +181,14 @@ inline void cdmCanInitiateMatchRequiresConnectedOpponentJack(ChainDuelManagerTes
     // has not answered, so the connection is still half-open.
     suite->beginConnectJackTo(suite->outJack, suite->opponentMac);
 
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
     EXPECT_FALSE(cdm.canInitiateMatch());
 
     // The peer's context lands, proving a path back.
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/false);
     suite->rdc.sync(&suite->device);
 
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
     EXPECT_TRUE(cdm.canInitiateMatch());
 }
@@ -233,7 +233,7 @@ inline void cdmOnChainStateChangedClearsOnDrain(ChainDuelManagerTests* suite) {
     cdm.onChainStateChanged();
     EXPECT_EQ(cdm.getBoostMs(), 15u);
 
-    // Disconnect the input port by advancing time past heartbeat timeout
+    // Disconnect the input jack by advancing time past heartbeat timeout
     suite->fakeClock->advance(5000);
     suite->rdc.sync(&suite->device);
 
@@ -270,7 +270,7 @@ inline void cdmIsChampionFalseInRing(ChainDuelManagerTests* suite) {
     suite->closeRingAroundSelf();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
-    ASSERT_TRUE(cdm.isLoop());
+    ASSERT_TRUE(suite->rdc.isInRing());
     EXPECT_FALSE(cdm.isChampion());
 }
 
@@ -550,7 +550,7 @@ inline void cdmHeadTransferResendsStandingConfirm(ChainDuelManagerTests* suite) 
 
     // OUTPUT is a hunter's opponent jack, and a same-role peer there is what makes
     // this device a supporter rather than the champion.
-    suite->connectOutputPort(/*isHunter=*/true);
+    suite->connectOutputJack(/*isHunter=*/true);
     uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     cdm.onRoleAnnounceReceived(suite->opponentMac, champion);
     ASSERT_TRUE(cdm.isSupporter());
@@ -795,18 +795,18 @@ inline void cdmReannouncesAfterSameMacReconnect(ChainDuelManagerTests* suite) {
     // No manual cascade drives below this point: the manager is subscribed to
     // the coordinator, and whether the reconnect re-announces depends entirely
     // on which chain-change events the coordinator actually fires.
-    suite->connectOutputPort();
-    suite->connectInputPort();
+    suite->connectOutputJack();
+    suite->connectInputJack();
     ASSERT_GT(announcesToSupporter, 0) << "no announce to begin with";
     const int afterFirst = announcesToSupporter;
 
     // Cable out: the HELLO heartbeat lapses and the link dies.
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
-    ASSERT_NE(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
+    ASSERT_NE(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
 
     // Same device back on the same jack.
-    suite->connectInputPort();
+    suite->connectInputJack();
     EXPECT_GT(announcesToSupporter, afterFirst)
         << "reconnected supporter was never told who its champion is";
 }
@@ -863,8 +863,8 @@ inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerT
             return 1;
         });
 
-    suite->connectOutputPort();
-    suite->connectInputPort();
+    suite->connectOutputJack();
+    suite->connectInputJack();
     ASSERT_GT(announcesToSupporter, 0) << "no supporter announce to begin with";
 
     // The radio never confirms delivery, so the announce runs out of span and is
@@ -899,14 +899,14 @@ inline void cdmAnnounceWaitsForConnectedSupporterJack(ChainDuelManagerTests* sui
         });
 
     // A champion: an opponent-jack peer, and nobody of our own role beyond it.
-    suite->connectOutputPort();
+    suite->connectOutputJack();
     cdm.onChainStateChanged();
 
     // The supporter plugs in. Our jack holds its MAC off one HELLO, but its
     // context has not come back, so it has not necessarily recorded us.
     suite->beginConnectJackTo(suite->inJack, suite->supporterMac);
     ASSERT_NE(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK), nullptr);
-    ASSERT_NE(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
+    ASSERT_NE(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
     cdm.onChainStateChanged();
     EXPECT_EQ(announcesToSupporter, 0)
         << "announced to a supporter that cannot accept it yet";
@@ -914,7 +914,7 @@ inline void cdmAnnounceWaitsForConnectedSupporterJack(ChainDuelManagerTests* sui
     // Its context lands. The link is proven and the deferred announce goes.
     suite->deliverPdnContext(suite->supporterMac, /*isHunter=*/true);
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
     EXPECT_GT(announcesToSupporter, 0)
         << "announce was suppressed rather than deferred";
 }
@@ -1241,7 +1241,7 @@ inline void cdmChampionToSupporterClearsStaleSelfMac(ChainDuelManagerTests* suit
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
-    // Allow all sends; connectOutputPort puts a context exchange on the air too.
+    // Allow all sends; connectOutputJack puts a context exchange on the air too.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
     // Start as solo champion — self-assigns championMac to localMac.
@@ -1249,7 +1249,7 @@ inline void cdmChampionToSupporterClearsStaleSelfMac(ChainDuelManagerTests* suit
     ASSERT_NE(cdm.getChampionMac(), nullptr);
     EXPECT_EQ(memcmp(cdm.getChampionMac(), suite->localMac, 6), 0);
 
-    suite->connectOutputPort(/*isHunter=*/true);
+    suite->connectOutputJack(/*isHunter=*/true);
     ASSERT_TRUE(cdm.isSupporter());
 
     // onChainStateChanged should detect we hold stale self-MAC and clear it.
