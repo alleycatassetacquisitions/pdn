@@ -30,7 +30,7 @@
 #include "game/player-provider.hpp"
 
 // CLI components
-#include "apps/player-registration/player-registration-states.hpp"
+#include "apps/player-fetch/player-fetch-states.hpp"
 #include "game/quickdraw-states.hpp"
 
 #include "cli/cli-serial-broker.hpp"
@@ -41,18 +41,18 @@ namespace cli {
 /**
  * Human-readable name for a state id shown in the CLI's state history.
  *
- * Ids come from two enums that share one numbering: registration owns 0-5 and
- * the game owns the rest. Naming the enumerators rather than the numbers is
- * what keeps this from drifting — a retired state stops compiling here.
+ * Ids come from two namespaces that share one numbering: player-fetch owns
+ * 0-4 (and 31) and the game owns the rest. Naming the constants rather than the
+ * numbers is what keeps this from drifting — a retired state stops compiling here.
  */
 inline const char* getStateName(int stateId) {
     switch (stateId) {
-        case PLAYER_REGISTRATION: return "PlayerRegistration";
-        case FETCH_USER_DATA: return "FetchUserData";
-        case CONFIRM_OFFLINE: return "ConfirmOffline";
-        case CHOOSE_ROLE: return "ChooseRole";
-        case ALLEGIANCE_PICKER: return "AllegiancePicker";
-        case WELCOME_MESSAGE: return "WelcomeMessage";
+        case PlayerFetchStateId::PIN_ENTRY: return "PinEntry";
+        case PlayerFetchStateId::FETCH_USER: return "FetchUser";
+        case PlayerFetchStateId::CHOOSE_TEAM: return "ChooseTeam";
+        case PlayerFetchStateId::DEMO_STUB: return "DemoStub";
+        case PlayerFetchStateId::WELCOME: return "WelcomeMessage";
+        case PlayerFetchStateId::FIRMWARE_UPDATE: return "FirmwareUpdate";
         case SLEEP: return "Sleep";
         case AWAKEN_SEQUENCE: return "AwakenSequence";
         case IDLE: return "Idle";
