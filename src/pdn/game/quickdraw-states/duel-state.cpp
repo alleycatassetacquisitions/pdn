@@ -2,7 +2,7 @@
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/countdown-animation.hpp"
 #include "game/match-manager.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/device.hpp"
@@ -10,11 +10,11 @@
 #define DUEL_TAG "DUEL_STATE"
 
 Duel::Duel(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL) {
-    this->player = ctx.player;
-    this->matchManager = ctx.matchManager;
-    this->chainDuelManager = ctx.chainDuelManager;
-    this->shootoutManager = ctx.shootoutManager;
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL)
+    , player(ctx.player)
+    , matchManager(ctx.matchManager)
+    , posseManager(ctx.posseManager)
+    , shootoutManager(ctx.shootoutManager) {
 }
 
 Duel::~Duel() {
@@ -27,7 +27,7 @@ void Duel::onStateMounted(PDN* pdn) {
     LOG_I(DUEL_TAG, "Duel state mounted");
 
     // Arm the supporter chain for confirmations during the draw window.
-    chainDuelManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
+    posseManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
 
     matchManager->setDuelLocalStartTime(SimpleTimer::getPlatformClock()->milliseconds());
 

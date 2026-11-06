@@ -2,15 +2,15 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/countdown-animation.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
 
 DuelCountdown::DuelCountdown(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_COUNTDOWN) {
-    this->player = ctx.player;
-    this->matchManager = ctx.matchManager;
-    this->chainDuelManager = ctx.chainDuelManager;
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_COUNTDOWN)
+    , player(ctx.player)
+    , matchManager(ctx.matchManager)
+    , posseManager(ctx.posseManager) {
 }
 
 DuelCountdown::~DuelCountdown() {
@@ -20,9 +20,9 @@ DuelCountdown::~DuelCountdown() {
 
 
 void DuelCountdown::onStateMounted(PDN* pdn) {
-    // If this device is a champion, tell its supporter chain that the
+    // If this device is a challenger, tell its supporter chain that the
     // duel is starting so they can arm their confirmation window.
-    chainDuelManager->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
+    posseManager->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
 
     pdn->getDisplay()->
     invalidateScreen()->
@@ -91,8 +91,8 @@ void DuelCountdown::onStateDismounted(PDN* pdn) {
     // this state cannot tell whether the duel it hands to will start. Sent on
     // every exit: Duel::onStateMounted sends the same frame and the supporter
     // handler is idempotent, so the continuing path just gets it twice.
-    if (chainDuelManager != nullptr) {
-        chainDuelManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
+    if (posseManager != nullptr) {
+        posseManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
     }
 
     doBattle = false;

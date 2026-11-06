@@ -27,14 +27,14 @@ GameSession::GameSession(Player* player,
     , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator())
     , symbolWirelessManager(symbolWirelessManager)
     , matchManager(new MatchManager(wirelessManager))
-    , chainDuelManager(new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator))
+    , posseManager(new PosseManager(player, wirelessManager, remoteDeviceCoordinator))
     , shootoutManager(new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator)) {
     this->shootoutManager->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager);
 
     matchManager->initialize(player, pdn->getStorage());
     matchManager->setBoostProvider([this]() -> unsigned long {
-        return chainDuelManager ? chainDuelManager->getBoostMs() : 0;
+        return posseManager ? posseManager->getBoostMs() : 0;
     });
     matchManager->setRemoteDeviceCoordinator(remoteDeviceCoordinator);
 
@@ -51,7 +51,7 @@ GameSession::GameSession(Player* player,
     // context exchange only runs on connect, so the flip has to push itself.
     this->player->setOnRoleChanged([this]() {
         remoteDeviceCoordinator->resendContext();
-        chainDuelManager->onChainStateChanged();
+        posseManager->onChainStateChanged();
     });
 
     // Installed here rather than by the caller so the slot holding `this` is
@@ -77,8 +77,8 @@ GameSession::~GameSession() {
     symbolWirelessManager = nullptr;
     // Managers before matchManager: shootoutManager holds a raw MatchManager*
     // and dereferences it when priming a bracket match.
-    delete chainDuelManager;
-    chainDuelManager = nullptr;
+    delete posseManager;
+    posseManager = nullptr;
     delete shootoutManager;
     shootoutManager = nullptr;
     delete matchManager;
@@ -90,7 +90,7 @@ GameContext GameSession::getContext() {
     context.player = player;
     context.matchManager = matchManager;
     context.remoteDeviceCoordinator = remoteDeviceCoordinator;
-    context.chainDuelManager = chainDuelManager;
+    context.posseManager = posseManager;
     context.shootoutManager = shootoutManager;
     context.symbolWirelessManager = symbolWirelessManager;
     context.wirelessManager = wirelessManager;
@@ -109,8 +109,8 @@ SupporterReady* GameSession::getMountedSupporterReady() {
 void GameSession::sync() {
     if (matchManager) matchManager->sync();
 
-    if (chainDuelManager) {
-        chainDuelManager->sync();
+    if (posseManager) {
+        posseManager->sync();
 
         bool inRingNow = remoteDeviceCoordinator->isInRing();
         if (inRingNow != lastIsInRing) {
@@ -138,8 +138,8 @@ void GameSession::logRetryStats() {
     // strips info-level calls. Both managers are reported: a venue reading one
     // line to judge radio health would otherwise be shown the chain duel's
     // retries and told nothing about the tournament's.
-    if (chainDuelManager != nullptr) {
-        ChainDuelManager::RetryStats c = chainDuelManager->getRetryStats();
+    if (posseManager != nullptr) {
+        PosseManager::RetryStats c = posseManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
         LOG_W("STATS", "CDM s=%u r=%u ab=%u ack=%u/%lums",
               (unsigned)c.sends, (unsigned)c.retries, (unsigned)c.abandons,
@@ -155,38 +155,38 @@ void GameSession::logRetryStats() {
 
 void GameSession::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
     if (dataLen != sizeof(ChainGameEventPayload)) return;
-    if (!chainDuelManager) return;
+    if (!posseManager) return;
 
     const ChainGameEventPayload* payload = reinterpret_cast<const ChainGameEventPayload*>(data);
     // The frame is broadcast, so every chain in radio range hears it. The
-    // champion it names is the only thing that says whether it is ours.
-    if (!chainDuelManager->isEventFromOwnChampion(payload->championMac)) return;
+    // challenger it names is the only thing that says whether it is ours.
+    if (!posseManager->isEventFromOwnChallenger(payload->challengerMac)) return;
 
     // Ahead of the state dispatch and independent of it: a COUNTDOWN wipes the
-    // champion's roll call whether or not this device is watching for it, and a
+    // challenger's roll call whether or not this device is watching for it, and a
     // confirm still held here would then re-register a press for a round the
     // supporter has not answered.
-    chainDuelManager->onChainGameEventReceived(payload->event_type);
+    posseManager->onChainGameEventReceived(payload->event_type);
 
-    // Out-of-state events dropped silently; champion's retry machine bounds traffic cost.
+    // Out-of-state events dropped silently; challenger's retry machine bounds traffic cost.
     SupporterReady* supporterReady = getMountedSupporterReady();
     if (supporterReady != nullptr) {
         supporterReady->onChainGameEventReceived(payload->event_type, fromMac);
     }
 
     // ACK regardless of whether we were in SupporterReady. Not ACKing after
-    // leaving the state would let the champion keep retrying a WIN/LOSS we
+    // leaving the state would let the challenger keep retrying a WIN/LOSS we
     // already received and can't act on. seqId=0 is the sentinel for
     // fire-and-forget events (COUNTDOWN/DRAW) and must not be ACKed.
     if (payload->seqId != 0) {
-        chainDuelManager->sendGameEventAck(fromMac, payload->seqId);
+        posseManager->sendGameEventAck(fromMac, payload->seqId);
     }
 }
 
 void GameSession::onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainGameEventAckPayload) || !chainDuelManager) return;
+    if (dataLen != sizeof(ChainGameEventAckPayload) || !posseManager) return;
     const ChainGameEventAckPayload* payload = reinterpret_cast<const ChainGameEventAckPayload*>(data);
-    chainDuelManager->onChainGameEventAckReceived(fromMac, payload->seqId);
+    posseManager->onChainGameEventAckReceived(fromMac, payload->seqId);
 }
 
 namespace {

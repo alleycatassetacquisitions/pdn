@@ -2,16 +2,16 @@
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/hunter-win-animation.hpp"
 #include "device/animation/bounty-win-animation.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/posse-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/device.hpp"
 #include <cstdio>
 
 Win::Win(const GameContext& ctx)
-    : TypedState<PDN>(WIN) {
-    this->player = ctx.player;
-    this->chainDuelManager = ctx.chainDuelManager;
-    this->matchManager = ctx.matchManager;
+    : TypedState<PDN>(WIN)
+    , player(ctx.player)
+    , posseManager(ctx.posseManager)
+    , matchManager(ctx.matchManager) {
 }
 
 Win::~Win() {
@@ -20,8 +20,8 @@ Win::~Win() {
 }
 
 void Win::onStateMounted(PDN* pdn) {
-    // Propagate the outcome to the supporter chain (no-op for non-champion).
-    chainDuelManager->sendGameEventToSupporters(ChainGameEventType::WIN);
+    // Propagate the outcome to the supporter chain (no-op for non-challenger).
+    posseManager->sendGameEventToSupporters(ChainGameEventType::WIN);
 
     pdn->getHaptics()->setIntensity(VIBRATION_OFF);
 
@@ -41,7 +41,7 @@ void Win::onStateMounted(PDN* pdn) {
             pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                 ->drawText(myLine, 2, 12);
             if (d.boostMs > 0) {
-                unsigned long boosts = d.boostMs / ChainDuelManager::BOOST_PER_SUPPORTER_MS;
+                unsigned long boosts = d.boostMs / PosseManager::BOOST_PER_SUPPORTER_MS;
                 snprintf(boostLine, sizeof(boostLine), "Boost: %lu", boosts);
                 pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                     ->drawText(boostLine, 2, 28);
