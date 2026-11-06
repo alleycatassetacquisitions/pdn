@@ -5,7 +5,7 @@
 
 #include "alleycat-protobuf-test-helpers.hpp"
 #include "apps/player-fetch/player-fetch-states.hpp"
-#include "device-player-decoder-tests.hpp"
+#include "device-player-codec-tests.hpp"
 #include "utility-tests.hpp"
 #include "game/player-provider.hpp"
 

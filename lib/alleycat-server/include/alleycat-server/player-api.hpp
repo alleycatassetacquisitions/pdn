@@ -3,7 +3,7 @@
 #include <functional>
 #include <string>
 
-#include "alleycat-server/device-player-decoder.hpp"
+#include "alleycat-server/device-player-codec.hpp"
 #include "device/wireless-manager.hpp"
 #include "game/player-types.hpp"
 #include "wireless/wireless-types.hpp"
@@ -22,7 +22,7 @@ inline void getDevicePlayerByPin(WirelessManager* wirelessManager, const std::st
     HttpRequest request(
     GET_DEVICE_PLAYERS_ENDPOINT + pin, "GET", "", "",
     [onSuccess, onError, player](const std::string& response) {
-        if (player != nullptr && DevicePlayerDecoder::decode(response, *player)) {
+        if (player != nullptr && DevicePlayerCodec::decode(response, *player)) {
             onSuccess(*player);
         } else {
             onError({WirelessError::INVALID_RESPONSE, "Failed to decode device player response"});

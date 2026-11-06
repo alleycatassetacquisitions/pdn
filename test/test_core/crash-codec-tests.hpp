@@ -4,7 +4,7 @@
 #include <cstring>
 #include <pb_decode.h>
 
-#include "alleycat-server/crash-encoder.hpp"
+#include "alleycat-server/crash-codec.hpp"
 #include "alleycat-server/device_api.pb.h"
 #include "device/crash/crash-record.hpp"
 
@@ -29,18 +29,18 @@ inline alleycat_device_WriteDeviceLogRequest decodeBytes(const uint8_t* buf, siz
     return msg;
 }
 
-class CrashEncoderTestSuite : public testing::Test {
+class CrashCodecTestSuite : public testing::Test {
 public:
     const uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    uint8_t buf[CrashEncoder::MAX_ENCODED_SIZE]{};
+    uint8_t buf[CrashCodec::MAX_ENCODED_SIZE]{};
 };
 
-inline void encoderRoundTripPopulatesAllFields(CrashEncoderTestSuite* suite) {
+inline void encoderRoundTripPopulatesAllFields(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
 
-    size_t len = CrashEncoder::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
+    size_t len = CrashCodec::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
     ASSERT_GT(len, 0u);
-    ASSERT_LE(len, CrashEncoder::MAX_ENCODED_SIZE);
+    ASSERT_LE(len, CrashCodec::MAX_ENCODED_SIZE);
 
     alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
 
@@ -58,11 +58,11 @@ inline void encoderRoundTripPopulatesAllFields(CrashEncoderTestSuite* suite) {
     EXPECT_TRUE(msg.has_task_name);
 }
 
-inline void encoderOmitsUnsetOptionalFields(CrashEncoderTestSuite* suite) {
+inline void encoderOmitsUnsetOptionalFields(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
     rec.coreDumpDetails.reset();
 
-    size_t len = CrashEncoder::encode(rec, nullptr, suite->buf, sizeof(suite->buf));
+    size_t len = CrashCodec::encode(rec, nullptr, suite->buf, sizeof(suite->buf));
     ASSERT_GT(len, 0u);
 
     alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
@@ -73,20 +73,20 @@ inline void encoderOmitsUnsetOptionalFields(CrashEncoderTestSuite* suite) {
     EXPECT_FALSE(msg.has_task_name);
 }
 
-inline void encoderReturnZeroWhenBufferTooSmall(CrashEncoderTestSuite* suite) {
+inline void encoderReturnZeroWhenBufferTooSmall(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
     uint8_t tinyBuf[4]{};
 
-    size_t len = CrashEncoder::encode(rec, suite->mac, tinyBuf, sizeof(tinyBuf));
+    size_t len = CrashCodec::encode(rec, suite->mac, tinyBuf, sizeof(tinyBuf));
 
     EXPECT_EQ(len, 0u);
 }
 
-inline void encoderKeepsExceptionCauseZero(CrashEncoderTestSuite* suite) {
+inline void encoderKeepsExceptionCauseZero(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
     rec.coreDumpDetails->exceptionCause = 0;  // IllegalInstruction
 
-    size_t len = CrashEncoder::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
+    size_t len = CrashCodec::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
     ASSERT_GT(len, 0u);
 
     alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
@@ -96,11 +96,11 @@ inline void encoderKeepsExceptionCauseZero(CrashEncoderTestSuite* suite) {
     EXPECT_TRUE(msg.has_task_name);
 }
 
-inline void encoderOmitsMissingExceptionCause(CrashEncoderTestSuite* suite) {
+inline void encoderOmitsMissingExceptionCause(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
     rec.coreDumpDetails->exceptionCause.reset();
 
-    size_t len = CrashEncoder::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
+    size_t len = CrashCodec::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
     ASSERT_GT(len, 0u);
 
     alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);

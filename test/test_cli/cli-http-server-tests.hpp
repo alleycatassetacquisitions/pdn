@@ -7,7 +7,7 @@
 #include <gtest/gtest.h>
 #include <cstring>
 #include "cli/cli-http-server.hpp"
-#include "alleycat-server/crash-encoder.hpp"
+#include "alleycat-server/crash-codec.hpp"
 #include "device/crash/crash-record.hpp"
 #include "device/drivers/native/native-http-client-driver.hpp"
 #include "utils/uuid-bytes.hpp"
@@ -260,8 +260,8 @@ void httpClientUploadsEncodedCrashLog(NativeHttpClientDriverTestSuite* suite) {
     strncpy(rec.commitHash, "testhash", COMMIT_HASH_LENGTH - 1);
 
     const uint8_t mac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    uint8_t buf[CrashEncoder::MAX_ENCODED_SIZE];
-    const size_t len = CrashEncoder::encode(rec, mac, buf, sizeof(buf));
+    uint8_t buf[CrashCodec::MAX_ENCODED_SIZE];
+    const size_t len = CrashCodec::encode(rec, mac, buf, sizeof(buf));
     ASSERT_GT(len, 0u);
 
     HttpRequest request(

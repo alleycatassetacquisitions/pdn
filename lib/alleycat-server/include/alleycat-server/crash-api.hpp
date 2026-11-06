@@ -1,6 +1,6 @@
 #pragma once
 
-#include "alleycat-server/crash-encoder.hpp"
+#include "alleycat-server/crash-codec.hpp"
 #include "device/wireless-manager.hpp"
 #include "device/crash/crash-record.hpp"
 #include "wireless/wireless-types.hpp"
@@ -28,8 +28,8 @@ inline void uploadCrash(
     const uint8_t* deviceMac,
     const std::function<void(const std::string&)>& onSuccess,
     const std::function<void(const WirelessErrorInfo&)>& onError) {
-    uint8_t buf[CrashEncoder::MAX_ENCODED_SIZE];
-    const size_t len = CrashEncoder::encode(record, deviceMac, buf, sizeof(buf));
+    uint8_t buf[CrashCodec::MAX_ENCODED_SIZE];
+    const size_t len = CrashCodec::encode(record, deviceMac, buf, sizeof(buf));
 
     if (len == 0) {
         onError({WirelessError::INVALID_STATE, "protobuf encode failed"});

@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "alleycat-protobuf-test-helpers.hpp"
-#include "alleycat-server/device-player-decoder.hpp"
+#include "alleycat-server/device-player-codec.hpp"
 #include "alleycat-server/player-api.hpp"
 #include "game/player.hpp"
 #include "game/player-types.hpp"
@@ -36,48 +36,43 @@ inline std::string encodeTestPlayer(const std::string& id, const std::string& na
     return body;
 }
 
-inline void appendTestTeam(std::string& body, const std::string& teamId, const std::string& teamName) {
+inline void appendTestTeam(std::string& body, const std::string& teamId,
+                           const std::string& teamName) {
     appendTestBytesField(body, alleycat_device_DevicePlayerResponse_team_id_tag, teamId);
     appendTestBytesField(body, alleycat_device_DevicePlayerResponse_team_name_tag, teamName);
 }
 
-inline void appendTestAffiliation(std::string& body,
-                                  const std::string& categoryId,
-                                  const std::string& categoryName,
-                                  const std::string& affiliationId,
+inline void appendTestAffiliation(std::string& body, const std::string& categoryId,
+                                  const std::string& categoryName, const std::string& affiliationId,
                                   const std::string& affiliationName) {
     std::string affiliation;
-    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_category_id_tag, categoryId);
-    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_category_name_tag, categoryName);
-    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_affiliation_id_tag, affiliationId);
-    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_affiliation_name_tag, affiliationName);
+    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_category_id_tag,
+                         categoryId);
+    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_category_name_tag,
+                         categoryName);
+    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_affiliation_id_tag,
+                         affiliationId);
+    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_affiliation_name_tag,
+                         affiliationName);
     appendTestBytesField(body, alleycat_device_DevicePlayerResponse_affiliations_tag, affiliation);
 }
 
 inline void appendTestAffiliationNamed(std::string& body, const std::string& affiliationName) {
-    appendTestAffiliation(body,
-                          uuidWireBytes(TEST_CATEGORY_ID),
-                          "Category",
-                          uuidWireBytes(TEST_AFFILIATION_ID),
-                          affiliationName);
+    appendTestAffiliation(body, uuidWireBytes(TEST_CATEGORY_ID), "Category",
+                          uuidWireBytes(TEST_AFFILIATION_ID), affiliationName);
 }
 
 inline void devicePlayerDecodesTeamAndAffiliations() {
     std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
     appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Night Shift");
-    appendTestAffiliation(body,
-                          uuidWireBytes("c1c1c1c1-0000-4000-8000-000000000001"),
-                          "Allegiance",
+    appendTestAffiliation(body, uuidWireBytes("c1c1c1c1-0000-4000-8000-000000000001"), "Allegiance",
                           uuidWireBytes("a1a1a1a1-0000-4000-8000-000000000001"),
                           "Helix Industries");
-    appendTestAffiliation(body,
-                          uuidWireBytes("c2c2c2c2-0000-4000-8000-000000000002"),
-                          "Faction",
-                          uuidWireBytes("a2a2a2a2-0000-4000-8000-000000000002"),
-                          "Runners");
+    appendTestAffiliation(body, uuidWireBytes("c2c2c2c2-0000-4000-8000-000000000002"), "Faction",
+                          uuidWireBytes("a2a2a2a2-0000-4000-8000-000000000002"), "Runners");
 
     Player player;
-    ASSERT_TRUE(DevicePlayerDecoder::decode(body, player));
+    ASSERT_TRUE(DevicePlayerCodec::decode(body, player));
 
     EXPECT_EQ(player.getServerPlayerId(), makeTestUuid(TEST_PLAYER_ID));
     EXPECT_STREQ(player.getServerPlayerName(), "Alex");
@@ -101,7 +96,8 @@ inline void devicePlayerDecodesTeamAndAffiliations() {
 
 inline void devicePlayerDecodesUnassignedPlayer() {
     Player player;
-    ASSERT_TRUE(DevicePlayerDecoder::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"), player));
+    ASSERT_TRUE(
+    DevicePlayerCodec::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"), player));
 
     EXPECT_FALSE(player.hasTeam());
     EXPECT_STREQ(player.getRegistrationTeam().name, "");
@@ -112,7 +108,8 @@ inline void devicePlayerDecodesMaximumLengthName() {
     const std::string name(TEST_DISPLAY_NAME_LENGTH, 'x');
 
     Player player;
-    ASSERT_TRUE(DevicePlayerDecoder::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), name), player));
+    ASSERT_TRUE(
+    DevicePlayerCodec::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), name), player));
 
     EXPECT_EQ(std::string(player.getServerPlayerName()), name);
 }
@@ -122,14 +119,11 @@ inline void devicePlayerTruncatesLongDisplayNames() {
     const std::string displayName(TEST_DISPLAY_NAME_LENGTH, 'n');
     std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), longName);
     appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), longName);
-    appendTestAffiliation(body,
-                          uuidWireBytes(TEST_CATEGORY_ID),
-                          longName,
-                          uuidWireBytes(TEST_AFFILIATION_ID),
-                          longName);
+    appendTestAffiliation(body, uuidWireBytes(TEST_CATEGORY_ID), longName,
+                          uuidWireBytes(TEST_AFFILIATION_ID), longName);
 
     Player player;
-    ASSERT_TRUE(DevicePlayerDecoder::decode(body, player));
+    ASSERT_TRUE(DevicePlayerCodec::decode(body, player));
 
     EXPECT_EQ(std::string(player.getServerPlayerName()), displayName);
     EXPECT_EQ(std::string(player.getRegistrationTeam().name), displayName);
@@ -143,7 +137,8 @@ inline void devicePlayerTruncatesLongDisplayNames() {
 
 inline void devicePlayerDecodesAbsentName() {
     Player player;
-    ASSERT_TRUE(DevicePlayerDecoder::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), ""), player));
+    ASSERT_TRUE(
+    DevicePlayerCodec::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), ""), player));
 
     EXPECT_STREQ(player.getServerPlayerName(), "");
 }
@@ -155,7 +150,7 @@ inline void devicePlayerDecodesMaximumAffiliations() {
     }
 
     Player player;
-    ASSERT_TRUE(DevicePlayerDecoder::decode(body, player));
+    ASSERT_TRUE(DevicePlayerCodec::decode(body, player));
 
     EXPECT_EQ(player.getRegistrationAffiliations().size(), PlayerLimits::MAX_AFFILIATIONS);
 }
@@ -170,7 +165,7 @@ inline void devicePlayerDropsAffiliationsPastLimit() {
     appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Night Shift");
 
     Player player;
-    ASSERT_TRUE(DevicePlayerDecoder::decode(body, player));
+    ASSERT_TRUE(DevicePlayerCodec::decode(body, player));
 
     ASSERT_EQ(player.getRegistrationAffiliations().size(), PlayerLimits::MAX_AFFILIATIONS);
     EXPECT_STREQ(player.getRegistrationAffiliations()[0].affiliationName, "First");
@@ -189,16 +184,17 @@ inline void devicePlayerRejectsWrongLengthUuids() {
     appendTestTeam(badTeamId, longId, "Night Shift");
 
     std::string badAffiliationId = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
-    appendTestAffiliation(badAffiliationId, uuidWireBytes(TEST_CATEGORY_ID), "Category", textId, "Affiliation");
+    appendTestAffiliation(badAffiliationId, uuidWireBytes(TEST_CATEGORY_ID), "Category", textId,
+                          "Affiliation");
 
     Player player;
     ASSERT_TRUE(
-    DevicePlayerDecoder::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"), player));
+    DevicePlayerCodec::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"), player));
     const UUIDBytes idBefore = player.getServerPlayerId();
     const size_t affiliationCountBefore = player.getRegistrationAffiliations().size();
-    EXPECT_FALSE(DevicePlayerDecoder::decode(encodeTestPlayer(shortId, "Alex"), player));
-    EXPECT_FALSE(DevicePlayerDecoder::decode(badTeamId, player));
-    EXPECT_FALSE(DevicePlayerDecoder::decode(badAffiliationId, player));
+    EXPECT_FALSE(DevicePlayerCodec::decode(encodeTestPlayer(shortId, "Alex"), player));
+    EXPECT_FALSE(DevicePlayerCodec::decode(badTeamId, player));
+    EXPECT_FALSE(DevicePlayerCodec::decode(badAffiliationId, player));
     EXPECT_EQ(player.getServerPlayerId(), idBefore)
     << "a failed decode must leave the player untouched";
     EXPECT_EQ(player.getRegistrationAffiliations().size(), affiliationCountBefore);
@@ -210,20 +206,23 @@ inline void devicePlayerRejectsMissingRequiredUuids() {
 
     std::string missingCategoryId = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
     std::string affiliation;
-    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_category_name_tag, "Category");
-    appendTestBytesField(
-        affiliation, alleycat_device_DevicePlayerAffiliation_affiliation_id_tag, uuidWireBytes(TEST_AFFILIATION_ID));
-    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_affiliation_name_tag, "Affiliation");
-    appendTestBytesField(missingCategoryId, alleycat_device_DevicePlayerResponse_affiliations_tag, affiliation);
+    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_category_name_tag,
+                         "Category");
+    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_affiliation_id_tag,
+                         uuidWireBytes(TEST_AFFILIATION_ID));
+    appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_affiliation_name_tag,
+                         "Affiliation");
+    appendTestBytesField(missingCategoryId, alleycat_device_DevicePlayerResponse_affiliations_tag,
+                         affiliation);
 
     Player player;
-    EXPECT_FALSE(DevicePlayerDecoder::decode(missingPlayerId, player));
-    EXPECT_FALSE(DevicePlayerDecoder::decode(missingCategoryId, player));
+    EXPECT_FALSE(DevicePlayerCodec::decode(missingPlayerId, player));
+    EXPECT_FALSE(DevicePlayerCodec::decode(missingCategoryId, player));
 }
 
 inline void devicePlayerRejectsGarbageBody() {
     Player player;
-    EXPECT_FALSE(DevicePlayerDecoder::decode("not a protobuf", player));
+    EXPECT_FALSE(DevicePlayerCodec::decode("not a protobuf", player));
 }
 
 inline void playerApiQueuesDevicePlayerLookup(AlleycatApiTestSuite* suite) {
