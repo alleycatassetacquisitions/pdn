@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
-"""Style checks on the staged diff, run by hooks/pre-commit.
+"""Style checks on a diff, run by hooks/pre-commit.
 
 Uses clang-format, clang-tidy and a compile_commands.json at the repo root
 (`pio run -e native_cli -t compiledb`) when they are there. On Windows,
 native_cli usually builds with MSYS MinGW g++; LLVM clang-tidy then needs that toolchain's system
 include paths (injected automatically — see clang_tidy_driver_extras). Line
-rules and clang-format apply to the lines added in the staged diff;
-clang-tidy runs on the translation units behind the staged files, with its
-diagnostics restricted to those same lines.
+rules and clang-format apply to the lines added in the diff; clang-tidy runs on
+the translation units behind the changed files, with its diagnostics restricted
+to those same lines.
+The diff is the staged index by default. `--base <ref>` reads `<ref>...HEAD`
+instead, which is what CI needs: a checkout stages nothing, so the default would
+find no files and pass without checking anything.
 Findings are advisory by default: the script reports and exits 0, so a missing
-tool or a compile database from another checkout costs you the checks it feeds
-rather than the commit. `--strict`, or CHECK_STYLE_STRICT in the environment,
-exits 1 on a finding instead — for CI, where the toolchain is installed
-deliberately and a finding is worth failing on.
+tool or an unusable compile database costs you the checks it feeds rather than
+the commit. `--strict`, or CHECK_STYLE_STRICT in the environment,
+exits 1 on a finding, skipped check, or tooling error — for CI, where the
+toolchain is installed deliberately and a finding is worth failing on.
 A legacy violation elsewhere in a touched file is not reported at all
 (clang-format may still reflow the statement around an added line), so legacy
 gets fixed on touch rather than all at once. Exceptions: new and
 renamed files must be kebab-case, new headers need #pragma once, and the
 own-header rule fires whenever the include block is touched.
 """
+import argparse
 import difflib
 import json
 import os
@@ -33,12 +37,18 @@ GLOBS = ("*.cpp", "*.hpp")
 violations = []
 notices = []
 format_diffs = []
+# Tooling/DB skips that fail --strict (unlike notices for files without a TU).
+skipped_checks = []
+
+diff_revs = ["--cached"]
+content_rev = ""  # prefix for `git show <rev>:path`; "" means the index
 
 
 def git(*args):
     # Decoded leniently: one stray Latin-1 byte in a comment must surface as
     # a diagnosis, not a traceback.
-    return subprocess.run(["git", *args], capture_output=True,
+    # check=True so a bad --base ref raises instead of returning empty diff output.
+    return subprocess.run(["git", *args], capture_output=True, check=True,
                           encoding="utf-8", errors="replace").stdout
 
 
@@ -46,9 +56,9 @@ def flag(path, ln, msg):
     violations.append((path, ln, msg))
 
 
-def staged_files():
+def changed_files():
     """{new path: (status letter, old path)}; old differs only for renames."""
-    fields = git("diff", "--cached", "--name-status", "-z", "-M",
+    fields = git("diff", *diff_revs, "--name-status", "-z", "-M",
                  "--diff-filter=ACMR", "--", *GLOBS).split("\0")
     files, i = {}, 0
     while i < len(fields) and fields[i]:
@@ -63,13 +73,13 @@ def staged_files():
 
 
 def added_lines(path, old_path):
-    """(lineno, text) pairs for lines added in the staged diff of one file.
+    """(lineno, text) pairs for lines added in the diff of one file.
 
     Both rename sides are passed so -M still pairs them. Only hunk lines are
     read, never the file headers, so diff.noprefix, diff.mnemonicPrefix,
     color or quotePath settings in the user's git config cannot hide a file.
     """
-    out = git("diff", "--cached", "-U0", "-M", "--no-color", "--no-ext-diff",
+    out = git("diff", *diff_revs, "-U0", "-M", "--no-color", "--no-ext-diff",
               "--", *sorted({path, old_path}))
     added, ln, in_hunk = [], 0, False
     for raw in out.split("\n"):
@@ -82,8 +92,8 @@ def added_lines(path, old_path):
     return added
 
 
-def staged_content(path):
-    return git("show", f":{path}")
+def file_content(path):
+    return git("show", f"{content_rev}:{path}")
 
 
 def ranges_of(added):
@@ -305,7 +315,7 @@ def check_added_lines(path, added, stripped):
 
 
 def check_format(path, content, added):
-    """A difference is reported as a unified diff against the staged content."""
+    """A difference is reported as a unified diff against the checked content."""
     ranges = ranges_of(added)
     if not ranges:
         return
@@ -323,16 +333,7 @@ def check_format(path, content, added):
             f"a/{path}", f"b/{path}")))
         flag(path, ranges[0][0],
              "clang-format: reformat the lines in the diff above"
-             " (e.g. `git clang-format --staged`, then re-add)")
-
-
-def read_compiledb(repo_root):
-    """compile_commands.json entries, or None when the file is absent."""
-    db_path = os.path.join(repo_root, "compile_commands.json")
-    if not os.path.exists(db_path):
-        return None
-    with open(db_path, encoding="utf-8") as f:
-        return json.load(f)
+             " (`git clang-format` on the range, or --staged then re-add)")
 
 
 def tu_path_in_repo(entry, repo_root):
@@ -342,26 +343,37 @@ def tu_path_in_repo(entry, repo_root):
 
 
 def load_compiledb(repo_root):
-    """Repo-relative TU paths from compile_commands.json, or None when absent.
-    A DB from another checkout would match no staged file and skip every TU
-    with a notice blaming the wrong cause, so it is rejected whole."""
-    entries = read_compiledb(repo_root)
-    if entries is None:
-        return None
-    paths = set()
+    """{repo-relative TU path: compile_commands entry}, or {} if unusable."""
+    db_path = os.path.join(repo_root, "compile_commands.json")
+    if not os.path.exists(db_path):
+        skipped_checks.append(f"compile_commands.json missing, clang-tidy "
+                              f"skipped; {COMPILEDB_HINT}")
+        return {}
+    try:
+        with open(db_path, encoding="utf-8") as f:
+            entries = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        skipped_checks.append(f"compile_commands.json is unreadable "
+                              f"({exc}), clang-tidy skipped; {COMPILEDB_HINT}")
+        return {}
+    db = {}
     for e in entries:
         rel = tu_path_in_repo(e, repo_root)
         if rel.startswith(".."):
-            notices.append("compile_commands.json was generated in another checkout "
-                           f"({e['directory']}), clang-tidy skipped; {COMPILEDB_HINT}")
-            return set()
-        paths.add(rel)
-    if not paths:
-        notices.append(f"compile_commands.json lists no units, clang-tidy skipped; {COMPILEDB_HINT}")
-    return paths
+            skipped_checks.append("compile_commands.json was generated in another "
+                                  f"checkout ({e['directory']}), clang-tidy "
+                                  f"skipped; {COMPILEDB_HINT}")
+            return {}
+        db[rel] = e
+    if not db:
+        skipped_checks.append(f"compile_commands.json lists no units, clang-tidy skipped; {COMPILEDB_HINT}")
+    return db
 
 
 MINGW_DRIVER = re.compile(r"^g(\+\+|cc)(-\d+)?\.exe$", re.I)
+INCLUDE_FLAG = re.compile(r'-I\s*"([^"]+)"|-I\s*(\S+)')
+BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+INCLUDE_DIRECTIVE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*"([^"]+)"', re.M)
 _mingw_system_includes_cache = {}
 
 
@@ -407,25 +419,13 @@ def mingw_system_include_paths(compiler_path):
     return paths
 
 
-def compile_command_for_tu(entries, repo_root, tu_path):
-    """Compile command entry for a repo-relative translation unit path."""
-    want = tu_path.replace("\\", "/")
-    for entry in entries:
-        if tu_path_in_repo(entry, repo_root) == want:
-            return entry
-    return None
-
-
-def clang_tidy_driver_extras(repo_root, targets):
+def clang_tidy_driver_extras(db, targets):
     """Extra clang-tidy flags so LLVM clang can parse MinGW compile commands."""
     if sys.platform != "win32" or not targets:
         return []
-    entries = read_compiledb(repo_root)
-    if not entries:
-        return []
     compilers = set()
     for tu in targets:
-        entry = compile_command_for_tu(entries, repo_root, tu)
+        entry = db.get(tu)
         if not entry:
             continue
         driver = compiler_from_compile_command(entry)
@@ -441,19 +441,44 @@ def clang_tidy_driver_extras(repo_root, targets):
     return extras
 
 
-def includes_header(tu, header):
+def include_search_dirs(db, repo_root):
+    """Repo-relative -I directories from compile_commands.json, in driver order."""
+    dirs = []
+    for entry in db.values():
+        if "arguments" in entry:
+            command = " ".join(entry["arguments"])
+        else:
+            command = entry.get("command", "")
+        for quoted, bare in INCLUDE_FLAG.findall(command):
+            raw = quoted or bare
+            rel = os.path.relpath(os.path.join(entry["directory"], raw),
+                                  repo_root).replace(os.sep, "/")
+            if rel not in dirs:
+                dirs.append(rel)
+    return dirs
+
+
+def resolve_include(tu, text, search_dirs):
+    """Repo-relative path resolved for `#include "text"` from `tu` (tu's dir, then search_dirs), or None."""
+    for directory in (os.path.dirname(tu), *search_dirs):
+        candidate = os.path.normpath(os.path.join(directory, text))
+        if os.path.isfile(candidate):
+            return candidate.replace(os.sep, "/")
+    return None
+
+
+def includes_header(tu, header, search_dirs):
     # The DB can name a TU moved or deleted since the last build.
     if not os.path.isfile(tu):
         return False
     with open(tu, encoding="utf-8", errors="replace") as f:
-        for m in re.finditer(r'#include\s*"([^"]+)"', f.read()):
-            if header == m.group(1) or header.endswith("/" + m.group(1)):
-                return True
-    return False
+        text = BLOCK_COMMENT.sub("", f.read())
+        return any(resolve_include(tu, inc, search_dirs) == header
+                   for inc in INCLUDE_DIRECTIVE.findall(text))
 
 
-def tidy_targets(files, db):
-    """Staged .cpp present in the DB, plus one TU per staged .hpp: the
+def tidy_targets(files, db, search_dirs):
+    """Changed .cpp present in the DB, plus one TU per changed .hpp: the
     same-stem TU that includes it, else the first TU that does. Files with
     neither are reported, not tidied."""
     targets, skipped = set(), []
@@ -462,7 +487,7 @@ def tidy_targets(files, db):
             (targets.add if path in db else skipped.append)(path)
             continue
         stem = os.path.basename(path)[:-4] + ".cpp"
-        including = [t for t in sorted(db) if includes_header(t, path)]
+        including = [t for t in sorted(db) if includes_header(t, path, search_dirs)]
         same = [t for t in including if os.path.basename(t) == stem]
         chosen = same or including[:1]
         if chosen:
@@ -473,20 +498,17 @@ def tidy_targets(files, db):
 
 
 def run_scoped_tidy(files, added_by_path, repo_root):
-    """--line-filter drops check findings outside the staged added lines;
+    """--line-filter drops check findings outside the added lines;
     compiler errors are not filtered, so a TU that fails to parse is reported
     whole."""
     db = load_compiledb(repo_root)
-    if db is None:
-        notices.append(f"compile_commands.json missing, clang-tidy skipped; {COMPILEDB_HINT}")
-        return
     if not db:
         return
     line_filter = [{"name": path, "lines": ranges_of(added)}
                    for path, added in added_by_path.items() if added]
     if not line_filter:
         return
-    targets, skipped = tidy_targets(files, db)
+    targets, skipped = tidy_targets(files, db, include_search_dirs(db, repo_root))
     if skipped:
         # Expected for test/, FDN, ESP32-only and header-only files: the
         # native_cli database never has a unit that includes them.
@@ -494,48 +516,52 @@ def run_scoped_tidy(files, added_by_path, repo_root):
                        + ", ".join(skipped))
     if not targets:
         return
-    check_unstaged_edits(files)
+    check_uncommitted_edits(files)
     tidy_cmd = [
         "clang-tidy", "-p", repo_root, "--quiet",
         f"--line-filter={json.dumps(line_filter)}",
-        *clang_tidy_driver_extras(repo_root, targets),
+        *clang_tidy_driver_extras(db, targets),
         *targets,
     ]
-    proc = subprocess.run(tidy_cmd, capture_output=True, text=True)
+    proc = subprocess.run(tidy_cmd, capture_output=True,
+                          encoding="utf-8", errors="replace")
     output = proc.stdout.strip() or (proc.stderr.strip() if proc.returncode else "")
     if output:
         print(output)
     if proc.returncode != 0:
-        flag(targets[0], 1, "clang-tidy diagnostics above")
+        violations.append((None, None, "clang-tidy reported the diagnostics above"))
 
 
-def check_unstaged_edits(files):
-    """clang-tidy reads the working tree while every other check reads the
-    index; a staged file with further unstaged edits would be judged on the
-    wrong content."""
-    dirty = git("diff", "--name-only", "-z", "--", *files).split("\0")
+def check_uncommitted_edits(files):
+    """clang-tidy reads the working tree while other checks read git (index or HEAD), so uncommitted edits skew results."""
+    revs = [content_rev] if content_rev else []
+    dirty = git("diff", "--name-only", "-z", *revs, "--", *files).split("\0")
     for path in dirty:
         if path in files:
-            flag(path, 1, "has unstaged changes; stage or stash them so clang-tidy sees the staged content")
+            flag(path, 1, "has uncommitted changes, so clang-tidy judged it on different content than the other checks; commit or stash them")
 
 
 def run_checks(strict):
     repo_root = git("rev-parse", "--show-toplevel").strip()
     os.chdir(repo_root)
     # During a merge the index vs HEAD shows the whole incoming side as added.
-    if os.path.exists(git("rev-parse", "--git-path", "MERGE_HEAD").strip()):
+    if not content_rev and os.path.exists(
+            git("rev-parse", "--git-path", "MERGE_HEAD").strip()):
+        print("check_style: merge in progress, checks skipped")
         return
-    files = staged_files()
+    files = changed_files()
+    if content_rev:
+        print(f"check_style: {len(files)} file(s) in range")
     if not files:
         return
     have_format = shutil.which("clang-format") is not None
     have_tidy = shutil.which("clang-tidy") is not None
     for tool, present in (("clang-format", have_format), ("clang-tidy", have_tidy)):
         if not present:
-            notices.append(f"{tool} not found on PATH, its checks skipped; install LLVM/clang tools")
+            skipped_checks.append(f"{tool} not found on PATH, its checks skipped; install LLVM/clang tools")
     added_by_path = {}
     for path, (status, old_path) in files.items():
-        content = staged_content(path)
+        content = file_content(path)
         added = added_lines(path, old_path)
         added_by_path[path] = added
         if status in "ACR":
@@ -549,24 +575,43 @@ def run_checks(strict):
         run_scoped_tidy(files, added_by_path, repo_root)
     for d in format_diffs:
         print(d, end="" if d.endswith("\n") else "\n")
-    for path, ln, msg in sorted(violations):
-        print(f"{path}:{ln}: {msg}")
-    for n in notices:
+    for path, ln, msg in sorted(violations,
+                                key=lambda v: (v[0] is None, v[0] or "", v[1] or 0)):
+        print(f"{path}:{ln}: {msg}" if path else f"check_style: {msg}")
+    for n in notices + skipped_checks:
         print(n)
     if violations and not strict:
         print("check_style: findings above are advisory, the commit is not blocked")
 
 
+def parse_args(argv):
+    ap = argparse.ArgumentParser(
+        prog="check_style.py", description="Style checks on a diff.",
+        allow_abbrev=False)
+    ap.add_argument("--base", metavar="REF",
+                    help="check REF...HEAD instead of the staged index. In CI "
+                         "pass HEAD^1: on a pull_request the checked-out merge "
+                         "commit's first parent is the live base tip.")
+    ap.add_argument("--strict", action="store_true",
+                    help="exit 1 on a finding, or on a check that could not run")
+    return ap.parse_args(argv)
+
+
 def main():
-    strict = bool(os.environ.get("CHECK_STYLE_STRICT")) or "--strict" in sys.argv[1:]
+    global diff_revs, content_rev
+    args = parse_args(sys.argv[1:])
+    strict = args.strict or os.environ.get("CHECK_STYLE_STRICT", "") not in ("", "0")
+    if args.base is not None:
+        if not args.base.strip():
+            sys.exit("check_style: --base needs a ref, got an empty string")
+        diff_revs = [f"{args.base}...HEAD"]
+        content_rev = "HEAD"
     try:
         run_checks(strict)
     except Exception as exc:
-        # A fault in the tooling says nothing about the staged code, so it never
-        # ends the commit — not even under --strict.
         print(f"check_style: checks incomplete, {type(exc).__name__}: {exc}")
-        return 0
-    return 1 if (strict and violations) else 0
+        return 1 if strict else 0
+    return 1 if (strict and (violations or skipped_checks)) else 0
 
 
 if __name__ == "__main__":
