@@ -17,31 +17,31 @@
  * One serial jack on a UART peripheral.
  *
  * The three jacks below differ only in which UART and which role, so the behaviour
- * lives here once. exec() drains the port to whichever callback is set: raw bytes
+ * lives here once. exec() drains the jack to whichever callback is set: raw bytes
  * when one is registered, otherwise whole strings. peek() exists only because
  * HWSerialWrapper declares it.
  */
-class Esp32s3SerialPort : public SerialDriverInterface {
+class Esp32s3SerialJack : public SerialDriverInterface {
 public:
     /**
-     * Binds this jack to a UART. The port is fixed per jack by the subclasses below.
+     * Binds this jack to a UART. The UART peripheral is fixed per jack by the subclasses below.
      */
-    Esp32s3SerialPort(const std::string& name, uart_port_t port, const char* logTag,
+    Esp32s3SerialJack(const std::string& name, uart_port_t uartPort, const char* logTag,
                       uint8_t txPin, uint8_t rxPin)
         : SerialDriverInterface(name)
-        , port(port)
+        , uartPort(uartPort)
         , logTag(logTag)
         , txPin(txPin)
         , rxPin(rxPin) {}
 
     /**
-     * Drops both callbacks and releases the UART so the port can be reopened.
+     * Drops both callbacks and releases the UART so the jack can be reopened.
      */
-    ~Esp32s3SerialPort() override {
+    ~Esp32s3SerialJack() override {
         stringCallback = nullptr;
         byteCallback = nullptr;
-        if (uart_is_driver_installed(port)) {
-            uart_driver_delete(port);
+        if (uart_is_driver_installed(uartPort)) {
+            uart_driver_delete(uartPort);
         }
     }
 
@@ -64,21 +64,22 @@ public:
 
         // 256-byte receive ring, no transmit ring: a write returns once its last
         // bytes are in the hardware FIFO.
-        if (uart_driver_install(port, RX_BUFFER_BYTES, 0, 0, nullptr, 0) != ESP_OK) {
+        if (uart_driver_install(uartPort, RX_BUFFER_BYTES, 0, 0, nullptr, 0) != ESP_OK) {
             LOG_E(logTag, "uart_driver_install failed");
             return -1;
         }
-        if (uart_param_config(port, &config) != ESP_OK) {
+        if (uart_param_config(uartPort, &config) != ESP_OK) {
             LOG_E(logTag, "uart_param_config failed");
             return -1;
         }
-        if (uart_set_pin(port, txPin, rxPin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE) != ESP_OK) {
+        if (uart_set_pin(uartPort, txPin, rxPin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE) !=
+            ESP_OK) {
             LOG_E(logTag, "uart_set_pin failed");
             return -1;
         }
-        // The jack drives an inverted line, so without this the port reads
+        // The jack drives an inverted line, so without this the UART reads
         // nothing but noise.
-        if (uart_set_line_inverse(port, UART_SIGNAL_TXD_INV | UART_SIGNAL_RXD_INV) != ESP_OK) {
+        if (uart_set_line_inverse(uartPort, UART_SIGNAL_TXD_INV | UART_SIGNAL_RXD_INV) != ESP_OK) {
             LOG_E(logTag, "uart_set_line_inverse failed");
             return -1;
         }
@@ -86,7 +87,7 @@ public:
     }
 
     /**
-     * Drains the port: each byte to the byte callback when one is set, otherwise
+     * Drains the jack: each byte to the byte callback when one is set, otherwise
      * whole frames to the string callback, one per STRING_START seen.
      */
     void exec() override {
@@ -110,7 +111,7 @@ public:
 
     /** Free space in the transmit FIFO; there is no transmit ring buffer. */
     int availableForWrite() override {
-        return static_cast<int>(uart_ll_get_txfifo_len(UART_LL_GET_HW(port)));
+        return static_cast<int>(uart_ll_get_txfifo_len(UART_LL_GET_HW(uartPort)));
     }
 
     /**
@@ -118,7 +119,7 @@ public:
      */
     int available() override {
         size_t buffered = 0;
-        uart_get_buffered_data_len(port, &buffered);
+        uart_get_buffered_data_len(uartPort, &buffered);
         return static_cast<int>(buffered) + (peeked >= 0 ? 1 : 0);
     }
 
@@ -157,22 +158,20 @@ public:
         return result;
     }
 
-    void print(char msg) override {
-        uart_write_bytes(port, &msg, 1);
-    }
+    /** Writes a single byte to the UART. */
+    void print(char msg) override { uart_write_bytes(uartPort, &msg, 1); }
 
     void println(char* msg) override {
         println(std::string(msg));
     }
 
     void println(const std::string& msg) override {
-        uart_write_bytes(port, msg.data(), msg.size());
-        uart_write_bytes(port, "\r\n", 2);
+        uart_write_bytes(uartPort, msg.data(), msg.size());
+        uart_write_bytes(uartPort, "\r\n", 2);
     }
 
-    void flush() override {
-        uart_wait_tx_done(port, portMAX_DELAY);
-    }
+    /** Blocks until the UART transmit FIFO drains. */
+    void flush() override { uart_wait_tx_done(uartPort, portMAX_DELAY); }
 
     void setStringCallback(const SerialStringCallback& callback) override {
         stringCallback = callback;
@@ -186,7 +185,7 @@ public:
 private:
     int readByte(uint32_t timeoutMs) {
         uint8_t byte = 0;
-        int read = uart_read_bytes(port, &byte, 1, pdMS_TO_TICKS(timeoutMs));
+        int read = uart_read_bytes(uartPort, &byte, 1, pdMS_TO_TICKS(timeoutMs));
         return read == 1 ? byte : -1;
     }
 
@@ -202,7 +201,7 @@ private:
     static constexpr int RX_BUFFER_BYTES = 256;
     static constexpr uint32_t READ_TIMEOUT_MS = 100;
 
-    uart_port_t port;
+    uart_port_t uartPort;
     const char* logTag;
     SerialStringCallback stringCallback;
     SerialByteCallback byteCallback;
@@ -211,32 +210,32 @@ private:
     uint8_t rxPin;
 };
 
-class Esp32s3SerialOut : public Esp32s3SerialPort {
+class Esp32s3SerialOut : public Esp32s3SerialJack {
 public:
     /**
      * The output jack, on UART1.
      */
     explicit Esp32s3SerialOut(const std::string& name, uint8_t txPin, uint8_t rxPin)
-        : Esp32s3SerialPort(name, UART_NUM_1, "SERIAL1", txPin, rxPin) {}
+        : Esp32s3SerialJack(name, UART_NUM_1, "SERIAL1", txPin, rxPin) {}
 };
 
-class Esp32s3SerialIn : public Esp32s3SerialPort {
+class Esp32s3SerialIn : public Esp32s3SerialJack {
 public:
     /**
      * The input jack, on UART2.
      */
     explicit Esp32s3SerialIn(const std::string& name, uint8_t txPin, uint8_t rxPin)
-        : Esp32s3SerialPort(name, UART_NUM_2, "SERIAL2", txPin, rxPin) {}
+        : Esp32s3SerialJack(name, UART_NUM_2, "SERIAL2", txPin, rxPin) {}
 };
 
 // Secondary input jack — uses UART1, the same peripheral as SerialOut, only one
 // active at a time. FDN devices have two input jacks and no output jack, so
 // UART1 is available for a second input.
-class Esp32s3SerialInSecondary : public Esp32s3SerialPort {
+class Esp32s3SerialInSecondary : public Esp32s3SerialJack {
 public:
     /**
      * The FDN's second input jack, sharing UART1 with the output jack.
      */
     explicit Esp32s3SerialInSecondary(const std::string& name, uint8_t txPin, uint8_t rxPin)
-        : Esp32s3SerialPort(name, UART_NUM_1, "SERIAL1_SEC", txPin, rxPin) {}
+        : Esp32s3SerialJack(name, UART_NUM_1, "SERIAL1_SEC", txPin, rxPin) {}
 };

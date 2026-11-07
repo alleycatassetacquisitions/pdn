@@ -41,11 +41,11 @@ enum QuickdrawStateId {
     SLEEP = 6,
     AWAKEN_SEQUENCE = 7,
     IDLE = 8,
-    DUEL_COUNTDOWN = 13,
-    DUEL = 14,
-    DUEL_PUSHED = 15,
-    DUEL_RECEIVED_RESULT = 16,
-    DUEL_RESULT = 17,
+    MATCH_COUNTDOWN = 13,
+    MATCH = 14,
+    MATCH_PUSHED = 15,
+    MATCH_RECEIVED_RESULT = 16,
+    MATCH_RESULT = 17,
     WIN = 18,
     LOSE = 19,
     UPLOAD_MATCHES = 20,
@@ -106,7 +106,8 @@ public:
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    bool transitionToDuelCountdown();
+    /** True once MatchManager has initialized a match and countdown can begin. */
+    bool transitionToMatchCountdown();
     bool transitionToSupporterReady();
     void renderStats(PDN* pdn);
     bool transitionToSymbol();
@@ -166,29 +167,32 @@ private:
 };
 
 /**
- * A duel state returns to Idle on a persistent disconnect, but never while a
+ * A match state returns to Idle on a persistent disconnect, but never while a
  * tournament is live — the shootout's own ring-break/ABORT teardown owns that
  * path. The debounce ages on wall clock even when unsampled, so a run started
  * before the tournament went live would fire the instant the shootout ends;
  * reset it while active so a fresh full window is always required afterward.
  */
-inline bool duelReturnsToIdle(ConnectState<PDN>& duel, ShootoutManager* shootout) {
+inline bool matchReturnsToIdle(ConnectState<PDN>& matchState, ShootoutManager* shootout) {
     if (shootout && shootout->active()) {
-        duel.resetDisconnectDebounce();
+        matchState.resetDisconnectDebounce();
         return false;
     }
-    return duel.isPersistentlyDisconnected();
+    return matchState.isPersistentlyDisconnected();
 }
 
-class DuelCountdown : public ConnectState<PDN> {
+class MatchCountdown : public ConnectState<PDN> {
 public:
-    explicit DuelCountdown(const GameContext& ctx);
-    ~DuelCountdown();
+    /** Constructs the pre-match 3-2-1 countdown state. */
+    explicit MatchCountdown(const GameContext& ctx);
+    /** Destroys the countdown state. */
+    ~MatchCountdown() override;
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    bool shallWeBattle();
+    /** True once the countdown has reached BATTLE. */
+    bool shallWeBattle() const;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -215,7 +219,7 @@ private:
             } else if(step == CountdownStep::ONE) {
                 this->animationConfig.initialState = COUNTDOWN_ONE_STATE;
             } else if(step == CountdownStep::BATTLE) {
-                this->animationConfig.initialState = COUNTDOWN_DUEL_STATE;
+                this->animationConfig.initialState = COUNTDOWN_MATCH_STATE;
             }
         }
 
@@ -244,19 +248,26 @@ private:
 
 class ShootoutManager;
 
-class Duel : public ConnectState<PDN> {
+class MatchState : public ConnectState<PDN> {
 public:
-    explicit Duel(const GameContext& ctx);
-    ~Duel();
+    /** Constructs the active match draw-window state. */
+    explicit MatchState(const GameContext& ctx);
+    /** Destroys the active match state. */
+    ~MatchState() override;
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    bool transitionToIdle();
-    bool transitionToDuelPushed();
-    bool transitionToDuelReceivedResult();
-    bool transitionToShootoutSpectator();
-    bool transitionToShootoutEliminated();
+    /** True when the match timed out without a button press in standalone play. */
+    bool transitionToIdle() const;
+    /** True when the local player pressed the draw button during the active window. */
+    bool transitionToMatchPushed() const;
+    /** True when the remote peer's match result arrived before a local button press. */
+    bool transitionToMatchReceivedResult() const;
+    /** True when the active shootout match forfeits in this device's favor on timeout. */
+    bool transitionToShootoutSpectator() const;
+    /** True when the active shootout match forfeits against this device on timeout. */
+    bool transitionToShootoutEliminated() const;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -266,25 +277,27 @@ private:
     MatchManager* matchManager;
     PosseManager* posseManager;
     ShootoutManager* shootoutManager;
-    parameterizedCallbackFunction buttonPress;
-    bool transitionToDuelPushedState = false;
-    bool transitionToDuelReceivedResultState = false;
+    bool transitionToMatchPushedState = false;
+    bool transitionToMatchReceivedResultState = false;
     bool transitionToIdleState = false;
     bool transitionToShootoutSpectatorState = false;
     bool transitionToShootoutEliminatedState = false;
-    SimpleTimer duelTimer;
-    const int DUEL_TIMEOUT = 4000;
+    SimpleTimer matchTimer;
+    static constexpr int MATCH_TIMEOUT = 4000;
 };
 
-class DuelPushed : public ConnectState<PDN> {
+class MatchPushed : public ConnectState<PDN> {
 public:
-    explicit DuelPushed(const GameContext& ctx);
-    ~DuelPushed();
+    /** Constructs the post-press grace-period state. */
+    explicit MatchPushed(const GameContext& ctx);
+    /** Destroys the post-press grace-period state. */
+    ~MatchPushed() override;
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    bool transitionToDuelResult();
+    /** True once both results are present or the post-press grace period expires. */
+    bool transitionToMatchResult();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -293,34 +306,39 @@ private:
     Player* player;
     MatchManager* matchManager;
     SimpleTimer gracePeriodTimer;
-    const int DUEL_RESULT_GRACE_PERIOD = 900;
+    static constexpr int MATCH_RESULT_GRACE_PERIOD = 900;
 };
 
-class DuelReceivedResult : public ConnectState<PDN> {
+class MatchReceivedResult : public ConnectState<PDN> {
 public:
-    explicit DuelReceivedResult(const GameContext& ctx);
-    ~DuelReceivedResult();
+    /** Constructs the state waiting for a local counter-press after receiving peer result. */
+    explicit MatchReceivedResult(const GameContext& ctx);
+    /** Destroys the received-result grace-period state. */
+    ~MatchReceivedResult() override;
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    bool transitionToDuelResult();
+    /** True once the counter-press arrives or the grace period expires. */
+    bool transitionToMatchResult();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
 
 private:
     SimpleTimer buttonPushGraceTimer;
-    bool transitionToDuelResultState = false;
+    bool transitionToMatchResultState = false;
     const int BUTTON_PUSH_GRACE_PERIOD = 750;
     Player* player;
     MatchManager* matchManager;
 };
 
-class DuelResult : public TypedState<PDN> {
+class MatchResult : public TypedState<PDN> {
 public:
-    explicit DuelResult(const GameContext& ctx);
-    ~DuelResult();
+    /** Constructs the match outcome evaluation state. */
+    explicit MatchResult(const GameContext& ctx);
+    /** Destroys the match outcome evaluation state. */
+    ~MatchResult() override;
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -425,13 +443,14 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
 
-    bool transitionToDuelCountdown();
+    /** True when MATCH_START names this device as one of the two players. */
+    bool transitionToMatchCountdown() const;
     bool transitionToSpectator();
 
 private:
     ShootoutManager* shootoutManager = nullptr;
 
-    bool shouldGoToDuelCountdown_ = false;
+    bool shouldGoToMatchCountdown = false;
     bool shouldGoToSpectator_ = false;
 };
 
@@ -442,12 +461,13 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
 
-    bool transitionToDuelCountdown();
+    /** True when the next MATCH_START names this device as one of the two players. */
+    bool transitionToMatchCountdown() const;
     bool transitionToFinalStandings();
 
 private:
-    ShootoutManager* shootout_;
-    bool shouldGoToDuelCountdown_ = false;
+    ShootoutManager* shootout;
+    bool shouldGoToMatchCountdown = false;
     bool shouldGoToFinalStandings_ = false;
     std::array<uint8_t, 6> lastDisplayedA_{};
     std::array<uint8_t, 6> lastDisplayedB_{};

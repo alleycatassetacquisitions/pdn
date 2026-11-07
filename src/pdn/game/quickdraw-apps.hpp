@@ -12,7 +12,7 @@
  * The between-match app: Awaken -> Idle, Idle <-> SupporterReady, Sleep -> Awaken.
  * Every other app hands back here, and Idle declares every launch out of it.
  * Sleep has no inbound edge from within the hub — it is entered only by hand-off,
- * from the duel app's upload and from a finished tournament. Registration is its
+ * from the match app's upload and from a finished tournament. Registration is its
  * own top-level app, not a state in this one.
  */
 class HubApp : public StateMachine {
@@ -31,25 +31,25 @@ private:
 };
 
 /**
- * DuelCountdown -> Duel -> DuelPushed / DuelReceivedResult -> DuelResult ->
- * Win|Lose -> Upload. Entered at DuelCountdown from the hub's Idle for a 1v1,
+ * MatchCountdown -> MatchState -> MatchPushed / MatchReceivedResult -> MatchResult ->
+ * Win|Lose -> Upload. Entered at MatchCountdown from the hub's Idle for a 1v1,
  * and from the shootout's bracket reveal or spectator for a tournament match.
- * Leaves to the hub's Idle on an abandoned duel, to the hub's Sleep once the
+ * Leaves to the hub's Idle on an abandoned match, to the hub's Sleep once the
  * upload finishes, and to the shootout on abort or a bracket outcome.
  */
-class DuelApp : public StateMachine {
+class MatchApp : public StateMachine {
 public:
     /** Non-owning: the context's managers belong to the GameSession above it. */
-    explicit DuelApp(const GameContext& context);
+    explicit MatchApp(const GameContext& context);
 
     /**
-     * Allocates the duel states and wires every edge leaving one, cross-app
+     * Allocates the match states and wires every edge leaving one, cross-app
      * edges included, in the priority order checkTransitions walks.
      */
     void populateStateMap() override;
 
     /**
-     * Ends the match. Runs only when the device leaves the duel entirely, which
+     * Ends the match. Runs only when the device leaves the match app entirely, which
      * is what "the match is over" means — the states inside it hand the match to
      * each other and must not tear it down on the way.
      */
@@ -60,11 +60,11 @@ private:
 };
 
 /**
- * Proposal -> BracketReveal, which either hands off to a bracket duel or drops
+ * Proposal -> BracketReveal, which either hands off to a bracket match or drops
  * to Spectator; Spectator and Eliminated both end at FinalStandings. Eliminated
- * has no inbound edge here — the duel app hands into it. Aborted is the landing
+ * has no inbound edge here — the match app hands into it. Aborted is the landing
  * state ten sources are pulled into: the hub's Idle, the five interruptible
- * duel states, and four of the shootout states below.
+ * match states, and four of the shootout states below.
  */
 class ShootoutApp : public StateMachine {
 public:

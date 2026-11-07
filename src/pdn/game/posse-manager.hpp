@@ -147,7 +147,7 @@ private:
     std::optional<bool> peerIsHunter(SerialIdentifier jack) const;
 
     // Ceiling shared by the roll call and the supporter roster: the longest
-    // supporter chain a duel is built for. Both buffers hold one MAC per
+    // supporter chain a match is built for. Both buffers hold one MAC per
     // supporter, so one number bounds both.
     static constexpr size_t MAX_CHAIN_SUPPORTERS = 18;
     using MacSlots = std::array<std::array<uint8_t, 6>, MAX_CHAIN_SUPPORTERS>;
@@ -172,7 +172,7 @@ private:
     // its join lands, and an unplugged supporter stops counting, with nothing to
     // re-offer or evict on a topology event.
     //
-    // Fixed slots rather than a vector: packets append to this while a duel is
+    // Fixed slots rather than a vector: packets append to this while a match is
     // running and the press path scans it to price the shot, so it must not
     // allocate, and the overwrite contract above needs a hard ceiling to be
     // expressible at all.

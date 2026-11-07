@@ -7,7 +7,7 @@
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
-#include "wireless/duel-packet.hpp"
+#include "wireless/match-packet.hpp"
 #include "utils/simple-timer.hpp"
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
@@ -32,9 +32,9 @@ inline void matchManagerConcurrentDriverVsReader() {
 
     NativePeerCommsDriver driver("tsan-test-driver");
     driver.initialize();
-    driver.connect();
+    driver.enable();
 
-    // Declared before mm so wireless outlives mm's duelChannel destructor.
+    // Declared before mm so wireless outlives mm's matchChannel destructor.
     WirelessManager wireless(&driver, nullptr);
     MatchManager mm(&wireless);
     using ::testing::_;
@@ -57,16 +57,15 @@ inline void matchManagerConcurrentDriverVsReader() {
             char matchId[37] = {};
             snprintf(matchId, sizeof(matchId), "match-%08d", iter++);
 
-            DuelPacket pkt = {};
+            MatchPacket pkt = {};
             strncpy(pkt.matchId,  matchId, sizeof(pkt.matchId) - 1);
             strncpy(pkt.playerId, "hunt",  sizeof(pkt.playerId) - 1);
-            pkt.command = DuelCmd::SEND_MATCH_ID;
+            pkt.command = MatchCmd::SEND_MATCH_ID;
             pkt.isHunter       = true;
             pkt.playerDrawTime = 0;
 
-            driver.receivePacket(peerMac, PktType::kDuelCommand,
-                                 reinterpret_cast<const uint8_t*>(&pkt),
-                                 sizeof(pkt));
+            driver.receivePacket(peerMac, PktType::kMatchCommand,
+                                 reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     });
@@ -96,6 +95,6 @@ inline void matchManagerConcurrentDriverVsReader() {
     SimpleTimer::setPlatformClock(nullptr);
 
     EXPECT_TRUE(reachedTheManager)
-        << "no SEND_MATCH_ID reached MatchManager through the duel channel";
+    << "no SEND_MATCH_ID reached MatchManager through the match channel";
     SUCCEED() << "No TSan races expected: MatchManager is only accessed from exec() on the main thread";
 }

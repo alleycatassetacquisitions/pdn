@@ -3,28 +3,28 @@
 #include "game/match-manager.hpp"
 #include "device/drivers/logger.hpp"
 
-#define DUEL_RESULT_TAG "DUEL_RESULT"
+#define MATCH_RESULT_TAG "MATCH_RESULT"
 
-DuelResult::DuelResult(const GameContext& ctx)
-    : TypedState<PDN>(QuickdrawStateId::DUEL_RESULT) {
+MatchResult::MatchResult(const GameContext& ctx)
+    : TypedState<PDN>(QuickdrawStateId::MATCH_RESULT) {
     this->player = ctx.player;
     this->matchManager = ctx.matchManager;
     this->shootoutManager = ctx.shootoutManager;
 }
 
-DuelResult::~DuelResult() {
-    LOG_I(DUEL_RESULT_TAG, "Duel result state destroyed");
+MatchResult::~MatchResult() {
+    LOG_I(MATCH_RESULT_TAG, "Match result state destroyed");
     this->player = nullptr;
     this->matchManager = nullptr;
     this->shootoutManager = nullptr;
 }
 
-void DuelResult::onStateMounted(PDN* pdn) {
-    LOG_I(DUEL_RESULT_TAG, "Duel result state mounted");
+void MatchResult::onStateMounted(PDN* pdn) {
+    LOG_I(MATCH_RESULT_TAG, "Match result state mounted");
 
     player->incrementMatchesPlayed();
 
-    if(matchManager->didWin()) {
+    if (matchManager->didWin()) {
         wonBattle = true;
         player->incrementWins();
         player->incrementStreak();
@@ -41,16 +41,14 @@ void DuelResult::onStateMounted(PDN* pdn) {
     pdn->getDisplay()->invalidateScreen()->render();
 }
 
-void DuelResult::onStateLoop(PDN* pdn) {
+void MatchResult::onStateLoop(PDN* pdn) {
     // No loop processing needed for result state
 }
 
-void DuelResult::onStateDismounted(PDN* pdn) {
-    LOG_I(DUEL_RESULT_TAG, "Duel result state dismounted - Cleaning up");
-    
-    // Log state before reset
-    LOG_I(DUEL_RESULT_TAG, "State before reset - wonBattle: %d, captured: %d",
-             wonBattle, captured);
+void MatchResult::onStateDismounted(PDN* pdn) {
+    LOG_I(MATCH_RESULT_TAG, "Match result state dismounted - Cleaning up");
+    LOG_I(MATCH_RESULT_TAG, "State before reset - wonBattle: %d, captured: %d", wonBattle,
+          captured);
 
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
@@ -60,30 +58,30 @@ void DuelResult::onStateDismounted(PDN* pdn) {
     pdn->getLightManager()->stopAnimation();
 }
 
-bool DuelResult::transitionToWin() {
+bool MatchResult::transitionToWin() {
     if (shootoutManager && shootoutManager->active()) return false;
     if (wonBattle) {
-        LOG_I(DUEL_RESULT_TAG, "Transitioning to win state");
+        LOG_I(MATCH_RESULT_TAG, "Transitioning to win state");
     }
     return wonBattle;
 }
 
-bool DuelResult::transitionToLose() {
+bool MatchResult::transitionToLose() {
     if (shootoutManager && shootoutManager->active()) return false;
     if (captured) {
-        LOG_I(DUEL_RESULT_TAG, "Transitioning to lose state");
+        LOG_I(MATCH_RESULT_TAG, "Transitioning to lose state");
     }
     return captured;
 }
 
-bool DuelResult::transitionToShootoutSpectator() {
+bool MatchResult::transitionToShootoutSpectator() {
     if (!shootoutManager || !shootoutManager->active()) return false;
     if (!wonBattle) return false;
     shootoutManager->reportLocalWin();
     return true;
 }
 
-bool DuelResult::transitionToShootoutEliminated() {
+bool MatchResult::transitionToShootoutEliminated() {
     if (!shootoutManager || !shootoutManager->active()) return false;
     return !wonBattle;
 }

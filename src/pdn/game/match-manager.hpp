@@ -18,7 +18,7 @@
 #include "game/match.hpp"
 #include "game/player.hpp"
 #include "wireless/mac-functions.hpp"
-#include "wireless/duel-packet.hpp"
+#include "wireless/match-packet.hpp"
 #include "wireless/reliable-channel.hpp"
 #include "wireless/resender.hpp"
 #include "device/drivers/storage-interface.hpp"
@@ -35,7 +35,7 @@ struct LastMatchDisplay {
     bool hasData = false;
 };
 
-struct ActiveDuelState {
+struct ActiveMatchState {
     bool matchIsReady = false;
     // The draw slot for THIS match, which a shootout assigns from MAC
     // ordering rather than from the player's standing role.
@@ -44,7 +44,7 @@ struct ActiveDuelState {
     bool hasPressedButton = false;
     bool gracePeriodExpiredNoResult = false;
     bool opponentNeverPressed = false;
-    unsigned long duelLocalStartTime = 0;
+    unsigned long matchLocalStartTime = 0;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
     std::optional<Match> match;
@@ -57,39 +57,37 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    /** Claims the kDuelCommand channel on wirelessManager (may be nullptr in tests). */
+    /** Claims the kMatchCommand channel on wirelessManager (may be nullptr in tests). */
     explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
-    
 
-    /*
-     * Initializes a match and initiates ESP-NOW messaging to opponent.
-    */
+    /** Initializes a match and sends SEND_MATCH_ID to opponentMac. */
     void initializeMatch(uint8_t* opponentMac);
 
     /** Primes a match from an incoming SEND_MATCH_ID and replies with MATCH_ID_ACK. */
-    void receiveMatch(const char* matchId, const char* opponentId, bool isHunter, uint8_t* opponentMac);
+    void receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter,
+                      uint8_t* opponentMac);
 
     /**
      * Shootout mode: primes a match without the SEND_MATCH_ID handshake. Both
-     * duelists call this independently on MATCH_START with the same derived
+     * players call this independently on MATCH_START with the same derived
      * match ID and opposite `localIsHunter`, so each writes exactly one of the
      * match's two draw-time slots.
      */
     void initializeShootoutMatch(const char* matchId, uint8_t* opponentMac, bool localIsHunter);
 
-    bool isMatchReady();
+    /** True once the match handshake has completed and countdown may begin. */
+    bool isMatchReady() const;
 
-    /**
-     * Finalizes a match by saving it to storage and removing from active matches
-     * @return true if match was found and saved
-     */
+    /** Finalizes the active match (persisting non-shootout matches to storage) and clears active
+     * match state. */
     bool finalizeMatch();
 
     bool setHunterDrawTime(unsigned long hunter_time_ms);
     bool setBountyDrawTime(unsigned long bounty_time_ms);
 
-    void setDuelLocalStartTime(unsigned long local_start_time_ms);
+    /** Records the local timestamp when the match draw window starts. */
+    void setMatchLocalStartTime(unsigned long localStartTimeMs);
 
     bool didWin();
 
@@ -98,38 +96,32 @@ public:
      * only writer and sets it alongside the match; the whole-struct reset clears
      * both, so there is no slot without a match behind it.
      */
-    bool isLocalHunter() const { return activeDuelState.localIsHunter; }
+    bool isLocalHunter() const { return activeMatchState.localIsHunter; }
 
-    unsigned long getDuelLocalStartTime();
+    /** Timestamp when the match draw window started. */
+    unsigned long getMatchLocalStartTime() const;
 
     bool matchResultsAreIn();
 
-    bool getHasReceivedDrawResult();
-    bool getHasPressedButton();
+    /** True once the opponent's draw result has arrived for the active match. */
+    bool getHasReceivedDrawResult() const;
 
-    /**
-     * Gets the current active match if any
-     * @return Reference to the optional match
-     */
-    std::optional<Match>& getCurrentMatch() { return activeDuelState.match; }
+    /** True once the local player has pressed the draw button for the active match. */
+    bool getHasPressedButton() const;
 
-    /**
-     * Converts all stored matches to a JSON array string
-     * @return JSON string containing all stored matches
-     */
+    /** Returns the active match, or std::nullopt if none. */
+    std::optional<Match>& getCurrentMatch() { return activeMatchState.match; }
+
+    /** Serializes all stored matches to a JSON array string. */
     std::string toJson();
 
-    /**
-     * Clears all matches from storage
-     */
+    /** Clears all matches from storage. */
     void clearStorage();
 
-    /**
-     * Gets the number of stored matches
-     * @return Number of matches
-     */
+    /** Returns the number of stored matches. */
     size_t getStoredMatchCount();
 
+    /** Clears the active match and resets all per-match state flags. */
     void clearCurrentMatch();
 
     /**
@@ -152,21 +144,22 @@ public:
     void setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc);
 
     // Shootout tournament suppresses the hunter/bounty role-mismatch rejection
-    // so same-role duels in the bracket proceed. Injected by GameSession after
+    // so same-role matches in the bracket proceed. Injected by GameSession after
     // both managers are built.
     void setShootoutManager(ShootoutManager* shootoutManager);
     ShootoutManager* getShootoutManager() const;
 
-    /** Dispatches an inbound duel command (handshake or active-match event). */
-    void listenForMatchEvents(const DuelCommand& command);
+    /** Dispatches an inbound match command (handshake or active-match event). */
+    void listenForMatchEvents(const MatchCommand& command);
 
     /** Binds the player and storage this manager records matches against. */
     void initialize(Player* player, StorageInterface* storage);
 
-    /** Drives the duel channel's retries. */
+    /** Drives the match channel's retries. */
     void sync();
 
-    parameterizedCallbackFunction getDuelButtonPush();
+    /** Button callback that records a valid match draw press and sends DRAW_RESULT. */
+    parameterizedCallbackFunction getMatchButtonPush();
 
     parameterizedCallbackFunction getButtonMasher();
 
@@ -176,8 +169,8 @@ public:
     void setReceivedDrawResult();
     void setReceivedButtonPush();
     void setNeverPressed();
-    void setOpponentNeverPressed() { activeDuelState.opponentNeverPressed = true; }
-
+    /** Test-only helper that marks the opponent as never having pressed. */
+    void setOpponentNeverPressed() { activeMatchState.opponentNeverPressed = true; }
 
 private:
     /** True when the active match carries a shootout-derived match id. */
@@ -189,15 +182,15 @@ private:
     RemoteDeviceCoordinator* rdc_ = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
 
-    ActiveDuelState activeDuelState;
+    ActiveMatchState activeMatchState;
     LastMatchDisplay lastMatchDisplay;
 
-    parameterizedCallbackFunction duelButtonPush;
+    parameterizedCallbackFunction matchButtonPush;
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
     Resender resender;
-    ReliableChannel<DuelPacket> duelChannel;
+    ReliableChannel<MatchPacket> matchChannel;
     void sendCommand(const uint8_t* mac, int command, const char* matchId,
                      long drawTime, bool isHunter);
     /**
@@ -220,13 +213,13 @@ private:
     Match* readMatchFromStorage(uint8_t index);
 
     // Returns true when `command` belongs to the currently-active match and
-    // was sent by that match's opponent. All post-handshake duel commands
+    // was sent by that match's opponent. All post-handshake match commands
     // (MATCH_ID_ACK, MATCH_ROLE_MISMATCH, DRAW_RESULT, NEVER_PRESSED) must
     // pass this gate before mutating match state — otherwise any neighbor
     // in ESP-NOW range could forge a result for a match they're not in.
     // SEND_MATCH_ID is intentionally exempt: it's the packet that
     // establishes the peering in the first place.
-    bool isFromActiveMatchOpponent(const DuelCommand& command) const;
+    bool isFromActiveMatchOpponent(const MatchCommand& command) const;
 
     // Emplace match with given id/opponent/draw slot. Common path for both the
     // cable-handshake init and the Shootout MATCH_START init.

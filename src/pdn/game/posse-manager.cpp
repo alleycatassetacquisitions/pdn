@@ -2,7 +2,7 @@
 #include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
 
-#define TAG "CDM"
+#define TAG "POSSE"
 
 PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
     : player(player)
@@ -174,7 +174,7 @@ void PosseManager::sendGameEventToSupporters(ChainGameEventType eventType) {
     // event. They get seqIds and retry tracking.
     //
     // COUNTDOWN/DRAW are time-sensitive transient events. A late-arriving
-    // retry of COUNTDOWN would falsely re-arm a supporter whose duel has
+    // retry of COUNTDOWN would falsely re-arm a supporter whose match has
     // already resolved; a late DRAW would disarm a supporter who just
     // entered a new COUNTDOWN. Keep them fire-and-forget: seqId=0.
     if (eventType == ChainGameEventType::WIN || eventType == ChainGameEventType::LOSS) {
@@ -234,15 +234,15 @@ void PosseManager::sendConfirm() {
     // cascade names, and that is what resendConfirm is for.
     confirmSent = true;
 
-    const uint8_t* champ = getChallengerMac();
-    if (champ == nullptr) return;
+    const uint8_t* challenger = getChallengerMac();
+    if (challenger == nullptr) return;
 
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     if (selfMac == nullptr) return;
 
     ChainConfirmPayload payload{};
     memcpy(payload.originatorMac, selfMac, 6);
-    chainConfirmChannel.sendReliable(champ, payload);
+    chainConfirmChannel.sendReliable(challenger, payload);
 }
 
 void PosseManager::resendConfirm() {
@@ -278,16 +278,16 @@ void PosseManager::onChainJoinReceived(const uint8_t* supporterMac,
 }
 
 void PosseManager::announceToChallenger() {
-    const uint8_t* champ = getChallengerMac();
-    if (champ == nullptr) return;
+    const uint8_t* challenger = getChallengerMac();
+    if (challenger == nullptr) return;
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     if (selfMac == nullptr) return;
     // A challenger is its own chain's root, not a member of it.
-    if (memcmp(champ, selfMac, 6) == 0) return;
+    if (memcmp(challenger, selfMac, 6) == 0) return;
 
     ChainJoinPayload payload{};
-    memcpy(payload.challengerMac, champ, 6);
-    chainJoinChannel.sendReliable(champ, payload);
+    memcpy(payload.challengerMac, challenger, 6);
+    chainJoinChannel.sendReliable(challenger, payload);
 }
 
 void PosseManager::onChainStateChanged() {
@@ -419,18 +419,18 @@ void PosseManager::recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac) {
 
 void PosseManager::broadcastRoleAndChallenger() {
     const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
-    const uint8_t* champ = getChallengerMac();
+    const uint8_t* challenger = getChallengerMac();
     if (supporterAnnounce.has_value() &&
-        (supporterPeer == nullptr || champ == nullptr ||
+        (supporterPeer == nullptr || challenger == nullptr ||
          memcmp(supporterAnnounce->peer.data(), supporterPeer, 6) != 0)) {
         roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
         supporterAnnounce.reset();
     }
-    if (supporterPeer == nullptr || champ == nullptr) return;
+    if (supporterPeer == nullptr || challenger == nullptr) return;
 
     RoleAnnounceState content;
     memcpy(content.peer.data(), supporterPeer, 6);
-    memcpy(content.challenger.data(), champ, 6);
+    memcpy(content.challenger.data(), challenger, 6);
     if (supporterAnnounce.has_value() && supporterAnnounce->told(content)) return;
 
     // Half-open gate, same reasoning as canInitiateMatch. A jack at Connecting has

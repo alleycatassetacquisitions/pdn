@@ -119,7 +119,7 @@ void GameSession::sync() {
         }
     }
     // Driven here rather than from the shootout states so a tournament's own
-    // retries keep running while the device is in the duel app for a bracket
+    // retries keep running while the device is in the match app for a bracket
     // match.
     if (shootoutManager) shootoutManager->sync();
     if (symbolWirelessManager) symbolWirelessManager->sync();
@@ -136,14 +136,13 @@ void GameSession::logRetryStats() {
 
     // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2, which
     // strips info-level calls. Both managers are reported: a venue reading one
-    // line to judge radio health would otherwise be shown the chain duel's
+    // line to judge radio health would otherwise be shown the posse's
     // retries and told nothing about the tournament's.
     if (posseManager != nullptr) {
         PosseManager::RetryStats c = posseManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
-        LOG_W("STATS", "CDM s=%u r=%u ab=%u ack=%u/%lums",
-              (unsigned)c.sends, (unsigned)c.retries, (unsigned)c.abandons,
-              (unsigned)c.ackCount, cMean);
+        LOG_W("STATS", "POSSE s=%u r=%u ab=%u ack=%u/%lums", (unsigned)c.sends, (unsigned)c.retries,
+              (unsigned)c.abandons, (unsigned)c.ackCount, cMean);
     }
     if (shootoutManager != nullptr) {
         const Resender::Stats& s = shootoutManager->getRetryStats();

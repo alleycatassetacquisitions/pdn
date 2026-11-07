@@ -94,9 +94,9 @@ Use `http offline` to simulate network failures.
 
 # In the simulator:
 cable 0 1              # Connect devices - starts handshake
-# Watch devices progress through: Idle → Handshake → ConnectionSuccessful → DuelCountdown → Duel
+# Watch devices progress through: Idle → MatchCountdown → MatchState
 
-# Press buttons during duel
+# Press buttons during match
 press 0 primary        # Hunter presses button
 press 1 primary        # Bounty presses button
 ```

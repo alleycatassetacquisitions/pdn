@@ -308,9 +308,8 @@ TEST(ReliableTransportTest, ackRoutesByPktType) {
     ReliableChannel<TransportTestPayload>* chA = transport.channel<TransportTestPayload>(
         PktType::kShootoutCommand,
         [](uint8_t, const uint8_t*) {});
-    ReliableChannel<TransportTestPayload>* chB = transport.channel<TransportTestPayload>(
-        PktType::kDuelCommand,
-        [](uint8_t, const uint8_t*) {});
+    ReliableChannel<TransportTestPayload>* chB =
+    transport.channel<TransportTestPayload>(PktType::kMatchCommand, [](uint8_t, const uint8_t*) {});
 
     using ::testing::_;
     using ::testing::Return;
@@ -468,8 +467,7 @@ TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
     Resender resender(&wm);
 
     int frames = 0;
-    ON_CALL(comms, getPeerCommsState())
-        .WillByDefault(::testing::Return(PeerCommsState::CONNECTED));
+    ON_CALL(comms, getPeerCommsState()).WillByDefault(::testing::Return(PeerCommsState::ENABLED));
     ON_CALL(comms, sendData(::testing::_, ::testing::_, ::testing::_, ::testing::_))
         .WillByDefault([&frames](const uint8_t*, PktType, const uint8_t*, const size_t) {
             frames++;

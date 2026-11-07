@@ -83,6 +83,7 @@ WIRELESS_SRCS=(
     lib/core/src/game/player.cpp
     lib/core/src/game/symbol.cpp
     lib/core/src/utils/UUID.cpp
+    lib/core/src/utils/uuid-bytes.cpp
     lib/core/src/utils/simple-timer.cpp
     lib/core/src/utils/logger.cpp
     src/pdn/game/match-manager.cpp
@@ -100,7 +101,7 @@ generate_seeds_and_dict() {
         > "$SEEDS_DIR/match/valid_match.json"
 
     printf '\x03\x02AAAA\x00\x00\x07\x01\x05\x02BBBB\x00\x00\x09\x02\x08' \
-        > "$SEEDS_DIR/wireless/duel_flow.bin"
+        > "$SEEDS_DIR/wireless/match_flow.bin"
 
     cat > "$DICT_FILE" << 'EOF'
 kw_match_id="match_id"

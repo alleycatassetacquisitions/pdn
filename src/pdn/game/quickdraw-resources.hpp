@@ -114,17 +114,16 @@ inline const LEDColor hunterIdleLEDColorsAlternate[9] = {
 };
 
 inline const LEDColor bountyIdleLEDColorsAlternate[9] = {
-    LEDColor(255, 2, 1),     // Color 1
-    LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
-    LEDColor(255, 51, 0),    // Color 3
-    LEDColor(222, 97, 7),     // Color 4 (13% dimmer)
-    LEDColor(255, 2, 1),     // Color 1
-    LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
-    LEDColor(255, 51, 0),    // Color 3
-    LEDColor(222, 97, 7),     // Color 4 (13% dimmer)
-    LEDColor(0, 0, 0),    // Color 2 (7% dimmer)
+LEDColor(255, 2, 1),   // Color 1
+LEDColor(237, 75, 0),  // Color 2 (7% dimmer)
+LEDColor(255, 51, 0),  // Color 3
+LEDColor(222, 97, 7),  // Color 4 (13% dimmer)
+LEDColor(255, 2, 1),   // Color 1
+LEDColor(237, 75, 0),  // Color 2 (7% dimmer)
+LEDColor(255, 51, 0),  // Color 3
+LEDColor(222, 97, 7),  // Color 4 (13% dimmer)
+LEDColor(0, 0, 0),
 };
-
 
 inline const LEDState HUNTER_IDLE_STATE = [](){
     LEDState state;
@@ -148,8 +147,7 @@ inline const LEDState HUNTER_IDLE_STATE = [](){
 
 inline const LEDState HUNTER_IDLE_STATE_ALTERNATE = [](){
     LEDState state;
-    
-    // Set the first 4 LEDs with hunter colors at full brightness
+
     for (int i = 0; i < 9; i++) {
         state.leftLights[i] = LEDState::SingleLEDState(hunterIdleLEDColorsAlternate[i], 65);
         state.rightLights[i] = LEDState::SingleLEDState(hunterIdleLEDColorsAlternate[i], 65);
@@ -281,7 +279,7 @@ static const LEDState COUNTDOWN_ONE_STATE = [](){
     return state;
 }();
 
-static const LEDState COUNTDOWN_DUEL_STATE = [](){
+static const LEDState COUNTDOWN_MATCH_STATE = []() {
     LEDState state;
     for(int i = 3; i < 9; i++) {
         state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);

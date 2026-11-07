@@ -18,8 +18,8 @@
 #include "quickdraw-integration-tests.hpp"
 #include "rdc-hello-tests.hpp"
 #include "connect-state-callback-tests.hpp"
-#include "chain-duel-manager-tests.hpp"
-#include "chain-duel-multi-device-fixture.hpp"
+#include "posse-manager-tests.hpp"
+#include "posse-multi-device-fixture.hpp"
 #include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
 #include "serial-frame-parser-tests.hpp"
@@ -500,7 +500,7 @@ TEST_F(AppSwapTestSuite, remountingAnAppDoesNotRepopulateItsStateMap) {
 }
 
 // Entering an app part-way through is what a shootout's hand-off into a bracket
-// duel needs; restarting the target at its boot state would replay it.
+// match needs; restarting the target at its boot state would replay it.
 TEST_F(AppSwapTestSuite, setActiveAppEntersAtTheNamedState) {
     loadAllApps(APP_ONE);
     ASSERT_EQ(appOne->getCurrentState()->getStateId(), 0);
@@ -910,8 +910,8 @@ TEST_F(MatchManagerTestSuite, bountyWinsWhenHunterNeverPressed) {
     matchManagerBountyWinsWhenHunterNeverPressed(matchManager, player);
 }
 
-TEST_F(MatchManagerTestSuite, tracksDuelState) {
-    matchManagerTracksDuelState(matchManager, player);
+TEST_F(MatchManagerTestSuite, tracksMatchState) {
+    matchManagerTracksMatchState(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, graceExpiredAloneFinalizes) {
@@ -951,8 +951,8 @@ TEST_F(MatchManagerTestSuite, setDrawTimesRequiresActiveMatch) {
     matchManagerSetDrawTimesRequiresActiveMatch(matchManager, player);
 }
 
-TEST_F(MatchManagerTestSuite, duelStartTimeTracking) {
-    matchManagerDuelStartTimeTracking(matchManager, player);
+TEST_F(MatchManagerTestSuite, matchStartTimeTracking) {
+    matchManagerMatchStartTimeTracking(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, clearCurrentMatchResetsMasherCount) {
@@ -1004,17 +1004,19 @@ TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
 // ============================================
 
 TEST_F(CrashCodecTestSuite, roundTripPopulatesAllFields) {
-    encoderRoundTripPopulatesAllFields(this);
+    crashCodecRoundTripPopulatesAllFields(this);
 }
 
-TEST_F(CrashCodecTestSuite, omitsUnsetOptionalFields) { encoderOmitsUnsetOptionalFields(this); }
+TEST_F(CrashCodecTestSuite, omitsUnsetOptionalFields) { crashCodecOmitsUnsetOptionalFields(this); }
 
-TEST_F(CrashCodecTestSuite, keepsExceptionCauseZero) { encoderKeepsExceptionCauseZero(this); }
+TEST_F(CrashCodecTestSuite, keepsExceptionCauseZero) { crashCodecKeepsExceptionCauseZero(this); }
 
-TEST_F(CrashCodecTestSuite, omitsMissingExceptionCause) { encoderOmitsMissingExceptionCause(this); }
+TEST_F(CrashCodecTestSuite, omitsMissingExceptionCause) {
+    crashCodecOmitsMissingExceptionCause(this);
+}
 
 TEST_F(CrashCodecTestSuite, returnsZeroWhenBufferTooSmall) {
-    encoderReturnZeroWhenBufferTooSmall(this);
+    crashCodecReturnZeroWhenBufferTooSmall(this);
 }
 
 // ============================================
@@ -1163,29 +1165,23 @@ TEST(MatchManagerConcurrent, driverExecSerializesMatchManagerAccess) {
 // INTEGRATION TESTS
 // ============================================
 
-TEST_F(DuelIntegrationTestSuite, completeDuelFlowHunterWins) {
-    completeDuelFlowHunterWins(this);
+TEST_F(MatchIntegrationTestSuite, completeMatchFlowHunterWins) {
+    completeMatchFlowHunterWins(this);
 }
 
-TEST_F(DuelIntegrationTestSuite, completeDuelFlowBountyWins) {
-    completeDuelFlowBountyWins(this);
+TEST_F(MatchIntegrationTestSuite, completeMatchFlowBountyWins) {
+    completeMatchFlowBountyWins(this);
 }
 
-TEST_F(DuelIntegrationTestSuite, matchSerializationRoundTrip) {
-    matchSerializationRoundTrip();
-}
+TEST_F(MatchIntegrationTestSuite, matchSerializationRoundTrip) { matchSerializationRoundTrip(); }
 
-TEST_F(DuelIntegrationTestSuite, playerStatsAccumulateAcrossMatches) {
+TEST_F(MatchIntegrationTestSuite, playerStatsAccumulateAcrossMatches) {
     playerStatsAccumulateAcrossMatches(hunter);
 }
 
-TEST_F(DuelIntegrationTestSuite, duelWithTiedReactionTimes) {
-    duelWithTiedReactionTimes(this);
-}
+TEST_F(MatchIntegrationTestSuite, matchWithTiedReactionTimes) { matchWithTiedReactionTimes(this); }
 
-TEST_F(DuelIntegrationTestSuite, duelWithOpponentTimeout) {
-    duelWithOpponentTimeout(this);
-}
+TEST_F(MatchIntegrationTestSuite, matchWithOpponentTimeout) { matchWithOpponentTimeout(this); }
 
 // ============================================
 // QUICKDRAW STATE TESTS - IDLE
@@ -1235,8 +1231,8 @@ TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);
 }
 
-TEST_F(IdleStateTests, transitionsToDuelCountdownWhenMatchIsReady) {
-    idleTransitionsToDuelCountdownWhenMatchIsReady(this);
+TEST_F(IdleStateTests, transitionsToMatchCountdownWhenMatchIsReady) {
+    idleTransitionsToMatchCountdownWhenMatchIsReady(this);
 }
 
 TEST_F(IdleStateTests, dismountClearsUnreadyMatch) {
@@ -1247,146 +1243,114 @@ TEST_F(IdleStateTests, dismountClearsUnreadyMatch) {
 // QUICKDRAW STATE TESTS - COUNTDOWN
 // ============================================
 
-TEST_F(DuelCountdownTests, buttonMasherPenaltyIncrementsOnButtonPress) {
+TEST_F(MatchCountdownTests, buttonMasherPenaltyIncrementsOnButtonPress) {
     countdownButtonMasherPenaltyIncrementsOnButtonPress(this);
 }
 
-TEST_F(DuelCountdownTests, multipleEarlyPressesAccumulatePenalty) {
+TEST_F(MatchCountdownTests, multipleEarlyPressesAccumulatePenalty) {
     countdownMultipleEarlyPressesAccumulatePenalty(this);
 }
 
-TEST_F(DuelCountdownTests, progressesThroughStages) {
-    countdownProgressesThroughStages(this);
-}
+TEST_F(MatchCountdownTests, progressesThroughStages) { countdownProgressesThroughStages(this); }
 
-TEST_F(DuelCountdownTests, battleTransitionSetsFlag) {
-    countdownBattleTransitionSetsFlag(this);
-}
+TEST_F(MatchCountdownTests, battleTransitionSetsFlag) { countdownBattleTransitionSetsFlag(this); }
 
-TEST_F(DuelCountdownTests, cleansUpOnDismount) {
-    countdownCleansUpOnDismount(this);
-}
+TEST_F(MatchCountdownTests, cleansUpOnDismount) { countdownCleansUpOnDismount(this); }
 
 // ============================================
-// QUICKDRAW STATE TESTS - DUEL SCENARIOS
+// QUICKDRAW STATE TESTS - MATCH SCENARIOS
 // ============================================
 
-TEST_F(DuelStateTests, shootoutTimeoutForfeitsTheMatchHunter) {
-    duelShootoutTimeoutForfeitsTheMatchHunter(this);
+TEST_F(MatchStateTests, shootoutTimeoutForfeitsTheMatchHunter) {
+    matchShootoutTimeoutForfeitsTheMatchHunter(this);
 }
 
 // Scenario 1: DUT presses button first
-TEST_F(DuelStateTests, buttonPressTransitionsToDuelPushed) {
-    duelButtonPressTransitionsToDuelPushed(this);
+TEST_F(MatchStateTests, buttonPressTransitionsToMatchPushed) {
+    matchButtonPressTransitionsToMatchPushed(this);
 }
 
-TEST_F(DuelStateTests, buttonPressCalculatesReactionTime) {
-    duelButtonPressCalculatesReactionTime(this);
+TEST_F(MatchStateTests, buttonPressCalculatesReactionTime) {
+    matchButtonPressCalculatesReactionTime(this);
 }
 
-TEST_F(DuelStateTests, buttonPressAppliesMasherPenalty) {
-    duelButtonPressAppliesMasherPenalty(this);
+TEST_F(MatchStateTests, buttonPressAppliesMasherPenalty) {
+    matchButtonPressAppliesMasherPenalty(this);
 }
 
-TEST_F(DuelStateTests, buttonPressBroadcastsDrawResult) {
-    duelButtonPressBroadcastsDrawResult(this);
+TEST_F(MatchStateTests, buttonPressBroadcastsDrawResult) {
+    matchButtonPressBroadcastsDrawResult(this);
 }
 
-TEST_F(DuelStateTests, laterCommandSupersedesEarlierRetries) {
-    duelLaterCommandSupersedesEarlierRetries(this);
+TEST_F(MatchStateTests, laterCommandSupersedesEarlierRetries) {
+    matchLaterCommandSupersedesEarlierRetries(this);
 }
 
-TEST_F(DuelStateTests, pushedWaitsForOpponentResult) {
-    duelPushedWaitsForOpponentResult(this);
-}
+TEST_F(MatchStateTests, pushedWaitsForOpponentResult) { matchPushedWaitsForOpponentResult(this); }
 
-TEST_F(DuelStateTests, pushedTransitionsOnResultReceived) {
-    duelPushedTransitionsOnResultReceived(this);
+TEST_F(MatchStateTests, pushedTransitionsOnResultReceived) {
+    matchPushedTransitionsOnResultReceived(this);
 }
 
 // Scenario 2: DUT receives result first
-TEST_F(DuelStateTests, receivedResultTransitionsToDuelReceivedResult) {
-    duelReceivedResultTransitionsToDuelReceivedResult(this);
+TEST_F(MatchStateTests, receivedResultTransitionsToMatchReceivedResult) {
+    matchReceivedResultTransitionsToMatchReceivedResult(this);
 }
 
-TEST_F(DuelStateTests, receivedResultWaitsForButtonPress) {
-    duelReceivedResultWaitsForButtonPress(this);
+TEST_F(MatchStateTests, receivedResultWaitsForButtonPress) {
+    matchReceivedResultWaitsForButtonPress(this);
 }
 
-TEST_F(DuelStateTests, buttonPressDuringGracePeriodTransitions) {
-    duelButtonPressDuringGracePeriodTransitions(this);
+TEST_F(MatchStateTests, buttonPressDuringGracePeriodTransitions) {
+    matchButtonPressDuringGracePeriodTransitions(this);
 }
 
 // Scenario 3: Neither presses (timeout)
-TEST_F(DuelStateTests, timeoutTransitionsToIdle) {
-    duelTimeoutTransitionsToIdle(this);
-}
+TEST_F(MatchStateTests, timeoutTransitionsToIdle) { matchTimeoutTransitionsToIdle(this); }
 
 // Scenario 4: DUT presses, opponent never responds
-TEST_F(DuelStateTests, pushedGracePeriodExpiresTransitions) {
-    duelPushedGracePeriodExpiresTransitions(this);
+TEST_F(MatchStateTests, pushedGracePeriodExpiresTransitions) {
+    matchPushedGracePeriodExpiresTransitions(this);
 }
 
-TEST_F(DuelStateTests, opponentTimeoutMeansWin) {
-    duelOpponentTimeoutMeansWin(this);
-}
+TEST_F(MatchStateTests, opponentTimeoutMeansWin) { matchOpponentTimeoutMeansWin(this); }
 
 // Scenario 5: DUT never presses, opponent does
-TEST_F(DuelStateTests, gracePeriodExpiresSetsNeverPressed) {
-    duelGracePeriodExpiresSetsNeverPressed(this);
+TEST_F(MatchStateTests, gracePeriodExpiresSetsNeverPressed) {
+    matchGracePeriodExpiresSetsNeverPressed(this);
 }
 
-TEST_F(DuelStateTests, gracePeriodExpiresSendsPityTime) {
-    duelGracePeriodExpiresSendsPityTime(this);
+TEST_F(MatchStateTests, gracePeriodExpiresSendsPityTime) {
+    matchGracePeriodExpiresSendsPityTime(this);
 }
 
-TEST_F(DuelStateTests, neverPressedMeansLose) {
-    duelNeverPressedMeansLose(this);
-}
+TEST_F(MatchStateTests, neverPressedMeansLose) { matchNeverPressedMeansLose(this); }
 
 // ============================================
-// QUICKDRAW STATE TESTS - DUEL RESULT
+// QUICKDRAW STATE TESTS - MATCH RESULT
 // ============================================
 
-TEST_F(DuelResultTests, hunterWinsWithFasterTime) {
-    resultHunterWinsWithFasterTime(this);
-}
+TEST_F(MatchResultTests, hunterWinsWithFasterTime) { resultHunterWinsWithFasterTime(this); }
 
-TEST_F(DuelResultTests, bountyWinsWithFasterTime) {
-    resultBountyWinsWithFasterTime(this);
-}
+TEST_F(MatchResultTests, bountyWinsWithFasterTime) { resultBountyWinsWithFasterTime(this); }
 
-TEST_F(DuelResultTests, tiedTimesFavorOpponent) {
-    resultTiedTimesFavorOpponent(this);
-}
+TEST_F(MatchResultTests, tiedTimesFavorOpponent) { resultTiedTimesFavorOpponent(this); }
 
-TEST_F(DuelResultTests, opponentTimeoutMeansAutoWin) {
-    resultOpponentTimeoutMeansAutoWin(this);
-}
+TEST_F(MatchResultTests, opponentTimeoutMeansAutoWin) { resultOpponentTimeoutMeansAutoWin(this); }
 
-TEST_F(DuelResultTests, winTransitionsToWinState) {
-    resultWinTransitionsToWinState(this);
-}
+TEST_F(MatchResultTests, winTransitionsToWinState) { resultWinTransitionsToWinState(this); }
 
-TEST_F(DuelResultTests, shootoutLoserDoesNotClaimTheWin) {
+TEST_F(MatchResultTests, shootoutLoserDoesNotClaimTheWin) {
     resultShootoutLoserDoesNotClaimTheWin(this);
 }
 
-TEST_F(DuelResultTests, loseTransitionsToLoseState) {
-    resultLoseTransitionsToLoseState(this);
-}
+TEST_F(MatchResultTests, loseTransitionsToLoseState) { resultLoseTransitionsToLoseState(this); }
 
-TEST_F(DuelResultTests, playerStatsUpdatedOnWin) {
-    resultPlayerStatsUpdatedOnWin(this);
-}
+TEST_F(MatchResultTests, playerStatsUpdatedOnWin) { resultPlayerStatsUpdatedOnWin(this); }
 
-TEST_F(DuelResultTests, playerStatsUpdatedOnLoss) {
-    resultPlayerStatsUpdatedOnLoss(this);
-}
+TEST_F(MatchResultTests, playerStatsUpdatedOnLoss) { resultPlayerStatsUpdatedOnLoss(this); }
 
-TEST_F(DuelResultTests, matchFinalizedOnResult) {
-    resultMatchFinalizedOnResult(this);
-}
+TEST_F(MatchResultTests, matchFinalizedOnResult) { resultMatchFinalizedOnResult(this); }
 
 // ============================================
 // QUICKDRAW STATE TESTS - STATE CLEANUP
@@ -1400,40 +1364,36 @@ TEST_F(StateCleanupTests, countdownClearsButtonCallbacks) {
     cleanupCountdownClearsButtonCallbacks(this);
 }
 
-TEST_F(StateCleanupTests, duelAppDismountEndsTheMatch) {
-    duelAppDismountEndsTheMatch(this);
+TEST_F(StateCleanupTests, matchAppDismountEndsTheMatch) { matchAppDismountEndsTheMatch(this); }
+
+TEST_F(StateCleanupTests, aMatchStateDismountLeavesTheMatchToTheApp) {
+    aMatchStateDismountLeavesTheMatchToTheApp(this);
 }
 
-TEST_F(StateCleanupTests, aDuelStateDismountLeavesTheMatchToTheApp) {
-    aDuelStateDismountLeavesTheMatchToTheApp(this);
+TEST_F(StateCleanupTests, matchReceivedResultClearsButtonCallbacks) {
+    cleanupMatchReceivedResultClearsButtonCallbacks(this);
 }
 
-TEST_F(StateCleanupTests, duelReceivedResultClearsButtonCallbacks) {
-    cleanupDuelReceivedResultClearsButtonCallbacks(this);
-}
-
-TEST_F(StateCleanupTests, duelStateInvalidatesTimer) {
-    cleanupDuelStateInvalidatesTimer(this);
-}
+TEST_F(StateCleanupTests, matchStateInvalidatesTimer) { cleanupMatchStateInvalidatesTimer(this); }
 
 TEST_F(StateCleanupTests, countdownStateInvalidatesTimer) {
     cleanupCountdownStateInvalidatesTimer(this);
 }
 
-TEST_F(StateCleanupTests, duelResultClearsWirelessCallbacks) {
-    cleanupDuelResultClearsWirelessCallbacks(this);
+TEST_F(StateCleanupTests, matchResultResetsStateOnDismount) {
+    cleanupMatchResultResetsStateOnDismount(this);
 }
 
 TEST_F(StateCleanupTests, matchManagerClearsCurrentMatch) {
     cleanupMatchManagerClearsCurrentMatch(this);
 }
 
-TEST_F(StateCleanupTests, matchManagerClearsDuelState) {
-    cleanupMatchManagerClearsDuelState(this);
+TEST_F(StateCleanupTests, matchManagerClearsMatchState) {
+    cleanupMatchManagerClearsMatchState(this);
 }
 
-TEST_F(StateCleanupTests, duelStateClearsCallbacksWhenGoingToDuelReceivedResult) {
-    cleanupDuelStateClearsCallbacksWhenGoingToDuelReceivedResult(this);
+TEST_F(StateCleanupTests, matchStateClearsCallbacksWhenGoingToMatchReceivedResult) {
+    cleanupMatchStateClearsCallbacksWhenGoingToMatchReceivedResult(this);
 }
 
 TEST_F(StateCleanupTests, pushedLeavesTheMatchAloneWhenDisconnected) {
@@ -1448,12 +1408,12 @@ TEST_F(StateCleanupTests, countdownDebouncesTransientDisconnect) {
     countdownDebouncesTransientDisconnect(this);
 }
 
-TEST_F(StateCleanupTests, duelPushedDebouncesTransientDisconnect) {
-    duelPushedDebouncesTransientDisconnect(this);
+TEST_F(StateCleanupTests, matchPushedDebouncesTransientDisconnect) {
+    matchPushedDebouncesTransientDisconnect(this);
 }
 
-TEST_F(StateCleanupTests, duelReceivedResultDebouncesTransientDisconnect) {
-    duelReceivedResultDebouncesTransientDisconnect(this);
+TEST_F(StateCleanupTests, matchReceivedResultDebouncesTransientDisconnect) {
+    matchReceivedResultDebouncesTransientDisconnect(this);
 }
 
 TEST_F(StateCleanupTests, countdownFreezesDisconnectDebounceDuringShootout) {
@@ -1540,12 +1500,12 @@ TEST_F(StateFlowIntegrationTests, opponentNeverRespondsWins) {
     stateFlowOpponentNeverRespondsWins(this);
 }
 
-TEST_F(StateFlowIntegrationTests, throughDuelResultToWin) {
-    stateFlowThroughDuelResultToWin(this);
+TEST_F(StateFlowIntegrationTests, throughMatchResultToWin) {
+    stateFlowThroughMatchResultToWin(this);
 }
 
-TEST_F(StateFlowIntegrationTests, throughDuelResultToLose) {
-    stateFlowThroughDuelResultToLose(this);
+TEST_F(StateFlowIntegrationTests, throughMatchResultToLose) {
+    stateFlowThroughMatchResultToLose(this);
 }
 
 // ============================================
@@ -1877,226 +1837,208 @@ TEST_F(RDCHelloTests, unprovenUpstreamIsNeverAdopted) {
 }
 
 // ============================================
-// CHAIN DUEL MANAGER TESTS
+// POSSE MANAGER TESTS
 // ============================================
 
 TEST_F(PosseManagerTests, roleDerivationWithChallengerTopology) {
-    cdmRoleDerivationWithChallengerTopology(this);
+    posseRoleDerivationWithChallengerTopology(this);
 }
 
 TEST_F(PosseManagerTests, canInitiateMatchRequiresConnectedOpponentJack) {
-    cdmCanInitiateMatchRequiresConnectedOpponentJack(this);
+    posseCanInitiateMatchRequiresConnectedOpponentJack(this);
 }
 
 TEST_F(PosseManagerTests, canInitiateMatchFalseForBounty) {
-    cdmCanInitiateMatchFalseForBounty(this);
+    posseCanInitiateMatchFalseForBounty(this);
 }
 
-TEST_F(PosseManagerTests, confirmLifecycle) {
-    cdmConfirmLifecycle(this);
-}
+TEST_F(PosseManagerTests, confirmLifecycle) { posseConfirmLifecycle(this); }
 
 TEST_F(PosseManagerTests, onChainStateChangedClearsOnDrain) {
-    cdmOnChainStateChangedClearsOnDrain(this);
+    posseOnChainStateChangedClearsOnDrain(this);
 }
 
 TEST_F(PosseManagerTests, confirmFromUnknownOriginatorRejected) {
-    cdmConfirmFromUnknownOriginatorRejected(this);
+    posseConfirmFromUnknownOriginatorRejected(this);
 }
 
 TEST_F(PosseManagerTests, isChallengerFalseWithSameRoleOpponent) {
-    cdmIsChallengerFalseWithSameRoleOpponent(this);
+    posseIsChallengerFalseWithSameRoleOpponent(this);
 }
 
-TEST_F(PosseManagerTests, isChallengerFalseInRing) {
-    cdmIsChallengerFalseInRing(this);
-}
+TEST_F(PosseManagerTests, isChallengerFalseInRing) { posseIsChallengerFalseInRing(this); }
 
 TEST_F(PosseManagerTests, sendConfirmTargetsChallengerMac) {
-    cdmSendConfirmTargetsChallengerMac(this);
+    posseSendConfirmTargetsChallengerMac(this);
 }
 
-TEST_F(PosseManagerTests, sendConfirmIncrementsSeqId) {
-    cdmSendConfirmIncrementsSeqId(this);
-}
+TEST_F(PosseManagerTests, sendConfirmIncrementsSeqId) { posseSendConfirmIncrementsSeqId(this); }
 
 TEST_F(PosseManagerTests, sendConfirmNoopWhenChallengerMacInvalid) {
-    cdmSendConfirmNoopWhenChallengerMacInvalid(this);
+    posseSendConfirmNoopWhenChallengerMacInvalid(this);
 }
 
 TEST_F(PosseManagerTests, confirmBufferedUntilOriginatorJoinsChain) {
-    cdmConfirmBufferedUntilOriginatorJoinsChain(this);
+    posseConfirmBufferedUntilOriginatorJoinsChain(this);
 }
 
 TEST_F(PosseManagerTests, strangerConfirmsCannotSilenceRealSupporter) {
-    cdmStrangerConfirmsCannotSilenceRealSupporter(this);
+    posseStrangerConfirmsCannotSilenceRealSupporter(this);
 }
 
 TEST_F(PosseManagerTests, chainJoinForAnotherChallengerIsIgnored) {
-    cdmChainJoinForAnotherChallengerIsIgnored(this);
+    posseChainJoinForAnotherChallengerIsIgnored(this);
 }
 
 TEST_F(PosseManagerTests, confirmResentWhenChallengerChanges) {
-    cdmConfirmResentWhenChallengerChanges(this);
+    posseConfirmResentWhenChallengerChanges(this);
 }
 
 TEST_F(PosseManagerTests, countdownVoidsStandingConfirm) {
-    cdmCountdownVoidsStandingConfirm(this);
+    posseCountdownVoidsStandingConfirm(this);
 }
 
 TEST_F(PosseManagerTests, headTransferResendsStandingConfirm) {
-    cdmHeadTransferResendsStandingConfirm(this);
+    posseHeadTransferResendsStandingConfirm(this);
 }
 
 TEST_F(PosseManagerTests, supporterRoleLossVoidsStandingConfirm) {
-    cdmSupporterRoleLossVoidsStandingConfirm(this);
+    posseSupporterRoleLossVoidsStandingConfirm(this);
 }
 
 TEST_F(PosseManagerTests, challengerChangeWithoutPressSendsNoConfirm) {
-    cdmChallengerChangeWithoutPressSendsNoConfirm(this);
+    posseChallengerChangeWithoutPressSendsNoConfirm(this);
 }
 
 TEST_F(PosseManagerTests, ringClosureClearsTheChallenger) {
-    cdmRingClosureClearsTheChallenger(this);
+    posseRingClosureClearsTheChallenger(this);
 }
 TEST_F(PosseManagerTests, roleAnnounceWithNoChallengerIsRefused) {
-    cdmRoleAnnounceWithNoChallengerIsRefused(this);
+    posseRoleAnnounceWithNoChallengerIsRefused(this);
 }
 
 TEST_F(PosseManagerTests, roleAnnounceUpdatesChallengerMac) {
-    cdmRoleAnnounceUpdatesChallengerMac(this);
+    posseRoleAnnounceUpdatesChallengerMac(this);
 }
 
 TEST_F(PosseManagerTests, roleAnnounceNoCascadeIfChallengerUnchanged) {
-    cdmRoleAnnounceNoCascadeIfChallengerUnchanged(this);
+    posseRoleAnnounceNoCascadeIfChallengerUnchanged(this);
 }
 
 TEST_F(PosseManagerTests, broadcastRoleAndChallengerSends) {
-    cdmBroadcastRoleAndChallengerSends(this);
+    posseBroadcastRoleAndChallengerSends(this);
 }
 
 TEST_F(PosseManagerTests, newTerminalEventSupersedesThePrevious) {
-    cdmNewTerminalEventSupersedesThePrevious(this);
+    posseNewTerminalEventSupersedesThePrevious(this);
 }
 
 TEST_F(PosseManagerTests, reannouncesAfterSameMacReconnect) {
-    cdmReannouncesAfterSameMacReconnect(this);
+    posseReannouncesAfterSameMacReconnect(this);
 }
 
 TEST_F(PosseManagerTests, challengerChangeReachesAToldSupporter) {
-    cdmChallengerChangeReachesAToldSupporter(this);
+    posseChallengerChangeReachesAToldSupporter(this);
 }
 
 TEST_F(PosseManagerTests, undeliveredSupporterAnnounceIsRetriedByBackstop) {
-    cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(this);
+    posseUndeliveredSupporterAnnounceIsRetriedByBackstop(this);
 }
 
 TEST_F(PosseManagerTests, announceWaitsForConnectedSupporterJack) {
-    cdmAnnounceWaitsForConnectedSupporterJack(this);
+    posseAnnounceWaitsForConnectedSupporterJack(this);
 }
 
-TEST_F(PosseManagerTests, ackClearsPending) {
-    cdmAckClearsPending(this);
-}
+TEST_F(PosseManagerTests, ackClearsPending) { posseAckClearsPending(this); }
 
-TEST_F(PosseManagerTests, ackFromWrongMacIgnored) {
-    cdmAckFromWrongMacIgnored(this);
-}
+TEST_F(PosseManagerTests, ackFromWrongMacIgnored) { posseAckFromWrongMacIgnored(this); }
 
-TEST_F(PosseManagerTests, retryStatsRecordsLifecycle) {
-    cdmRetryStatsRecordsLifecycle(this);
-}
+TEST_F(PosseManagerTests, retryStatsRecordsLifecycle) { posseRetryStatsRecordsLifecycle(this); }
 
 TEST_F(PosseManagerTests, retransmitAbandonsWhenSpanRunsOut) {
-    cdmRetransmitAbandonsWhenSpanRunsOut(this);
+    posseRetransmitAbandonsWhenSpanRunsOut(this);
 }
 
 TEST_F(PosseManagerTests, onChainStateBecomesChallengerSetsSelfMac) {
-    cdmOnChainStateBecomesChallengerSetsSelfMac(this);
+    posseOnChainStateBecomesChallengerSetsSelfMac(this);
 }
 
 TEST_F(PosseManagerTests, supporterKeepsUpstreamChallengerMacAfterTransition) {
-    cdmSupporterKeepsUpstreamChallengerMacAfterTransition(this);
+    posseSupporterKeepsUpstreamChallengerMacAfterTransition(this);
 }
 
 TEST_F(PosseManagerTests, onChainStateNewSupporterTriggersBroadcast) {
-    cdmOnChainStateNewSupporterTriggersBroadcast(this);
+    posseOnChainStateNewSupporterTriggersBroadcast(this);
 }
 
-TEST_F(PosseManagerTests, chainDuelThreeDeviceConfirm) {
-    chainDuelThreeDeviceConfirm(this);
-}
+TEST_F(PosseManagerTests, posseThreeDeviceConfirm) { posseThreeDeviceConfirm(this); }
 
-TEST_F(PosseManagerTests, chainDuelReconfigRecovers) {
-    chainDuelReconfigRecovers(this);
-}
+TEST_F(PosseManagerTests, posseReconfigRecovers) { posseReconfigRecovers(this); }
 
 TEST_F(PosseManagerTests, roleAnnounceFromSupporterJackIgnoresChallengerMac) {
-    cdmRoleAnnounceFromSupporterJackIgnoresChallengerMac(this);
+    posseRoleAnnounceFromSupporterJackIgnoresChallengerMac(this);
 }
 
 TEST_F(PosseManagerTests, challengerToSupporterClearsStaleSelfMac) {
-    cdmChallengerToSupporterClearsStaleSelfMac(this);
+    posseChallengerToSupporterClearsStaleSelfMac(this);
 }
 
 TEST_F(PosseManagerTests, roleAnnounceFromOppositeRoleOpponentIgnoresChallengerMac) {
-    cdmRoleAnnounceFromOppositeRoleOpponentIgnoresChallengerMac(this);
+    posseRoleAnnounceFromOppositeRoleOpponentIgnoresChallengerMac(this);
 }
 
 TEST_F(PosseManagerTests, gameEventCountdownIsFireAndForget) {
-    cdmGameEventCountdownIsFireAndForget(this);
+    posseGameEventCountdownIsFireAndForget(this);
 }
 
 TEST_F(PosseManagerTests, gameEventWinIsTrackedAndRetried) {
-    cdmGameEventWinIsTrackedAndRetried(this);
+    posseGameEventWinIsTrackedAndRetried(this);
 }
 
-TEST_F(PosseManagerTests, gameEventAckClearsPending) {
-    cdmGameEventAckClearsPending(this);
-}
+TEST_F(PosseManagerTests, gameEventAckClearsPending) { posseGameEventAckClearsPending(this); }
 
 TEST_F(PosseManagerTests, gameEventAbandonsWhenSpanRunsOut) {
-    cdmGameEventAbandonsWhenSpanRunsOut(this);
+    posseGameEventAbandonsWhenSpanRunsOut(this);
 }
 
 // ============================================
-// CHAIN DUEL MULTI-DEVICE FIXTURE TESTS
+// POSSE MULTI-DEVICE FIXTURE TESTS
 // ============================================
 
-TEST_F(ChainDuelMultiDeviceFixture, chainFormsAndElectsChallenger) {
-    cdmMultiDeviceChainFormsAndElectsChallenger(this);
+TEST_F(PosseMultiDeviceFixture, chainFormsAndElectsChallenger) {
+    posseMultiDeviceChainFormsAndElectsChallenger(this);
 }
 
-TEST_F(ChainDuelMultiDeviceFixture, confirmDeliveredToChallenger) {
-    cdmMultiDeviceConfirmDeliveredToChallenger(this);
+TEST_F(PosseMultiDeviceFixture, confirmDeliveredToChallenger) {
+    posseMultiDeviceConfirmDeliveredToChallenger(this);
 }
 
-TEST_F(ChainDuelMultiDeviceFixture, boostScalesWithChainDepth) {
-    cdmMultiDeviceBoostScalesWithChainDepth(this);
+TEST_F(PosseMultiDeviceFixture, boostScalesWithChainDepth) {
+    posseMultiDeviceBoostScalesWithChainDepth(this);
 }
 
-TEST_F(ChainDuelMultiDeviceFixture, gameEventReachesDistantSupporter) {
-    cdmMultiDeviceGameEventReachesDistantSupporter(this);
+TEST_F(PosseMultiDeviceFixture, gameEventReachesDistantSupporter) {
+    posseMultiDeviceGameEventReachesDistantSupporter(this);
 }
 
-TEST_F(ChainDuelMultiDeviceFixture, oneSidedHelloDropoutRecoversChain) {
-    cdmMultiDeviceOneSidedHelloDropoutRecoversChain(this);
+TEST_F(PosseMultiDeviceFixture, oneSidedHelloDropoutRecoversChain) {
+    posseMultiDeviceOneSidedHelloDropoutRecoversChain(this);
 }
 
-TEST_F(ChainDuelMultiDeviceFixture, liveRoleFlipAndOneSidedDropoutRecoverDuelGate) {
-    cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(this);
+TEST_F(PosseMultiDeviceFixture, liveRoleFlipAndOneSidedDropoutRecoverMatchGate) {
+    posseMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverMatchGate(this);
 }
 
-TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceFullTournament) {
+TEST_F(PosseMultiDeviceFixture, shootoutFourDeviceFullTournament) {
     shootoutFourDeviceFullTournament(this);
 }
-TEST_F(ChainDuelMultiDeviceFixture, shootoutEightDeviceFullTournament) {
+TEST_F(PosseMultiDeviceFixture, shootoutEightDeviceFullTournament) {
     shootoutEightDeviceFullTournament(this);
 }
-TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceConsensusAndMatchStart) {
+TEST_F(PosseMultiDeviceFixture, shootoutFourDeviceConsensusAndMatchStart) {
     shootoutFourDeviceConsensusAndMatchStart(this);
 }
-TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceTwoTournamentsBackToBack) {
+TEST_F(PosseMultiDeviceFixture, shootoutFourDeviceTwoTournamentsBackToBack) {
     shootoutFourDeviceTwoTournamentsBackToBack(this);
 }
 

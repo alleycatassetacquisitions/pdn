@@ -164,7 +164,7 @@ public:
     static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
     // A ring latch is evidence-based: it survives a higher-MAC head claim only
     // while this device's own MAC keeps returning on INPUT within this window, so
-    // it has to outlast a replacement claim's walk round the loop. Hand-set at 25
+    // it has to outlast a replacement claim's walk round the ring. Hand-set at 25
     // HELLO cadences, not derived: a hop also costs the receiving device's
     // exec()-to-parse gap, which nothing caps, so this is slack rather than
     // arithmetic and not a bound on any particular chain length. Deliberately not

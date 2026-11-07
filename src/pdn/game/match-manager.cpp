@@ -1,7 +1,7 @@
 #include "game/match-manager.hpp"
 #include <ArduinoJson.h>
 #include "device/drivers/logger.hpp"
-#include "wireless/duel-packet.hpp"
+#include "wireless/match-packet.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
 #include <optional>
@@ -17,10 +17,10 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     : player(nullptr)
     , storage(nullptr)
     , resender(wirelessManager)
-    , duelChannel(wirelessManager, &resender, PktType::kDuelCommand, nullptr) {
-    duelChannel.onReceive([this](const uint8_t* fromMac, const DuelPacket& p) {
-        DuelCommand command(fromMac, p.command, p.matchId, p.playerId,
-                            p.playerDrawTime, p.isHunter);
+    , matchChannel(wirelessManager, &resender, PktType::kMatchCommand, nullptr) {
+    matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
+        MatchCommand command(fromMac, p.command, p.matchId, p.playerId, p.playerDrawTime,
+                             p.isHunter);
         listenForMatchEvents(command);
     });
 }
@@ -31,7 +31,7 @@ void MatchManager::sync() {
 
 void MatchManager::sendCommand(const uint8_t* mac, int command, const char* matchId,
                                long drawTime, bool isHunter) {
-    DuelPacket packet{};
+    MatchPacket packet{};
     packet.command = command;
     packet.playerDrawTime = drawTime;
     packet.isHunter = isHunter;
@@ -39,7 +39,7 @@ void MatchManager::sendCommand(const uint8_t* mac, int command, const char* matc
     IdGenerator::copyId(packet.playerId, player->getUserID().c_str());
 
     LOG_I(MATCH_MANAGER_TAG, "Sending command %i to %s", command, MacToString(mac));
-    duelChannel.sendReliable(mac, packet);
+    matchChannel.sendReliable(mac, packet);
 }
 
 MatchManager::~MatchManager() {
@@ -65,8 +65,8 @@ ShootoutManager* MatchManager::getShootoutManager() const {
 }
 
 bool MatchManager::currentMatchIsShootout() const {
-    return activeDuelState.match.has_value() &&
-           strncmp(activeDuelState.match->getMatchId(), kShootoutMatchIdPrefix,
+    return activeMatchState.match.has_value() &&
+           strncmp(activeMatchState.match->getMatchId(), kShootoutMatchIdPrefix,
                    sizeof(kShootoutMatchIdPrefix) - 1) == 0;
 }
 
@@ -76,24 +76,24 @@ void MatchManager::clearShootoutMatch() {
 }
 
 void MatchManager::clearCurrentMatch() {
-    if (!activeDuelState.match) return;
+    if (!activeMatchState.match) return;
     LOG_I(MATCH_MANAGER_TAG, "Clearing current match");
-    // Keep duelChannel retrying only when a local DRAW_RESULT or NEVER_PRESSED was sent.
-    if (!activeDuelState.hasPressedButton && !activeDuelState.gracePeriodExpiredNoResult) {
-        duelChannel.cancel(activeDuelState.opponentMac.data());
+    // Keep matchChannel retrying only when a local DRAW_RESULT or NEVER_PRESSED was sent.
+    if (!activeMatchState.hasPressedButton && !activeMatchState.gracePeriodExpiredNoResult) {
+        matchChannel.cancel(activeMatchState.opponentMac.data());
     }
-    activeDuelState = ActiveDuelState{};
+    activeMatchState = ActiveMatchState{};
 }
 
 void MatchManager::primeMatch(const char* matchId, const uint8_t* opponentMac,
                               bool localIsHunter) {
-    activeDuelState.localIsHunter = localIsHunter;
-    activeDuelState.match.emplace(matchId, player->getUserID().c_str(), localIsHunter);
-    memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
+    activeMatchState.localIsHunter = localIsHunter;
+    activeMatchState.match.emplace(matchId, player->getUserID().c_str(), localIsHunter);
+    memcpy(activeMatchState.opponentMac.data(), opponentMac, 6);
 }
 
 void MatchManager::initializeMatch(uint8_t* opponentMac) {
-    if (activeDuelState.match.has_value()) {
+    if (activeMatchState.match.has_value()) {
         return;
     }
 
@@ -101,108 +101,103 @@ void MatchManager::initializeMatch(uint8_t* opponentMac) {
     LOG_D(MATCH_MANAGER_TAG, "TIMING initializeMatch T=%lu", clock ? clock->milliseconds() : 0UL);
 
     primeMatch(IdGenerator::getInstance().generateId(), opponentMac, player->isHunter());
-    sendCommand(activeDuelState.opponentMac.data(), DuelCmd::SEND_MATCH_ID,
-                activeDuelState.match->getMatchId(), 0, activeDuelState.localIsHunter);
+    sendCommand(activeMatchState.opponentMac.data(), MatchCmd::SEND_MATCH_ID,
+                activeMatchState.match->getMatchId(), 0, activeMatchState.localIsHunter);
 }
 
 void MatchManager::initializeShootoutMatch(const char* matchId, uint8_t* opponentMac,
                                            bool localIsHunter) {
     // A repeat MATCH_START names a match that may already be mounted; the live one
     // wins, since re-priming would reset a draw already in progress.
-    if (activeDuelState.match.has_value()) return;
+    if (activeMatchState.match.has_value()) return;
 
     auto* clock = SimpleTimer::getPlatformClock();
     LOG_D(MATCH_MANAGER_TAG, "TIMING initializeShootoutMatch T=%lu",
           clock ? clock->milliseconds() : 0UL);
 
     primeMatch(matchId, opponentMac, localIsHunter);
-    activeDuelState.matchIsReady = true;
+    activeMatchState.matchIsReady = true;
 }
 
-void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter, uint8_t* opponentMac) {
-    // Only allow one active match at a time
-    if (activeDuelState.match.has_value()) {
+void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter,
+                                uint8_t* opponentMac) {
+    if (activeMatchState.match.has_value()) {
         return;
     }
 
-    // Build the match from our own perspective, then record the opponent's ID.
     primeMatch(matchId, opponentMac, player->isHunter());
     if (opponentIsHunter) {
-        activeDuelState.match->setHunterId(opponentId);
+        activeMatchState.match->setHunterId(opponentId);
     } else {
-        activeDuelState.match->setBountyId(opponentId);
+        activeMatchState.match->setBountyId(opponentId);
     }
 
     auto* clock = SimpleTimer::getPlatformClock();
     LOG_D(MATCH_MANAGER_TAG, "TIMING receiveMatch-ready T=%lu", clock ? clock->milliseconds() : 0UL);
 
-    activeDuelState.matchIsReady = true;
+    activeMatchState.matchIsReady = true;
 
-    sendCommand(activeDuelState.opponentMac.data(), DuelCmd::MATCH_ID_ACK,
-                activeDuelState.match->getMatchId(), 0, activeDuelState.localIsHunter);
+    sendCommand(activeMatchState.opponentMac.data(), MatchCmd::MATCH_ID_ACK,
+                activeMatchState.match->getMatchId(), 0, activeMatchState.localIsHunter);
 }
 
-
-void MatchManager::setDuelLocalStartTime(unsigned long local_start_time_ms) {
-    activeDuelState.duelLocalStartTime = local_start_time_ms;
+void MatchManager::setMatchLocalStartTime(unsigned long localStartTimeMs) {
+    activeMatchState.matchLocalStartTime = localStartTimeMs;
 }
 
-unsigned long MatchManager::getDuelLocalStartTime() {
-    return activeDuelState.duelLocalStartTime;
+unsigned long MatchManager::getMatchLocalStartTime() const {
+    return activeMatchState.matchLocalStartTime;
 }
 
-// //Pretty sure this needs to be refactored. will come back to it.
 bool MatchManager::matchResultsAreIn() {
-    if (!activeDuelState.match) {
+    if (!activeMatchState.match) {
         return false;
     }
 
-    // Final clause is the deadlock escape for both-timed-out duels where the
+    // Final clause is the deadlock escape for both-timed-out matches where the
     // opponent's NEVER_PRESSED packet drops. Gated on !hasPressedButton so a
     // button-press in the same tick as grace expiry still takes the press
     // path (clauses 1/2) — otherwise didWin() would spuriously return false.
-    return (activeDuelState.hasReceivedDrawResult && activeDuelState.hasPressedButton)
-    || (activeDuelState.opponentNeverPressed && activeDuelState.hasPressedButton)
-    || (activeDuelState.gracePeriodExpiredNoResult && !activeDuelState.hasPressedButton);
+    return (activeMatchState.hasReceivedDrawResult && activeMatchState.hasPressedButton) ||
+           (activeMatchState.opponentNeverPressed && activeMatchState.hasPressedButton) ||
+           (activeMatchState.gracePeriodExpiredNoResult && !activeMatchState.hasPressedButton);
 }
 
-void MatchManager::setNeverPressed() {
-    activeDuelState.gracePeriodExpiredNoResult = true;
-}
+void MatchManager::setNeverPressed() { activeMatchState.gracePeriodExpiredNoResult = true; }
 
 bool MatchManager::didWin() {
-    if (!activeDuelState.match) {
+    if (!activeMatchState.match) {
         return false;
     }
 
-    if (activeDuelState.opponentNeverPressed) {
+    if (activeMatchState.opponentNeverPressed) {
         return true;
     }
-    if (activeDuelState.gracePeriodExpiredNoResult) {
+    if (activeMatchState.gracePeriodExpiredNoResult) {
         return false;
     }
 
-    const unsigned long hunterTime = activeDuelState.match->getHunterDrawTime();
-    const unsigned long bountyTime = activeDuelState.match->getBountyDrawTime();
-    return activeDuelState.localIsHunter ? hunterTime < bountyTime : bountyTime < hunterTime;
+    const unsigned long hunterTime = activeMatchState.match->getHunterDrawTime();
+    const unsigned long bountyTime = activeMatchState.match->getBountyDrawTime();
+    return activeMatchState.localIsHunter ? hunterTime < bountyTime : bountyTime < hunterTime;
 }
 
 bool MatchManager::finalizeMatch() {
-    if (!activeDuelState.match) {
+    if (!activeMatchState.match) {
         LOG_E(MATCH_MANAGER_TAG, "Cannot finalize match - no active match or ID mismatch\n");
         return false;
     }
 
     // Snapshot times for the result screen (before clearCurrentMatch wipes the match).
-    lastMatchDisplay.myTimeMs = activeDuelState.localIsHunter
-                                    ? activeDuelState.match->getHunterDrawTime()
-                                    : activeDuelState.match->getBountyDrawTime();
-    lastMatchDisplay.opponentTimeMs = activeDuelState.localIsHunter
-                                          ? activeDuelState.match->getBountyDrawTime()
-                                          : activeDuelState.match->getHunterDrawTime();
+    lastMatchDisplay.myTimeMs = activeMatchState.localIsHunter
+                                ? activeMatchState.match->getHunterDrawTime()
+                                : activeMatchState.match->getBountyDrawTime();
+    lastMatchDisplay.opponentTimeMs = activeMatchState.localIsHunter
+                                      ? activeMatchState.match->getBountyDrawTime()
+                                      : activeMatchState.match->getHunterDrawTime();
     lastMatchDisplay.hasData = true;
 
-    std::string match_id = activeDuelState.match->getMatchId();
+    std::string matchId = activeMatchState.match->getMatchId();
 
     // Shootout matches are local-ephemeral: no save, no upload.
     if (currentMatchIsShootout()) {
@@ -210,52 +205,42 @@ bool MatchManager::finalizeMatch() {
         return true;
     }
 
-    // Save to storage
-    if (appendMatchToStorage(&*activeDuelState.match)) {
-        // Update stored count
+    if (appendMatchToStorage(&*activeMatchState.match)) {
         updateStoredMatchCount(getStoredMatchCount() + 1);
         clearCurrentMatch();
-        LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", match_id.c_str());
+        LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", matchId.c_str());
         return true;
     }
 
-    LOG_E("PDN", "Failed to finalize match %s\n", match_id.c_str());
+    LOG_E("PDN", "Failed to finalize match %s\n", matchId.c_str());
     return false;
 }
 
-bool MatchManager::getHasReceivedDrawResult() {
-    return activeDuelState.hasReceivedDrawResult;
+bool MatchManager::getHasReceivedDrawResult() const {
+    return activeMatchState.hasReceivedDrawResult;
 }
 
-bool MatchManager::getHasPressedButton() {
-    return activeDuelState.hasPressedButton;
-}
+bool MatchManager::getHasPressedButton() const { return activeMatchState.hasPressedButton; }
 
-void MatchManager::setReceivedDrawResult() {
-    activeDuelState.hasReceivedDrawResult = true;
-}
+void MatchManager::setReceivedDrawResult() { activeMatchState.hasReceivedDrawResult = true; }
 
-parameterizedCallbackFunction MatchManager::getDuelButtonPush() {
-    return duelButtonPush;
-}
+parameterizedCallbackFunction MatchManager::getMatchButtonPush() { return matchButtonPush; }
 
-void MatchManager::setReceivedButtonPush() {
-    activeDuelState.hasPressedButton = true;
-}
+void MatchManager::setReceivedButtonPush() { activeMatchState.hasPressedButton = true; }
 
 bool MatchManager::setHunterDrawTime(unsigned long hunter_time_ms) {
-    if (!activeDuelState.match) {
+    if (!activeMatchState.match) {
         return false;
     }
-    activeDuelState.match->setHunterDrawTime(hunter_time_ms);
+    activeMatchState.match->setHunterDrawTime(hunter_time_ms);
     return true;
 }
 
 bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
-    if (!activeDuelState.match) {
+    if (!activeMatchState.match) {
         return false;
     }
-    activeDuelState.match->setBountyDrawTime(bounty_time_ms);
+    activeMatchState.match->setBountyDrawTime(bounty_time_ms);
     return true;
 }
 
@@ -373,7 +358,7 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
     this->player = player;
     this->storage = storage;
 
-    duelButtonPush = [](void *ctx) {
+    matchButtonPush = [](void* ctx) {
         if (!ctx) {
             LOG_E(MATCH_MANAGER_TAG, "Button press handler received null context");
             return;
@@ -387,7 +372,7 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
         unsigned long now = clock->milliseconds();
 
         MatchManager* matchManager = static_cast<MatchManager*>(ctx);
-        ActiveDuelState* activeDuelState = &matchManager->activeDuelState;
+        ActiveMatchState* activeMatchState = &matchManager->activeMatchState;
         Player* player = matchManager->player;
 
         if(matchManager->getHasPressedButton()) {
@@ -400,10 +385,10 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
             return;
         }
 
-        unsigned long reactionTimeMs = now - matchManager->getDuelLocalStartTime();
+        unsigned long reactionTimeMs = now - matchManager->getMatchLocalStartTime();
 
-        if(activeDuelState->buttonMasherCount > 0) {
-            reactionTimeMs = reactionTimeMs + activeDuelState->calculateButtonMasherPenalty();
+        if (activeMatchState->buttonMasherCount > 0) {
+            reactionTimeMs = reactionTimeMs + activeMatchState->calculateButtonMasherPenalty();
         }
 
         unsigned long boost = matchManager->boostProvider_ ? matchManager->boostProvider_() : 0;
@@ -414,24 +399,24 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
         matchManager->lastMatchDisplay.boostMs = boost;
 
         LOG_I(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms (boost %lu) for %s",
-              boostedTimeMs, boost, activeDuelState->localIsHunter ? "Hunter" : "Bounty");
+              boostedTimeMs, boost, activeMatchState->localIsHunter ? "Hunter" : "Bounty");
 
-        activeDuelState->localIsHunter ? matchManager->setHunterDrawTime(boostedTimeMs)
-                                       : matchManager->setBountyDrawTime(boostedTimeMs);
+        activeMatchState->localIsHunter ? matchManager->setHunterDrawTime(boostedTimeMs)
+                                        : matchManager->setBountyDrawTime(boostedTimeMs);
 
         // Player stats record the raw (unboosted) reaction time — boost is a
-        // duel-time advantage, not an achievement the player actually made.
+        // match-time advantage, not an achievement the player actually made.
         player->addReactionTime(reactionTimeMs);
 
         LOG_I(MATCH_MANAGER_TAG, "Stored reaction time in MatchManager");
 
         LOG_I(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s",
-                MacToString(activeDuelState->opponentMac.data()));
+              MacToString(activeMatchState->opponentMac.data()));
 
         // Send the BOOSTED time in DRAW_RESULT so both sides agree on who won.
-        matchManager->sendCommand(activeDuelState->opponentMac.data(), DuelCmd::DRAW_RESULT,
-                                  matchManager->getCurrentMatch()->getMatchId(),
-                                  boostedTimeMs, activeDuelState->localIsHunter);
+        matchManager->sendCommand(activeMatchState->opponentMac.data(), MatchCmd::DRAW_RESULT,
+                                  matchManager->getCurrentMatch()->getMatchId(), boostedTimeMs,
+                                  activeMatchState->localIsHunter);
 
         matchManager->setReceivedButtonPush();
         
@@ -440,22 +425,23 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
 
     buttonMasher = [](void *ctx) {
         MatchManager* matchManager = static_cast<MatchManager*>(ctx);
-        matchManager->activeDuelState.buttonMasherCount++;
-        LOG_I(MATCH_MANAGER_TAG, "Button masher count: %d", matchManager->activeDuelState.buttonMasherCount);
+        matchManager->activeMatchState.buttonMasherCount++;
+        LOG_I(MATCH_MANAGER_TAG, "Button masher count: %d",
+              matchManager->activeMatchState.buttonMasherCount);
     };
 }
 
-bool MatchManager::isFromActiveMatchOpponent(const DuelCommand& command) const {
-    if (!activeDuelState.match.has_value()) return false;
-    if (memcmp(command.wifiMacAddr, activeDuelState.opponentMac.data(), 6) != 0) return false;
-    if (strcmp(command.matchId, activeDuelState.match->getMatchId()) != 0) return false;
+bool MatchManager::isFromActiveMatchOpponent(const MatchCommand& command) const {
+    if (!activeMatchState.match.has_value()) return false;
+    if (memcmp(command.wifiMacAddr, activeMatchState.opponentMac.data(), 6) != 0) return false;
+    if (strcmp(command.matchId, activeMatchState.match->getMatchId()) != 0) return false;
     return true;
 }
 
-void MatchManager::listenForMatchEvents(const DuelCommand& command) {
+void MatchManager::listenForMatchEvents(const MatchCommand& command) {
     LOG_I(MATCH_MANAGER_TAG, "Received command: %d", command.command);
 
-    if (command.command == DuelCmd::SEND_MATCH_ID) {
+    if (command.command == MatchCmd::SEND_MATCH_ID) {
         // Gate on RDC peering — no active match exists yet, so the sender
         // must be authenticated via the cable-established direct peer.
         LOG_I(MATCH_MANAGER_TAG, "Received SEND_MATCH_ID command from opponent");
@@ -465,31 +451,32 @@ void MatchManager::listenForMatchEvents(const DuelCommand& command) {
         }
         bool shootoutActive = shootoutManager_ && shootoutManager_->active();
         if(!shootoutActive && player->isHunter() == command.isHunter) {
-            // Echo the sender's matchId/MAC: activeDuelState.match is still empty.
-            sendCommand(command.wifiMacAddr, DuelCmd::MATCH_ROLE_MISMATCH,
-                        command.matchId, 0, player->isHunter());
+            // Echo the sender's matchId/MAC: activeMatchState.match is still empty.
+            sendCommand(command.wifiMacAddr, MatchCmd::MATCH_ROLE_MISMATCH, command.matchId, 0,
+                        player->isHunter());
             return;
         } else {
             receiveMatch(command.matchId, command.playerId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr));
         }
-    } else if (command.command == DuelCmd::MATCH_ID_ACK) {
+    } else if (command.command == MatchCmd::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
-        duelChannel.cancel(activeDuelState.opponentMac.data());
-        if (activeDuelState.localIsHunter) {
-            activeDuelState.match->setBountyId(command.playerId);
+        matchChannel.cancel(activeMatchState.opponentMac.data());
+        if (activeMatchState.localIsHunter) {
+            activeMatchState.match->setBountyId(command.playerId);
         } else {
-            activeDuelState.match->setHunterId(command.playerId);
+            activeMatchState.match->setHunterId(command.playerId);
         }
         auto* clock = SimpleTimer::getPlatformClock();
         LOG_D(MATCH_MANAGER_TAG, "TIMING matchAck-ready T=%lu", clock ? clock->milliseconds() : 0UL);
-        activeDuelState.matchIsReady = true;
-    } else if (command.command == DuelCmd::MATCH_ROLE_MISMATCH) {
+        activeMatchState.matchIsReady = true;
+    } else if (command.command == MatchCmd::MATCH_ROLE_MISMATCH) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ROLE_MISMATCH command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
         clearCurrentMatch();
         return;
-    } else if (command.command == DuelCmd::DRAW_RESULT || command.command == DuelCmd::NEVER_PRESSED) {
+    } else if (command.command == MatchCmd::DRAW_RESULT ||
+               command.command == MatchCmd::NEVER_PRESSED) {
         LOG_I(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
 
@@ -501,8 +488,8 @@ void MatchManager::listenForMatchEvents(const DuelCommand& command) {
         setHunterDrawTime(opponentTime)
         : setBountyDrawTime(opponentTime);
 
-        if (command.command == DuelCmd::NEVER_PRESSED) {
-            activeDuelState.opponentNeverPressed = true;
+        if (command.command == MatchCmd::NEVER_PRESSED) {
+            activeMatchState.opponentNeverPressed = true;
         }
 
         setReceivedDrawResult();
@@ -512,21 +499,19 @@ void MatchManager::listenForMatchEvents(const DuelCommand& command) {
 }
 
 void MatchManager::sendNeverPressed(unsigned long pityTime) {
-    if (!activeDuelState.match.has_value()) {
+    if (!activeMatchState.match.has_value()) {
         LOG_E(MATCH_MANAGER_TAG, "Cannot send NEVER_PRESSED - no active match");
         return;
     }
 
-    activeDuelState.localIsHunter ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
+    activeMatchState.localIsHunter ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
     setNeverPressed();
-    // Mirror what gets uploaded: every duel contributes a draw time to the server,
+    // Mirror what gets uploaded: every match contributes a draw time to the server,
     // so on-device "average reaction" should include pity times too.
     player->addReactionTime(pityTime);
 
-    sendCommand(activeDuelState.opponentMac.data(), DuelCmd::NEVER_PRESSED,
-                activeDuelState.match->getMatchId(), pityTime, activeDuelState.localIsHunter);
+    sendCommand(activeMatchState.opponentMac.data(), MatchCmd::NEVER_PRESSED,
+                activeMatchState.match->getMatchId(), pityTime, activeMatchState.localIsHunter);
 }
 
-bool MatchManager::isMatchReady() {
-    return activeDuelState.matchIsReady;
-}
+bool MatchManager::isMatchReady() const { return activeMatchState.matchIsReady; }

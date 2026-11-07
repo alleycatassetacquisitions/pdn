@@ -14,7 +14,7 @@
 #include "utils/simple-timer.hpp"
 #include "id-generator.hpp"
 
-// CLI modules
+// CLI components
 #include "cli/cli-terminal.hpp"
 #include "cli/cli-device.hpp"
 #include "cli/cli-renderer.hpp"
@@ -89,9 +89,7 @@ int promptDeviceCount() {
     printf("\033[1;33m");  // Bold yellow
     printf("How many PDN devices would you like to simulate? (1-%d)\n", MAX_DEVICES);
     printf("\033[0m");
-    printf("  - Device 1 will be a Hunter\n");
-    printf("  - Device 2 will be a Bounty\n");
-    printf("  - Roles alternate: Hunter, Bounty, Hunter, Bounty...\n");
+    printf("  - All simulated devices start as Hunters\n");
     printf("\n");
     
     while (true) {
@@ -120,9 +118,7 @@ int promptDeviceCount() {
     }
 }
 
-/**
- * Create devices with alternating hunter/bounty roles.
- */
+/** Creates simulated devices, all starting as Hunters. */
 std::vector<cli::DeviceInstance> createDevices(int count) {
     std::vector<cli::DeviceInstance> devices;
     devices.reserve(count);
