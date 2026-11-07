@@ -18,7 +18,6 @@ public:
     using ReliableChannelBase::isDuplicateReliableRx;
     using ReliableChannelBase::nextSeqId;
     using ReliableChannelBase::ReliableChannelBase;
-    using ReliableChannelBase::RX_SEQ_CLAIM_MS;
     /** No-op body so the otherwise pure-virtual base becomes instantiable. */
     bool deliverBytes(const uint8_t*, const uint8_t*, size_t) override { return false; }
     /** Untyped probe: no payload struct, so report 0. */
@@ -31,45 +30,51 @@ TEST(ReliableChannelBaseTest, nextSeqIdWrapsAfter255) {
     Resender resender(nullptr);
     ProbeChannel ch(nullptr, &resender, PktType::kChainGameEvent,
                     [](uint8_t, const uint8_t*) {});
-    for (int i = 1; i <= 255; ++i) {
-        ASSERT_EQ(ch.nextSeqId(), static_cast<uint8_t>(i));
+    const uint8_t first = ch.nextSeqId();
+    ASSERT_NE(first, uint8_t{0});
+    uint8_t expected = first;
+    for (int i = 1; i < 255; ++i) {
+        expected = expected == 255 ? 1 : expected + 1;
+        ASSERT_EQ(ch.nextSeqId(), expected);
     }
-    // The 256th call wraps back to 1 (zero is reserved for "no ack expected").
-    ASSERT_EQ(ch.nextSeqId(), uint8_t{1});
+    // The 256th call returns to the starting seqId after skipping 0 on wrap.
+    ASSERT_EQ(ch.nextSeqId(), first);
 }
 
-TEST(ReliableChannelBaseTest, aRestartedSenderIsNotMistakenForARetransmit) {
-    // seqIds start at 1 on a fresh channel, so the first frame a peer sends after
-    // rebooting carries the same seqId the receiver already holds from before the
-    // reboot. Suppressing that as a duplicate loses the frame — and on a channel
-    // that sends one frame per peer, such as the role announce, the cursor is
-    // ALWAYS sitting on 1, so it is lost every reboot rather than occasionally.
-    // The sender is told nothing: the radio still MAC-acks the frame, so its
-    // retry clears and it records the peer as told.
-    //
-    // What separates the two cases is time, not content. A duplicate is a
-    // retransmit, and retransmits stop when the frame's span runs out.
-    FakePlatformClock clock;
-    SimpleTimer::setPlatformClock(&clock);
-    clock.setTime(1000);
+TEST(ReliableChannelBaseTest, initialSeqIdIsSeededPerChannel) {
+    // Seeding lastSentSeqId at construction prevents a rebooted peer from
+    // always restarting at 1 and colliding with a receiver cursor sitting on 1.
+    Resender resender(nullptr);
+    const uint8_t first =
+    ProbeChannel(nullptr, &resender, PktType::kRoleAnnounce, [](uint8_t, const uint8_t*) {})
+    .nextSeqId();
+    ASSERT_NE(first, uint8_t{0});
+    bool sawDifferentSeed = false;
+    for (int i = 0; i < 16; ++i) {
+        const uint8_t candidate =
+        ProbeChannel(nullptr, &resender, PktType::kRoleAnnounce, [](uint8_t, const uint8_t*) {})
+        .nextSeqId();
+        ASSERT_NE(candidate, uint8_t{0});
+        if (candidate != first) {
+            sawDifferentSeed = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(sawDifferentSeed);
+}
+
+TEST(ReliableChannelBaseTest, duplicateSeqIdRemainsSuppressedAndFreshSeedDelivers) {
     Resender resender(nullptr);
     ProbeChannel ch(nullptr, &resender, PktType::kRoleAnnounce,
                     [](uint8_t, const uint8_t*) {});
     std::array<uint8_t, 6> peer = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
 
-    // First frame of the peer's life.
     EXPECT_FALSE(ch.isDuplicateReliableRx(peer.data(), 1));
-    // Its retransmit, inside the retry window: genuinely a repeat.
-    clock.advance(300);
+    EXPECT_TRUE(ch.isDuplicateReliableRx(peer.data(), 1));
     EXPECT_TRUE(ch.isDuplicateReliableRx(peer.data(), 1));
 
-    // The peer reboots and announces again from a fresh counter. Far past any
-    // window it could still have been retransmitting in.
-    clock.advance(ProbeChannel::RX_SEQ_CLAIM_MS + 1);
-    EXPECT_FALSE(ch.isDuplicateReliableRx(peer.data(), 1))
-        << "a restarted sender's first frame was swallowed as a duplicate";
-
-    SimpleTimer::setPlatformClock(nullptr);
+    EXPECT_FALSE(ch.isDuplicateReliableRx(peer.data(), 42));
+    EXPECT_TRUE(ch.isDuplicateReliableRx(peer.data(), 42));
 }
 
 TEST(ReliableChannelBaseTest, rxDedupEvictsOldestSenderWhenFull) {
@@ -313,8 +318,7 @@ TEST(ResenderBroadcastTest, theLadderStopsWellShortOfTheShiftBound) {
 
     EXPECT_EQ(abandons, 1);
     EXPECT_GE(abandonedAtMs, Resender::RETRANSMIT_SPAN_MS);
-    EXPECT_LE(abandonedAtMs, Resender::STALE_AFTER_MS)
-        << "a frame outlived the window its receiver claims a seqId for";
+    EXPECT_LE(abandonedAtMs, Resender::STALE_AFTER_MS) << "a frame outlived STALE_AFTER_MS";
     // 1 initial + 3 retransmits: round never exceeds 3, so backoffMs shifts by 3.
     EXPECT_EQ(f.frames, 4);
 }
