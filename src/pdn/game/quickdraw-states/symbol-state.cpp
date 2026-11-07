@@ -23,8 +23,8 @@ SymbolState::~SymbolState() {
 void SymbolState::onStateMounted(PDN* pdn) {
     LOG_W(TAG, "mounted");
     mountedPdn = pdn;
-    transitionToIdleState = false;
-    transitionToSymbolMatchedState = false;
+    fdnMac = nullptr;
+    phase = Phase::ACTIVE;
     matchReady = false;
     symbolSent = false;
     hapticPulseActive = false;
@@ -38,7 +38,7 @@ void SymbolState::onStateMounted(PDN* pdn) {
         bufferTimer.setTimer(BUFFER_TIMEOUT);
         symbolWirelessManager->setMacPeer(fdnMac);
     } else {
-        transitionToIdleState = true;
+        phase = Phase::TO_IDLE;
     }
 
     parameterizedCallbackFunction sendSymbolToFDN = [](void *ctx) {
@@ -68,7 +68,24 @@ void SymbolState::onStateMounted(PDN* pdn) {
 }
 
 void SymbolState::onStateLoop(PDN* pdn) {
-    if (symbolSent) {
+    if (phase == Phase::TO_IDLE) {
+        return;
+    }
+
+    if (hapticPulseActive && hapticPulseTimer.expired()) {
+        pdn->getHaptics()->off();
+        hapticPulseTimer.invalidate();
+        hapticPulseActive = false;
+    }
+
+    if (phase != Phase::EXIT_DWELL && remoteDeviceCoordinator->getPeerDeviceType(
+                                      SerialIdentifier::OUTPUT_JACK) != DeviceType::FDN) {
+        phase = Phase::EXIT_DWELL;
+        renderTimer.invalidate();
+        bufferTimer.setTimer(BUFFER_TIMEOUT);
+    }
+
+    if (phase != Phase::EXIT_DWELL && symbolSent) {
         if (!hapticPulseActive) {
             pdn->getHaptics()->setIntensity(VIBRATION_MAX);
             hapticPulseTimer.setTimer(HAPTIC_PULSE_DURATION);
@@ -80,16 +97,14 @@ void SymbolState::onStateLoop(PDN* pdn) {
         renderTimer.invalidate();
     }
 
-    if (hapticPulseActive && hapticPulseTimer.expired()) {
-        pdn->getHaptics()->off();
-        hapticPulseTimer.invalidate();
-        hapticPulseActive = false;
-    }
-
     // Buffer animation must not block the main loop — sync needs to run every tick.
     if (bufferTimer.isRunning()) {
         if (bufferTimer.expired()) {
             bufferTimer.invalidate();
+            if (phase == Phase::EXIT_DWELL) {
+                phase = Phase::TO_IDLE;
+                return;
+            }
             advanceSymbolRender(pdn);
         } else {
             if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
@@ -102,23 +117,13 @@ void SymbolState::onStateLoop(PDN* pdn) {
     if (renderTimer.expired()) {
         advanceSymbolRender(pdn);
     }
-
-    // if device is not connected to an FDN, transition to idle
-    if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) != DeviceType::FDN) {
-        transitionToIdleState = true;
-    }
 }
 
 void SymbolState::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "dismounted");
-    // The Idle edge is registered ahead of the sibling (see SymbolApp), so it
-    // wins outright when both hold — an FDN answering on the tick the cable is
-    // pulled.
-    const bool showRefreshScreen = transitionToIdleState;
     mountedPdn = nullptr;
     fdnMac = nullptr;
-    transitionToIdleState = false;
-    transitionToSymbolMatchedState = false;
+    phase = Phase::ACTIVE;
     symbolSent = false;
     hapticPulseActive = false;
     bufferTimer.invalidate();
@@ -126,16 +131,6 @@ void SymbolState::onStateDismounted(PDN* pdn) {
     pdn->getHaptics()->off();
     if (renderTimer.isRunning()) {
         renderTimer.invalidate();
-    }
-
-    if (showRefreshScreen) {
-        bufferTimer.setTimer(BUFFER_TIMEOUT);
-        while (!bufferTimer.expired()) {
-            if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
-                renderLoadingScreen(pdn->getDisplay());
-            }
-        }
-        bufferTimer.invalidate();
     }
 
     symbolWirelessManager->clearCallback();
@@ -154,13 +149,9 @@ bool SymbolState::isAuxRequired() {
     return true;
 }
 
-bool SymbolState::transitionToIdle() {
-    return transitionToIdleState;
-}
+bool SymbolState::transitionToIdle() { return phase == Phase::TO_IDLE; }
 
-bool SymbolState::transitionToSymbolMatched() {
-    return transitionToSymbolMatchedState;
-}
+bool SymbolState::transitionToSymbolMatched() { return phase == Phase::TO_MATCHED; }
 
 void SymbolState::renderSymbolScreen(PDN* pdn) {
     
@@ -210,6 +201,9 @@ void SymbolState::sendSymbolToFDN() {
 }
 
 void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
+    if (phase == Phase::EXIT_DWELL || phase == Phase::TO_IDLE) {
+        return;
+    }
 
     if (command.command == SMCommand::SEND_SYMBOL) {
         fdnSymbol = command.symbolId;
@@ -227,7 +221,7 @@ void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
         symbolSent = false;
         matchReady = false;
         toggleSymbol = true;
-        transitionToSymbolMatchedState = false;
+        phase = Phase::ACTIVE;
 
         // Force an immediate redraw back to the blinking symbol.
         renderTimer.invalidate();
@@ -237,6 +231,6 @@ void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
             renderTimer.setTimer(RENDER_TIMEOUT);
         }
     } else if (command.command == SMCommand::SYMBOL_MATCH_SUCCESS) {
-        transitionToSymbolMatchedState = true;
+        phase = Phase::TO_MATCHED;
     }
 }
