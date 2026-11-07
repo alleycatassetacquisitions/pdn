@@ -8,10 +8,10 @@ Terms:
 
 - **Seed**: the one device broadcasting an image. It always distributes the image it is running, so a seed is evidence the image boots.
 - **Receiver**: a device writing that image to its inactive slot.
-- **Slot**: an `ota_0` or `ota_1` application partition. A device runs one and writes the other.
-- **App description**: the image's `esp_app_desc_t`, 32 bytes into the image.
-- **Image identity**: the app description's `app_elf_sha256`.
-- **Build time**: the app description's `date` and `time`, stamped in UTC on every build.
+- **Slot**: one of the two OTA application partitions (`ota_0` or `ota_1`). A device runs one and writes the other.
+- **App description**: the application metadata header embedded 32 bytes into the image.
+- **Image identity**: the application ELF SHA-256 digest in the app description.
+- **Build time**: the UTC build date and time stamped into the app description on every build.
 
 ## Requirements
 
@@ -140,7 +140,7 @@ A receiver SHALL:
 
 ### Requirement: Authenticity
 
-The store SHALL accept an assembled image only if ESP-IDF verifies it (`CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT`, RSA-3072): intact, and signed with the key that signed the running image. Every PDN build SHALL be signed, since IDF refuses to start an unsigned image under this setting. FDN builds SHALL NOT be signed, so no PDN takes an FDN image.
+The store SHALL accept an assembled image only if the platform image verifier confirms it is intact and RSA-3072 signed with the same key that signed the running image (without requiring hardware Secure Boot). Every PDN build SHALL be signed, since the platform refuses to start an unsigned image under this setting. FDN builds SHALL NOT be signed, so no PDN takes an FDN image.
 
 IDF checks one signature against one key. The signing key can therefore never change over the air: rotating it, or retiring a leaked one, takes a USB flash of every device.
 
@@ -164,7 +164,7 @@ These are decisions, not oversights.
 - **A rolled-back image is taken again** while a seed of it is in range: the store does not remember which image failed.
 - **The signing key is permanent** over the air (see `Authenticity`).
 - **The key check is software.** An attacker who can write flash can replace both image and key; only Secure Boot v2 closes that, and it is irreversible on hand-built hardware.
-- **The erase blocks the loop.** `esp_ota_begin` erases the image's length (~3.5 s for 2.2 MB) before returning.
+- **The erase blocks the loop.** Opening the destination OTA partition erases the image's length (~3.5 s for 2.2 MB) synchronously before returning.
 - **A run occupies the channel**, about 80% of it for about 70 seconds.
 - **Build time orders builds, not commits.** An older commit built later is taken as newer.
 - **A fast build clock blocks later builds.** An image built on a host whose clock runs ahead is newer than every honest build until real time passes its stamp.

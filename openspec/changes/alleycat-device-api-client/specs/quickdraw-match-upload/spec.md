@@ -16,7 +16,7 @@ The client SHALL queue a `POST` request to `/quickdraw-matches` with content typ
 - **THEN** the queued request has method `POST`, path `/quickdraw-matches`, content type `application/protobuf`, and a payload that decodes as `WriteQuickdrawMatchesRequest` with one match
 
 ### Requirement: Matches are encoded with every required field present
-For each match, the encoder SHALL write the match UUID, both player UUIDs, the winner UUID, both draw times, and the occurrence timestamp. Draw times and the occurrence timestamp SHALL be marked present even when zero. A team UUID SHALL be written only when it is not nil. Records hold UUIDs as 16 bytes; the encoder SHALL write them as lowercase 8-4-4-4-12 text.
+For each match, the codec SHALL write the match UUID, both player UUIDs, the winner UUID, both draw times, and the occurrence timestamp. Draw times and the occurrence timestamp SHALL be marked present even when zero. A team UUID SHALL be written only when it is not nil. Records hold UUIDs as 16 bytes; the codec SHALL write them as lowercase 8-4-4-4-12 text.
 
 #### Scenario: Zero draw time
 - **WHEN** a match has `playerADrawTimeMs` of 0
