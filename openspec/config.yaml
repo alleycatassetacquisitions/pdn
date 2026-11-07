@@ -1,1 +1,25 @@
 schema: spec-driven
+
+context: |
+  Canonical domain terminology (always use the left term, never the right):
+  - PDN / Portable Data Node and FDN / Fixed Data Node (never badge, handheld, or terminal for the device type)
+  - jack (not port)
+  - ring (not loop, when referring to a closed device topology)
+  - match (not bout or duel; reserve quickdraw for the overall game system and showdown for a same-role 1v1 match)
+  - posse (not chainduel / chain-duel / chain duel)
+  - challenger and supporter (the two posse positions: challenger for the head fighting the match, never champion; supporter for same-role players chained downline)
+  - role (Hunter or Bounty; never target, and never allegiance, which is reserved for NeoCorp / faction lore affiliation such as Helix, Endline, Reboot/Resistance, or Freelancer/Alleycat)
+  - app (not module, for top-level swappable state machines suffixed *App)
+  - codec (not decoder or encoder)
+  - enable / disable (not connect / disconnect, when referring to bringing up or tearing down the connectionless peer-to-peer radio)
+
+rules:
+  specs:
+    - State only required outcomes, invariants, and environmental/fault-model constraints; keep internal C++ classes, data structures, and implementation mechanisms in design.md and tasks.md.
+    - Use canonical domain terminology (PDN, FDN, jack, ring, match, showdown, posse, challenger, supporter, role, allegiance/faction, app, codec, enable/disable).
+  proposal:
+    - Use canonical domain terminology (PDN, FDN, jack, ring, match, showdown, posse, challenger, supporter, role, allegiance/faction, app, codec, enable/disable).
+  design:
+    - Use canonical domain terminology (PDN, FDN, jack, ring, match, showdown, posse, challenger, supporter, role, allegiance/faction, app, codec, enable/disable).
+  tasks:
+    - Use canonical domain terminology (PDN, FDN, jack, ring, match, showdown, posse, challenger, supporter, role, allegiance/faction, app, codec, enable/disable).

@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Set the ESP32-S3 POSIX wall clock from the `Date` header of HTTP responses from `alleycat-rs`, and expose UTC epoch milliseconds on `PlatformClock` without disturbing the monotonic millisecond clock used by timers and gameplay.
+Synchronize the device's UTC wall clock from the `Date` header of HTTP responses from the game server, and expose UTC epoch milliseconds without disturbing the monotonic millisecond clock used by timers and gameplay.
 
 ## Requirements
 
 ### Requirement: IMF-fixdate parsing
 
-The firmware SHALL parse HTTP `Date` header values formatted as RFC 7231 `IMF-fixdate` (`<day-name>, DD Mon YYYY HH:MM:SS GMT`) into Unix epoch seconds (`int64_t`) in UTC.
+The device SHALL parse HTTP `Date` header values formatted as RFC 7231 `IMF-fixdate` (`<day-name>, DD Mon YYYY HH:MM:SS GMT`) into signed 64-bit Unix epoch seconds in UTC.
 
 The parser SHALL accept a date only when:
 
@@ -33,29 +33,29 @@ Any malformed, empty, non-GMT, or out-of-range value SHALL be rejected without s
 
 ### Requirement: System clock update on HTTP Date header
 
-Whenever `Esp32S3HttpClient` receives an HTTP response header whose key matches `"Date"` (case-insensitive) and whose value passes `IMF-fixdate parsing`, it SHALL set the system POSIX clock via `settimeofday` to `{tv_sec = parsed_seconds, tv_usec = 0}`.
+Whenever the device receives an HTTP response header whose key matches `"Date"` (case-insensitive) and whose value passes `IMF-fixdate parsing`, it SHALL set the system UTC wall clock to the parsed Unix epoch seconds (with zero sub-second offset).
 
-A response without a `Date` header, or with a `Date` header that fails `IMF-fixdate parsing`, SHALL leave the system clock unchanged.
+A response without a `Date` header, or with a `Date` header that fails `IMF-fixdate parsing`, SHALL leave the system wall clock unchanged.
 
 #### Scenario: Registration response syncs the clock
-- **WHEN** the PDN receives a response from `alleycat-rs` containing `Date: Sun, 18 Oct 2026 21:30:00 GMT`
-- **THEN** `settimeofday` sets the ESP32 POSIX clock to `1792359000` seconds (`1792359000000` ms)
+- **WHEN** the PDN receives an HTTP response containing `Date: Sun, 18 Oct 2026 21:30:00 GMT`
+- **THEN** the system UTC wall clock is set to `1792359000` seconds (`1792359000000` ms)
 
 #### Scenario: Case-insensitive header key
 - **WHEN** an HTTP/2 or proxy response delivers the header key as `"date"` or `"DATE"`
-- **THEN** the driver still parses the value and updates the system clock
+- **THEN** the device still parses the value and updates the system UTC wall clock
 
 #### Scenario: Malformed Date header leaves clock untouched
 - **WHEN** an HTTP response carries `Date: garbage`
-- **THEN** `settimeofday` is not called and the existing clock value is preserved
+- **THEN** the system UTC wall clock is not updated and the existing clock value is preserved
 
 ### Requirement: Monotonic timer isolation
 
-Updating the POSIX wall clock via `settimeofday` SHALL NOT alter `PlatformClock::milliseconds()`.
+Updating the UTC wall clock SHALL NOT alter the monotonic millisecond clock.
 
-- `PlatformClock::milliseconds()` SHALL continue to return monotonic milliseconds since boot (`esp_timer_get_time() / 1000` on ESP32-S3), used by `SimpleTimer`, HTTP request timeouts, and duel draw-time measurements.
-- `PlatformClock::unixMilliseconds()` SHALL return `int64_t` UTC milliseconds since `1970-01-01T00:00:00Z` (`gettimeofday` on ESP32-S3, `std::chrono::system_clock` on native).
+- The monotonic clock SHALL continue to report elapsed milliseconds since boot, used by protocol timers, HTTP request timeouts, and match draw-time measurements.
+- The UTC wall clock SHALL report signed 64-bit UTC milliseconds since `1970-01-01T00:00:00Z`.
 
 #### Scenario: In-flight HTTP request does not time out when Date header arrives
-- **WHEN** an HTTP request starts when `milliseconds()` is `5000` and receives `Date: Sun, 18 Oct 2026 21:30:00 GMT` during header reception
-- **THEN** `unixMilliseconds()` jumps to `1792359000000`, while `milliseconds()` remains ~`5000` and the in-flight request does not spuriously expire `REQUEST_TIMEOUT_MS`
+- **WHEN** an HTTP request starts when the monotonic clock is at `5000` ms and receives `Date: Sun, 18 Oct 2026 21:30:00 GMT` during header reception
+- **THEN** the UTC wall clock jumps to `1792359000000` ms, while the monotonic clock remains near `5000` ms and the in-flight request does not spuriously time out
