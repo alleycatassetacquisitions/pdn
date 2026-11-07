@@ -1,20 +1,18 @@
 #include "apps/symbol-match/symbol-match.hpp"
 #include "apps/fdn-app-ids.hpp"
 
-SymbolMatch::SymbolMatch(FDN* fdn, SymbolWirelessManager* symbolWirelessManager)
-    : StateMachine(SYMBOL_MATCH_APP_ID) {
-    remoteDeviceCoordinator = fdn->getRemoteDeviceCoordinator();
-    symbolManager           = new SymbolManager();
-    this->symbolWirelessManager = symbolWirelessManager;
-}
+SymbolMatchApp::SymbolMatchApp(RemoteDeviceCoordinator* remoteDeviceCoordinator,
+                               SymbolWirelessManager* symbolWirelessManager)
+    : StateMachine(SYMBOL_MATCH_APP_ID)
+    , remoteDeviceCoordinator(remoteDeviceCoordinator)
+    , symbolManager(new SymbolManager())
+    , symbolWirelessManager(symbolWirelessManager) {}
 
-SymbolMatch::~SymbolMatch() {
+SymbolMatchApp::~SymbolMatchApp() {
     delete symbolManager;
-    remoteDeviceCoordinator = nullptr;
-    symbolWirelessManager = nullptr;
 }
 
-void SymbolMatch::populateStateMap() {
+void SymbolMatchApp::populateStateMap() {
     auto* selection = new Selection(symbolManager, remoteDeviceCoordinator, symbolWirelessManager);
     auto* symbolIdle = new SymbolIdle(symbolManager, remoteDeviceCoordinator, symbolWirelessManager);
     auto* matchSuccess = new MatchSuccess(remoteDeviceCoordinator, symbolWirelessManager);

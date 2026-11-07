@@ -76,12 +76,6 @@ FDNConnectWirelessManager* fdnConnectWirelessManager = nullptr;
 HackedPlayersManager*     hackedPlayersManager     = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
 
-// Apps
-MainMenu*    mainMenu        = nullptr;
-Idle*        idleApp         = nullptr;
-Hacking*     hackingApp      = nullptr;
-SymbolMatch* symbolMatchApp  = nullptr;
-
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
 
 static void setupEspNow(PeerCommsInterface* peerComms) {
@@ -178,17 +172,12 @@ static void setup() {
     remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
 
     // Apps
-    idleApp = new Idle(
-        remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager, fdn->getRemoteDeviceCoordinator());
-
-    mainMenu = new MainMenu(fdn, remotePlayerManager);
-
-    hackingApp = new Hacking(
-        fdnConnectWirelessManager, hackedPlayersManager,
-        fdn->getRemoteDeviceCoordinator());
-
-    symbolMatchApp = new SymbolMatch(fdn, symbolWirelessManager);
+    RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
+    auto* idleApp =
+        new IdleApp(remotePlayerManager, hackedPlayersManager, fdnConnectWirelessManager, rdc);
+    auto* mainMenuApp = new MainMenuApp(rdc);
+    auto* hackingApp = new HackingApp(fdnConnectWirelessManager, hackedPlayersManager, rdc);
+    auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager);
 
     // Splash screen
     fdn->getDisplay()
@@ -199,9 +188,9 @@ static void setup() {
 
     AppConfig apps = {
         {StateId(SYMBOL_MATCH_APP_ID), symbolMatchApp},
-        {StateId(MAIN_MENU_APP_ID),    mainMenu},
-        {StateId(HACKING_APP_ID),      hackingApp},
-        {StateId(IDLE_APP_ID),         idleApp},
+        {StateId(MAIN_MENU_APP_ID), mainMenuApp},
+        {StateId(HACKING_APP_ID), hackingApp},
+        {StateId(IDLE_APP_ID), idleApp},
     };
     fdn->loadAppConfig(apps, StateId(SYMBOL_MATCH_APP_ID));
 }
