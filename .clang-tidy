@@ -1,3 +1,4 @@
+# scripts/check_style.py detects clang-tidy findings only via non-zero exit, which requires WarningsAsErrors.
 Checks: >
   -*,
   modernize-use-nullptr,
