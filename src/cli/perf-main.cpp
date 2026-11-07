@@ -1,14 +1,14 @@
 #if defined(NATIVE_BUILD) && defined(PERF_BUILD)
 
 /**
- * Duel Performance Harness
+ * Match Performance Harness
  *
- * Runs a large volume of complete hunter-vs-bounty duel cycles using only the
+ * Runs a large volume of complete hunter-vs-bounty match cycles using only the
  * business logic layer. No GoogleTest, no GMock, no rendering, no I/O in the hot
  * path. Stubs satisfy every interface with no-op or minimal implementations.
  *
  * Build:  pio run -e native_perf
- * Run:    .pio/build/native_perf/program [NUM_DUELS]
+ * Run:    .pio/build/native_perf/program [NUM_MATCHES]
  * Profile:
  *   valgrind --tool=callgrind --callgrind-out-file=callgrind.out \
  *     .pio/build/native_perf/program 50000
@@ -35,7 +35,7 @@
 #include "game/player.hpp"
 #include "game/match-manager.hpp"
 #include "game/match.hpp"
-#include "wireless/duel-packet.hpp"
+#include "wireless/match-packet.hpp"
 
 // ============================================================
 // Null logger — suppresses all LOG_* output in the hot path
@@ -84,11 +84,10 @@ public:
     const uint8_t* getGlobalBroadcastAddress() override { return broadcast_; }
     uint8_t* getMacAddress() override { return mac_; }
     void setPeerCommsState(PeerCommsState) override {}
-    PeerCommsState getPeerCommsState() override {
-        return PeerCommsState::CONNECTED;
-    }
-    void connect() override {}
-    void disconnect() override {}
+    PeerCommsState getPeerCommsState() override { return PeerCommsState::ENABLED; }
+    void enable() override {}
+    void disable() override {}
+
 private:
     PacketCallback handlerCb_ = nullptr;
     void* handlerCtx_ = nullptr;
@@ -126,24 +125,21 @@ private:
     uint8_t mac_[6] = {0};
 };
 
-static DuelPacket makeDrawResultPacket(const std::optional<Match>& match,
-                                       bool senderIsHunter,
-                                       const char* senderId) {
-    DuelPacket p = {};
+static MatchPacket makeDrawResultPacket(const std::optional<Match>& match, bool senderIsHunter,
+                                        const char* senderId) {
+    MatchPacket p = {};
     strncpy(p.matchId,  match->getMatchId(), sizeof(p.matchId) - 1);
     strncpy(p.playerId, senderId,            sizeof(p.playerId) - 1);
     p.isHunter       = senderIsHunter;
     p.playerDrawTime = senderIsHunter ? match->getHunterDrawTime()
                                       : match->getBountyDrawTime();
-    p.command = DuelCmd::DRAW_RESULT;
+    p.command = MatchCmd::DRAW_RESULT;
     return p;
 }
 
-static void deliver(StubPeerComms& target,
-                    const uint8_t mac[6],
-                    DuelPacket& pkt) {
-    target.deliver(PktType::kDuelCommand, mac,
-                   reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+static void deliver(StubPeerComms& target, const uint8_t mac[6], MatchPacket& pkt) {
+    target.deliver(PktType::kMatchCommand, mac, reinterpret_cast<const uint8_t*>(&pkt),
+                   sizeof(pkt));
 }
 
 // ============================================================
@@ -180,10 +176,10 @@ struct DeviceCtx {
 // ============================================================
 
 int main(int argc, char** argv) {
-    long numDuels = 10000;
+    long numMatches = 10000;
     if (argc >= 2) {
-        numDuels = atol(argv[1]);
-        if (numDuels < 1) numDuels = 1;
+        numMatches = atol(argv[1]);
+        if (numMatches < 1) numMatches = 1;
     }
 
     // Silence all LOG_* calls — prevents printf/stream overhead from
@@ -206,7 +202,7 @@ int main(int argc, char** argv) {
 
     long hunterWins = 0, bountyWins = 0, errors = 0;
 
-    fprintf(stderr, "Running %ld duel cycles (no logging)...\n", numDuels);
+    fprintf(stderr, "Running %ld match cycles (no logging)...\n", numMatches);
     const auto wallStart = std::chrono::steady_clock::now();
 
     std::mt19937 gen(std::random_device{}());
@@ -215,10 +211,10 @@ int main(int argc, char** argv) {
     // --------------------------------------------------------
     // Hot loop — this is what the profiler should see
     // --------------------------------------------------------
-    for (long i = 0; i < numDuels; ++i) {
-        // Advance simulated time so each duel starts from a fresh baseline
+    for (long i = 0; i < numMatches; ++i) {
+        // Advance simulated time so each match starts from a fresh baseline
         clock.set(10000 + i * 5000UL);
-        const unsigned long duelStart = clock.time_ms;
+        const unsigned long matchStart = clock.time_ms;
 
         // Hunter initiates the match via the production path.
         hunter.matchMgr->initializeMatch(const_cast<uint8_t*>(kBountyMac));
@@ -228,26 +224,25 @@ int main(int argc, char** argv) {
         bounty.matchMgr->receiveMatch(matchId, "hunt", true,
                                       const_cast<uint8_t*>(kHunterMac));
 
-        DuelCommand ackCmd(kBountyMac, DuelCmd::MATCH_ID_ACK,
-                           matchId, "boun", 0, false);
+        MatchCommand ackCmd(kBountyMac, MatchCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
         hunter.matchMgr->listenForMatchEvents(ackCmd);
 
-        hunter.matchMgr->setDuelLocalStartTime(duelStart);
-        bounty.matchMgr->setDuelLocalStartTime(duelStart);
+        hunter.matchMgr->setMatchLocalStartTime(matchStart);
+        bounty.matchMgr->setMatchLocalStartTime(matchStart);
 
         const long hunterPress = dist(gen);
         const long bountyPress = dist(gen);
 
-        clock.set(duelStart + hunterPress);
-        hunter.matchMgr->getDuelButtonPush()(hunter.matchMgr);
+        clock.set(matchStart + hunterPress);
+        hunter.matchMgr->getMatchButtonPush()(hunter.matchMgr);
 
-        clock.set(duelStart + bountyPress);
-        bounty.matchMgr->getDuelButtonPush()(bounty.matchMgr);
+        clock.set(matchStart + bountyPress);
+        bounty.matchMgr->getMatchButtonPush()(bounty.matchMgr);
 
-        DuelPacket hunterPkt = makeDrawResultPacket(
-            hunter.matchMgr->getCurrentMatch(), true, "hunt");
-        DuelPacket bountyPkt = makeDrawResultPacket(
-            bounty.matchMgr->getCurrentMatch(), false, "boun");
+        MatchPacket hunterPkt =
+        makeDrawResultPacket(hunter.matchMgr->getCurrentMatch(), true, "hunt");
+        MatchPacket bountyPkt =
+        makeDrawResultPacket(bounty.matchMgr->getCurrentMatch(), false, "boun");
 
         deliver(bounty.peerComms, kHunterMac, hunterPkt);
         deliver(hunter.peerComms, kBountyMac, bountyPkt);
@@ -271,17 +266,14 @@ int main(int argc, char** argv) {
     const double wallMs =
         std::chrono::duration<double, std::milli>(wallEnd - wallStart).count();
 
-    fprintf(stderr, "\n=== Duel Simulation Results ===\n");
-    fprintf(stderr, "Duels run:    %ld\n",       numDuels);
-    fprintf(stderr, "Hunter wins:  %ld (%.1f%%)\n", hunterWins,
-            100.0 * hunterWins / numDuels);
-    fprintf(stderr, "Bounty wins:  %ld (%.1f%%)\n", bountyWins,
-            100.0 * bountyWins / numDuels);
+    fprintf(stderr, "\n=== Match Simulation Results ===\n");
+    fprintf(stderr, "Matches run:  %ld\n", numMatches);
+    fprintf(stderr, "Hunter wins:  %ld (%.1f%%)\n", hunterWins, 100.0 * hunterWins / numMatches);
+    fprintf(stderr, "Bounty wins:  %ld (%.1f%%)\n", bountyWins, 100.0 * bountyWins / numMatches);
     fprintf(stderr, "Errors:       %ld\n",        errors);
     fprintf(stderr, "Wall time:    %.2f ms\n",    wallMs);
-    fprintf(stderr, "Avg/duel:     %.4f ms\n",    wallMs / numDuels);
-    fprintf(stderr, "Throughput:   %.0f duels/s\n",
-            numDuels / (wallMs / 1000.0));
+    fprintf(stderr, "Avg/match:    %.4f ms\n", wallMs / numMatches);
+    fprintf(stderr, "Throughput:   %.0f matches/s\n", numMatches / (wallMs / 1000.0));
 
     hunter.destroy();
     bounty.destroy();

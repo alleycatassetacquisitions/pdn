@@ -6,12 +6,12 @@
 
 ## 2. alleycat-server
 
-- [x] 2.1 `DevicePlayerDecoder` and `PlayerApi::getDevicePlayerByPin` decode into `Player`
+- [x] 2.1 `DevicePlayerCodec` and `PlayerApi::getDevicePlayerByPin` decode into `Player`
 - [x] 2.2 `static_assert`s tie `PlayerLimits` to `device_api.options`
 
 ## 3. Tests
 
-- [x] 3.1 Decoder and provider tests target `Player` registration accessors
+- [x] 3.1 Codec and provider tests target `Player` registration accessors
 - [x] 3.2 Registration shim tests (allegiance, hunter team name, UUID user id)
 - [x] 3.3 PlayerFetch tests use `getServerPlayerName()`
 

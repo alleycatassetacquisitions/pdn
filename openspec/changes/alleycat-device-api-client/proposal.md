@@ -25,7 +25,7 @@ None.
 ## Impact
 
 - `lib/alleycat-server/proto/`: `device_api.proto`, `device_api.options`, `upstream.lock.json`.
-- `lib/alleycat-server/include/alleycat-server/` and `src/`: regenerated `device_api.pb.h` and `device_api.pb.c`, plus new decoder/encoder headers and sources and new API functions in `player-api.hpp` and `matches-api.hpp`.
-- `test/test_core/`: new native tests for the decoder, encoder, and request construction.
+- `lib/alleycat-server/include/alleycat-server/` and `src/`: regenerated `device_api.pb.h` and `device_api.pb.c`, plus new codec headers and sources and new API functions in `player-api.hpp` and `matches-api.hpp`.
+- `test/test_core/`: new native tests for the codecs and request construction.
 - No firmware behavior changes. Existing callers keep using the legacy JSON endpoints until a later stage migrates them.
 - The crash-log message `WriteDeviceLogRequest` keeps the same wire format. Upstream only changed its comments.

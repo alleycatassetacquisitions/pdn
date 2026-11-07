@@ -14,7 +14,7 @@
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
-#include "wireless/duel-packet.hpp"
+#include "wireless/match-packet.hpp"
 #include "game/posse-manager.hpp"
 #include <queue>
 #include <vector>
@@ -151,8 +151,8 @@ public:
     MOCK_METHOD(void, clearPacketHandler, (PktType), (override));
     MOCK_METHOD(const uint8_t*, getGlobalBroadcastAddress, (), (override));
     MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
-    MOCK_METHOD(void, connect, (), (override));
-    MOCK_METHOD(void, disconnect, (), (override));
+    MOCK_METHOD(void, enable, (), (override));
+    MOCK_METHOD(void, disable, (), (override));
     MOCK_METHOD(void, setPeerCommsState, (PeerCommsState), (override));
     MOCK_METHOD(PeerCommsState, getPeerCommsState, (), (override));
     /** Mocked so tests can capture the handler and replay a radio SEND_SUCCESS;
@@ -281,7 +281,7 @@ public:
     std::vector<std::array<uint8_t, 6>> getChainMembers() const override { return chainMembers; }
     /**
      * Membership is broader than the RING role: a device relaying another head's
-     * closure sits on a live loop with no latch of its own.
+     * closure sits on a live ring with no latch of its own.
      */
     bool isInRing() const override {
         return chainRole == ChainRole::RING || headMac != std::array<uint8_t, 6>{};
@@ -301,31 +301,30 @@ class QuickdrawRadioTap {
 public:
     /** Call after any wildcard sendData ON_CALL and before constructing MatchManager. */
     void attach(MockPeerComms* radio) {
-        ON_CALL(*radio, setPacketHandler(PktType::kDuelCommand, testing::_, testing::_))
-            .WillByDefault(testing::Invoke(
-                [this](PktType, PeerCommsInterface::PacketCallback callback, void* ctx) {
-                    receiveHandler = callback;
-                    receiveContext = ctx;
-                }));
-        ON_CALL(*radio, sendData(testing::_, PktType::kDuelCommand, testing::_, testing::_))
-            .WillByDefault(testing::DoAll(
-                testing::Invoke([this](const uint8_t*, PktType, const uint8_t* data,
-                                       const size_t len) {
-                    if (len != sizeof(DuelPacket)) return;
-                    DuelPacket p{};
-                    memcpy(&p, data, sizeof(p));
-                    sentFrames.push_back(p);
-                }),
-                testing::Return(1)));
+        ON_CALL(*radio, setPacketHandler(PktType::kMatchCommand, testing::_, testing::_))
+        .WillByDefault(
+        testing::Invoke([this](PktType, PeerCommsInterface::PacketCallback callback, void* ctx) {
+            receiveHandler = callback;
+            receiveContext = ctx;
+        }));
+        ON_CALL(*radio, sendData(testing::_, PktType::kMatchCommand, testing::_, testing::_))
+        .WillByDefault(testing::DoAll(
+        testing::Invoke([this](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+            if (len != sizeof(MatchPacket)) return;
+            MatchPacket p{};
+            memcpy(&p, data, sizeof(p));
+            sentFrames.push_back(p);
+        }),
+        testing::Return(1)));
     }
 
     /** The exact frame this radio last sent, for the peer's tap to replay. */
-    const DuelPacket* lastFrame() const {
+    const MatchPacket* lastFrame() const {
         return sentFrames.empty() ? nullptr : &sentFrames.back();
     }
 
     /** Delivers frame from senderMac into this tap's own receiveHandler. */
-    void deliverFrameFrom(const uint8_t* senderMac, const DuelPacket* frame) {
+    void deliverFrameFrom(const uint8_t* senderMac, const MatchPacket* frame) {
         if (frame == nullptr) return;
         deliverBytesTo(senderMac, reinterpret_cast<const uint8_t*>(frame),
                        sizeof(*frame));
@@ -338,7 +337,7 @@ public:
         }
     }
 
-    std::vector<DuelPacket> sentFrames;
+    std::vector<MatchPacket> sentFrames;
 
 private:
     PeerCommsInterface::PacketCallback receiveHandler = nullptr;

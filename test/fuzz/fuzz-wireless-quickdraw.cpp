@@ -14,7 +14,7 @@
 #include "game/player.hpp"
 #include "id-generator.hpp"
 #include "utils/simple-timer.hpp"
-#include "wireless/duel-packet.hpp"
+#include "wireless/match-packet.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
@@ -78,10 +78,10 @@ public:
 
     void setPeerCommsState(PeerCommsState) override {}
 
-    PeerCommsState getPeerCommsState() override { return PeerCommsState::CONNECTED; }
+    PeerCommsState getPeerCommsState() override { return PeerCommsState::ENABLED; }
 
-    void connect() override {}
-    void disconnect() override {}
+    void enable() override {}
+    void disable() override {}
 
 private:
     struct HandlerEntry {
@@ -98,15 +98,15 @@ private:
     std::map<PktType, SendStatusEntry> txStatusHandlers;
     uint8_t localMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
     uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    PktType lastSentType = PktType::kDuelCommand;
+    PktType lastSentType = PktType::kMatchCommand;
     uint8_t lastSentDst[6] = {};
     std::vector<uint8_t> lastSentBytes;
 };
 
 class FuzzRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
-    const uint8_t* getPeerMac(SerialIdentifier port) const override {
-        if (port == SerialIdentifier::INPUT_JACK) {
+    const uint8_t* getPeerMac(SerialIdentifier jack) const override {
+        if (jack == SerialIdentifier::INPUT_JACK) {
             return peerMac;
         }
         return nullptr;
@@ -186,20 +186,20 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 if (pktLen > size - pos) {
                     pktLen = size - pos;
                 }
-                peerComms.deliverRxExact(PktType::kDuelCommand, srcMac, data + pos, pktLen);
+                peerComms.deliverRxExact(PktType::kMatchCommand, srcMac, data + pos, pktLen);
                 pos += pktLen;
                 break;
             }
             case 1: {
-                // Deliver a raw DuelPacket directly from fuzz bytes (tests non-null-terminated
+                // Deliver a raw MatchPacket directly from fuzz bytes (tests non-null-terminated
                 // matchId/playerId and arbitrary command/drawTime values)
-                if (size - pos < sizeof(DuelPacket)) {
+                if (size - pos < sizeof(MatchPacket)) {
                     pos = size;
                     break;
                 }
-                peerComms.deliverRxExact(PktType::kDuelCommand, peerMac, data + pos,
-                                         sizeof(DuelPacket));
-                pos += sizeof(DuelPacket);
+                peerComms.deliverRxExact(PktType::kMatchCommand, peerMac, data + pos,
+                                         sizeof(MatchPacket));
+                pos += sizeof(MatchPacket);
                 break;
             }
             case 2: {
@@ -207,7 +207,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                     pos = size;
                     break;
                 }
-                DuelPacket pkt{};
+                MatchPacket pkt{};
                 if (matchManager.getCurrentMatch().has_value()) {
                     std::memcpy(pkt.matchId, matchManager.getCurrentMatch()->getMatchId(),
                                 IdGenerator::UUID_BUFFER_SIZE);
@@ -220,24 +220,24 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 pkt.seqId = data[pos + 7];
                 pkt.playerDrawTime = static_cast<long>(static_cast<int8_t>(data[pos + 5])) * 100L;
                 pos += 8;
-                peerComms.deliverRxExact(PktType::kDuelCommand, peerMac,
+                peerComms.deliverRxExact(PktType::kMatchCommand, peerMac,
                                          reinterpret_cast<const uint8_t*>(&pkt),
-                                         sizeof(DuelPacket));
+                                         sizeof(MatchPacket));
                 break;
             }
             case 3: {
                 matchManager.initializeMatch(peerMac);
-                matchManager.setDuelLocalStartTime(clock.milliseconds());
+                matchManager.setMatchLocalStartTime(clock.milliseconds());
                 break;
             }
             case 4: {
                 matchManager.initializeShootoutMatch("SHT-0001000200030004000500060007", peerMac,
                                                      player.isHunter());
-                matchManager.setDuelLocalStartTime(clock.milliseconds());
+                matchManager.setMatchLocalStartTime(clock.milliseconds());
                 break;
             }
             case 5: {
-                parameterizedCallbackFunction push = matchManager.getDuelButtonPush();
+                parameterizedCallbackFunction push = matchManager.getMatchButtonPush();
                 if (push != nullptr) {
                     push(&matchManager);
                 }
@@ -307,16 +307,16 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             }
             case 13: {
                 // Burst 34 sender MACs to force ReliableChannelBase::rxSeq eviction past MAX_RX_SENDERS (32).
-                DuelPacket pkt{};
+                MatchPacket pkt{};
                 uint8_t selector = (pos < size) ? data[pos++] : 0U;
-                pkt.command = static_cast<int>(DuelCmd::SEND_MATCH_ID + (selector % 5U));
+                pkt.command = static_cast<int>(MatchCmd::SEND_MATCH_ID + (selector % 5U));
                 pkt.isHunter = selector & 1U;
                 for (uint8_t i = 1; i <= 34; ++i) {
                     uint8_t burstMac[6] = {0x02, 0xAA, 0xBB, 0xCC, 0xDD, i};
                     pkt.seqId = i;
-                    peerComms.deliverRxExact(PktType::kDuelCommand, burstMac,
+                    peerComms.deliverRxExact(PktType::kMatchCommand, burstMac,
                                              reinterpret_cast<const uint8_t*>(&pkt),
-                                             sizeof(DuelPacket));
+                                             sizeof(MatchPacket));
                 }
                 break;
             }

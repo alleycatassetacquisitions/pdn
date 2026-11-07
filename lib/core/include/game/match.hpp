@@ -18,7 +18,7 @@ constexpr const char* JSON_KEY_HUNTER_TIME = "hunter_time";
 constexpr const char* JSON_KEY_BOUNTY_TIME = "bounty_time";
 
 /**
- * Represents a duel match between a hunter and bounty player.
+ * Represents a match between a hunter and bounty player.
  * Stores match details and outcome, with serialization support.
  */
 class Match {

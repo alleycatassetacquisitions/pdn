@@ -22,7 +22,7 @@ struct CoreDumpDetails {
  * Canonical in-memory representation of a captured crash event.
  *
  * Written by CrashLogger on boot after inspecting the reset reason and core
- * dump summary. Read by the Alleycat server encoder for HTTP upload.
+ * dump summary. Read by the Alleycat server codec for HTTP upload.
  */
 struct CrashRecord {
     /** Monotonic crash count for this device (1 = first crash ever recorded). */

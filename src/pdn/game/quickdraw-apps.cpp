@@ -2,7 +2,7 @@
 
 namespace {
 // The abort rule, as an edge condition. Ten states carry an abort edge — the hub's
-// Idle, the five interruptible duel states and four of the shootout states — and
+// Idle, the five interruptible match states and four of the shootout states — and
 // all ten read this, so a split across three state maps cannot fork it.
 std::function<bool()> tournamentAbortedCondition(ShootoutManager* shootoutManager) {
     return [shootoutManager]() {
@@ -10,11 +10,12 @@ std::function<bool()> tournamentAbortedCondition(ShootoutManager* shootoutManage
     };
 }
 
-// The abandoned-duel rule the three interruptible duel states share, in the same
+// The abandoned-match rule the three interruptible match states share, in the same
 // shape as the abort rule above so neither can fork.
-std::function<bool()> duelAbandonedCondition(ConnectState<PDN>& duel,
-                                             ShootoutManager* shootoutManager) {
-    return [&duel, shootoutManager]() { return duelReturnsToIdle(duel, shootoutManager); };
+std::function<bool()> matchAbandonedCondition(ConnectState<PDN>& matchState,
+                                              ShootoutManager* shootoutManager) {
+    return
+    [&matchState, shootoutManager]() { return matchReturnsToIdle(matchState, shootoutManager); };
 }
 }  // namespace
 
@@ -35,17 +36,16 @@ void HubApp::populateStateMap() {
         idle);
 
     // Auto-trigger Shootout on ring closure — the coordinator's own RDC event,
-    // every other member's RING_CLOSED. Priority over DuelCountdown/
+    // every other member's RING_CLOSED. Priority over MatchCountdown/
     // SupporterReady: in a closed ring, adjacent H-B pairs otherwise look like a
-    // normal duel initiation, and the ring intent (tournament) would be silently
-    // demoted to a 1v1 duel.
+    // normal match initiation, and the ring intent (tournament) would be silently
+    // demoted to a 1v1 match.
     idle->addAppTransition(
         [shootoutManager]() { return shootoutManager && shootoutManager->shouldEnterProposal(); },
         StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_PROPOSAL));
 
-    idle->addAppTransition(
-        [idle]() { return idle->transitionToDuelCountdown(); },
-        StateId(DUEL_APP_ID), StateId(DUEL_COUNTDOWN));
+    idle->addAppTransition([idle]() { return idle->transitionToMatchCountdown(); },
+                           StateId(MATCH_APP_ID), StateId(MATCH_COUNTDOWN));
 
     idle->addTransition(
         [idle]() { return idle->transitionToSupporterReady(); },
@@ -73,22 +73,22 @@ void HubApp::populateStateMap() {
     stateMap.push_back(sleep);
 }
 
-DuelApp::DuelApp(const GameContext& context)
-    : StateMachine(DUEL_APP_ID)
+MatchApp::MatchApp(const GameContext& context)
+    : StateMachine(MATCH_APP_ID)
     , context(context) {}
 
-void DuelApp::onStateDismounted(Device* device) {
+void MatchApp::onStateDismounted(Device* device) {
     StateMachine::onStateDismounted(device);
     device->getHaptics()->off();
     context.matchManager->clearCurrentMatch();
 }
 
-void DuelApp::populateStateMap() {
-    DuelCountdown* duelCountdown = new DuelCountdown(context);
-    Duel* duel = new Duel(context);
-    DuelPushed* duelPushed = new DuelPushed(context);
-    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(context);
-    DuelResult* duelResult = new DuelResult(context);
+void MatchApp::populateStateMap() {
+    MatchCountdown* matchCountdown = new MatchCountdown(context);
+    MatchState* matchState = new MatchState(context);
+    MatchPushed* matchPushed = new MatchPushed(context);
+    MatchReceivedResult* matchReceivedResult = new MatchReceivedResult(context);
+    MatchResult* matchResult = new MatchResult(context);
     Win* win = new Win(context);
     Lose* lose = new Lose(context);
     UploadMatchesState* uploadMatches = new UploadMatchesState(context);
@@ -97,75 +97,69 @@ void DuelApp::populateStateMap() {
 
     std::function<bool()> phaseIsAborted = tournamentAbortedCondition(shootoutManager);
 
-    duelCountdown->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
+    matchCountdown->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID),
+                                     StateId(SHOOTOUT_ABORTED));
 
-    duelCountdown->addTransition(
-        [duelCountdown]() { return duelCountdown->shallWeBattle(); },
-        duel);
+    matchCountdown->addTransition([matchCountdown]() { return matchCountdown->shallWeBattle(); },
+                                  matchState);
 
-    duelCountdown->addAppTransition(
-        duelAbandonedCondition(*duelCountdown, shootoutManager),
-        StateId(HUB_APP_ID), StateId(IDLE));
+    matchCountdown->addAppTransition(matchAbandonedCondition(*matchCountdown, shootoutManager),
+                                     StateId(HUB_APP_ID), StateId(IDLE));
 
-    duel->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
+    matchState->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID),
+                                 StateId(SHOOTOUT_ABORTED));
 
-    duel->addAppTransition(
-        [duel]() { return duel->transitionToShootoutSpectator(); },
-        StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_SPECTATOR));
+    matchState->addAppTransition(
+    [matchState]() { return matchState->transitionToShootoutSpectator(); },
+    StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_SPECTATOR));
 
-    duel->addAppTransition(
-        [duel]() { return duel->transitionToShootoutEliminated(); },
-        StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ELIMINATED));
+    matchState->addAppTransition(
+    [matchState]() { return matchState->transitionToShootoutEliminated(); },
+    StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ELIMINATED));
 
-    duel->addAppTransition(
-        [duel]() { return duel->transitionToIdle(); },
-        StateId(HUB_APP_ID), StateId(IDLE));
+    matchState->addAppTransition([matchState]() { return matchState->transitionToIdle(); },
+                                 StateId(HUB_APP_ID), StateId(IDLE));
 
-    duel->addTransition(
-        [duel]() { return duel->transitionToDuelReceivedResult(); },
-        duelReceivedResult);
+    matchState->addTransition(
+    [matchState]() { return matchState->transitionToMatchReceivedResult(); }, matchReceivedResult);
 
-    duel->addTransition(
-        [duel]() { return duel->transitionToDuelPushed(); },
-        duelPushed);
+    matchState->addTransition([matchState]() { return matchState->transitionToMatchPushed(); },
+                              matchPushed);
 
-    duelPushed->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
+    matchPushed->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID),
+                                  StateId(SHOOTOUT_ABORTED));
 
-    duelPushed->addAppTransition(
-        duelAbandonedCondition(*duelPushed, shootoutManager),
-        StateId(HUB_APP_ID), StateId(IDLE));
+    matchPushed->addAppTransition(matchAbandonedCondition(*matchPushed, shootoutManager),
+                                  StateId(HUB_APP_ID), StateId(IDLE));
 
-    duelPushed->addTransition(
-        [duelPushed]() { return duelPushed->transitionToDuelResult(); },
-        duelResult);
+    matchPushed->addTransition([matchPushed]() { return matchPushed->transitionToMatchResult(); },
+                               matchResult);
 
-    duelReceivedResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
+    matchReceivedResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID),
+                                          StateId(SHOOTOUT_ABORTED));
 
-    duelReceivedResult->addAppTransition(
-        duelAbandonedCondition(*duelReceivedResult, shootoutManager),
-        StateId(HUB_APP_ID), StateId(IDLE));
+    matchReceivedResult->addAppTransition(
+    matchAbandonedCondition(*matchReceivedResult, shootoutManager), StateId(HUB_APP_ID),
+    StateId(IDLE));
 
-    duelReceivedResult->addTransition(
-        [duelReceivedResult]() { return duelReceivedResult->transitionToDuelResult(); },
-        duelResult);
+    matchReceivedResult->addTransition(
+    [matchReceivedResult]() { return matchReceivedResult->transitionToMatchResult(); },
+    matchResult);
 
-    duelResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
+    matchResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID),
+                                  StateId(SHOOTOUT_ABORTED));
 
-    duelResult->addTransition(
-        [duelResult]() { return duelResult->transitionToWin(); },
-        win);
+    matchResult->addTransition([matchResult]() { return matchResult->transitionToWin(); }, win);
 
-    duelResult->addTransition(
-        [duelResult]() { return duelResult->transitionToLose(); },
-        lose);
+    matchResult->addTransition([matchResult]() { return matchResult->transitionToLose(); }, lose);
 
-    duelResult->addAppTransition(
-        [duelResult]() { return duelResult->transitionToShootoutSpectator(); },
-        StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_SPECTATOR));
+    matchResult->addAppTransition(
+    [matchResult]() { return matchResult->transitionToShootoutSpectator(); },
+    StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_SPECTATOR));
 
-    duelResult->addAppTransition(
-        [duelResult]() { return duelResult->transitionToShootoutEliminated(); },
-        StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ELIMINATED));
+    matchResult->addAppTransition(
+    [matchResult]() { return matchResult->transitionToShootoutEliminated(); },
+    StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ELIMINATED));
 
     win->addTransition(
         [win]() { return win->resetGame(); },
@@ -179,11 +173,11 @@ void DuelApp::populateStateMap() {
         [uploadMatches]() { return uploadMatches->transitionToSleep(); },
         StateId(HUB_APP_ID), StateId(SLEEP));
 
-    stateMap.push_back(duelCountdown);
-    stateMap.push_back(duel);
-    stateMap.push_back(duelPushed);
-    stateMap.push_back(duelReceivedResult);
-    stateMap.push_back(duelResult);
+    stateMap.push_back(matchCountdown);
+    stateMap.push_back(matchState);
+    stateMap.push_back(matchPushed);
+    stateMap.push_back(matchReceivedResult);
+    stateMap.push_back(matchResult);
     stateMap.push_back(win);
     stateMap.push_back(lose);
     stateMap.push_back(uploadMatches);
@@ -209,16 +203,15 @@ void ShootoutApp::populateStateMap() {
     proposal->addTransition(phaseIsAborted, aborted);
 
     bracketReveal->addAppTransition(
-        [bracketReveal]() { return bracketReveal->transitionToDuelCountdown(); },
-        StateId(DUEL_APP_ID), StateId(DUEL_COUNTDOWN));
+    [bracketReveal]() { return bracketReveal->transitionToMatchCountdown(); },
+    StateId(MATCH_APP_ID), StateId(MATCH_COUNTDOWN));
     bracketReveal->addTransition(
         [bracketReveal]() { return bracketReveal->transitionToSpectator(); },
         spectator);
     bracketReveal->addTransition(phaseIsAborted, aborted);
 
-    spectator->addAppTransition(
-        [spectator]() { return spectator->transitionToDuelCountdown(); },
-        StateId(DUEL_APP_ID), StateId(DUEL_COUNTDOWN));
+    spectator->addAppTransition([spectator]() { return spectator->transitionToMatchCountdown(); },
+                                StateId(MATCH_APP_ID), StateId(MATCH_COUNTDOWN));
     spectator->addTransition(
         [spectator]() { return spectator->transitionToFinalStandings(); },
         finalStandings);

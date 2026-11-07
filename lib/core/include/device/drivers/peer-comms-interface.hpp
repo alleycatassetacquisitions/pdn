@@ -5,8 +5,8 @@
 #include "peer-comms-types.hpp"
 
 enum class PeerCommsState {
-    CONNECTED,
-    DISCONNECTED,
+    ENABLED,
+    DISABLED,
 };
 
 class PeerCommsInterface {
@@ -14,7 +14,7 @@ public:
     using PacketCallback = std::function<void(const uint8_t* src, const uint8_t* data, const size_t length, void* ctx)>;
     // Fired once per outbound packet the driver accepted, either when the radio
     // reports its MAC-layer result or when the radio refused the frame outright and
-    // will report nothing. A frame accepted and then dropped by disconnect() is the
+    // will report nothing. A frame accepted and then dropped by disable() is the
     // one case that goes unreported. `dst`/`data`/`length` mirror the send; `success` is
     // the verdict. Drives the reliable transport's ack in place of a round-trip
     // ack packet. A driver that accepts a frame owes this callback: it is the only
@@ -38,8 +38,10 @@ public:
     virtual uint8_t* getMacAddress() = 0;
     virtual void setPeerCommsState(PeerCommsState state) = 0;
     virtual PeerCommsState getPeerCommsState() = 0;
-    virtual void connect() = 0;
-    virtual void disconnect() = 0;
+    /** Brings up the peer-to-peer radio. */
+    virtual void enable() = 0;
+    /** Tears down the peer-to-peer radio. */
+    virtual void disable() = 0;
 
     // Sentinel for "no reading for this peer". Below every real dBm and below
     // every proximity threshold, so a miss reads as the weakest signal rather than

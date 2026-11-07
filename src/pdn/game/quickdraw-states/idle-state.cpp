@@ -105,9 +105,7 @@ void Idle::onStateDismounted(PDN* pdn) {
     pdn->getSecondaryButton()->removeButtonCallbacks();
 }
 
-bool Idle::transitionToDuelCountdown() {
-    return matchManager->isMatchReady();
-}
+bool Idle::transitionToMatchCountdown() { return matchManager->isMatchReady(); }
 
 bool Idle::transitionToSupporterReady() {
     // A supporter is a device whose opponent-jack peer is same role.

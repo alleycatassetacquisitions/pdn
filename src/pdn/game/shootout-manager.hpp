@@ -42,7 +42,7 @@ public:
 
     /**
      * Optional MatchManager injection. When set, Shootout primes the
-     * MatchManager with the duelist pair on each MATCH_START so duel
+     * MatchManager with the player pair on each MATCH_START so match
      * states find a ready match. Tests leave this unset.
      */
     void setMatchManager(MatchManager* manager) { matchManager = manager; }
@@ -112,13 +112,13 @@ public:
                            uint8_t seqId);
     /**
      * Inbound MATCH_START. Admitted on `fromMac` being our coordinator, which
-     * is the authority BRACKET propagated; the duelist pair is game content and
+     * is the authority BRACKET propagated; the player pair is game content and
      * cannot answer whether a broadcast frame is ours.
      */
-    void onMatchStartReceived(const uint8_t* fromMac,
-                              const uint8_t* duelistA, const uint8_t* duelistB,
-                              uint8_t matchIndex, uint8_t seqId);
-    bool isLocalDuelist() const;
+    void onMatchStartReceived(const uint8_t* fromMac, const uint8_t* playerA,
+                              const uint8_t* playerB, uint8_t matchIndex, uint8_t seqId);
+    /** True when this device is one of the two players in the current match. */
+    bool isInCurrentMatch() const;
     std::array<uint8_t, 6> getOpponentMac() const;
 
     void reportLocalWin();
@@ -150,7 +150,7 @@ public:
     void onAbortReceived(const uint8_t* fromMac, uint8_t seqId);
     std::array<uint8_t, 6> getTournamentWinner() const;
 
-    // Reset all tournament state back to IDLE phase so a subsequent loop
+    // Reset all tournament state back to IDLE phase so a subsequent ring
     // closure triggers a fresh proposal. Called when the physical ring is
     // broken after TOURNAMENT_END or ABORTED.
     void resetToIdle();
@@ -165,10 +165,10 @@ public:
     void abortTournament();
 
     /**
-     * Ring-break debounce. A cable nudge flickers the loop on real hardware; act
+     * Ring-break debounce. A cable nudge flickers the ring on real hardware; act
      * only once the break has settled. This covers the flicker, not a recovery:
      * healing a nudge costs a link re-handshake, the latching device's own MAC
-     * walking the loop to re-latch, then the flag walking back, all of which
+     * walking the ring to re-latch, then the flag walking back, all of which
      * outlast it. Calibrated against how long a nudge flickers, so it is not the
      * RDC's propagation window even though both are 500 — widening this one is a
      * rig question and does not imply widening that one.
@@ -176,7 +176,7 @@ public:
     static constexpr unsigned long RING_BREAK_DEBOUNCE_MS = 500;
     /**
      * Confirmed members needed to draw a bracket. Two is the structural floor —
-     * a duel needs two duelists — so a two-device ring is exactly at it and runs.
+     * a match needs two players — so a two-device ring is exactly at it and runs.
      */
     static constexpr size_t MIN_PARTICIPANTS = 2;
     /**
@@ -224,7 +224,7 @@ private:
     }
     // Any of the three, because which set knows the ring depends on the phase:
     // the bracket after reveal, the confirmed set during the proposal, the
-    // physical loop before either exists. A follower's bracket is not a subset
+    // physical ring before either exists. A follower's bracket is not a subset
     // of its confirmed set, so none of the three subsumes the others.
     bool isRingMember(const uint8_t* mac) const;
     void broadcastCommand(const uint8_t* packet, size_t len);
@@ -300,9 +300,9 @@ private:
 
     int currentMatchIndex = -1;
     // bracket shrinks on round advancement (coordinator only), so cache the
-    // duelist pair separately to stay valid on non-coordinators too.
-    std::array<uint8_t, 6> currentDuelistA{};
-    std::array<uint8_t, 6> currentDuelistB{};
+    // player pair separately to stay valid on non-coordinators too.
+    std::array<uint8_t, 6> currentPlayerA{};
+    std::array<uint8_t, 6> currentPlayerB{};
     uint8_t lastMatchStartSeqId = 0;
     SimpleTimer bracketRevealTimer;
     /**

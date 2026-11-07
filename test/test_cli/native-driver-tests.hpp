@@ -131,11 +131,11 @@ public:  // Public for test function access
     void SetUp() override {
         driver = new NativePeerCommsDriver("TestPeerComms");
         driver->initialize();
-        driver->connect();
+        driver->enable();
     }
     
     void TearDown() override {
-        driver->disconnect();
+        driver->disable();
         delete driver;
     }
 
@@ -147,22 +147,22 @@ void peerCommsTracksHistory(NativePeerCommsDriverTestSuite* suite) {
     uint8_t dstMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     uint8_t data[] = {0x01, 0x02};
 
-    suite->driver->sendData(dstMac, PktType::kDuelCommand, data, sizeof(data));
+    suite->driver->sendData(dstMac, PktType::kMatchCommand, data, sizeof(data));
 
     const std::deque<PacketHistoryEntry>& history = suite->driver->getPacketHistory();
     ASSERT_EQ(history.size(), 1);
     ASSERT_TRUE(history[0].isSent);
-    ASSERT_EQ(history[0].packetType, PktType::kDuelCommand);
+    ASSERT_EQ(history[0].packetType, PktType::kMatchCommand);
 }
 
 // Test: State string returns correct values
 void peerCommsStateString(NativePeerCommsDriverTestSuite* suite) {
-    ASSERT_EQ(suite->driver->getStateString(), "CONNECTED");
+    ASSERT_EQ(suite->driver->getStateString(), "ENABLED");
 
-    suite->driver->disconnect();
-    ASSERT_EQ(suite->driver->getStateString(), "DISCONNECTED");
+    suite->driver->disable();
+    ASSERT_EQ(suite->driver->getStateString(), "DISABLED");
 
-    suite->driver->connect();  // Reconnect for teardown
+    suite->driver->enable();  // Re-enable for teardown
 }
 
 // Test: MAC string format
@@ -175,17 +175,17 @@ void peerCommsMacString(NativePeerCommsDriverTestSuite* suite) {
     ASSERT_EQ(macStr[5], ':');
 }
 
-// Test: Cannot send when disconnected
-void peerCommsCannotSendWhenDisconnected(NativePeerCommsDriverTestSuite* suite) {
-    suite->driver->disconnect();
+// Test: Cannot send when disabled
+void peerCommsCannotSendWhenDisabled(NativePeerCommsDriverTestSuite* suite) {
+    suite->driver->disable();
 
     uint8_t dstMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     uint8_t data[] = {0x01};
 
-    int result = suite->driver->sendData(dstMac, PktType::kDuelCommand, data, 1);
+    int result = suite->driver->sendData(dstMac, PktType::kMatchCommand, data, 1);
     ASSERT_EQ(result, -1);  // Should fail
 
-    suite->driver->connect();  // Reconnect for teardown
+    suite->driver->enable();  // Re-enable for teardown
 }
 
 // Test: Handler registration and clearance
@@ -196,20 +196,20 @@ void peerCommsHandlerRegistration(NativePeerCommsDriverTestSuite* suite) {
         *static_cast<bool*>(ctx) = true;
     };
 
-    suite->driver->setPacketHandler(PktType::kDuelCommand, handler, &handlerCalled);
+    suite->driver->setPacketHandler(PktType::kMatchCommand, handler, &handlerCalled);
 
     // Simulate receiving a packet
     uint8_t srcMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     uint8_t data[] = {0x01};
-    suite->driver->receivePacket(srcMac, PktType::kDuelCommand, data, 1);
+    suite->driver->receivePacket(srcMac, PktType::kMatchCommand, data, 1);
     suite->driver->exec();  // Drain queue to invoke handler
 
     ASSERT_TRUE(handlerCalled);
     
     // Clear handler
     handlerCalled = false;
-    suite->driver->clearPacketHandler(PktType::kDuelCommand);
-    suite->driver->receivePacket(srcMac, PktType::kDuelCommand, data, 1);
+    suite->driver->clearPacketHandler(PktType::kMatchCommand);
+    suite->driver->receivePacket(srcMac, PktType::kMatchCommand, data, 1);
     suite->driver->exec();        // Drain queue — cleared handler must not fire
     ASSERT_FALSE(handlerCalled);  // Should not be called after clear
 }

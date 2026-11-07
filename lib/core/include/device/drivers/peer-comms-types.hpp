@@ -7,7 +7,7 @@
 enum class PktType : uint8_t {
     kPlayerInfoBroadcast = 0,
     // NOLINTNEXTLINE(readability-identifier-naming)
-    kDuelCommand = 1,
+    kMatchCommand = 1,
     kDebugPacket = 2,
     kChainGameEvent = 6,
     kChainConfirm = 7,
@@ -43,7 +43,7 @@ enum class PktType : uint8_t {
 // it forwards the profile to the game layer opaquely.
 struct PlayerProfile {
     uint16_t userId;   // 0xFFFF while unregistered
-    uint8_t gameRole;  // 1 = hunter, 0 = target/bounty
+    uint8_t gameRole;  // 1 = hunter, 0 = bounty
     uint8_t allegiance;
     char faction[8];
     char name[16];

@@ -163,7 +163,7 @@ public:
         // then dropped with no report, so the one pass has to wait for ESP-NOW rather
         // than be spent against it.
         if (!useHttp && espNowDriver != nullptr &&
-            espNowDriver->getPeerCommsState() != PeerCommsState::CONNECTED) {
+            espNowDriver->getPeerCommsState() != PeerCommsState::ENABLED) {
             return;
         }
         offeredThisBoot = true;

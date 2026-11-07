@@ -75,7 +75,7 @@ PlayerProvider* playerProvider = nullptr;
 GameSession* gameSession = nullptr;
 PlayerFetchApp* playerFetchApp = nullptr;
 HubApp* hubApp = nullptr;
-DuelApp* duelApp = nullptr;
+MatchApp* matchApp = nullptr;
 ShootoutApp* shootoutApp = nullptr;
 SymbolApp* symbolApp = nullptr;
 
@@ -181,7 +181,7 @@ static void setup() {
     playerFetchApp = new PlayerFetchApp(pdn->getWirelessManager(),
                                         pdn->getFirmwareUpdateManager(), playerProvider);
     hubApp = new HubApp(gameContext);
-    duelApp = new DuelApp(gameContext);
+    matchApp = new MatchApp(gameContext);
     shootoutApp = new ShootoutApp(gameContext);
     symbolApp = new SymbolApp(gameContext);
 
@@ -200,11 +200,11 @@ static void setup() {
 
     // Register the swappable state machines and boot into registration
     AppConfig apps = {
-        {StateId(PLAYER_FETCH_APP_ID), playerFetchApp},
-        {StateId(HUB_APP_ID), hubApp},
-        {StateId(DUEL_APP_ID), duelApp},
-        {StateId(SHOOTOUT_APP_ID), shootoutApp},
-        {StateId(SYMBOL_APP_ID), symbolApp},
+    {StateId(PLAYER_FETCH_APP_ID), playerFetchApp},
+    {StateId(HUB_APP_ID), hubApp},
+    {StateId(MATCH_APP_ID), matchApp},
+    {StateId(SHOOTOUT_APP_ID), shootoutApp},
+    {StateId(SYMBOL_APP_ID), symbolApp},
     };
     pdn->loadAppConfig(apps, StateId(PLAYER_FETCH_APP_ID));
 }

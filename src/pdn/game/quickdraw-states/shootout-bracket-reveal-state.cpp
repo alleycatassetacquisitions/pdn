@@ -20,8 +20,8 @@ void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
 void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
     ShootoutManager::Phase p = shootoutManager->getPhase();
     if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS) {
-        if (shootoutManager->isLocalDuelist()) {
-            shouldGoToDuelCountdown_ = true;
+        if (shootoutManager->isInCurrentMatch()) {
+            shouldGoToMatchCountdown = true;
         } else {
             shouldGoToSpectator_ = true;
         }
@@ -29,9 +29,9 @@ void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
 }
 
 void ShootoutBracketReveal::onStateDismounted(PDN* pdn) {
-    shouldGoToDuelCountdown_ = false;
+    shouldGoToMatchCountdown = false;
     shouldGoToSpectator_ = false;
 }
 
-bool ShootoutBracketReveal::transitionToDuelCountdown() { return shouldGoToDuelCountdown_; }
+bool ShootoutBracketReveal::transitionToMatchCountdown() const { return shouldGoToMatchCountdown; }
 bool ShootoutBracketReveal::transitionToSpectator() { return shouldGoToSpectator_; }

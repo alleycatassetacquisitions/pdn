@@ -108,7 +108,8 @@ inline void matchCodecRoundTripsAllFields() {
     EXPECT_STREQ(match.player_b_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
     EXPECT_STREQ(match.winner_player_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
     EXPECT_TRUE(match.has_player_a_team_id);
-    EXPECT_STREQ(match.player_a_team_id, "1111aaaa-1111-4111-8111-111111111111") << "encoder writes lowercase";
+    EXPECT_STREQ(match.player_a_team_id, "1111aaaa-1111-4111-8111-111111111111")
+    << "codec writes lowercase";
     EXPECT_TRUE(match.has_player_b_team_id);
     EXPECT_STREQ(match.player_b_team_id, "22222222-2222-4222-8222-222222222222");
     EXPECT_TRUE(match.has_player_a_draw_time_ms);

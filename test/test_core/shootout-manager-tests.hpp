@@ -53,7 +53,7 @@ public:
 
     /**
      * Head a chain out of OUTPUT, then take our own MAC back on INPUT — the only
-     * local evidence that a loop closed. A tournament only exists on a closed
+     * local evidence that a ring closed. A tournament only exists on a closed
      * ring, and sync()'s ring-break guard reads that directly, so any case that
      * drives a tournament forward has to stand one up.
      */
@@ -139,7 +139,7 @@ public:
         shootout = new ShootoutManager(&player, device.wirelessManager, &memberRdc);
     }
 
-    /** Both cables go quiet: the links lapse and the loop is provably open. */
+    /** Both cables go quiet: the links lapse and the ring is provably open. */
     void loseTheRing() {
         fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
         rdc.sync(&device);
@@ -283,7 +283,7 @@ inline void ringClosureFromCoordinatorAnnouncesRing(ShootoutManagerTests* suite)
             }));
 
     // Head a chain out of OUTPUT, then take our own MAC back on INPUT — the only
-    // local evidence that a loop closed.
+    // local evidence that a ring closed.
     const uint8_t upstream[6] = {0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
     suite->connectJackTo(suite->outJack, suite->peerMac);
     suite->connectJackTo(suite->inJack, upstream, suite->localMac);
@@ -330,7 +330,7 @@ inline void ringClosedBroadcastPromotesOnlyItsOwnMembers(ShootoutManagerTests* s
     suite->shootout->confirmLocal();
 }
 
-// A member takes the roster and then loses the loop before the app polls it into
+// A member takes the roster and then loses the ring before the app polls it into
 // proposal. Nothing clears that roster while the phase is IDLE, so a copy of a
 // ring that is now unplugged is still sitting there, and only live membership
 // can tell it apart from a ring that is really closed.
@@ -890,9 +890,9 @@ inline void matchStartWaitsOutTheBracketRevealWindow(ShootoutManagerTests* suite
 }
 
 inline void nonCoordinatorReceivingMatchStartIdentifiesRole(ShootoutManagerTests* suite) {
-    // Receiver of MATCH_START decides duelist-vs-spectator from the carried
-    // duelist pair. Cover both branches by running two MATCH_STARTs in the
-    // same fixture: first names self (duelist), second names two peers
+    // Receiver of MATCH_START decides participant-vs-spectator from the carried
+    // match pair. Cover both branches by running two MATCH_STARTs in the
+    // same fixture: first names self (in match), second names two peers
     // (spectator after the next match starts).
     uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me    = {0x02, 0, 0, 0, 0, 0};
@@ -913,15 +913,15 @@ inline void nonCoordinatorReceivingMatchStartIdentifiesRole(ShootoutManagerTests
     suite->shootout->onBracketReceived(coord.data(), {me, coord, other}, 1);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
 
-    // Self in the duelist pair -> isLocalDuelist + opponentMac populated.
+    // Self in the match pair -> isInCurrentMatch + opponentMac populated.
     suite->shootout->onMatchStartReceived(coord.data(), me.data(), coord.data(), 0, 2);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
-    EXPECT_TRUE(suite->shootout->isLocalDuelist());
+    EXPECT_TRUE(suite->shootout->isInCurrentMatch());
     EXPECT_EQ(memcmp(suite->shootout->getOpponentMac().data(), coord.data(), 6), 0);
 
     // Different MATCH_START where self is NOT in the pair -> spectator.
     suite->shootout->onMatchStartReceived(coord.data(), coord.data(), other.data(), 1, 3);
-    EXPECT_FALSE(suite->shootout->isLocalDuelist());
+    EXPECT_FALSE(suite->shootout->isInCurrentMatch());
 }
 
 inline void winnerBroadcastsMatchResultAndAdvancesLocally(ShootoutManagerTests* suite) {
@@ -1036,7 +1036,7 @@ inline void staleResultDoesNotEndTheCurrentMatch(ShootoutManagerTests* suite) {
         suite->shootout->onConfirmReceived(m.data());
     suite->shootout->onBracketReceived(coord.data(), {coord, me, other, fourth}, 1);
 
-    // Missed match 0's result, now mid-duel in match 1.
+    // Missed match 0's result, now mid-match in match 1.
     suite->shootout->onMatchStartReceived(coord.data(), me.data(), fourth.data(), 1, 5);
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
 
@@ -1313,7 +1313,7 @@ inline void abortDoesNotTearDownAFinishedTournament(ShootoutManagerTests* suite)
 // for over a second, and a match can finish inside that window. So the question
 // "does this silence block the tournament" has to be asked of the frame that was
 // abandoned, not of whatever match is running by the time it gives up — or a
-// device that merely sat out match 0 gets judged as a duelist of match 1.
+// device that merely sat out match 0 gets judged as a participant of match 1.
 inline void abandonedMatchStartIsJudgedAgainstItsOwnMatch(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
@@ -1654,7 +1654,7 @@ inline void matchResultRetriesUntilAcked(ShootoutManagerTests* suite) {
 inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
     // The draw slot a bracket match assigns belongs to that match. Writing it to
     // the Player instead made the restore at the next match boundary land on a
-    // duel that was still running, and the loser then read the winner's slot.
+    // match that was still running, and the loser then read the winner's slot.
     uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me    = {0x05, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};  // < self -> bounty slot
@@ -1691,15 +1691,15 @@ inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BETWEEN_MATCHES);
     EXPECT_TRUE(suite->player.isHunter());
     EXPECT_FALSE(matchManager.isLocalHunter())
-        << "the match's draw slot was rewritten underneath a live duel";
+    << "the match's draw slot was rewritten underneath a live match";
 
     matchManager.clearCurrentMatch();
     suite->shootout->setMatchManager(nullptr);
 }
 
 // One execDrivers drain can carry both a MATCH_START and the ABORT that ends the
-// tournament, and the duel app is only entered from a state loop — so the app
-// dismount that retires a match never runs. Idle mounts a duel from whatever
+// tournament, and the match app is only entered from a state loop — so the app
+// dismount that retires a match never runs. Idle mounts a match from whatever
 // match is ready, and a match left behind is scored against stale draw times;
 // the tournament after it cannot prime over one either.
 inline void anAbortRetiresTheMatchTheTournamentPrimed(ShootoutManagerTests* suite) {
@@ -1731,7 +1731,7 @@ inline void anAbortRetiresTheMatchTheTournamentPrimed(ShootoutManagerTests* suit
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 
     EXPECT_FALSE(matchManager.isMatchReady())
-        << "Idle mounts a phantom duel from the abandoned match";
+    << "Idle mounts a phantom match from the abandoned match";
     EXPECT_FALSE(matchManager.getCurrentMatch().has_value())
         << "the next tournament cannot prime a match over the abandoned one";
 
@@ -1891,7 +1891,7 @@ inline void aLocalWinDoesNotWalkBackAnAbortedTournament(ShootoutManagerTests* su
         << "a match resolving after the abort reopened the tournament";
 }
 
-// A ring that cannot field two duelists has nothing to draw a bracket from, and
+// A ring that cannot field two players has nothing to draw a bracket from, and
 // allMembersConfirmed refuses a short roster — so without a deadline the
 // coordinator waits on a confirm tally that can never complete. The ring is
 // closed on the jacks throughout: a device cabled to itself is a closed ring of
@@ -2032,7 +2032,7 @@ inline void aStaleShortRosterWindowDoesNotAbortTheNextProposal(
         << "resetting the window disarmed it for good";
 }
 
-// A duelist still mounted when TOURNAMENT_END lands resolves its own match and
+// A player still mounted in a match when TOURNAMENT_END lands resolves its own match and
 // reports it. That result must not walk a crowned tournament back into a round:
 // the winner is already eliminated by it, the next survivor scan finds nobody,
 // and the no-survivors abort tears down standings the ring has already seen.
@@ -2236,7 +2236,7 @@ inline void transientRingBreakDoesNotAbortATournament(ShootoutManagerTests* suit
         << "a healed break still aborted once its original window elapsed";
 }
 
-// A settled break must abort even for a duelist mid-match, who is inside the duel
+// A settled break must abort even for a player mid-match, who is inside the match
 // app with no shootout state mounted to notice.
 inline void settledRingBreakAbortsALiveTournament(ShootoutManagerTests* suite) {
     ON_CALL(*suite->device.mockPeerComms,
@@ -2446,7 +2446,7 @@ inline void strayRingCommandsLeaveTournamentUntouched(ShootoutManagerTests* suit
 
     suite->shootout->onMatchStartReceived(alienA.data(), alienA.data(), alienB.data(), 5, 3);
     EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), 0);
-    EXPECT_TRUE(suite->shootout->isLocalDuelist());
+    EXPECT_TRUE(suite->shootout->isInCurrentMatch());
 
     suite->shootout->onMatchResultReceived(alienA.data(), alienB.data(), 5, 4, alienA.data());
     EXPECT_FALSE(suite->shootout->isEliminated(alienB.data()));
@@ -2473,40 +2473,40 @@ inline void strayRingCommandsLeaveTournamentUntouched(ShootoutManagerTests* suit
 // Note for anyone auditing #167 against this: the issue asked for abort to reach
 // every shootout state through a shared guard and for the per-state edges to go
 // away. The guard did move, further than #167 asked — out of the states entirely
-// and into ShootoutManager::sync(), which is the only place a bracket duelist
-// inside the duel app can be reached. The edges are still declared per state:
+// and into ShootoutManager::sync(), which is the only place a bracket player
+// inside the match app can be reached. The edges are still declared per state:
 // they carry the transition, and the manager carries the rule.
 inline void abortRuleReachesEveryStateThatDeclaresIt(ShootoutManagerTests* suite) {
     GameContext ctx;
     ctx.shootoutManager = suite->shootout;
 
     HubApp hub(ctx);
-    DuelApp duel(ctx);
+    MatchApp matchApp(ctx);
     ShootoutApp shootoutApp(ctx);
     hub.populateStateMap();
-    duel.populateStateMap();
+    matchApp.populateStateMap();
     shootoutApp.populateStateMap();
 
     // (state id, index of that state's abort edge) for every state carrying one.
     // Positions are pinned independently by quickdrawAppEdgesMatchPreSplitGraph, so
     // an edge inserted ahead of one of these fails there too, not only here.
     const std::vector<std::pair<int, size_t>> abortEdges = {
-        {IDLE, 3},
-        {DUEL_COUNTDOWN, 0},
-        {DUEL, 0},
-        {DUEL_PUSHED, 0},
-        {DUEL_RECEIVED_RESULT, 0},
-        {DUEL_RESULT, 0},
-        {SHOOTOUT_PROPOSAL, 1},
-        {SHOOTOUT_BRACKET_REVEAL, 2},
-        {SHOOTOUT_SPECTATOR, 2},
-        {SHOOTOUT_ELIMINATED, 1},
+    {IDLE, 3},
+    {MATCH_COUNTDOWN, 0},
+    {MATCH, 0},
+    {MATCH_PUSHED, 0},
+    {MATCH_RECEIVED_RESULT, 0},
+    {MATCH_RESULT, 0},
+    {SHOOTOUT_PROPOSAL, 1},
+    {SHOOTOUT_BRACKET_REVEAL, 2},
+    {SHOOTOUT_SPECTATOR, 2},
+    {SHOOTOUT_ELIMINATED, 1},
     };
 
     std::map<int, State*> byId;
-    for (StateMachine* app : {static_cast<StateMachine*>(&hub),
-                              static_cast<StateMachine*>(&duel),
-                              static_cast<StateMachine*>(&shootoutApp)}) {
+    for (StateMachine* app :
+         {static_cast<StateMachine*>(&hub), static_cast<StateMachine*>(&matchApp),
+          static_cast<StateMachine*>(&shootoutApp)}) {
         for (State* state : app->getStateMap())
             byId[state->getStateId()] = state;
     }

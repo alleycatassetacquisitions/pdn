@@ -9,7 +9,7 @@
 #include "device-mock.hpp"
 #include "id-generator.hpp"
 #include "utility-tests.hpp"
-#include "wireless/duel-packet.hpp"
+#include "wireless/match-packet.hpp"
 #include "device/wireless-manager.hpp"
 
 using ::testing::_;
@@ -23,14 +23,10 @@ using ::testing::DoAll;
 // Packet Creation Helpers
 // ============================================
 
-inline DuelPacket createTestPacket(
-    const std::string& matchId,
-    const std::string& playerId,
-    int command,
-    long playerDrawTime = 0,
-    bool isHunter = true) {
+inline MatchPacket createTestPacket(const std::string& matchId, const std::string& playerId,
+                                    int command, long playerDrawTime = 0, bool isHunter = true) {
     // Zero-init sets seqId = 0 (the unsequenced sentinel that bypasses RX dedup).
-    DuelPacket packet{};
+    MatchPacket packet{};
     strncpy(packet.matchId, matchId.c_str(), 36);
     packet.matchId[36] = '\0';
     strncpy(packet.playerId, playerId.c_str(), 4);
@@ -79,7 +75,7 @@ public:
     }
 
     /** Creates a packet as if sent by the local player's opponent. */
-    DuelPacket createPacket(int command, long hunterTime = 0, long bountyTime = 0) {
+    MatchPacket createPacket(int command, long hunterTime = 0, long bountyTime = 0) {
         if (player->isHunter()) {
             // Opponent is the bounty: send bountyTime with isHunter=false
             return createTestPacket(getMatchId(), DEFAULT_BOUNTY_ID, command, bountyTime, false);
@@ -90,8 +86,7 @@ public:
     }
 
     /** Delivers a packet into the test wireless manager from macAddr (or defaultMac). */
-    void processPacket(const DuelPacket& packet,
-                       const uint8_t macAddr[6] = nullptr) {
+    void processPacket(const MatchPacket& packet, const uint8_t macAddr[6] = nullptr) {
         uint8_t defaultMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         const uint8_t* mac = macAddr ? macAddr : defaultMac;
         wirelessManager->deliverBytesTo(
@@ -143,7 +138,7 @@ private:
         // Must match processPacket's defaultMac so isFromActiveMatchOpponent accepts delivered frames.
         uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         matchManager->initializeMatch(opponentMac);
-        matchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
+        matchManager->setMatchLocalStartTime(DEFAULT_START_TIME);
     }
 
     void cleanupManagers() {
@@ -273,8 +268,8 @@ private:
         bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
         hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
 
-        hunterMatchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
-        bountyMatchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
+        hunterMatchManager->setMatchLocalStartTime(DEFAULT_START_TIME);
+        bountyMatchManager->setMatchLocalStartTime(DEFAULT_START_TIME);
     }
 
     void cleanupMatches() {
@@ -311,7 +306,7 @@ public:
 };
 
 inline void packetParsingSuppressesRetransmit(PacketParsingTests* suite) {
-    DuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 0, 180);
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 0, 180);
     packet.seqId = 9;
     uint8_t macAddr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
@@ -328,7 +323,7 @@ inline void packetParsingSuppressesRetransmit(PacketParsingTests* suite) {
 }
 
 inline void packetParsingRejectsMalformedPacket(PacketParsingTests* suite) {
-    DuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 0, 180);
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 0, 180);
     packet.seqId = 4;
     uint8_t macAddr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
@@ -339,7 +334,7 @@ inline void packetParsingRejectsMalformedPacket(PacketParsingTests* suite) {
 }
 
 inline void listenForMatchResultsSetsOpponentTimeHunter(PacketParsingTests* suite) {
-    DuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 0, 350);
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 0, 350);
     suite->processPacket(packet);
 
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
@@ -350,7 +345,7 @@ inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suit
     // Switch to bounty perspective
     suite->player->setIsHunter(false);
 
-    DuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 200, 0);
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 200, 0);
     suite->processPacket(packet);
 
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
@@ -358,7 +353,7 @@ inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suit
 }
 
 inline void listenForMatchResultsHandlesNeverPressed(PacketParsingTests* suite) {
-    DuelPacket packet = suite->createPacket(DuelCmd::NEVER_PRESSED, 0, 9999);
+    MatchPacket packet = suite->createPacket(MatchCmd::NEVER_PRESSED, 0, 9999);
     suite->processPacket(packet);
 
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
@@ -368,7 +363,7 @@ inline void listenForMatchResultsHandlesNeverPressed(PacketParsingTests* suite) 
 inline void listenForMatchResultsIgnoresUnexpectedCommands(PacketParsingTests* suite) {
     static const char kMatchId[37] = "000000000000000000000000000000000000";
     uint8_t strangerMac[6] = {0x99, 0x99, 0x99, 0x99, 0x99, 0x99};
-    DuelCommand cmd(strangerMac, DuelCmd::SEND_MATCH_ID, kMatchId, "test", 0, true);
+    MatchCommand cmd(strangerMac, MatchCmd::SEND_MATCH_ID, kMatchId, "test", 0, true);
 
     suite->matchManager->listenForMatchEvents(cmd);
     
@@ -392,8 +387,8 @@ public:
 
 inline void callbackChainButtonPressCalculatesTime(CallbackChainTests* suite) {
     suite->fakeClock->advance(275);
-    
-    auto buttonCallback = suite->matchManager->getDuelButtonPush();
+
+    parameterizedCallbackFunction buttonCallback = suite->matchManager->getMatchButtonPush();
     ASSERT_NE(buttonCallback, nullptr);
     
     buttonCallback(suite->matchManager);
@@ -409,8 +404,8 @@ inline void callbackChainButtonMasherPenalty(CallbackChainTests* suite) {
     masherCallback(suite->matchManager);
     
     suite->fakeClock->advance(200);
-    
-    auto buttonCallback = suite->matchManager->getDuelButtonPush();
+
+    parameterizedCallbackFunction buttonCallback = suite->matchManager->getMatchButtonPush();
     buttonCallback(suite->matchManager);
     
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 425);
@@ -421,11 +416,11 @@ inline void callbackChainButtonPressBroadcasts(CallbackChainTests* suite) {
 
     size_t sentBefore = suite->wirelessManager->sentFrames.size();
 
-    auto buttonCallback = suite->matchManager->getDuelButtonPush();
+    parameterizedCallbackFunction buttonCallback = suite->matchManager->getMatchButtonPush();
     buttonCallback(suite->matchManager);
 
     ASSERT_GT(suite->wirelessManager->sentFrames.size(), sentBefore);
-    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, DuelCmd::DRAW_RESULT);
+    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, MatchCmd::DRAW_RESULT);
 }
 
 // ============================================
@@ -469,51 +464,51 @@ inline void stateFlowDutPressesFirstWins(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
-    
-    suite->fakeClock->advance(150);
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    
-    duelState.onStateLoop(&suite->device);
-    EXPECT_TRUE(duelState.transitionToDuelPushed());
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
 
-    DuelPushed pushedState(suite->ctx);
+    suite->fakeClock->advance(150);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
+
+    matchState.onStateLoop(&suite->device);
+    EXPECT_TRUE(matchState.transitionToMatchPushed());
+
+    MatchPushed pushedState(suite->ctx);
     pushedState.onStateMounted(&suite->device);
 
-    DuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 150, 300);
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 150, 300);
     suite->processPacket(packet);
 
     pushedState.onStateLoop(&suite->device);
-    EXPECT_TRUE(pushedState.transitionToDuelResult());
+    EXPECT_TRUE(pushedState.transitionToMatchResult());
 
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
     EXPECT_TRUE(suite->matchManager->didWin());
 }
 
 inline void stateFlowDutReceivesFirstLoses(StateFlowIntegrationTests* suite) {
-    // Both Duel::onStateMounted and DuelReceivedResult::onStateMounted call setButtonPress.
+    // Both MatchState::onStateMounted and MatchReceivedResult::onStateMounted call setButtonPress.
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(2);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
 
-    DuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 0, 100);
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 0, 100);
     suite->processPacket(packet);
 
-    duelState.onStateLoop(&suite->device);
-    EXPECT_TRUE(duelState.transitionToDuelReceivedResult());
+    matchState.onStateLoop(&suite->device);
+    EXPECT_TRUE(matchState.transitionToMatchReceivedResult());
 
-    DuelReceivedResult receivedState(suite->ctx);
+    MatchReceivedResult receivedState(suite->ctx);
     receivedState.onStateMounted(&suite->device);
 
     suite->fakeClock->advance(350);
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
 
     receivedState.onStateLoop(&suite->device);
-    EXPECT_TRUE(receivedState.transitionToDuelResult());
+    EXPECT_TRUE(receivedState.transitionToMatchResult());
 
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
     EXPECT_FALSE(suite->matchManager->didWin());
@@ -524,16 +519,16 @@ inline void stateFlowDutNeverPressesLoses(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
 
     // Opponent pressed at 100ms
-    DuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 0, 100);
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 0, 100);
     suite->processPacket(packet);
 
     // DUT never presses in time - simulate pressing very late (after pity time)
     suite->fakeClock->advance(9999);
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
 
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
     EXPECT_FALSE(suite->matchManager->didWin());
@@ -544,36 +539,36 @@ inline void stateFlowOpponentNeverRespondsWins(StateFlowIntegrationTests* suite)
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
 
     // DUT presses quickly
     suite->fakeClock->advance(150);
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
 
     // Opponent never pressed
-    DuelPacket packet = suite->createPacket(DuelCmd::NEVER_PRESSED, 150, 9999);
+    MatchPacket packet = suite->createPacket(MatchCmd::NEVER_PRESSED, 150, 9999);
     suite->processPacket(packet);
 
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
     EXPECT_TRUE(suite->matchManager->didWin());
 }
 
-inline void stateFlowThroughDuelResultToWin(StateFlowIntegrationTests* suite) {
+inline void stateFlowThroughMatchResultToWin(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
 
     suite->fakeClock->advance(100);
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
 
-    DuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 100, 200);
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 100, 200);
     suite->processPacket(packet);
 
-    DuelResult resultState(suite->ctx);
+    MatchResult resultState(suite->ctx);
 
     // Allow display methods to be called (don't require specific calls)
     ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))
@@ -586,21 +581,21 @@ inline void stateFlowThroughDuelResultToWin(StateFlowIntegrationTests* suite) {
     EXPECT_FALSE(resultState.transitionToLose());
 }
 
-inline void stateFlowThroughDuelResultToLose(StateFlowIntegrationTests* suite) {
+inline void stateFlowThroughMatchResultToLose(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
 
     suite->fakeClock->advance(300);
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
 
-    DuelPacket packet = suite->createPacket(DuelCmd::DRAW_RESULT, 300, 150);
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 300, 150);
     suite->processPacket(packet);
 
-    DuelResult resultState(suite->ctx);
+    MatchResult resultState(suite->ctx);
 
     // Allow display methods to be called (don't require specific calls)
     ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))
@@ -613,12 +608,12 @@ inline void stateFlowThroughDuelResultToLose(StateFlowIntegrationTests* suite) {
     EXPECT_TRUE(resultState.transitionToLose());
 }
 
-inline void stateFlowDuelToWin(StateFlowIntegrationTests* suite) {
-    stateFlowThroughDuelResultToWin(suite);
+inline void stateFlowMatchToWin(StateFlowIntegrationTests* suite) {
+    stateFlowThroughMatchResultToWin(suite);
 }
 
-inline void stateFlowDuelToLose(StateFlowIntegrationTests* suite) {
-    stateFlowThroughDuelResultToLose(suite);
+inline void stateFlowMatchToLose(StateFlowIntegrationTests* suite) {
+    stateFlowThroughMatchResultToLose(suite);
 }
 
 // ============================================
@@ -629,10 +624,10 @@ class TwoDeviceSimulationTests : public TwoDeviceTestFixture {};
 
 inline void twoDeviceHunterPressesFirstBothAgree(TwoDeviceSimulationTests* suite) {
     suite->fakeClock->advance(150);
-    suite->hunterMatchManager->getDuelButtonPush()(suite->hunterMatchManager);
+    suite->hunterMatchManager->getMatchButtonPush()(suite->hunterMatchManager);
 
     suite->fakeClock->advance(130);
-    suite->bountyMatchManager->getDuelButtonPush()(suite->bountyMatchManager);
+    suite->bountyMatchManager->getMatchButtonPush()(suite->bountyMatchManager);
 
     suite->hunterSendsToBounty();
     suite->bountySendsToHunter();
@@ -643,10 +638,10 @@ inline void twoDeviceHunterPressesFirstBothAgree(TwoDeviceSimulationTests* suite
 
 inline void twoDeviceBountyPressesFirstBothAgree(TwoDeviceSimulationTests* suite) {
     suite->fakeClock->advance(120);
-    suite->bountyMatchManager->getDuelButtonPush()(suite->bountyMatchManager);
+    suite->bountyMatchManager->getMatchButtonPush()(suite->bountyMatchManager);
 
     suite->fakeClock->advance(100);
-    suite->hunterMatchManager->getDuelButtonPush()(suite->hunterMatchManager);
+    suite->hunterMatchManager->getMatchButtonPush()(suite->hunterMatchManager);
 
     suite->hunterSendsToBounty();
     suite->bountySendsToHunter();
@@ -658,10 +653,10 @@ inline void twoDeviceBountyPressesFirstBothAgree(TwoDeviceSimulationTests* suite
 inline void twoDeviceCloseRaceCorrectWinner(TwoDeviceSimulationTests* suite) {
     // Very close race - hunter at 200ms, bounty at 201ms
     suite->fakeClock->advance(200);
-    suite->hunterMatchManager->getDuelButtonPush()(suite->hunterMatchManager);
+    suite->hunterMatchManager->getMatchButtonPush()(suite->hunterMatchManager);
 
     suite->fakeClock->advance(1);
-    suite->bountyMatchManager->getDuelButtonPush()(suite->bountyMatchManager);
+    suite->bountyMatchManager->getMatchButtonPush()(suite->bountyMatchManager);
 
     suite->hunterSendsToBounty();
     suite->bountySendsToHunter();

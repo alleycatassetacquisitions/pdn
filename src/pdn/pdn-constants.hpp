@@ -24,4 +24,4 @@ constexpr uint8_t numDisplayLights = 13;
 constexpr uint8_t numGripLights    = 6;
 
 // --- Game timing ---
-constexpr unsigned long DUEL_NO_RESULT_TIME = 123456789;
+constexpr unsigned long MATCH_NO_RESULT_TIME = 123456789;

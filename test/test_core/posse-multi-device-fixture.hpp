@@ -1,6 +1,6 @@
 #pragma once
 
-// True multi-device chain duel test fixture.
+// True multi-device posse test fixture.
 //
 // Each device owns its own MockDevice, RemoteDeviceCoordinator, Player, and
 // PosseManager. Packets emitted via mockPeerComms->sendData(...) are
@@ -34,8 +34,8 @@
 #include "wireless/mac-functions.hpp"
 
 using ::testing::_;
-using ::testing::Return;
 using ::testing::Invoke;
+using ::testing::Return;
 using ::testing::WithArgs;
 
 // A single node in the multi-device harness.
@@ -48,10 +48,13 @@ struct MultiDeviceNode {
     std::unique_ptr<RemoteDeviceCoordinator> rdc;
     std::unique_ptr<Player> player;
     PosseManager* cdm = nullptr;
-    std::unique_ptr<ShootoutManager> shootout;
+    ShootoutManager* shootout = nullptr;
 
-    /** Frees the owned PosseManager. */
-    ~MultiDeviceNode() { delete cdm; }
+    /** Frees the owned PosseManager and ShootoutManager. */
+    ~MultiDeviceNode() {
+        delete shootout;
+        delete cdm;
+    }
 
     // Per-device captured handlers (one slot per PktType the fixture routes).
     PeerCommsInterface::PacketCallback contextHandler = nullptr;
@@ -76,7 +79,7 @@ struct MultiDeviceNode {
     uint8_t mac[6] = {};
 };
 
-class ChainDuelMultiDeviceFixture : public ::testing::Test {
+class PosseMultiDeviceFixture : public ::testing::Test {
 public:
     struct PendingPacket {
         size_t fromIndex;
@@ -108,8 +111,12 @@ public:
         nodes.reserve(count);
         for (size_t i = 0; i < count; ++i) {
             auto node = std::make_unique<MultiDeviceNode>();
-            node->mac[0] = 0x02; node->mac[1] = 0x00; node->mac[2] = 0x00;
-            node->mac[3] = 0x00; node->mac[4] = 0x00; node->mac[5] = static_cast<uint8_t>(0x10 + i);
+            node->mac[0] = 0x02;
+            node->mac[1] = 0x00;
+            node->mac[2] = 0x00;
+            node->mac[3] = 0x00;
+            node->mac[4] = 0x00;
+            node->mac[5] = static_cast<uint8_t>(0x10 + i);
 
             node->device = std::make_unique<MockDevice>();
             node->rdc = std::make_unique<RemoteDeviceCoordinator>();
@@ -122,18 +129,15 @@ public:
             // Single-threaded: the fixture emits HELLO itself instead of letting
             // the RDC spawn its cadence task.
             node->rdc->setExternalConnectivityTask(true);
-            node->rdc->initialize(node->device->wirelessManager,
-                                  node->device->serialManager,
+            node->rdc->initialize(node->device->wirelessManager, node->device->serialManager,
                                   node->device.get());
 
             // CDM and chain-event handlers register after RDC so they don't
             // compete with RDC's own setPacketHandler calls.
-            node->cdm = new PosseManager(node->player.get(),
-                                         node->device->wirelessManager,
-                                         node->rdc.get());
-            node->shootout = std::make_unique<ShootoutManager>(node->player.get(),
-                                                               node->device->wirelessManager,
-                                                               node->rdc.get());
+            node->cdm =
+            new PosseManager(node->player.get(), node->device->wirelessManager, node->rdc.get());
+            node->shootout =
+            new ShootoutManager(node->player.get(), node->device->wirelessManager, node->rdc.get());
             Player* p = node->player.get();
             RemoteDeviceCoordinator* r = node->rdc.get();
             PosseManager* c = node->cdm;
@@ -151,7 +155,8 @@ public:
 
     // Convenience: set all players to hunters.
     void setAllHunters() {
-        for (auto& n : nodes) n->player->setIsHunter(true);
+        for (auto& n : nodes)
+            n->player->setIsHunter(true);
     }
 
     // Wire every device's i+1 OUTPUT to device i INPUT (reverse of task
@@ -251,10 +256,8 @@ public:
         }
     }
 
-    // Advance clock on all devices lockstep.
-    void advanceClock(unsigned long ms) {
-        fakeClock->advance(ms);
-    }
+    /** Advances the clock on all devices in lockstep. */
+    void advanceClock(unsigned long ms) { fakeClock->advance(ms); }
 
     void syncAll() {
         pumpHelloCycle();
@@ -386,14 +389,26 @@ protected:
                 handler = target.roleAnnounceHandler;
                 ctx = target.roleAnnounceCtx;
                 break;
-            case PktType::kChainConfirm:         handler = target.chainConfirmHandler;     ctx = target.chainConfirmCtx; break;
+            case PktType::kChainConfirm:
+                handler = target.chainConfirmHandler;
+                ctx = target.chainConfirmCtx;
+                break;
             case PktType::kChainJoin:
                 handler = target.chainJoinHandler;
                 ctx = target.chainJoinCtx;
                 break;
-            case PktType::kChainGameEvent:       handler = target.chainGameEventHandler;   ctx = target.chainGameEventCtx; break;
-            case PktType::kShootoutCommand:      handler = target.shootoutHandler;         ctx = target.shootoutCtx; break;
-            case PktType::kShootoutCommandAck:   handler = target.shootoutAckHandler;      ctx = target.shootoutAckCtx; break;
+            case PktType::kChainGameEvent:
+                handler = target.chainGameEventHandler;
+                ctx = target.chainGameEventCtx;
+                break;
+            case PktType::kShootoutCommand:
+                handler = target.shootoutHandler;
+                ctx = target.shootoutCtx;
+                break;
+            case PktType::kShootoutCommandAck:
+                handler = target.shootoutAckHandler;
+                ctx = target.shootoutAckCtx;
+                break;
             default: return;
         }
         if (!handler) return;
@@ -424,67 +439,72 @@ protected:
         auto* pc = n.device->mockPeerComms;
 
         ON_CALL(*pc, getMacAddress()).WillByDefault(Return(n.mac));
-        ON_CALL(*pc, getPeerCommsState()).WillByDefault(Return(PeerCommsState::CONNECTED));
+        ON_CALL(*pc, getPeerCommsState()).WillByDefault(Return(PeerCommsState::ENABLED));
 
         // Capture every outgoing packet into the shared queue.
         size_t selfIdx = nodes.size();  // this node's index once push_back completes
         ON_CALL(*pc, sendData(_, _, _, _))
-            .WillByDefault([this, selfIdx](const uint8_t* dst, PktType type,
-                                           const uint8_t* data, const size_t len) -> int {
-                PendingPacket p;
-                p.fromIndex = selfIdx;
-                memcpy(p.toMac.data(), dst, 6);
-                p.type = type;
-                p.data.assign(data, data + len);
-                pending.push(std::move(p));
-                return 1;
-            });
+        .WillByDefault([this, selfIdx](const uint8_t* dst, PktType type, const uint8_t* data,
+                                       const size_t len) -> int {
+            PendingPacket p;
+            p.fromIndex = selfIdx;
+            memcpy(p.toMac.data(), dst, 6);
+            p.type = type;
+            p.data.assign(data, data + len);
+            pending.push(std::move(p));
+            return 1;
+        });
 
         // Capture packet handlers as they are registered (RDC, then CDM-side
         // shims below). Each PktType saves into its own slot.
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kPdnConnectionContext), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.contextHandler = cb;
-                n.contextCtx = ctx;
-            });
+        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
+            n.contextHandler = cb;
+            n.contextCtx = ctx;
+        });
         ON_CALL(*pc, setSendStatusHandler(testing::Eq(PktType::kPdnConnectionContext), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::SendStatusCallback cb, void* ctx) {
-                n.contextSendStatus = cb;
-                n.contextSendStatusCtx = ctx;
-            });
+        .WillByDefault([&n](PktType, PeerCommsInterface::SendStatusCallback cb, void* ctx) {
+            n.contextSendStatus = cb;
+            n.contextSendStatusCtx = ctx;
+        });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kRoleAnnounce), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.roleAnnounceHandler = cb; n.roleAnnounceCtx = ctx;
-            });
+        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
+            n.roleAnnounceHandler = cb;
+            n.roleAnnounceCtx = ctx;
+        });
         ON_CALL(*pc, setSendStatusHandler(testing::Eq(PktType::kRoleAnnounce), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::SendStatusCallback cb, void* ctx) {
-                n.roleAnnounceSendStatus = cb;
-                n.roleAnnounceSendStatusCtx = ctx;
-            });
+        .WillByDefault([&n](PktType, PeerCommsInterface::SendStatusCallback cb, void* ctx) {
+            n.roleAnnounceSendStatus = cb;
+            n.roleAnnounceSendStatusCtx = ctx;
+        });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainConfirm), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.chainConfirmHandler = cb; n.chainConfirmCtx = ctx;
-            });
+        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
+            n.chainConfirmHandler = cb;
+            n.chainConfirmCtx = ctx;
+        });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainJoin), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.chainJoinHandler = cb;
-                n.chainJoinCtx = ctx;
-            });
+        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
+            n.chainJoinHandler = cb;
+            n.chainJoinCtx = ctx;
+        });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainGameEvent), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.chainGameEventHandler = cb; n.chainGameEventCtx = ctx;
-            });
+        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
+            n.chainGameEventHandler = cb;
+            n.chainGameEventCtx = ctx;
+        });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kShootoutCommand), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.shootoutHandler = cb; n.shootoutCtx = ctx;
-            });
+        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
+            n.shootoutHandler = cb;
+            n.shootoutCtx = ctx;
+        });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kShootoutCommandAck), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.shootoutAckHandler = cb; n.shootoutAckCtx = ctx;
-            });
+        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
+            n.shootoutAckHandler = cb;
+            n.shootoutAckCtx = ctx;
+        });
     }
 
-    // Mirrors what the GameSession constructor installs for the chain-duel packet
+    // Mirrors what the GameSession constructor installs for the posse packet
     // types that no channel claims. Deliberately NOT kRoleAnnounce: the CDM's
     // ReliableChannel claims that slot in its own constructor, and registering
     // over it here would replace the channel with a trampoline that skips the
@@ -499,89 +519,88 @@ protected:
         // The challenger gate has to be mirrored too: without it a foreign chain's
         // broadcast clears confirmSent here where hardware discards the frame.
         n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kChainGameEvent,
-            [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(ChainGameEventPayload)) return;
-                const ChainGameEventPayload* p = reinterpret_cast<const ChainGameEventPayload*>(data);
-                PosseManager* manager = static_cast<PosseManager*>(ctx);
-                if (!manager->isEventFromOwnChallenger(p->challengerMac)) return;
-                manager->onChainGameEventReceived(p->event_type);
-            },
-            cdm);
+        PktType::kChainGameEvent,
+        [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
+            if (dataLen != sizeof(ChainGameEventPayload)) return;
+            const ChainGameEventPayload* p = reinterpret_cast<const ChainGameEventPayload*>(data);
+            PosseManager* manager = static_cast<PosseManager*>(ctx);
+            if (!manager->isEventFromOwnChallenger(p->challengerMac)) return;
+            manager->onChainGameEventReceived(p->event_type);
+        },
+        cdm);
     }
 
     // Register Shootout command + ack handlers. Mirrors the dispatcher in
     // the GameSession constructor so every packet path exercised on hardware is
     // exercised in the fixture too.
     void wireShootoutHandlers(MultiDeviceNode& n) {
-        ShootoutManager* mgr = n.shootout.get();
+        ShootoutManager* mgr = n.shootout;
 
         n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kShootoutCommand,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                auto* m = static_cast<ShootoutManager*>(ctx);
-                if (dataLen < 2) return;
-                ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
-                uint8_t seqId = data[1];
-                const uint8_t* payload = data + 2;
-                size_t payloadLen = dataLen - 2;
-                switch (cmd) {
-                    case ShootoutCmd::CONFIRM: {
-                        if (payloadLen < 6) break;
-                        const char* name = (payloadLen >= 6 + ShootoutManager::kNameLength)
-                            ? reinterpret_cast<const char*>(payload + 6) : nullptr;
-                        m->onConfirmReceived(payload, name);
-                        break;
-                    }
-                    case ShootoutCmd::BRACKET:
-                    case ShootoutCmd::RING_CLOSED: {
-                        if (payloadLen < 1) break;
-                        uint8_t count = payload[0];
-                        if (payloadLen < 1 + 6u * static_cast<size_t>(count)) break;
-                        std::vector<std::array<uint8_t, 6>> macs;
-                        for (uint8_t i = 0; i < count; i++) {
-                            std::array<uint8_t, 6> mac;
-                            memcpy(mac.data(), payload + 1 + 6 * i, 6);
-                            macs.push_back(mac);
-                        }
-                        if (cmd == ShootoutCmd::BRACKET) {
-                            m->onBracketReceived(fromMac, macs, seqId);
-                        } else {
-                            m->onRingClosedReceived(fromMac, macs);
-                        }
-                        break;
-                    }
-                    case ShootoutCmd::MATCH_START:
-                        if (payloadLen >= 13)
-                            m->onMatchStartReceived(fromMac, payload, payload + 6, payload[12], seqId);
-                        break;
-                    case ShootoutCmd::MATCH_RESULT:
-                        if (payloadLen >= 13) m->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
-                        break;
-                    case ShootoutCmd::TOURNAMENT_END:
-                        if (payloadLen >= 6) m->onTournamentEndReceived(fromMac, payload, seqId);
-                        break;
-                    case ShootoutCmd::ABORT:
-                        m->onAbortReceived(fromMac, seqId);
-                        break;
+        PktType::kShootoutCommand,
+        [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
+            auto* m = static_cast<ShootoutManager*>(ctx);
+            if (dataLen < 2) return;
+            ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
+            uint8_t seqId = data[1];
+            const uint8_t* payload = data + 2;
+            size_t payloadLen = dataLen - 2;
+            switch (cmd) {
+                case ShootoutCmd::CONFIRM: {
+                    if (payloadLen < 6) break;
+                    const char* name = (payloadLen >= 6 + ShootoutManager::kNameLength)
+                                       ? reinterpret_cast<const char*>(payload + 6)
+                                       : nullptr;
+                    m->onConfirmReceived(payload, name);
+                    break;
                 }
-            },
-            mgr);
+                case ShootoutCmd::BRACKET:
+                case ShootoutCmd::RING_CLOSED: {
+                    if (payloadLen < 1) break;
+                    uint8_t count = payload[0];
+                    if (payloadLen < 1 + 6u * static_cast<size_t>(count)) break;
+                    std::vector<std::array<uint8_t, 6>> macs;
+                    for (uint8_t i = 0; i < count; i++) {
+                        std::array<uint8_t, 6> mac;
+                        memcpy(mac.data(), payload + 1 + 6 * i, 6);
+                        macs.push_back(mac);
+                    }
+                    if (cmd == ShootoutCmd::BRACKET) {
+                        m->onBracketReceived(fromMac, macs, seqId);
+                    } else {
+                        m->onRingClosedReceived(fromMac, macs);
+                    }
+                    break;
+                }
+                case ShootoutCmd::MATCH_START:
+                    if (payloadLen >= 13)
+                        m->onMatchStartReceived(fromMac, payload, payload + 6, payload[12], seqId);
+                    break;
+                case ShootoutCmd::MATCH_RESULT:
+                    if (payloadLen >= 13)
+                        m->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
+                    break;
+                case ShootoutCmd::TOURNAMENT_END:
+                    if (payloadLen >= 6) m->onTournamentEndReceived(fromMac, payload, seqId);
+                    break;
+                case ShootoutCmd::ABORT: m->onAbortReceived(fromMac, seqId); break;
+            }
+        },
+        mgr);
 
         n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kShootoutCommandAck,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                // Same routing as GameSession::onShootoutCommandAckPacket: the
-                // seqId alone names the frame, so the command byte is only
-                // range-checked, never dispatched on.
-                auto* m = static_cast<ShootoutManager*>(ctx);
-                if (dataLen < 2) return;
-                if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
-                m->onCommandAckReceived(fromMac, data[1]);
-            },
-            mgr);
+        PktType::kShootoutCommandAck,
+        [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
+            // Same routing as GameSession::onShootoutCommandAckPacket: the
+            // seqId alone names the frame, so the command byte is only
+            // range-checked, never dispatched on.
+            auto* m = static_cast<ShootoutManager*>(ctx);
+            if (dataLen < 2) return;
+            if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
+            m->onCommandAckReceived(fromMac, data[1]);
+        },
+        mgr);
     }
-
 };
 
 // ============================================================================
@@ -591,7 +610,7 @@ protected:
 // H-H-H linear chain: device 0 is challenger (OUTPUT tail), devices 1 and 2 are
 // supporters whose challengerMac caches device 0's MAC after the role-announce
 // cascade propagates.
-inline void cdmMultiDeviceChainFormsAndElectsChallenger(ChainDuelMultiDeviceFixture* suite) {
+inline void cdmMultiDeviceChainFormsAndElectsChallenger(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -635,7 +654,7 @@ inline void cdmMultiDeviceChainFormsAndElectsChallenger(ChainDuelMultiDeviceFixt
 // H-H-H linear chain: the challenger counts the supporter two cables away as
 // readily as the one on its own cable. The far one is placed by the join it
 // sent when the role cascade named its challenger, nothing else can see it.
-inline void cdmMultiDeviceConfirmDeliveredToChallenger(ChainDuelMultiDeviceFixture* suite) {
+inline void cdmMultiDeviceConfirmDeliveredToChallenger(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -680,7 +699,7 @@ inline void cdmMultiDeviceConfirmDeliveredToChallenger(ChainDuelMultiDeviceFixtu
 // at one supporter's worth however many devices are plugged in behind it. Four
 // hunters, three supporters at one, two and three cables of distance, all three
 // counted and all three paid.
-inline void cdmMultiDeviceBoostScalesWithChainDepth(ChainDuelMultiDeviceFixture* suite) {
+inline void cdmMultiDeviceBoostScalesWithChainDepth(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(4);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -702,7 +721,7 @@ inline void cdmMultiDeviceBoostScalesWithChainDepth(ChainDuelMultiDeviceFixture*
     for (size_t i = 1; i < suite->nodeCount(); ++i) {
         ASSERT_NE(suite->node(i).cdm->getChallengerMac(), nullptr) << "node " << i;
         ASSERT_EQ(memcmp(suite->node(i).cdm->getChallengerMac(), challenger.mac, 6), 0)
-            << "node " << i << " follows the wrong challenger";
+        << "node " << i << " follows the wrong challenger";
     }
     // Every supporter is on the roster before a single press, which is what lets
     // a COUNTDOWN reach a device that has not confirmed yet.
@@ -720,7 +739,7 @@ inline void cdmMultiDeviceBoostScalesWithChainDepth(ChainDuelMultiDeviceFixture*
 // The challenger's COUNTDOWN/WIN/LOSS have to land on every supporter, not just
 // the one it shares a cable with — a supporter three cables away never sees a
 // round start otherwise, and never leaves its stale screen.
-inline void cdmMultiDeviceGameEventReachesDistantSupporter(ChainDuelMultiDeviceFixture* suite) {
+inline void cdmMultiDeviceGameEventReachesDistantSupporter(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(4);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -745,12 +764,12 @@ inline void cdmMultiDeviceGameEventReachesDistantSupporter(ChainDuelMultiDeviceF
         MultiDeviceNode& n = suite->node(i);
         int* counter = &accepted[i];
         n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kChainGameEvent,
-            [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(ChainGameEventPayload)) return;
-                static_cast<int*>(ctx)[0]++;
-            },
-            counter);
+        PktType::kChainGameEvent,
+        [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
+            if (dataLen != sizeof(ChainGameEventPayload)) return;
+            static_cast<int*>(ctx)[0]++;
+        },
+        counter);
     }
 
     challenger.cdm->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
@@ -764,7 +783,7 @@ inline void cdmMultiDeviceGameEventReachesDistantSupporter(ChainDuelMultiDeviceF
     // Every supporter, at every depth, filters on the challenger the event names.
     for (size_t i = 1; i < suite->nodeCount(); ++i) {
         EXPECT_TRUE(suite->node(i).cdm->isEventFromOwnChallenger(challenger.mac))
-            << "node " << i << " would reject its own challenger's event";
+        << "node " << i << " would reject its own challenger's event";
     }
     uint8_t strangerChallenger[6] = {0x77, 0x77, 0x77, 0x77, 0x77, 0x77};
     EXPECT_FALSE(suite->node(3).cdm->isEventFromOwnChallenger(strangerChallenger));
@@ -772,8 +791,8 @@ inline void cdmMultiDeviceGameEventReachesDistantSupporter(ChainDuelMultiDeviceF
 
 // End-to-end Shootout consensus: 4 devices form a ring, each confirms,
 // every device reaches BRACKET_REVEAL phase, coordinator broadcasts
-// MATCH_START and both duelists transition into MATCH_IN_PROGRESS.
-inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture* suite) {
+// MATCH_START and both players transition into MATCH_IN_PROGRESS.
+inline void shootoutFourDeviceConsensusAndMatchStart(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(4);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -784,14 +803,13 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
 
     // Every device should now see the ring as closed.
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        ASSERT_TRUE(suite->node(i).rdc->isInRing())
-            << "node " << i << " does not see the ring";
+        ASSERT_TRUE(suite->node(i).rdc->isInRing()) << "node " << i << " does not see the ring";
     }
 
     suite->claimRing();
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::PROPOSAL)
-            << "node " << i << " missed the ring-closed broadcast";
+        << "node " << i << " missed the ring-closed broadcast";
     }
 
     // Each device confirms. After four confirms propagate, every device
@@ -806,9 +824,8 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
     suite->deliverAllPackets();
 
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        EXPECT_EQ(suite->node(i).shootout->getPhase(),
-                  ShootoutManager::Phase::BRACKET_REVEAL)
-            << "node " << i << " phase";
+        EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL)
+        << "node " << i << " phase";
     }
     EXPECT_TRUE(suite->node(suite->ringHeadIndex).shootout->isCoordinator());
 
@@ -821,26 +838,26 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
     suite->deliverAllPackets();
 
     // Exactly one coordinator. Coordinator should be MATCH_IN_PROGRESS.
-    // Two duelists should also be MATCH_IN_PROGRESS; spectators too
+    // Two players should also be MATCH_IN_PROGRESS; spectators too
     // (phase is per-device, and receiving MATCH_START sets phase on
     // everyone).
     int inProgress = 0;
-    int localDuelists = 0;
+    int activePlayers = 0;
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         if (suite->node(i).shootout->getPhase() == ShootoutManager::Phase::MATCH_IN_PROGRESS) {
             inProgress++;
         }
-        if (suite->node(i).shootout->isLocalDuelist()) localDuelists++;
+        if (suite->node(i).shootout->isInCurrentMatch()) activePlayers++;
     }
     EXPECT_EQ(inProgress, static_cast<int>(suite->nodeCount()));
-    EXPECT_EQ(localDuelists, 2);
+    EXPECT_EQ(activePlayers, 2);
 }
 
 // Drive a 4-device tournament from ring closure through TOURNAMENT_END. Covers
 // advance-round logic: expected match count is 3 (2 round-1 matches, 1 final).
 // Guards against regression where round advances after only 1 match or stalls
 // between matches.
-inline void shootoutFourDeviceFullTournament(ChainDuelMultiDeviceFixture* suite) {
+inline void shootoutFourDeviceFullTournament(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(4);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -864,9 +881,9 @@ inline void shootoutFourDeviceFullTournament(ChainDuelMultiDeviceFixture* suite)
     suite->syncAll();
     suite->deliverAllPackets();
 
-    auto localDuelistIndex = [&]() -> int {
+    auto activePlayerIndex = [&]() -> int {
         for (size_t i = 0; i < suite->nodeCount(); ++i) {
-            if (suite->node(i).shootout->isLocalDuelist()) return (int)i;
+            if (suite->node(i).shootout->isInCurrentMatch()) return (int)i;
         }
         return -1;
     };
@@ -874,11 +891,11 @@ inline void shootoutFourDeviceFullTournament(ChainDuelMultiDeviceFixture* suite)
     // Drive up to 4 matches (safety cap). Real count should be 3.
     int matchesDriven = 0;
     for (int m = 0; m < 6; ++m) {
-        int duelistIdx = localDuelistIndex();
-        if (duelistIdx < 0) break;
-        // Have this duelist report a win. The other flow (opponent wins) is
+        int playerIdx = activePlayerIndex();
+        if (playerIdx < 0) break;
+        // Have this player report a win. The other flow (opponent wins) is
         // symmetric; picking one side keeps the test deterministic.
-        suite->node(duelistIdx).shootout->reportLocalWin();
+        suite->node(playerIdx).shootout->reportLocalWin();
         suite->deliverAllPackets();
         suite->syncAll();
         suite->deliverAllPackets();
@@ -903,13 +920,14 @@ inline void shootoutFourDeviceFullTournament(ChainDuelMultiDeviceFixture* suite)
     bool winnerSet = false;
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         auto phase = suite->node(i).shootout->getPhase();
-        EXPECT_EQ(phase, ShootoutManager::Phase::ENDED)
-            << "node " << i << " phase not ENDED";
+        EXPECT_EQ(phase, ShootoutManager::Phase::ENDED) << "node " << i << " phase not ENDED";
         auto wArr = suite->node(i).shootout->getTournamentWinner();
-        if (!winnerSet) { winner = wArr; winnerSet = true; }
-        else {
+        if (!winnerSet) {
+            winner = wArr;
+            winnerSet = true;
+        } else {
             EXPECT_EQ(memcmp(winner.data(), wArr.data(), 6), 0)
-                << "node " << i << " disagrees on winner";
+            << "node " << i << " disagrees on winner";
         }
     }
 }
@@ -919,7 +937,7 @@ inline void shootoutFourDeviceFullTournament(ChainDuelMultiDeviceFixture* suite)
 // validates player-name propagation: every node sets a distinct name, and
 // every other node can resolve that name from its ShootoutManager after
 // CONFIRMs propagate.
-inline void shootoutEightDeviceFullTournament(ChainDuelMultiDeviceFixture* suite) {
+inline void shootoutEightDeviceFullTournament(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(8);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -928,9 +946,8 @@ inline void shootoutEightDeviceFullTournament(ChainDuelMultiDeviceFixture* suite
     suite->deliverAllPackets();
     suite->closeRing();
 
-    static const char* kNames[8] = {
-        "alice", "bob", "carol", "dave", "erin", "frank", "gina", "hank"
-    };
+    static const char* kNames[8] = {"alice", "bob",   "carol", "dave",
+                                    "erin",  "frank", "gina",  "hank"};
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         suite->node(i).player->setName(kNames[i]);
     }
@@ -951,12 +968,15 @@ inline void shootoutEightDeviceFullTournament(ChainDuelMultiDeviceFixture* suite
 
     int matches = 0;
     for (int m = 0; m < 12; ++m) {
-        int duelistIdx = -1;
+        int playerIdx = -1;
         for (size_t i = 0; i < suite->nodeCount(); ++i) {
-            if (suite->node(i).shootout->isLocalDuelist()) { duelistIdx = (int)i; break; }
+            if (suite->node(i).shootout->isInCurrentMatch()) {
+                playerIdx = (int)i;
+                break;
+            }
         }
-        if (duelistIdx < 0) break;
-        suite->node(duelistIdx).shootout->reportLocalWin();
+        if (playerIdx < 0) break;
+        suite->node(playerIdx).shootout->reportLocalWin();
         suite->deliverAllPackets();
         suite->syncAll();
         suite->deliverAllPackets();
@@ -966,7 +986,8 @@ inline void shootoutEightDeviceFullTournament(ChainDuelMultiDeviceFixture* suite
         bool anyEnded = false;
         for (size_t i = 0; i < suite->nodeCount(); ++i) {
             if (suite->node(i).shootout->getPhase() == ShootoutManager::Phase::ENDED) {
-                anyEnded = true; break;
+                anyEnded = true;
+                break;
             }
         }
         if (anyEnded) break;
@@ -974,17 +995,16 @@ inline void shootoutEightDeviceFullTournament(ChainDuelMultiDeviceFixture* suite
     EXPECT_EQ(matches, 7) << "8-device SE bracket should run exactly 7 matches";
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::ENDED)
-            << "8-device node " << i;
+        << "8-device node " << i;
     }
 
     // Every node should know every other node's name after CONFIRM propagation.
     for (size_t observer = 0; observer < suite->nodeCount(); ++observer) {
         for (size_t target = 0; target < suite->nodeCount(); ++target) {
             std::string resolved =
-                suite->node(observer).shootout->getNameForMac(
-                    suite->node(target).mac);
+            suite->node(observer).shootout->getNameForMac(suite->node(target).mac);
             EXPECT_EQ(resolved, kNames[target])
-                << "node " << observer << " can't resolve node " << target;
+            << "node " << observer << " can't resolve node " << target;
         }
     }
 }
@@ -992,7 +1012,7 @@ inline void shootoutEightDeviceFullTournament(ChainDuelMultiDeviceFixture* suite
 // Two tournaments on one ring, with a reset between them. The ring has to
 // survive the whole first tournament, including its bracket-reveal wait, or the
 // second one has no members to bracket.
-inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixture* suite) {
+inline void shootoutFourDeviceTwoTournamentsBackToBack(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(4);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -1018,15 +1038,15 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
 
         int matches = 0;
         for (int m = 0; m < 6; ++m) {
-            int duelistIdx = -1;
+            int playerIdx = -1;
             for (size_t i = 0; i < suite->nodeCount(); ++i) {
-                if (suite->node(i).shootout->isLocalDuelist()) {
-                    duelistIdx = (int)i;
+                if (suite->node(i).shootout->isInCurrentMatch()) {
+                    playerIdx = (int)i;
                     break;
                 }
             }
-            if (duelistIdx < 0) break;
-            suite->node(duelistIdx).shootout->reportLocalWin();
+            if (playerIdx < 0) break;
+            suite->node(playerIdx).shootout->reportLocalWin();
             suite->deliverAllPackets();
             suite->syncAll();
             suite->deliverAllPackets();
@@ -1047,20 +1067,19 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
     EXPECT_EQ(matchesOne, 3);
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::ENDED)
-            << "tourn 1 node " << i;
+        << "tourn 1 node " << i;
     }
 
     // Reset on every node (mirrors FinalStandings::onStateDismounted).
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         suite->node(i).shootout->resetToIdle();
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::IDLE)
-            << "reset node " << i;
+        << "reset node " << i;
     }
 
     // The ring must still be intact for tournament 2.
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        ASSERT_TRUE(suite->node(i).rdc->isInRing())
-            << "post-reset ring broken on node " << i;
+        ASSERT_TRUE(suite->node(i).rdc->isInRing()) << "post-reset ring broken on node " << i;
     }
 
     // Run tournament 2. runOne re-claims the ring, which is what re-seeds the
@@ -1068,16 +1087,16 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
     int matchesTwo = runOne();
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         ASSERT_EQ(suite->node(i).shootout->getRingMembers().size(), 4u)
-            << "ring members wrong on node " << i;
+        << "ring members wrong on node " << i;
     }
     EXPECT_EQ(matchesTwo, 3) << "tournament 2 did not run 3 matches";
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::ENDED)
-            << "tourn 2 node " << i;
+        << "tourn 2 node " << i;
     }
 }
 
-inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDeviceFixture* suite) {
+inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     suite->setAllHunters();
     suite->connectLinearHunterChain();
@@ -1149,8 +1168,8 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
     EXPECT_EQ(d0.cdm->getBoostMs(), 2 * PosseManager::BOOST_PER_SUPPORTER_MS);
 }
 
-inline void cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(
-    ChainDuelMultiDeviceFixture* suite) {
+inline void
+cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverMatchGate(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(2);
     suite->setAllHunters();
     suite->connectLinearHunterChain();

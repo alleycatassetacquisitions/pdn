@@ -56,11 +56,11 @@ inline const char* getStateName(int stateId) {
         case SLEEP: return "Sleep";
         case AWAKEN_SEQUENCE: return "AwakenSequence";
         case IDLE: return "Idle";
-        case DUEL_COUNTDOWN: return "DuelCountdown";
-        case DUEL: return "Duel";
-        case DUEL_PUSHED: return "DuelPushed";
-        case DUEL_RECEIVED_RESULT: return "DuelReceivedResult";
-        case DUEL_RESULT: return "DuelResult";
+        case MATCH_COUNTDOWN: return "MatchCountdown";
+        case MATCH: return "MatchState";
+        case MATCH_PUSHED: return "MatchPushed";
+        case MATCH_RECEIVED_RESULT: return "MatchReceivedResult";
+        case MATCH_RESULT: return "MatchResult";
         case WIN: return "Win";
         case LOSE: return "Lose";
         case UPLOAD_MATCHES: return "UploadMatches";
@@ -106,7 +106,7 @@ struct DeviceInstance {
     GameSession* gameSession = nullptr;
     PlayerFetchApp* playerFetchApp = nullptr;
     HubApp* hubApp = nullptr;
-    DuelApp* duelApp = nullptr;
+    MatchApp* matchApp = nullptr;
     ShootoutApp* shootoutApp = nullptr;
     SymbolApp* symbolApp = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
@@ -233,16 +233,16 @@ public:
             instance.pdn->getFirmwareUpdateManager(),
             instance.playerProvider);
         instance.hubApp = new HubApp(gameContext);
-        instance.duelApp = new DuelApp(gameContext);
+        instance.matchApp = new MatchApp(gameContext);
         instance.shootoutApp = new ShootoutApp(gameContext);
         instance.symbolApp = new SymbolApp(gameContext);
 
         AppConfig apps = {
-            {StateId(PLAYER_FETCH_APP_ID), instance.playerFetchApp},
-            {StateId(HUB_APP_ID), instance.hubApp},
-            {StateId(DUEL_APP_ID), instance.duelApp},
-            {StateId(SHOOTOUT_APP_ID), instance.shootoutApp},
-            {StateId(SYMBOL_APP_ID), instance.symbolApp},
+        {StateId(PLAYER_FETCH_APP_ID), instance.playerFetchApp},
+        {StateId(HUB_APP_ID), instance.hubApp},
+        {StateId(MATCH_APP_ID), instance.matchApp},
+        {StateId(SHOOTOUT_APP_ID), instance.shootoutApp},
+        {StateId(SYMBOL_APP_ID), instance.symbolApp},
         };
         // Skip the entire registration flow: launch straight into the hub's first
         // state (AwakenSequence). The player is already configured with ID, role,
@@ -270,7 +270,7 @@ public:
         // ordering hygiene rather than a fix for a live use-after-free.
         delete device.playerFetchApp;
         delete device.hubApp;
-        delete device.duelApp;
+        delete device.matchApp;
         delete device.shootoutApp;
         delete device.symbolApp;
         delete device.gameSession;

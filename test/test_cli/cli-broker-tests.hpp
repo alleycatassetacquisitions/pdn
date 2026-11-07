@@ -96,60 +96,61 @@ public:  // Public for test function access
         peerA->initialize();
         peerB->initialize();
 
-        peerA->connect();
-        peerB->connect();
+        peerA->enable();
+        peerB->enable();
 
-        receivedPackets_ = 0;
+        receivedPackets = 0;
     }
     
     void TearDown() override {
-        peerA->disconnect();
-        peerB->disconnect();
+        peerA->disable();
+        peerB->disable();
 
         delete peerA;
         delete peerB;
     }
-    
+
+    /** Increments received packet count on inbound packet delivery. */
     static void packetCallback(const uint8_t* srcMac, const uint8_t* data, 
                                size_t length, void* context) {
         auto* suite = static_cast<NativePeerBrokerTestSuite*>(context);
-        suite->receivedPackets_++;
+        suite->receivedPackets++;
     }
     
     NativePeerBroker* broker_;
     NativePeerCommsDriver* peerA;
     NativePeerCommsDriver* peerB;
-    int receivedPackets_;
+    int receivedPackets;
 };
 
 // Test: Unicast delivery
 void peerBrokerUnicastDelivery(NativePeerBrokerTestSuite* suite) {
-    suite->peerB->setPacketHandler(PktType::kDuelCommand,
+    suite->peerB->setPacketHandler(PktType::kMatchCommand,
                                    NativePeerBrokerTestSuite::packetCallback, suite);
 
     uint8_t testData[] = {0x01, 0x02, 0x03};
-    suite->peerA->sendData(suite->peerB->getMacAddress(), PktType::kDuelCommand,
-                           testData, sizeof(testData));
+    suite->peerA->sendData(suite->peerB->getMacAddress(), PktType::kMatchCommand, testData,
+                           sizeof(testData));
 
     // Deliver pending packets, then drain the receiving driver's queue
     suite->broker_->deliverPackets();
     suite->peerB->exec();
 
-    ASSERT_EQ(suite->receivedPackets_, 1);
+    ASSERT_EQ(suite->receivedPackets, 1);
 }
 
 // Test: Broadcast excludes sender
 void peerBrokerBroadcastExcludesSender(NativePeerBrokerTestSuite* suite) {
     // Set handler on both peers
-    suite->peerA->setPacketHandler(PktType::kDuelCommand,
+    suite->peerA->setPacketHandler(PktType::kMatchCommand,
                                    NativePeerBrokerTestSuite::packetCallback, suite);
-    suite->peerB->setPacketHandler(PktType::kDuelCommand,
+    suite->peerB->setPacketHandler(PktType::kMatchCommand,
                                    NativePeerBrokerTestSuite::packetCallback, suite);
 
     // Broadcast from A
     uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     uint8_t testData[] = {0x01};
-    suite->peerA->sendData(broadcastMac, PktType::kDuelCommand, testData, 1);
+    suite->peerA->sendData(broadcastMac, PktType::kMatchCommand, testData, 1);
 
     // Deliver pending packets, then drain the receiving driver's queue
     suite->broker_->deliverPackets();
@@ -157,26 +158,26 @@ void peerBrokerBroadcastExcludesSender(NativePeerBrokerTestSuite* suite) {
     suite->peerB->exec();
 
     // B should receive, but A should not receive its own broadcast
-    ASSERT_GE(suite->receivedPackets_, 1);
+    ASSERT_GE(suite->receivedPackets, 1);
 }
 
 // Test: Peer registration with broker
 void peerBrokerPeerRegistration(NativePeerBrokerTestSuite* suite) {
-    // Both peers should be registered by connect()
+    // Both peers should be registered by enable()
     // This test verifies the broker can route between them
 
-    suite->peerB->setPacketHandler(PktType::kDuelCommand,
+    suite->peerB->setPacketHandler(PktType::kMatchCommand,
                                    NativePeerBrokerTestSuite::packetCallback, suite);
 
     uint8_t testData[] = {0xAB, 0xCD};
-    suite->peerA->sendData(suite->peerB->getMacAddress(), PktType::kDuelCommand,
-                           testData, sizeof(testData));
+    suite->peerA->sendData(suite->peerB->getMacAddress(), PktType::kMatchCommand, testData,
+                           sizeof(testData));
 
     // Deliver pending packets, then drain the receiving driver's queue
     suite->broker_->deliverPackets();
     suite->peerB->exec();
 
-    ASSERT_EQ(suite->receivedPackets_, 1);
+    ASSERT_EQ(suite->receivedPackets, 1);
 }
 
 // Test: Unique MAC generation
@@ -191,19 +192,18 @@ void peerBrokerUniqueMacGeneration(NativePeerBrokerTestSuite* suite) {
     ASSERT_EQ(macB.length(), 17);
 }
 
-// Test: Disconnected peer doesn't receive
-void peerBrokerDisconnectedPeerNoReceive(NativePeerBrokerTestSuite* suite) {
-    suite->peerB->setPacketHandler(PktType::kDuelCommand,
+// Test: Disabled peer doesn't receive
+void peerBrokerDisabledPeerNoReceive(NativePeerBrokerTestSuite* suite) {
+    suite->peerB->setPacketHandler(PktType::kMatchCommand,
                                    NativePeerBrokerTestSuite::packetCallback, suite);
 
-    suite->peerB->disconnect();
+    suite->peerB->disable();
 
     uint8_t testData[] = {0x01};
-    suite->peerA->sendData(suite->peerB->getMacAddress(), PktType::kDuelCommand,
-                           testData, 1);
+    suite->peerA->sendData(suite->peerB->getMacAddress(), PktType::kMatchCommand, testData, 1);
 
-    // B is disconnected, should not receive
-    ASSERT_EQ(suite->receivedPackets_, 0);
+    // B is disabled, should not receive
+    ASSERT_EQ(suite->receivedPackets, 0);
 
-    suite->peerB->connect();  // Reconnect for teardown
+    suite->peerB->enable();  // Re-enable for teardown
 }

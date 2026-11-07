@@ -19,10 +19,10 @@ The server registration payload (id, name, team, affiliations) SHALL live on `Pl
 - **AND** a nil `team.id` makes `hasTeam()` return false
 
 ### Requirement: alleycat-server decodes into Player
-`DevicePlayerDecoder` and `PlayerApi::getDevicePlayerByPin` SHALL decode into the registration fields on `Player` without changing protobuf definitions or regenerating nanopb outputs. `PlayerLimits` buffer sizes SHALL match `device_api.options`, enforced at compile time.
+`DevicePlayerCodec` and `PlayerApi::getDevicePlayerByPin` SHALL decode into the registration fields on `Player` without changing protobuf definitions or regenerating nanopb outputs. `PlayerLimits` buffer sizes SHALL match `device_api.options`, enforced at compile time.
 
 #### Scenario: Decoded player
-- **WHEN** `DevicePlayerDecoder` decodes a valid `DevicePlayerResponse` body into a `Player`
+- **WHEN** `DevicePlayerCodec` decodes a valid `DevicePlayerResponse` body into a `Player`
 - **THEN** the `Player` registration fields hold id, name, team, and affiliations from the message
 - **AND** `hasRegistrationProfile()` is true
 

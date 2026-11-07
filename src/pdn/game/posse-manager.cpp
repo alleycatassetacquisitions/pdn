@@ -174,7 +174,7 @@ void PosseManager::sendGameEventToSupporters(ChainGameEventType eventType) {
     // event. They get seqIds and retry tracking.
     //
     // COUNTDOWN/DRAW are time-sensitive transient events. A late-arriving
-    // retry of COUNTDOWN would falsely re-arm a supporter whose duel has
+    // retry of COUNTDOWN would falsely re-arm a supporter whose match has
     // already resolved; a late DRAW would disarm a supporter who just
     // entered a new COUNTDOWN. Keep them fire-and-forget: seqId=0.
     if (eventType == ChainGameEventType::WIN || eventType == ChainGameEventType::LOSS) {

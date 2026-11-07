@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <vector>
 
-/** Buffer limits for server registration fields on `Player`; the decoder truncates names to fit. */
+/** Buffer limits for server registration fields on `Player`; the codec truncates names to fit. */
 namespace PlayerLimits {
 constexpr size_t NAME_BUFFER_SIZE = 37;
 constexpr size_t MAX_AFFILIATIONS = 3;
