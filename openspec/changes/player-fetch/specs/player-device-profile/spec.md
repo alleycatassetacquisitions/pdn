@@ -24,7 +24,7 @@ PlayerFetch code SHALL NOT set or read `Player::isHunter`. Demo choose team SHAL
 - **THEN** registration code does not update `isHunter`
 
 ### Requirement: Gameplay Player migration is out of scope
-This change SHALL NOT require global `Player` to fully replace legacy allegiance/faction/hunter fields for Idle or match code. Unifying `Player` with `DevicePlayer` for gameplay is a follow-up before Quickdraw wiring.
+This change SHALL NOT require global `Player` to fully replace legacy allegiance/faction/hunter fields for Idle or duel code. Unifying `Player` with `DevicePlayer` for gameplay is a follow-up before Quickdraw wiring.
 
 #### Scenario: Standalone delivery
 - **WHEN** PlayerFetch is built and tested in isolation

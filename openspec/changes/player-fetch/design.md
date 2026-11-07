@@ -1,6 +1,6 @@
 ## Context
 
-Legacy registration remains the production boot path via Quickdraw. PlayerFetch is a greenfield app to validate protobuf registration UX and state wiring before the **`Player` / `DevicePlayer` model gap** (team vs hunter, affiliations vs enum) is closed for Idle and match code.
+Legacy registration remains the production boot path via Quickdraw. PlayerFetch is a greenfield app to validate protobuf registration UX and state wiring before the **`Player` / `DevicePlayer` model gap** (team vs hunter, affiliations vs enum) is closed for Idle and duel code.
 
 ## Goals / Non-Goals
 
@@ -25,7 +25,7 @@ Legacy registration remains the production boot path via Quickdraw. PlayerFetch 
 
 `PlayerFetchApp` is a normal `StateMachine` subclass with its own app id, built with the firmware target, but **not referenced** from `Quickdraw::populateStateMap`. Optional later: CLI test harness or perf entry to mount it in isolation.
 
-*Why:* Avoids half-migrated Player types breaking Idle, match, and sleep paths.
+*Why:* Avoids half-migrated Player types breaking Idle, duel, and sleep paths.
 
 ### State graph
 

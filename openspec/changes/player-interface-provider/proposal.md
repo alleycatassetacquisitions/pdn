@@ -6,7 +6,7 @@ The server registration model lived in `alleycat-server` as a separate struct fr
 
 - Registration fields (server id, name, team, affiliations) live on **`Player`** with dedicated accessors for PlayerFetch.
 - **`PlayerProvider`** owns the session **`Player`** and the registration PIN; `main` passes `getPlayer()` to Quickdraw and `PlayerProvider*` to PlayerFetch.
-- **`DevicePlayerCodec`** and **`PlayerApi::getDevicePlayerByPin`** decode into `Player`; a private legacy shim keeps existing Quickdraw call sites working.
+- **`DevicePlayerDecoder`** and **`PlayerApi::getDevicePlayerByPin`** decode into `Player`; a private legacy shim keeps existing Quickdraw call sites working.
 - Remove standalone **`PlayerV2`**; keep **`Team`**, **`Affiliation`**, **`PlayerLimits`** in `player-types.hpp`.
 
 Out of scope: Quickdraw boot path switching to PlayerFetch; removing legacy JSON registration.
@@ -19,7 +19,7 @@ Out of scope: Quickdraw boot path switching to PlayerFetch; removing legacy JSON
 ## Impact
 
 - `lib/core` — `player.hpp` / `player.cpp`, `player-provider`, `player-types`.
-- `lib/alleycat-server` — codec and player API target `Player`.
+- `lib/alleycat-server` — decoder and player API target `Player`.
 - `src/pdn/apps/player-fetch` — registration via `getPlayer()` new fields.
 - `src/pdn/main.cpp` — `PlayerProvider` ownership.
-- `test/test_core` — provider, shim, codec, fetch tests.
+- `test/test_core` — provider, shim, decoder, fetch tests.
