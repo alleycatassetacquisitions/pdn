@@ -141,9 +141,8 @@ void GameSession::logRetryStats() {
     if (posseManager != nullptr) {
         PosseManager::RetryStats c = posseManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
-        LOG_W("STATS", "CDM s=%u r=%u ab=%u ack=%u/%lums",
-              (unsigned)c.sends, (unsigned)c.retries, (unsigned)c.abandons,
-              (unsigned)c.ackCount, cMean);
+        LOG_W("STATS", "POSSE s=%u r=%u ab=%u ack=%u/%lums", (unsigned)c.sends, (unsigned)c.retries,
+              (unsigned)c.abandons, (unsigned)c.ackCount, cMean);
     }
     if (shootoutManager != nullptr) {
         const Resender::Stats& s = shootoutManager->getRetryStats();

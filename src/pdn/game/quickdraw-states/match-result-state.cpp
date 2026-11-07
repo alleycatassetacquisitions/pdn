@@ -47,8 +47,6 @@ void MatchResult::onStateLoop(PDN* pdn) {
 
 void MatchResult::onStateDismounted(PDN* pdn) {
     LOG_I(MATCH_RESULT_TAG, "Match result state dismounted - Cleaning up");
-
-    // Log state before reset
     LOG_I(MATCH_RESULT_TAG, "State before reset - wonBattle: %d, captured: %d", wonBattle,
           captured);
 

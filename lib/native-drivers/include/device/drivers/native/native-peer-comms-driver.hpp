@@ -74,10 +74,7 @@ public:
     }
 
     /** Brings up the simulated peer-to-peer radio. */
-    void enable() override {
-        // In native simulation, enable is instant
-        peerCommsState = PeerCommsState::ENABLED;
-    }
+    void enable() override { peerCommsState = PeerCommsState::ENABLED; }
 
     /** Tears down the simulated peer-to-peer radio. */
     void disable() override { peerCommsState = PeerCommsState::DISABLED; }
@@ -98,10 +95,9 @@ public:
     /** Sends a packet over the simulated peer broker when enabled. */
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
         if (peerCommsState != PeerCommsState::ENABLED) {
-            return -1;  // Cannot send when disabled
+            return -1;
         }
 
-        // Track sent packet
         PacketHistoryEntry entry;
         entry.isSent = true;
         entry.srcMac = getMacString();
@@ -122,7 +118,7 @@ public:
             r.data.assign(data, data + length);
             sendResultQueue.push(std::move(r));
         }
-        return 0; // Success
+        return 0;
     }
 
     void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) override {

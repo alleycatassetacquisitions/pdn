@@ -1380,8 +1380,8 @@ TEST_F(StateCleanupTests, countdownStateInvalidatesTimer) {
     cleanupCountdownStateInvalidatesTimer(this);
 }
 
-TEST_F(StateCleanupTests, matchResultClearsWirelessCallbacks) {
-    cleanupMatchResultClearsWirelessCallbacks(this);
+TEST_F(StateCleanupTests, matchResultResetsStateOnDismount) {
+    cleanupMatchResultResetsStateOnDismount(this);
 }
 
 TEST_F(StateCleanupTests, matchManagerClearsCurrentMatch) {
@@ -1841,146 +1841,134 @@ TEST_F(RDCHelloTests, unprovenUpstreamIsNeverAdopted) {
 // ============================================
 
 TEST_F(PosseManagerTests, roleDerivationWithChallengerTopology) {
-    cdmRoleDerivationWithChallengerTopology(this);
+    posseRoleDerivationWithChallengerTopology(this);
 }
 
 TEST_F(PosseManagerTests, canInitiateMatchRequiresConnectedOpponentJack) {
-    cdmCanInitiateMatchRequiresConnectedOpponentJack(this);
+    posseCanInitiateMatchRequiresConnectedOpponentJack(this);
 }
 
 TEST_F(PosseManagerTests, canInitiateMatchFalseForBounty) {
-    cdmCanInitiateMatchFalseForBounty(this);
+    posseCanInitiateMatchFalseForBounty(this);
 }
 
-TEST_F(PosseManagerTests, confirmLifecycle) {
-    cdmConfirmLifecycle(this);
-}
+TEST_F(PosseManagerTests, confirmLifecycle) { posseConfirmLifecycle(this); }
 
 TEST_F(PosseManagerTests, onChainStateChangedClearsOnDrain) {
-    cdmOnChainStateChangedClearsOnDrain(this);
+    posseOnChainStateChangedClearsOnDrain(this);
 }
 
 TEST_F(PosseManagerTests, confirmFromUnknownOriginatorRejected) {
-    cdmConfirmFromUnknownOriginatorRejected(this);
+    posseConfirmFromUnknownOriginatorRejected(this);
 }
 
 TEST_F(PosseManagerTests, isChallengerFalseWithSameRoleOpponent) {
-    cdmIsChallengerFalseWithSameRoleOpponent(this);
+    posseIsChallengerFalseWithSameRoleOpponent(this);
 }
 
-TEST_F(PosseManagerTests, isChallengerFalseInRing) {
-    cdmIsChallengerFalseInRing(this);
-}
+TEST_F(PosseManagerTests, isChallengerFalseInRing) { posseIsChallengerFalseInRing(this); }
 
 TEST_F(PosseManagerTests, sendConfirmTargetsChallengerMac) {
-    cdmSendConfirmTargetsChallengerMac(this);
+    posseSendConfirmTargetsChallengerMac(this);
 }
 
-TEST_F(PosseManagerTests, sendConfirmIncrementsSeqId) {
-    cdmSendConfirmIncrementsSeqId(this);
-}
+TEST_F(PosseManagerTests, sendConfirmIncrementsSeqId) { posseSendConfirmIncrementsSeqId(this); }
 
 TEST_F(PosseManagerTests, sendConfirmNoopWhenChallengerMacInvalid) {
-    cdmSendConfirmNoopWhenChallengerMacInvalid(this);
+    posseSendConfirmNoopWhenChallengerMacInvalid(this);
 }
 
 TEST_F(PosseManagerTests, confirmBufferedUntilOriginatorJoinsChain) {
-    cdmConfirmBufferedUntilOriginatorJoinsChain(this);
+    posseConfirmBufferedUntilOriginatorJoinsChain(this);
 }
 
 TEST_F(PosseManagerTests, strangerConfirmsCannotSilenceRealSupporter) {
-    cdmStrangerConfirmsCannotSilenceRealSupporter(this);
+    posseStrangerConfirmsCannotSilenceRealSupporter(this);
 }
 
 TEST_F(PosseManagerTests, chainJoinForAnotherChallengerIsIgnored) {
-    cdmChainJoinForAnotherChallengerIsIgnored(this);
+    posseChainJoinForAnotherChallengerIsIgnored(this);
 }
 
 TEST_F(PosseManagerTests, confirmResentWhenChallengerChanges) {
-    cdmConfirmResentWhenChallengerChanges(this);
+    posseConfirmResentWhenChallengerChanges(this);
 }
 
 TEST_F(PosseManagerTests, countdownVoidsStandingConfirm) {
-    cdmCountdownVoidsStandingConfirm(this);
+    posseCountdownVoidsStandingConfirm(this);
 }
 
 TEST_F(PosseManagerTests, headTransferResendsStandingConfirm) {
-    cdmHeadTransferResendsStandingConfirm(this);
+    posseHeadTransferResendsStandingConfirm(this);
 }
 
 TEST_F(PosseManagerTests, supporterRoleLossVoidsStandingConfirm) {
-    cdmSupporterRoleLossVoidsStandingConfirm(this);
+    posseSupporterRoleLossVoidsStandingConfirm(this);
 }
 
 TEST_F(PosseManagerTests, challengerChangeWithoutPressSendsNoConfirm) {
-    cdmChallengerChangeWithoutPressSendsNoConfirm(this);
+    posseChallengerChangeWithoutPressSendsNoConfirm(this);
 }
 
 TEST_F(PosseManagerTests, ringClosureClearsTheChallenger) {
-    cdmRingClosureClearsTheChallenger(this);
+    posseRingClosureClearsTheChallenger(this);
 }
 TEST_F(PosseManagerTests, roleAnnounceWithNoChallengerIsRefused) {
-    cdmRoleAnnounceWithNoChallengerIsRefused(this);
+    posseRoleAnnounceWithNoChallengerIsRefused(this);
 }
 
 TEST_F(PosseManagerTests, roleAnnounceUpdatesChallengerMac) {
-    cdmRoleAnnounceUpdatesChallengerMac(this);
+    posseRoleAnnounceUpdatesChallengerMac(this);
 }
 
 TEST_F(PosseManagerTests, roleAnnounceNoCascadeIfChallengerUnchanged) {
-    cdmRoleAnnounceNoCascadeIfChallengerUnchanged(this);
+    posseRoleAnnounceNoCascadeIfChallengerUnchanged(this);
 }
 
 TEST_F(PosseManagerTests, broadcastRoleAndChallengerSends) {
-    cdmBroadcastRoleAndChallengerSends(this);
+    posseBroadcastRoleAndChallengerSends(this);
 }
 
 TEST_F(PosseManagerTests, newTerminalEventSupersedesThePrevious) {
-    cdmNewTerminalEventSupersedesThePrevious(this);
+    posseNewTerminalEventSupersedesThePrevious(this);
 }
 
 TEST_F(PosseManagerTests, reannouncesAfterSameMacReconnect) {
-    cdmReannouncesAfterSameMacReconnect(this);
+    posseReannouncesAfterSameMacReconnect(this);
 }
 
 TEST_F(PosseManagerTests, challengerChangeReachesAToldSupporter) {
-    cdmChallengerChangeReachesAToldSupporter(this);
+    posseChallengerChangeReachesAToldSupporter(this);
 }
 
 TEST_F(PosseManagerTests, undeliveredSupporterAnnounceIsRetriedByBackstop) {
-    cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(this);
+    posseUndeliveredSupporterAnnounceIsRetriedByBackstop(this);
 }
 
 TEST_F(PosseManagerTests, announceWaitsForConnectedSupporterJack) {
-    cdmAnnounceWaitsForConnectedSupporterJack(this);
+    posseAnnounceWaitsForConnectedSupporterJack(this);
 }
 
-TEST_F(PosseManagerTests, ackClearsPending) {
-    cdmAckClearsPending(this);
-}
+TEST_F(PosseManagerTests, ackClearsPending) { posseAckClearsPending(this); }
 
-TEST_F(PosseManagerTests, ackFromWrongMacIgnored) {
-    cdmAckFromWrongMacIgnored(this);
-}
+TEST_F(PosseManagerTests, ackFromWrongMacIgnored) { posseAckFromWrongMacIgnored(this); }
 
-TEST_F(PosseManagerTests, retryStatsRecordsLifecycle) {
-    cdmRetryStatsRecordsLifecycle(this);
-}
+TEST_F(PosseManagerTests, retryStatsRecordsLifecycle) { posseRetryStatsRecordsLifecycle(this); }
 
 TEST_F(PosseManagerTests, retransmitAbandonsWhenSpanRunsOut) {
-    cdmRetransmitAbandonsWhenSpanRunsOut(this);
+    posseRetransmitAbandonsWhenSpanRunsOut(this);
 }
 
 TEST_F(PosseManagerTests, onChainStateBecomesChallengerSetsSelfMac) {
-    cdmOnChainStateBecomesChallengerSetsSelfMac(this);
+    posseOnChainStateBecomesChallengerSetsSelfMac(this);
 }
 
 TEST_F(PosseManagerTests, supporterKeepsUpstreamChallengerMacAfterTransition) {
-    cdmSupporterKeepsUpstreamChallengerMacAfterTransition(this);
+    posseSupporterKeepsUpstreamChallengerMacAfterTransition(this);
 }
 
 TEST_F(PosseManagerTests, onChainStateNewSupporterTriggersBroadcast) {
-    cdmOnChainStateNewSupporterTriggersBroadcast(this);
+    posseOnChainStateNewSupporterTriggersBroadcast(this);
 }
 
 TEST_F(PosseManagerTests, posseThreeDeviceConfirm) { posseThreeDeviceConfirm(this); }
@@ -1988,31 +1976,29 @@ TEST_F(PosseManagerTests, posseThreeDeviceConfirm) { posseThreeDeviceConfirm(thi
 TEST_F(PosseManagerTests, posseReconfigRecovers) { posseReconfigRecovers(this); }
 
 TEST_F(PosseManagerTests, roleAnnounceFromSupporterJackIgnoresChallengerMac) {
-    cdmRoleAnnounceFromSupporterJackIgnoresChallengerMac(this);
+    posseRoleAnnounceFromSupporterJackIgnoresChallengerMac(this);
 }
 
 TEST_F(PosseManagerTests, challengerToSupporterClearsStaleSelfMac) {
-    cdmChallengerToSupporterClearsStaleSelfMac(this);
+    posseChallengerToSupporterClearsStaleSelfMac(this);
 }
 
 TEST_F(PosseManagerTests, roleAnnounceFromOppositeRoleOpponentIgnoresChallengerMac) {
-    cdmRoleAnnounceFromOppositeRoleOpponentIgnoresChallengerMac(this);
+    posseRoleAnnounceFromOppositeRoleOpponentIgnoresChallengerMac(this);
 }
 
 TEST_F(PosseManagerTests, gameEventCountdownIsFireAndForget) {
-    cdmGameEventCountdownIsFireAndForget(this);
+    posseGameEventCountdownIsFireAndForget(this);
 }
 
 TEST_F(PosseManagerTests, gameEventWinIsTrackedAndRetried) {
-    cdmGameEventWinIsTrackedAndRetried(this);
+    posseGameEventWinIsTrackedAndRetried(this);
 }
 
-TEST_F(PosseManagerTests, gameEventAckClearsPending) {
-    cdmGameEventAckClearsPending(this);
-}
+TEST_F(PosseManagerTests, gameEventAckClearsPending) { posseGameEventAckClearsPending(this); }
 
 TEST_F(PosseManagerTests, gameEventAbandonsWhenSpanRunsOut) {
-    cdmGameEventAbandonsWhenSpanRunsOut(this);
+    posseGameEventAbandonsWhenSpanRunsOut(this);
 }
 
 // ============================================
@@ -2020,27 +2006,27 @@ TEST_F(PosseManagerTests, gameEventAbandonsWhenSpanRunsOut) {
 // ============================================
 
 TEST_F(PosseMultiDeviceFixture, chainFormsAndElectsChallenger) {
-    cdmMultiDeviceChainFormsAndElectsChallenger(this);
+    posseMultiDeviceChainFormsAndElectsChallenger(this);
 }
 
 TEST_F(PosseMultiDeviceFixture, confirmDeliveredToChallenger) {
-    cdmMultiDeviceConfirmDeliveredToChallenger(this);
+    posseMultiDeviceConfirmDeliveredToChallenger(this);
 }
 
 TEST_F(PosseMultiDeviceFixture, boostScalesWithChainDepth) {
-    cdmMultiDeviceBoostScalesWithChainDepth(this);
+    posseMultiDeviceBoostScalesWithChainDepth(this);
 }
 
 TEST_F(PosseMultiDeviceFixture, gameEventReachesDistantSupporter) {
-    cdmMultiDeviceGameEventReachesDistantSupporter(this);
+    posseMultiDeviceGameEventReachesDistantSupporter(this);
 }
 
 TEST_F(PosseMultiDeviceFixture, oneSidedHelloDropoutRecoversChain) {
-    cdmMultiDeviceOneSidedHelloDropoutRecoversChain(this);
+    posseMultiDeviceOneSidedHelloDropoutRecoversChain(this);
 }
 
 TEST_F(PosseMultiDeviceFixture, liveRoleFlipAndOneSidedDropoutRecoverMatchGate) {
-    cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverMatchGate(this);
+    posseMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverMatchGate(this);
 }
 
 TEST_F(PosseMultiDeviceFixture, shootoutFourDeviceFullTournament) {

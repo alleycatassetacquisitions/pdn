@@ -608,14 +608,6 @@ inline void stateFlowThroughMatchResultToLose(StateFlowIntegrationTests* suite) 
     EXPECT_TRUE(resultState.transitionToLose());
 }
 
-inline void stateFlowMatchToWin(StateFlowIntegrationTests* suite) {
-    stateFlowThroughMatchResultToWin(suite);
-}
-
-inline void stateFlowMatchToLose(StateFlowIntegrationTests* suite) {
-    stateFlowThroughMatchResultToLose(suite);
-}
-
 // ============================================
 // Two-Device Simulation Tests
 // ============================================

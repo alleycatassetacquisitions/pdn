@@ -369,9 +369,7 @@ public:
     FakePlatformClock* fakeClock;
 };
 
-// Test: Button masher penalty increments on button press
 inline void countdownButtonMasherPenaltyIncrementsOnButtonPress(MatchCountdownTests* suite) {
-    // Capture the button callback when it's set
     parameterizedCallbackFunction capturedCallback = nullptr;
     void* capturedCtx = nullptr;
     
@@ -384,18 +382,13 @@ inline void countdownButtonMasherPenaltyIncrementsOnButtonPress(MatchCountdownTe
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
     suite->countdownState->onStateMounted(&suite->device);
-    
-    // Invoke the button callback (simulating early button press)
+
     ASSERT_NE(capturedCallback, nullptr);
     capturedCallback(capturedCtx);
 
-    // The button masher count should be tracked in the match manager
-    // We can verify this by checking that a subsequent match button press has penalty applied
-    // For now, we verify the callback was invokable
     SUCCEED();
 }
 
-// Test: Multiple early presses accumulate penalty
 inline void countdownMultipleEarlyPressesAccumulatePenalty(MatchCountdownTests* suite) {
     parameterizedCallbackFunction capturedCallback = nullptr;
     void* capturedCtx = nullptr;
@@ -411,14 +404,11 @@ inline void countdownMultipleEarlyPressesAccumulatePenalty(MatchCountdownTests* 
     suite->countdownState->onStateMounted(&suite->device);
     
     ASSERT_NE(capturedCallback, nullptr);
-    
-    // Simulate 3 early button presses
+
     capturedCallback(capturedCtx);
     capturedCallback(capturedCtx);
     capturedCallback(capturedCtx);
 
-    // The penalty should now be 3 * 75ms = 225ms
-    // This will be verified when the match button is pressed
     SUCCEED();
 }
 
@@ -1408,8 +1398,7 @@ inline void cleanupCountdownStateInvalidatesTimer(StateCleanupTests* suite) {
     EXPECT_FALSE(countdownState.shallWeBattle());
 }
 
-// Test: MatchResult state clears wireless callbacks on dismount
-inline void cleanupMatchResultClearsWirelessCallbacks(StateCleanupTests* suite) {
+inline void cleanupMatchResultResetsStateOnDismount(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setHunterDrawTime(200);
@@ -1513,7 +1502,6 @@ inline void pushedLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) 
         << "the state cleared a match the app had not finished with";
 }
 
-// Test: MatchReceivedResult clears match when disconnected on dismount
 // Connection blip during a match countdown must not abort the match: a single
 // !isConnected() tick triggered by a cable nudge previously sent the player
 // straight to Idle. In a shootout match this orphans the player (Idle's

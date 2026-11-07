@@ -119,13 +119,12 @@ void MatchManager::initializeShootoutMatch(const char* matchId, uint8_t* opponen
     activeMatchState.matchIsReady = true;
 }
 
-void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter, uint8_t* opponentMac) {
-    // Only allow one active match at a time
+void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter,
+                                uint8_t* opponentMac) {
     if (activeMatchState.match.has_value()) {
         return;
     }
 
-    // Build the match from our own perspective, then record the opponent's ID.
     primeMatch(matchId, opponentMac, player->isHunter());
     if (opponentIsHunter) {
         activeMatchState.match->setHunterId(opponentId);
@@ -150,7 +149,6 @@ unsigned long MatchManager::getMatchLocalStartTime() const {
     return activeMatchState.matchLocalStartTime;
 }
 
-// //Pretty sure this needs to be refactored. will come back to it.
 bool MatchManager::matchResultsAreIn() {
     if (!activeMatchState.match) {
         return false;
@@ -207,9 +205,7 @@ bool MatchManager::finalizeMatch() {
         return true;
     }
 
-    // Save to storage
     if (appendMatchToStorage(&*activeMatchState.match)) {
-        // Update stored count
         updateStoredMatchCount(getStoredMatchCount() + 1);
         clearCurrentMatch();
         LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", matchId.c_str());

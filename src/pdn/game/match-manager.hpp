@@ -60,15 +60,13 @@ public:
     /** Claims the kMatchCommand channel on wirelessManager (may be nullptr in tests). */
     explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
-    
 
-    /*
-     * Initializes a match and initiates ESP-NOW messaging to opponent.
-    */
+    /** Initializes a match and sends SEND_MATCH_ID to opponentMac. */
     void initializeMatch(uint8_t* opponentMac);
 
     /** Primes a match from an incoming SEND_MATCH_ID and replies with MATCH_ID_ACK. */
-    void receiveMatch(const char* matchId, const char* opponentId, bool isHunter, uint8_t* opponentMac);
+    void receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter,
+                      uint8_t* opponentMac);
 
     /**
      * Shootout mode: primes a match without the SEND_MATCH_ID handshake. Both
@@ -81,10 +79,8 @@ public:
     /** True once the match handshake has completed and countdown may begin. */
     bool isMatchReady() const;
 
-    /**
-     * Finalizes a match by saving it to storage and removing from active matches
-     * @return true if match was found and saved
-     */
+    /** Finalizes the active match (persisting non-shootout matches to storage) and clears active
+     * match state. */
     bool finalizeMatch();
 
     bool setHunterDrawTime(unsigned long hunter_time_ms);
@@ -113,29 +109,19 @@ public:
     /** True once the local player has pressed the draw button for the active match. */
     bool getHasPressedButton() const;
 
-    /**
-     * Gets the current active match if any
-     * @return Reference to the optional match
-     */
+    /** Returns the active match, or std::nullopt if none. */
     std::optional<Match>& getCurrentMatch() { return activeMatchState.match; }
 
-    /**
-     * Converts all stored matches to a JSON array string
-     * @return JSON string containing all stored matches
-     */
+    /** Serializes all stored matches to a JSON array string. */
     std::string toJson();
 
-    /**
-     * Clears all matches from storage
-     */
+    /** Clears all matches from storage. */
     void clearStorage();
 
-    /**
-     * Gets the number of stored matches
-     * @return Number of matches
-     */
+    /** Returns the number of stored matches. */
     size_t getStoredMatchCount();
 
+    /** Clears the active match and resets all per-match state flags. */
     void clearCurrentMatch();
 
     /**

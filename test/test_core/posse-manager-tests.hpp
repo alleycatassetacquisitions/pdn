@@ -108,8 +108,8 @@ public:
     }
 
     MockDevice device;
-    NativeSerialDriver outJack{"cdm-out"};
-    NativeSerialDriver inJack{"cdm-in"};
+    NativeSerialDriver outJack{"posse-out"};
+    NativeSerialDriver inJack{"posse-in"};
     // Declared after the jacks so it is destroyed first; its dtor clears their
     // byte callbacks, mirroring production where the drivers outlive the RDC.
     RemoteDeviceCoordinator rdc;
@@ -142,48 +142,48 @@ public:
  * Runs the main loop for `ms`, one sync() every 20ms — fine enough that no 100ms
  * backoff window is skipped, not a claim about the device's loop period.
  */
-inline void runLoopFor(PosseManagerTests* suite, PosseManager& cdm, unsigned long ms) {
+inline void runLoopFor(PosseManagerTests* suite, PosseManager& posse, unsigned long ms) {
     for (unsigned long elapsed = 0; elapsed < ms; elapsed += 20) {
         suite->fakeClock->advance(20);
-        cdm.sync();
+        posse.sync();
     }
 }
 
 // Role derivation: challenger topology produces correct is* / canInitiate / peers results.
 // Without peers everything returns false/empty; with a full challenger setup everything flips.
-inline void cdmRoleDerivationWithChallengerTopology(PosseManagerTests* suite) {
+inline void posseRoleDerivationWithChallengerTopology(PosseManagerTests* suite) {
     suite->player.setIsHunter(true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     // No peers: default-challenger (isSupporter is false, no opponent peer).
-    EXPECT_TRUE(cdm.isChallenger());
-    EXPECT_FALSE(cdm.isSupporter());
-    EXPECT_FALSE(cdm.canInitiateMatch());
-    EXPECT_TRUE(cdm.getSupporterChainPeers().empty());
+    EXPECT_TRUE(posse.isChallenger());
+    EXPECT_FALSE(posse.isSupporter());
+    EXPECT_FALSE(posse.canInitiateMatch());
+    EXPECT_TRUE(posse.getSupporterChainPeers().empty());
 
     suite->setupHunterChallenger();
-    PosseManager cdm2(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse2(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
-    EXPECT_TRUE(cdm2.isChallenger());
-    EXPECT_FALSE(cdm2.isSupporter());
-    EXPECT_TRUE(cdm2.canInitiateMatch());
-    EXPECT_FALSE(cdm2.getSupporterChainPeers().empty());
+    EXPECT_TRUE(posse2.isChallenger());
+    EXPECT_FALSE(posse2.isSupporter());
+    EXPECT_TRUE(posse2.canInitiateMatch());
+    EXPECT_FALSE(posse2.getSupporterChainPeers().empty());
 }
 
 // Half-open gate (#162): a jack that only reached CONNECTING knows its peer MAC
 // from one serial frame but has no proven return path, and a match pushed across
 // it strands the initiator waiting for an ack that never comes. Only a CONNECTED
 // opponent jack opens the gate.
-inline void cdmCanInitiateMatchRequiresConnectedOpponentJack(PosseManagerTests* suite) {
+inline void posseCanInitiateMatchRequiresConnectedOpponentJack(PosseManagerTests* suite) {
     suite->player.setIsHunter(true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     // One HELLO: the OUTPUT jack knows the peer MAC, but the context exchange
     // has not answered, so the connection is still half-open.
     suite->beginConnectJackTo(suite->outJack, suite->opponentMac);
 
     ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
-    EXPECT_FALSE(cdm.canInitiateMatch());
+    EXPECT_FALSE(posse.canInitiateMatch());
 
     // The peer's context lands, proving a path back.
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/false);
@@ -191,100 +191,100 @@ inline void cdmCanInitiateMatchRequiresConnectedOpponentJack(PosseManagerTests* 
 
     ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
-    EXPECT_TRUE(cdm.canInitiateMatch());
+    EXPECT_TRUE(posse.canInitiateMatch());
 }
 
 // Bounties never initiate matches regardless of topology
-inline void cdmCanInitiateMatchFalseForBounty(PosseManagerTests* suite) {
+inline void posseCanInitiateMatchFalseForBounty(PosseManagerTests* suite) {
     suite->player.setIsHunter(false);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
-    EXPECT_FALSE(cdm.canInitiateMatch());
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    EXPECT_FALSE(posse.canInitiateMatch());
 }
 
 // Confirm lifecycle: starts at 0, increments per unique MAC, dedup blocks repeats, clear resets
-inline void cdmConfirmLifecycle(PosseManagerTests* suite) {
+inline void posseConfirmLifecycle(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
-    ASSERT_TRUE(cdm.isChallenger());
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_TRUE(posse.isChallenger());
 
-    EXPECT_EQ(cdm.getBoostMs(), 0u);
+    EXPECT_EQ(posse.getBoostMs(), 0u);
 
-    cdm.onConfirmReceived(suite->supporterMac);
-    EXPECT_EQ(cdm.getBoostMs(), 15u);
-    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
+    posse.onConfirmReceived(suite->supporterMac);
+    EXPECT_EQ(posse.getBoostMs(), 15u);
+    EXPECT_EQ(posse.getConfirmedSupporterCount(), 1u);
 
-    cdm.onConfirmReceived(suite->supporterMac);
-    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
+    posse.onConfirmReceived(suite->supporterMac);
+    EXPECT_EQ(posse.getConfirmedSupporterCount(), 1u);
 
-    cdm.clearSupporterConfirms();
-    EXPECT_EQ(cdm.getBoostMs(), 0u);
-    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 0u);
+    posse.clearSupporterConfirms();
+    EXPECT_EQ(posse.getBoostMs(), 0u);
+    EXPECT_EQ(posse.getConfirmedSupporterCount(), 0u);
 }
 
 // 10. onChainStateChanged clears confirms when chain drains to 0
-inline void cdmOnChainStateChangedClearsOnDrain(PosseManagerTests* suite) {
+inline void posseOnChainStateChangedClearsOnDrain(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
-    ASSERT_TRUE(cdm.isChallenger());
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_TRUE(posse.isChallenger());
 
-    cdm.onConfirmReceived(suite->supporterMac);
-    ASSERT_EQ(cdm.getBoostMs(), 15u);
+    posse.onConfirmReceived(suite->supporterMac);
+    ASSERT_EQ(posse.getBoostMs(), 15u);
 
     // First call: chain has peers (lastSupporterChainCount goes from 0 to N)
-    cdm.onChainStateChanged();
-    EXPECT_EQ(cdm.getBoostMs(), 15u);
+    posse.onChainStateChanged();
+    EXPECT_EQ(posse.getBoostMs(), 15u);
 
     // Disconnect the input jack by advancing time past heartbeat timeout
     suite->fakeClock->advance(5000);
     suite->rdc.sync(&suite->device);
 
     // Second call: chain drained to 0
-    cdm.onChainStateChanged();
-    EXPECT_EQ(cdm.getBoostMs(), 0u);
-    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 0u);
+    posse.onChainStateChanged();
+    EXPECT_EQ(posse.getBoostMs(), 0u);
+    EXPECT_EQ(posse.getConfirmedSupporterCount(), 0u);
 }
 
 // Confirm with originator MAC not present in the challenger's supporter-jack
 // chain must be rejected. Covers MAC-spoof injection by an in-range stranger.
-inline void cdmConfirmFromUnknownOriginatorRejected(PosseManagerTests* suite) {
+inline void posseConfirmFromUnknownOriginatorRejected(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
-    ASSERT_TRUE(cdm.isChallenger());
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_TRUE(posse.isChallenger());
 
     uint8_t stranger[6] = {0xBA, 0xAD, 0xF0, 0x0D, 0x00, 0x00};
-    cdm.onConfirmReceived(stranger);
-    EXPECT_EQ(cdm.getBoostMs(), 0u);
-    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 0u);
+    posse.onConfirmReceived(stranger);
+    EXPECT_EQ(posse.getBoostMs(), 0u);
+    EXPECT_EQ(posse.getConfirmedSupporterCount(), 0u);
 }
 
 // Middle-of-chain device (same-role peer on opponent jack) is NOT challenger.
-inline void cdmIsChallengerFalseWithSameRoleOpponent(PosseManagerTests* suite) {
+inline void posseIsChallengerFalseWithSameRoleOpponent(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    EXPECT_TRUE(cdm.isSupporter());
-    EXPECT_FALSE(cdm.isChallenger());
+    EXPECT_TRUE(posse.isSupporter());
+    EXPECT_FALSE(posse.isChallenger());
 }
 
 // Inside a closed ring nobody is a challenger: the shootout owns that topology.
-inline void cdmIsChallengerFalseInRing(PosseManagerTests* suite) {
+inline void posseIsChallengerFalseInRing(PosseManagerTests* suite) {
     suite->closeRingAroundSelf();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     ASSERT_TRUE(suite->rdc.isInRing());
-    EXPECT_FALSE(cdm.isChallenger());
+    EXPECT_FALSE(posse.isChallenger());
 }
 
 // sendConfirm targets challengerMac directly with a ChainConfirmPayload.
-inline void cdmSendConfirmTargetsChallengerMac(PosseManagerTests* suite) {
+inline void posseSendConfirmTargetsChallengerMac(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
     // Seed challengerMac via announce.
     uint8_t challenger[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
 
     std::array<uint8_t, 6> target{};
     ChainConfirmPayload captured{};
@@ -296,21 +296,21 @@ inline void cdmSendConfirmTargetsChallengerMac(PosseManagerTests* suite) {
         return 1;
     });
 
-    cdm.sendConfirm();
+    posse.sendConfirm();
 
     EXPECT_EQ(memcmp(target.data(), challenger, 6), 0);
     EXPECT_EQ(memcmp(captured.originatorMac, suite->localMac, 6), 0);
 }
 
 // sendConfirm increments seqId on each call.
-inline void cdmSendConfirmIncrementsSeqId(PosseManagerTests* suite) {
+inline void posseSendConfirmIncrementsSeqId(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
     uint8_t challenger[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
 
     std::vector<uint8_t> seqIds;
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -322,9 +322,9 @@ inline void cdmSendConfirmIncrementsSeqId(PosseManagerTests* suite) {
         return 1;
     });
 
-    cdm.sendConfirm();
-    cdm.sendConfirm();
-    cdm.sendConfirm();
+    posse.sendConfirm();
+    posse.sendConfirm();
+    posse.sendConfirm();
     ASSERT_EQ(seqIds.size(), 3u);
     EXPECT_EQ(seqIds[0], 1u);
     EXPECT_EQ(seqIds[1], 2u);
@@ -332,36 +332,36 @@ inline void cdmSendConfirmIncrementsSeqId(PosseManagerTests* suite) {
 }
 
 // sendConfirm is a noop when challengerMac is not set.
-inline void cdmSendConfirmNoopWhenChallengerMacInvalid(PosseManagerTests* suite) {
+inline void posseSendConfirmNoopWhenChallengerMacInvalid(PosseManagerTests* suite) {
     suite->player.setIsHunter(true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     // No announce received; challengerMac is nullopt.
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainConfirm, _, _)).Times(0);
 
-    cdm.sendConfirm();
+    posse.sendConfirm();
 }
 
 // A confirm can outrun the join that puts its originator in the challenger's
 // supporter chain. Held rather than dropped, and admitted the moment the join
 // lands — otherwise that supporter contributes nothing all round.
-inline void cdmConfirmBufferedUntilOriginatorJoinsChain(PosseManagerTests* suite) {
+inline void posseConfirmBufferedUntilOriginatorJoinsChain(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
-    ASSERT_TRUE(cdm.isChallenger());
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_TRUE(posse.isChallenger());
 
     uint8_t multiHopMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    cdm.onConfirmReceived(multiHopMac);
-    ASSERT_EQ(cdm.getConfirmedSupporterCount(), 0u);
+    posse.onConfirmReceived(multiHopMac);
+    ASSERT_EQ(posse.getConfirmedSupporterCount(), 0u);
 
     // The join lands: multiHopMac sits somewhere behind the direct supporter-jack
     // peer and has just named this device as its challenger.
-    cdm.onChainJoinReceived(multiHopMac, suite->localMac);
+    posse.onChainJoinReceived(multiHopMac, suite->localMac);
 
-    cdm.onChainStateChanged();
+    posse.onChainStateChanged();
 
-    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
-    EXPECT_EQ(cdm.getBoostMs(), PosseManager::BOOST_PER_SUPPORTER_MS);
+    EXPECT_EQ(posse.getConfirmedSupporterCount(), 1u);
+    EXPECT_EQ(posse.getBoostMs(), PosseManager::BOOST_PER_SUPPORTER_MS);
 }
 
 // Saturating the confirm slots with strangers must not silence a real supporter.
@@ -369,56 +369,56 @@ inline void cdmConfirmBufferedUntilOriginatorJoinsChain(PosseManagerTests* suite
 // member, so anything on the channel can fill them; refusing new entries when
 // full, or holding rejected entries forever, would turn that into a mute button
 // for the whole round.
-inline void cdmStrangerConfirmsCannotSilenceRealSupporter(PosseManagerTests* suite) {
+inline void posseStrangerConfirmsCannotSilenceRealSupporter(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
-    ASSERT_TRUE(cdm.isChallenger());
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_TRUE(posse.isChallenger());
 
     // Twice the slot count, none of them ever in the roster.
     for (int i = 0; i < 36; i++) {
         uint8_t stranger[6] = {
         0xEE, 0xEE, 0xEE, 0xEE, static_cast<uint8_t>(i), static_cast<uint8_t>(i)};
-        cdm.onConfirmReceived(stranger);
+        posse.onConfirmReceived(stranger);
     }
-    ASSERT_EQ(cdm.getConfirmedSupporterCount(), 0u);
+    ASSERT_EQ(posse.getConfirmedSupporterCount(), 0u);
 
     // A genuine multi-hop supporter presses afterwards and joins the roster.
     uint8_t realMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    cdm.onConfirmReceived(realMac);
-    cdm.onChainJoinReceived(realMac, suite->localMac);
-    cdm.onChainStateChanged();
+    posse.onConfirmReceived(realMac);
+    posse.onChainJoinReceived(realMac, suite->localMac);
+    posse.onChainStateChanged();
 
-    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
-    EXPECT_EQ(cdm.getBoostMs(), PosseManager::BOOST_PER_SUPPORTER_MS);
+    EXPECT_EQ(posse.getConfirmedSupporterCount(), 1u);
+    EXPECT_EQ(posse.getBoostMs(), PosseManager::BOOST_PER_SUPPORTER_MS);
 }
 
 // A join is a MAC claiming chain membership, so it has to name the challenger it
 // claims to follow. Chains run side by side in one room and every frame is in
 // range of all of them; without the check, one chain's supporter would enrol
 // itself in another's roster and buy that challenger boost it never earned.
-inline void cdmChainJoinForAnotherChallengerIsIgnored(PosseManagerTests* suite) {
+inline void posseChainJoinForAnotherChallengerIsIgnored(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
-    ASSERT_TRUE(cdm.isChallenger());
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_TRUE(posse.isChallenger());
 
     uint8_t otherChallenger[6] = {0x99, 0x99, 0x99, 0x99, 0x99, 0x99};
     uint8_t foreignSupporter[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    cdm.onChainJoinReceived(foreignSupporter, otherChallenger);
-    cdm.onConfirmReceived(foreignSupporter);
+    posse.onChainJoinReceived(foreignSupporter, otherChallenger);
+    posse.onConfirmReceived(foreignSupporter);
 
-    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 0u);
-    EXPECT_EQ(cdm.getBoostMs(), 0u);
+    EXPECT_EQ(posse.getConfirmedSupporterCount(), 0u);
+    EXPECT_EQ(posse.getBoostMs(), 0u);
 
     // The same device, now naming us, is admitted — the MAC was never the issue.
-    cdm.onChainJoinReceived(foreignSupporter, suite->localMac);
-    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
+    posse.onChainJoinReceived(foreignSupporter, suite->localMac);
+    EXPECT_EQ(posse.getConfirmedSupporterCount(), 1u);
 }
 
 // Head transfer swaps the challenger under a supporter that already pressed. The
 // standing confirm has to follow it or the press buys no boost.
-inline void cdmConfirmResentWhenChallengerChanges(PosseManagerTests* suite) {
+inline void posseConfirmResentWhenChallengerChanges(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
@@ -434,12 +434,12 @@ inline void cdmConfirmResentWhenChallengerChanges(PosseManagerTests* suite) {
     });
 
     uint8_t firstChallenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, firstChallenger);
-    ASSERT_TRUE(cdm.isSupporter());
-    cdm.sendConfirm();
+    posse.onRoleAnnounceReceived(suite->opponentMac, firstChallenger);
+    ASSERT_TRUE(posse.isSupporter());
+    posse.sendConfirm();
 
     uint8_t secondChallenger[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, secondChallenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, secondChallenger);
 
     ASSERT_EQ(confirmTargets.size(), 2u);
     EXPECT_EQ(memcmp(confirmTargets[0].data(), firstChallenger, 6), 0);
@@ -448,9 +448,9 @@ inline void cdmConfirmResentWhenChallengerChanges(PosseManagerTests* suite) {
 
 // COUNTDOWN wipes the challenger's roll call, so the press that preceded it is
 // spent. A challenger change after one must not resurrect it.
-inline void cdmCountdownVoidsStandingConfirm(PosseManagerTests* suite) {
+inline void posseCountdownVoidsStandingConfirm(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
@@ -463,26 +463,26 @@ inline void cdmCountdownVoidsStandingConfirm(PosseManagerTests* suite) {
     });
 
     uint8_t firstChallenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, firstChallenger);
-    ASSERT_TRUE(cdm.isSupporter());
-    cdm.sendConfirm();
+    posse.onRoleAnnounceReceived(suite->opponentMac, firstChallenger);
+    ASSERT_TRUE(posse.isSupporter());
+    posse.sendConfirm();
     ASSERT_EQ(confirmsSent, 1);
 
-    cdm.onChainGameEventReceived(static_cast<uint8_t>(ChainGameEventType::COUNTDOWN));
+    posse.onChainGameEventReceived(static_cast<uint8_t>(ChainGameEventType::COUNTDOWN));
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
-    cdm.sync();
+    posse.sync();
 
     uint8_t secondChallenger[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, secondChallenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, secondChallenger);
 
     EXPECT_EQ(confirmsSent, 1);
 }
 
 // Unplugging ends the round for this supporter. The press it made must not
 // follow it into whatever chain it is patched into next.
-inline void cdmSupporterRoleLossVoidsStandingConfirm(PosseManagerTests* suite) {
+inline void posseSupporterRoleLossVoidsStandingConfirm(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     // Tearing the links down makes the RDC emit its own traffic; a catch-all
     // fallback keeps that off the confirm counter below.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
@@ -504,21 +504,21 @@ inline void cdmSupporterRoleLossVoidsStandingConfirm(PosseManagerTests* suite) {
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS - 10);
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
     uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger);
-    ASSERT_TRUE(cdm.isSupporter());
-    cdm.sendConfirm();
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    ASSERT_TRUE(posse.isSupporter());
+    posse.sendConfirm();
     ASSERT_EQ(joinsSent, 1);
     ASSERT_EQ(confirmsSent, 1);
 
     // Cable out on both jacks: the heartbeat lapses and the direct peers go.
     suite->fakeClock->advance(11);
     suite->rdc.sync(&suite->device);
-    cdm.onChainStateChanged();
-    ASSERT_FALSE(cdm.isSupporter());
+    posse.onChainStateChanged();
+    ASSERT_FALSE(posse.isSupporter());
 
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
-    cdm.sync();
-    cdm.resendConfirm();
+    posse.sync();
+    posse.resendConfirm();
     EXPECT_EQ(joinsSent, 1);
     EXPECT_EQ(confirmsSent, 1);
 }
@@ -528,9 +528,9 @@ inline void cdmSupporterRoleLossVoidsStandingConfirm(PosseManagerTests* suite) {
 // unchanged, so a supporter would stay registered with a challenger that no longer
 // runs the match. Drives the real HELLO path, so it fails if the manager stops
 // subscribing to the coordinator's role edge.
-inline void cdmHeadTransferResendsStandingConfirm(PosseManagerTests* suite) {
+inline void posseHeadTransferResendsStandingConfirm(PosseManagerTests* suite) {
     suite->player.setIsHunter(true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
@@ -545,10 +545,10 @@ inline void cdmHeadTransferResendsStandingConfirm(PosseManagerTests* suite) {
     // this device a supporter rather than the challenger.
     suite->connectOutputJack(/*isHunter=*/true);
     uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger);
-    ASSERT_TRUE(cdm.isSupporter());
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    ASSERT_TRUE(posse.isSupporter());
 
-    cdm.sendConfirm();
+    posse.sendConfirm();
     ASSERT_EQ(confirmsSent, 1);
 
     // INPUT reaching CONNECTED demotes this device HEAD -> CHILD, and the opponent
@@ -562,37 +562,37 @@ inline void cdmHeadTransferResendsStandingConfirm(PosseManagerTests* suite) {
 
 // A supporter that never pressed holds nothing to re-send. Without this the
 // challenger-changed trigger would register the whole chain as confirmed.
-inline void cdmChallengerChangeWithoutPressSendsNoConfirm(PosseManagerTests* suite) {
+inline void posseChallengerChangeWithoutPressSendsNoConfirm(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainConfirm, _, _)).Times(0);
 
     uint8_t firstChallenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, firstChallenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, firstChallenger);
     uint8_t secondChallenger[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, secondChallenger);
-    cdm.resendConfirm();
+    posse.onRoleAnnounceReceived(suite->opponentMac, secondChallenger);
+    posse.resendConfirm();
 }
 
-inline void cdmRoleAnnounceUpdatesChallengerMac(PosseManagerTests* suite) {
+inline void posseRoleAnnounceUpdatesChallengerMac(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t challengerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
 
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
 
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
-    EXPECT_EQ(memcmp(cdm.getChallengerMac(), challengerMac, 6), 0);
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(posse.getChallengerMac(), challengerMac, 6), 0);
 }
 
-inline void cdmRingClosureClearsTheChallenger(PosseManagerTests* suite) {
+inline void posseRingClosureClearsTheChallenger(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     uint8_t challengerMac[6] = {0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F};
 
@@ -610,22 +610,22 @@ inline void cdmRingClosureClearsTheChallenger(PosseManagerTests* suite) {
         return 1;
     });
 
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
-    cdm.onChainStateChanged();
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    posse.onChainStateChanged();
     ASSERT_NE(initialSeqId, 0u);
     suite->deliverRoleAnnounceSendResult(suite->supporterMac, initialSeqId, /*success=*/true);
 
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
-    cdm.sendConfirm();
+    posse.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
+    posse.sendConfirm();
 
     deliverFrame(suite->inJack,
                  chainHelloFrame(suite->supporterMac, challengerMac, HELLO_FLAG_RING_CLOSED));
     suite->rdc.sync(&suite->device);
-    cdm.sync();
+    posse.sync();
 
-    EXPECT_EQ(cdm.getChallengerMac(), nullptr) << "a ring still names a challenger";
+    EXPECT_EQ(posse.getChallengerMac(), nullptr) << "a ring still names a challenger";
 
     int ringSends = 0;
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainConfirm, _, _))
@@ -634,50 +634,50 @@ inline void cdmRingClosureClearsTheChallenger(PosseManagerTests* suite) {
         return 1;
     });
     const int announcesBeforeRingRx = supporterAnnounces;
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
     suite->fakeClock->advance(Resender::backoffMs(0) + 1);
-    cdm.sync();
-    EXPECT_EQ(cdm.getChallengerMac(), nullptr);
+    posse.sync();
+    EXPECT_EQ(posse.getChallengerMac(), nullptr);
     EXPECT_EQ(ringSends, 0);
     EXPECT_EQ(supporterAnnounces, announcesBeforeRingRx);
 
     deliverFrame(suite->outJack, chainHelloFrame(suite->opponentMac, nullptr));
     deliverFrame(suite->inJack, chainHelloFrame(suite->supporterMac, challengerMac, 0));
     suite->rdc.sync(&suite->device);
-    cdm.sync();
-    EXPECT_EQ(cdm.getChallengerMac(), nullptr);
+    posse.sync();
+    EXPECT_EQ(posse.getChallengerMac(), nullptr);
 
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
-    EXPECT_EQ(memcmp(cdm.getChallengerMac(), challengerMac, 6), 0);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(posse.getChallengerMac(), challengerMac, 6), 0);
     EXPECT_GT(supporterAnnounces, announcesBeforeRingRx);
 }
 
 // An announce from a device that has no challenger of its own leaves the field
 // zeroed. Caching that address would cascade it onward as this device's challenger.
-inline void cdmRoleAnnounceWithNoChallengerIsRefused(PosseManagerTests* suite) {
+inline void posseRoleAnnounceWithNoChallengerIsRefused(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t challengerMac[6] = {0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F};
     uint8_t zeroMac[6] = {0, 0, 0, 0, 0, 0};
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
 
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
 
-    cdm.onRoleAnnounceReceived(suite->opponentMac, zeroMac);
+    posse.onRoleAnnounceReceived(suite->opponentMac, zeroMac);
 
-    EXPECT_EQ(cdm.getChallengerMac(), nullptr) << "an all-zero challenger was cached";
+    EXPECT_EQ(posse.getChallengerMac(), nullptr) << "an all-zero challenger was cached";
 }
 
 // Receiving announce with same challengerMac doesn't trigger cascade.
-inline void cdmRoleAnnounceNoCascadeIfChallengerUnchanged(PosseManagerTests* suite) {
+inline void posseRoleAnnounceNoCascadeIfChallengerUnchanged(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t challengerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
     // First receive triggers a cascade broadcast (challengerMac is new); may send to
@@ -688,25 +688,25 @@ inline void cdmRoleAnnounceNoCascadeIfChallengerUnchanged(PosseManagerTests* sui
         firstCascadeCount++;
         return 1;
     });
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
     EXPECT_GE(firstCascadeCount, 1);
 
     // Second receive with same challengerMac — assert no kRoleAnnounce emit (cascade).
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _)).Times(0);
 
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
 }
 
-inline void cdmBroadcastRoleAndChallengerSends(PosseManagerTests* suite) {
+inline void posseBroadcastRoleAndChallengerSends(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     // Force challengerMac by receiving an announce.
     uint8_t challenger[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     // Allow implicit broadcast triggered inside onRoleAnnounceReceived.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
     // broadcastRoleAndChallenger was already called internally by onRoleAnnounceReceived.
     // Here we just verify the last broadcast had correct content by calling again.
 
@@ -722,7 +722,7 @@ inline void cdmBroadcastRoleAndChallengerSends(PosseManagerTests* suite) {
         return 1;
     });
 
-    cdm.broadcastRoleAndChallenger();
+    posse.broadcastRoleAndChallenger();
 
     // supporter jack for hunter = INPUT_JACK; setupHunterChallenger puts
     // supporterMac on INPUT.
@@ -734,9 +734,9 @@ inline void cdmBroadcastRoleAndChallengerSends(PosseManagerTests* suite) {
 // obsolete the previous one for the whole chain at once. Two live fan-outs would
 // let the older one's retransmit land after the newer and flip the screen back —
 // the hazard SendMode::SUPERSEDE_PER_TARGET exists to prevent for unicast.
-inline void cdmNewTerminalEventSupersedesThePrevious(PosseManagerTests* suite) {
+inline void posseNewTerminalEventSupersedesThePrevious(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
 
@@ -748,14 +748,14 @@ inline void cdmNewTerminalEventSupersedesThePrevious(PosseManagerTests* suite) {
     });
 
     // Two terminal events inside one frame's span, neither acked.
-    cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
-    cdm.sendGameEventToSupporters(ChainGameEventType::LOSS);
+    posse.sendGameEventToSupporters(ChainGameEventType::WIN);
+    posse.sendGameEventToSupporters(ChainGameEventType::LOSS);
     const int afterSends = eventFrames;
     ASSERT_EQ(afterSends, 2);
 
     // One round must put ONE frame on the air: only the newer event is live.
     suite->fakeClock->advance(Resender::backoffMs(0) + 1);
-    cdm.sync();
+    posse.sync();
     EXPECT_EQ(eventFrames, afterSends + 1)
     << "the superseded event is still retransmitting alongside the current one";
 }
@@ -764,9 +764,9 @@ inline void cdmNewTerminalEventSupersedesThePrevious(PosseManagerTests* suite) {
 // must announce again: the supporter's own state went with the link, so it no
 // longer knows who its challenger is. Recording the announce against the peer MAC
 // alone would match on the way back and skip it, orphaning that whole sub-chain.
-inline void cdmReannouncesAfterSameMacReconnect(PosseManagerTests* suite) {
+inline void posseReannouncesAfterSameMacReconnect(PosseManagerTests* suite) {
     suite->player.setIsHunter(true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     int announcesToSupporter = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -801,10 +801,10 @@ inline void cdmReannouncesAfterSameMacReconnect(PosseManagerTests* suite) {
 // the supporter below is never told — it keeps addressing joins and confirms to
 // a device that is no longer challenger, and drops this one's game events as
 // coming from a stranger, so it contributes no boost for the rest of the round.
-inline void cdmChallengerChangeReachesAToldSupporter(PosseManagerTests* suite) {
+inline void posseChallengerChangeReachesAToldSupporter(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     uint8_t seqId = 0;
     std::array<uint8_t, 6> announcedChallenger{};
@@ -822,22 +822,22 @@ inline void cdmChallengerChangeReachesAToldSupporter(PosseManagerTests* suite) {
 
     // The supporter is told about challenger C1, and the radio confirms it.
     uint8_t c1[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, c1);
+    posse.onRoleAnnounceReceived(suite->opponentMac, c1);
     ASSERT_NE(seqId, 0u);
     suite->deliverRoleAnnounceSendResult(suite->supporterMac, seqId, /*success=*/true);
     ASSERT_EQ(memcmp(announcedChallenger.data(), c1, 6), 0);
 
     // The challenger above changes. Same cable, same peer MAC, new fact.
     uint8_t c2[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x77};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, c2);
+    posse.onRoleAnnounceReceived(suite->opponentMac, c2);
 
     EXPECT_EQ(memcmp(announcedChallenger.data(), c2, 6), 0)
     << "the supporter was never told the new challenger, so it still follows the old one";
 }
 
-inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(PosseManagerTests* suite) {
+inline void posseUndeliveredSupporterAnnounceIsRetriedByBackstop(PosseManagerTests* suite) {
     suite->player.setIsHunter(true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     int announcesToSupporter = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -853,12 +853,12 @@ inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(PosseManagerTests
 
     // The radio never confirms delivery, so the announce runs out of span and is
     // given up on. The supporter is still on the jack, still untold.
-    runLoopFor(suite, cdm, Resender::RETRANSMIT_SPAN_MS + 100);
+    runLoopFor(suite, posse, Resender::RETRANSMIT_SPAN_MS + 100);
     const int afterAbandon = announcesToSupporter;
 
     // A full backstop interval later it is offered again.
     suite->fakeClock->advance(PosseManager::ROLE_ANNOUNCE_BACKSTOP_MS + 1);
-    cdm.sync();
+    posse.sync();
     EXPECT_GT(announcesToSupporter, afterAbandon)
     << "supporter announce was abandoned and never re-offered; that supporter "
        "contributes no boost for the rest of the round";
@@ -870,9 +870,9 @@ inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(PosseManagerTests
 // is the evidence the supporter already holds us. The second half is driven only
 // by rdc.sync(), because the deferral is worthless unless the Connected
 // transition itself re-fires the cascade.
-inline void cdmAnnounceWaitsForConnectedSupporterJack(PosseManagerTests* suite) {
+inline void posseAnnounceWaitsForConnectedSupporterJack(PosseManagerTests* suite) {
     suite->player.setIsHunter(true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     int announcesToSupporter = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -884,14 +884,14 @@ inline void cdmAnnounceWaitsForConnectedSupporterJack(PosseManagerTests* suite) 
 
     // A challenger: an opponent-jack peer, and nobody of our own role beyond it.
     suite->connectOutputJack();
-    cdm.onChainStateChanged();
+    posse.onChainStateChanged();
 
     // The supporter plugs in. Our jack holds its MAC off one HELLO, but its
     // context has not come back, so it has not necessarily recorded us.
     suite->beginConnectJackTo(suite->inJack, suite->supporterMac);
     ASSERT_NE(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK), nullptr);
     ASSERT_NE(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
-    cdm.onChainStateChanged();
+    posse.onChainStateChanged();
     EXPECT_EQ(announcesToSupporter, 0) << "announced to a supporter that cannot accept it yet";
 
     // Its context lands. The link is proven and the deferred announce goes.
@@ -902,15 +902,15 @@ inline void cdmAnnounceWaitsForConnectedSupporterJack(PosseManagerTests* suite) 
 }
 
 // Ack with matching seqId clears pending; subsequent sync does not retransmit.
-inline void cdmAckClearsPending(PosseManagerTests* suite) {
+inline void posseAckClearsPending(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t challenger[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     // Allow implicit broadcast triggered inside onRoleAnnounceReceived.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
 
     // Capture the seqId from the supporter-jack send (that's what the role-announce entry tracks).
     uint8_t seqId = 0;
@@ -924,7 +924,7 @@ inline void cdmAckClearsPending(PosseManagerTests* suite) {
         }
         return 1;
     });
-    cdm.broadcastRoleAndChallenger();
+    posse.broadcastRoleAndChallenger();
     ASSERT_NE(seqId, 0u);
 
     // The radio reporting the frame delivered clears the retry; there is no
@@ -934,18 +934,18 @@ inline void cdmAckClearsPending(PosseManagerTests* suite) {
     // Subsequent sync() after timeout must not emit any further role announces.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _)).Times(0);
     suite->fakeClock->advance(150);
-    cdm.sync();
+    posse.sync();
 }
 
 // Ack with matching seqId but wrong fromMac must not clear pending.
-inline void cdmAckFromWrongMacIgnored(PosseManagerTests* suite) {
+inline void posseAckFromWrongMacIgnored(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t challenger[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
 
     uint8_t seqId = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -958,7 +958,7 @@ inline void cdmAckFromWrongMacIgnored(PosseManagerTests* suite) {
         }
         return 1;
     });
-    cdm.broadcastRoleAndChallenger();
+    posse.broadcastRoleAndChallenger();
     ASSERT_NE(seqId, 0u);
 
     // A delivery report for a different destination clears nothing here: the
@@ -976,20 +976,20 @@ inline void cdmAckFromWrongMacIgnored(PosseManagerTests* suite) {
         return 1;
     });
     suite->fakeClock->advance(150);
-    cdm.sync();
+    posse.sync();
     EXPECT_EQ(retransmits, 1);
 }
 
 // Retransmit abandons once the span runs out with no ack.
-inline void cdmRetransmitAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
+inline void posseRetransmitAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t challenger[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     // Allow implicit broadcast triggered inside onRoleAnnounceReceived.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
 
     int supporterSends = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -1000,7 +1000,7 @@ inline void cdmRetransmitAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
         return 1;
     });
 
-    cdm.broadcastRoleAndChallenger();  // one announce, to the supporter jack
+    posse.broadcastRoleAndChallenger();  // one announce, to the supporter jack
     ASSERT_EQ(supporterSends, 1);
 
     // Advance clock + sync 3 times → 3 retransmits (supporter only, pending path).
@@ -1010,22 +1010,22 @@ inline void cdmRetransmitAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
     // At 450 the third round has 150ms of room ahead of the deadline.
     for (int i = 0; i < 3; i++) {
         suite->fakeClock->advance(450);
-        cdm.sync();
+        posse.sync();
     }
     EXPECT_EQ(supporterSends, 4);  // 1 initial + 3 retransmits
 
     // 4th sync should not emit — pending abandoned.
     suite->fakeClock->advance(500);
-    cdm.sync();
+    posse.sync();
     EXPECT_EQ(supporterSends, 4);
 }
 
 // RetryStats counts sends, retries, acks, and abandons across a role-announce
 // lifecycle. Observability for hardware-validation tuning.
-inline void cdmRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
+inline void posseRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t challenger[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 
     uint8_t seqId = 0;
@@ -1041,12 +1041,12 @@ inline void cdmRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
     });
 
     // Initial announce triggers one send, then an ack clears it.
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
     ASSERT_NE(seqId, 0u);
     suite->fakeClock->advance(50);
     suite->deliverRoleAnnounceSendResult(suite->supporterMac, seqId, /*success=*/true);
 
-    auto s1 = cdm.getRetryStats();
+    PosseManager::RetryStats s1 = posse.getRetryStats();
     EXPECT_GE(s1.sends, 1u);
     EXPECT_EQ(s1.abandons, 0u);
     EXPECT_GE(s1.ackCount, 1u);
@@ -1055,60 +1055,60 @@ inline void cdmRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
     // A NEW challenger is new content, so it goes out rather than being suppressed
     // as already-told. Nobody reports it delivered, so it exhausts its retries.
     uint8_t challenger2[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x77};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger2);
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger2);
     // Tick at the cadence the platform loop actually uses. Sampling only once
     // per backstop interval would let the re-offer land in the same call as the
     // retry round and supersede the entry before its span ever runs out —
     // an artefact of the test's clock, not of the schedule.
     for (int i = 0; i < 19; i++) {
         suite->fakeClock->advance(100);
-        cdm.sync();
+        posse.sync();
     }
-    auto s2 = cdm.getRetryStats();
+    PosseManager::RetryStats s2 = posse.getRetryStats();
     EXPECT_GE(s2.retries, 3u);
     EXPECT_GE(s2.abandons, 1u);
 }
 
 // Becoming challenger self-assigns challengerMac to own MAC.
-inline void cdmOnChainStateBecomesChallengerSetsSelfMac(PosseManagerTests* suite) {
+inline void posseOnChainStateBecomesChallengerSetsSelfMac(PosseManagerTests* suite) {
     suite->player.setIsHunter(true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     // Solo device — isChallenger() is true by default under current semantics.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
 
-    cdm.onChainStateChanged();
+    posse.onChainStateChanged();
 
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
-    EXPECT_EQ(memcmp(cdm.getChallengerMac(), suite->localMac, 6), 0);
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(posse.getChallengerMac(), suite->localMac, 6), 0);
 }
 
 // A supporter that inherited challengerMac from an upstream announce keeps
 // that cached value across onChainStateChanged; only a self-MAC value is
-// cleared (see cdmChallengerToSupporterClearsStaleSelfMac).
-inline void cdmSupporterKeepsUpstreamChallengerMacAfterTransition(PosseManagerTests* suite) {
+// cleared (see posseChallengerToSupporterClearsStaleSelfMac).
+inline void posseSupporterKeepsUpstreamChallengerMacAfterTransition(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     uint8_t challenger[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    cdm.onRoleAnnounceReceived(suite->opponentMac, challenger);
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
-    ASSERT_TRUE(cdm.isSupporter());
-    ASSERT_FALSE(cdm.isChallenger());
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
+    ASSERT_TRUE(posse.isSupporter());
+    ASSERT_FALSE(posse.isChallenger());
 
     // onChainStateChanged when still supporter: challengerMac remains unchanged.
-    cdm.onChainStateChanged();
-    EXPECT_NE(cdm.getChallengerMac(), nullptr);
+    posse.onChainStateChanged();
+    EXPECT_NE(posse.getChallengerMac(), nullptr);
 }
 
 // onChainStateChanged fires broadcast ONCE when a new supporter-jack peer appears,
 // and does NOT re-fire on subsequent calls with the same peer.
-inline void cdmOnChainStateNewSupporterTriggersBroadcast(PosseManagerTests* suite) {
+inline void posseOnChainStateNewSupporterTriggersBroadcast(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     // First call: device is challenger (self-assign), supporter-jack peer present →
     // should broadcast exactly once to supporter-jack.
@@ -1125,9 +1125,9 @@ inline void cdmOnChainStateNewSupporterTriggersBroadcast(PosseManagerTests* suit
         }
         return 1;
     });
-    cdm.onChainStateChanged();
-    ASSERT_TRUE(cdm.isChallenger());
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
+    posse.onChainStateChanged();
+    ASSERT_TRUE(posse.isChallenger());
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
     EXPECT_EQ(firstCallSends, 1);
 
     // The peer counts as told only once the radio confirms the frame reached it;
@@ -1145,7 +1145,7 @@ inline void cdmOnChainStateNewSupporterTriggersBroadcast(PosseManagerTests* suit
         if (memcmp(mac, suite->supporterMac, 6) == 0) secondCallSends++;
         return 1;
     });
-    cdm.onChainStateChanged();
+    posse.onChainStateChanged();
     EXPECT_EQ(secondCallSends, 0);
 }
 
@@ -1221,67 +1221,68 @@ inline void posseThreeDeviceConfirm(PosseManagerTests* suite) {
 // When a device was challenger (challengerMac == self-MAC) and gains a same-role
 // peer on its opponent jack (becoming a supporter), onChainStateChanged must
 // clear challengerMac rather than cascade the stale self-MAC to its supporter.
-inline void cdmChallengerToSupporterClearsStaleSelfMac(PosseManagerTests* suite) {
+inline void posseChallengerToSupporterClearsStaleSelfMac(PosseManagerTests* suite) {
     suite->player.setIsHunter(true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     // Allow all sends; connectOutputJack puts a context exchange on the air too.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
     // Start as solo challenger — self-assigns challengerMac to localMac.
-    cdm.onChainStateChanged();
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
-    EXPECT_EQ(memcmp(cdm.getChallengerMac(), suite->localMac, 6), 0);
+    posse.onChainStateChanged();
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(posse.getChallengerMac(), suite->localMac, 6), 0);
 
     suite->connectOutputJack(/*isHunter=*/true);
-    ASSERT_TRUE(cdm.isSupporter());
+    ASSERT_TRUE(posse.isSupporter());
 
     // onChainStateChanged should detect we hold stale self-MAC and clear it.
-    cdm.onChainStateChanged();
+    posse.onChainStateChanged();
 
-    EXPECT_EQ(cdm.getChallengerMac(), nullptr)
+    EXPECT_EQ(posse.getChallengerMac(), nullptr)
     << "Stale self-MAC was not cleared when challenger was demoted to supporter";
 }
 
-inline void cdmRoleAnnounceFromSupporterJackIgnoresChallengerMac(PosseManagerTests* suite) {
+inline void posseRoleAnnounceFromSupporterJackIgnoresChallengerMac(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     // Seed challengerMac via opponent-jack announce first.
     uint8_t realChallenger[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
-    cdm.onRoleAnnounceReceived(suite->opponentMac, realChallenger);
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
-    EXPECT_EQ(memcmp(cdm.getChallengerMac(), realChallenger, 6), 0);
+    posse.onRoleAnnounceReceived(suite->opponentMac, realChallenger);
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(posse.getChallengerMac(), realChallenger, 6), 0);
 
     uint8_t wrongChallenger[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
-    cdm.onRoleAnnounceReceived(suite->supporterMac, wrongChallenger);
+    posse.onRoleAnnounceReceived(suite->supporterMac, wrongChallenger);
 
     // challengerMac unchanged
-    EXPECT_EQ(memcmp(cdm.getChallengerMac(), realChallenger, 6), 0);
+    EXPECT_EQ(memcmp(posse.getChallengerMac(), realChallenger, 6), 0);
 }
 
 // Role announce from opposite-role opponent-jack peer does NOT update challengerMac.
-inline void cdmRoleAnnounceFromOppositeRoleOpponentIgnoresChallengerMac(PosseManagerTests* suite) {
+inline void
+posseRoleAnnounceFromOppositeRoleOpponentIgnoresChallengerMac(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t selfMacArr[6];
     memcpy(selfMacArr, suite->localMac, 6);
 
     // Seed challengerMac to self via onChainStateChanged (challenger self-assign).
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly(Return(1));
-    cdm.onChainStateChanged();
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
-    EXPECT_EQ(memcmp(cdm.getChallengerMac(), selfMacArr, 6), 0);
+    posse.onChainStateChanged();
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(posse.getChallengerMac(), selfMacArr, 6), 0);
 
     uint8_t bountyChallenger[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
-    cdm.onRoleAnnounceReceived(suite->opponentMac, bountyChallenger);
+    posse.onRoleAnnounceReceived(suite->opponentMac, bountyChallenger);
 
     // challengerMac must remain self (not overwritten with opponent's challenger MAC).
-    ASSERT_NE(cdm.getChallengerMac(), nullptr);
-    EXPECT_EQ(memcmp(cdm.getChallengerMac(), selfMacArr, 6), 0);
+    ASSERT_NE(posse.getChallengerMac(), nullptr);
+    EXPECT_EQ(memcmp(posse.getChallengerMac(), selfMacArr, 6), 0);
 }
 
 // After chain break (S1 disconnects from A), S1 becomes challenger
@@ -1305,7 +1306,7 @@ inline void posseReconfigRecovers(PosseManagerTests* suite) {
     // the heartbeat timeout and calling rdc.sync to trigger the disconnect path.
     suite->fakeClock->advance(5000);
     suite->rdc.sync(&suite->device);
-    // Now opponent-jack peer is gone; re-evaluate on CDM.
+    // Now opponent-jack peer is gone; re-evaluate on PosseManager.
     s1.onChainStateChanged();
 
     ASSERT_TRUE(s1.isChallenger());
@@ -1314,9 +1315,9 @@ inline void posseReconfigRecovers(PosseManagerTests* suite) {
 }
 
 // COUNTDOWN is fire-and-forget: seqId must be 0 and no retry must fire.
-inline void cdmGameEventCountdownIsFireAndForget(PosseManagerTests* suite) {
+inline void posseGameEventCountdownIsFireAndForget(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     int countdownSends = 0;
     uint8_t seqId = 0xAB;
@@ -1331,22 +1332,22 @@ inline void cdmGameEventCountdownIsFireAndForget(PosseManagerTests* suite) {
         }
         return 1;
     });
-    cdm.sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
+    posse.sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
     EXPECT_EQ(countdownSends, 1);
     EXPECT_EQ(seqId, 0u);  // fire-and-forget sentinel
 
     // sync() after timeout must not retransmit a COUNTDOWN.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainGameEvent, _, _)).Times(0);
     suite->fakeClock->advance(1000);
-    cdm.sync();
+    posse.sync();
 }
 
 // WIN is tracked: seqId != 0, pending registered, retransmit fires on timer.
 // The frame is broadcast and carries the challenger's MAC, which is what tells a
 // supporter several cables away that the result is from its own match.
-inline void cdmGameEventWinIsTrackedAndRetried(PosseManagerTests* suite) {
+inline void posseGameEventWinIsTrackedAndRetried(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     int winSends = 0;
     uint8_t winSeqId = 0;
@@ -1366,21 +1367,21 @@ inline void cdmGameEventWinIsTrackedAndRetried(PosseManagerTests* suite) {
         return 1;
     });
 
-    cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
+    posse.sendGameEventToSupporters(ChainGameEventType::WIN);
     EXPECT_EQ(winSends, 1);
     ASSERT_NE(winSeqId, 0u);
     EXPECT_EQ(memcmp(captured.challengerMac, suite->localMac, 6), 0);
 
     // Advance past first timeout (100ms), sync() should retransmit once.
     suite->fakeClock->advance(150);
-    cdm.sync();
+    posse.sync();
     EXPECT_EQ(winSends, 2);
 }
 
 // ACK clears pending: no further retransmits after a matching ACK.
-inline void cdmGameEventAckClearsPending(PosseManagerTests* suite) {
+inline void posseGameEventAckClearsPending(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     uint8_t winSeqId = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -1394,21 +1395,21 @@ inline void cdmGameEventAckClearsPending(PosseManagerTests* suite) {
         return 1;
     });
 
-    cdm.sendGameEventToSupporters(ChainGameEventType::LOSS);
+    posse.sendGameEventToSupporters(ChainGameEventType::LOSS);
     ASSERT_NE(winSeqId, 0u);
 
-    cdm.onChainGameEventAckReceived(suite->supporterMac, winSeqId);
+    posse.onChainGameEventAckReceived(suite->supporterMac, winSeqId);
 
     // After ACK, sync past timeout must not retransmit.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainGameEvent, _, _)).Times(0);
     suite->fakeClock->advance(1000);
-    cdm.sync();
+    posse.sync();
 }
 
 // Once a frame's retransmit span runs out with no ACK it is abandoned — no further sends.
-inline void cdmGameEventAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
+inline void posseGameEventAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
-    PosseManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
     int supporterSends = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -1418,19 +1419,19 @@ inline void cdmGameEventAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
         return 1;
     });
 
-    cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
+    posse.sendGameEventToSupporters(ChainGameEventType::WIN);
     ASSERT_EQ(supporterSends, 1);
 
     // The retransmits land 100, 300 and 700ms in (gaps of 100, 200, 400); the next
     // would fall past the
     // frame's span, so that is where it stops.
-    runLoopFor(suite, cdm, Resender::RETRANSMIT_SPAN_MS - 100);
+    runLoopFor(suite, posse, Resender::RETRANSMIT_SPAN_MS - 100);
     EXPECT_EQ(supporterSends, 4);  // 1 initial + 3 retransmits
 
     // After abandon, further sync must not retransmit.
     suite->fakeClock->advance(1000);
-    cdm.sync();
+    posse.sync();
     EXPECT_EQ(supporterSends, 4);
 
-    EXPECT_EQ(cdm.getRetryStats().abandons, 1u);
+    EXPECT_EQ(posse.getRetryStats().abandons, 1u);
 }

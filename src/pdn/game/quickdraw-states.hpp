@@ -277,7 +277,6 @@ private:
     MatchManager* matchManager;
     PosseManager* posseManager;
     ShootoutManager* shootoutManager;
-    parameterizedCallbackFunction buttonPress;
     bool transitionToMatchPushedState = false;
     bool transitionToMatchReceivedResultState = false;
     bool transitionToIdleState = false;

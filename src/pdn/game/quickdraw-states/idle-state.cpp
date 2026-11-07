@@ -26,8 +26,6 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(PDN* pdn) {
-
-    // Switch to ESP-NOW mode for peer-to-peer communication
     pdn->getWirelessManager()->enablePeerCommsMode();
 
     AnimationConfig config;
@@ -107,11 +105,7 @@ void Idle::onStateDismounted(PDN* pdn) {
 
 bool Idle::transitionToMatchCountdown() { return matchManager->isMatchReady(); }
 
-bool Idle::transitionToSupporterReady() {
-    // A supporter is a device whose opponent-jack peer is same role.
-    // This means the chain extends upstream toward the challenger.
-    return posseManager->isSupporter();
-}
+bool Idle::transitionToSupporterReady() { return posseManager->isSupporter(); }
 
 void Idle::renderStats(PDN* pdn) {
     pdn->getDisplay()->invalidateScreen();
