@@ -149,20 +149,20 @@ TEST(ResenderTest, supersedeDropsPriorAndStaleAckDoesNotResurrect) {
     const Resender::SendMode kState = Resender::SendMode::SUPERSEDE_PER_TARGET;
 
     // Send A, then supersede with B before A is acked.
-    resender.send(target, PktType::kQuickdrawCommand, /*seqA=*/5,
+    resender.send(target, PktType::kDuelCommand, /*seqA=*/5,
                   payload, sizeof(payload), kState);
-    resender.send(target, PktType::kQuickdrawCommand, /*seqB=*/6,
+    resender.send(target, PktType::kDuelCommand, /*seqB=*/6,
                   payload, sizeof(payload), kState);
     // A was dropped on supersede; only B remains.
-    EXPECT_EQ(resender.pendingCount(PktType::kQuickdrawCommand), 1u);
+    EXPECT_EQ(resender.pendingCount(PktType::kDuelCommand), 1u);
 
     // A stale ack for the superseded A matches nothing and leaves B armed.
-    EXPECT_FALSE(resender.onAck(PktType::kQuickdrawCommand, /*seqA=*/5, target));
-    EXPECT_EQ(resender.pendingCount(PktType::kQuickdrawCommand), 1u);
+    EXPECT_FALSE(resender.onAck(PktType::kDuelCommand, /*seqA=*/5, target));
+    EXPECT_EQ(resender.pendingCount(PktType::kDuelCommand), 1u);
 
     // The surviving entry is B (not a resurrected A): acking B clears it.
-    EXPECT_TRUE(resender.onAck(PktType::kQuickdrawCommand, /*seqB=*/6, target));
-    EXPECT_EQ(resender.pendingCount(PktType::kQuickdrawCommand), 0u);
+    EXPECT_TRUE(resender.onAck(PktType::kDuelCommand, /*seqB=*/6, target));
+    EXPECT_EQ(resender.pendingCount(PktType::kDuelCommand), 0u);
 }
 
 // ---- Broadcast fan-out ----

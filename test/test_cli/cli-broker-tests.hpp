@@ -89,25 +89,25 @@ class NativePeerBrokerTestSuite : public testing::Test {
 public:  // Public for test function access
     void SetUp() override {
         broker_ = &NativePeerBroker::getInstance();
-        
-        peerA_ = new NativePeerCommsDriver("PeerA");
-        peerB_ = new NativePeerCommsDriver("PeerB");
-        
-        peerA_->initialize();
-        peerB_->initialize();
-        
-        peerA_->connect();
-        peerB_->connect();
-        
+
+        peerA = new NativePeerCommsDriver("PeerA");
+        peerB = new NativePeerCommsDriver("PeerB");
+
+        peerA->initialize();
+        peerB->initialize();
+
+        peerA->connect();
+        peerB->connect();
+
         receivedPackets_ = 0;
     }
     
     void TearDown() override {
-        peerA_->disconnect();
-        peerB_->disconnect();
-        
-        delete peerA_;
-        delete peerB_;
+        peerA->disconnect();
+        peerB->disconnect();
+
+        delete peerA;
+        delete peerB;
     }
     
     static void packetCallback(const uint8_t* srcMac, const uint8_t* data, 
@@ -117,23 +117,23 @@ public:  // Public for test function access
     }
     
     NativePeerBroker* broker_;
-    NativePeerCommsDriver* peerA_;
-    NativePeerCommsDriver* peerB_;
+    NativePeerCommsDriver* peerA;
+    NativePeerCommsDriver* peerB;
     int receivedPackets_;
 };
 
 // Test: Unicast delivery
 void peerBrokerUnicastDelivery(NativePeerBrokerTestSuite* suite) {
-    suite->peerB_->setPacketHandler(PktType::kQuickdrawCommand,
-        NativePeerBrokerTestSuite::packetCallback, suite);
-    
+    suite->peerB->setPacketHandler(PktType::kDuelCommand,
+                                   NativePeerBrokerTestSuite::packetCallback, suite);
+
     uint8_t testData[] = {0x01, 0x02, 0x03};
-    suite->peerA_->sendData(suite->peerB_->getMacAddress(), PktType::kQuickdrawCommand,
+    suite->peerA->sendData(suite->peerB->getMacAddress(), PktType::kDuelCommand,
                            testData, sizeof(testData));
-    
+
     // Deliver pending packets, then drain the receiving driver's queue
     suite->broker_->deliverPackets();
-    suite->peerB_->exec();
+    suite->peerB->exec();
 
     ASSERT_EQ(suite->receivedPackets_, 1);
 }
@@ -141,20 +141,20 @@ void peerBrokerUnicastDelivery(NativePeerBrokerTestSuite* suite) {
 // Test: Broadcast excludes sender
 void peerBrokerBroadcastExcludesSender(NativePeerBrokerTestSuite* suite) {
     // Set handler on both peers
-    suite->peerA_->setPacketHandler(PktType::kQuickdrawCommand,
-        NativePeerBrokerTestSuite::packetCallback, suite);
-    suite->peerB_->setPacketHandler(PktType::kQuickdrawCommand,
-        NativePeerBrokerTestSuite::packetCallback, suite);
-    
+    suite->peerA->setPacketHandler(PktType::kDuelCommand,
+                                   NativePeerBrokerTestSuite::packetCallback, suite);
+    suite->peerB->setPacketHandler(PktType::kDuelCommand,
+                                   NativePeerBrokerTestSuite::packetCallback, suite);
+
     // Broadcast from A
     uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     uint8_t testData[] = {0x01};
-    suite->peerA_->sendData(broadcastMac, PktType::kQuickdrawCommand, testData, 1);
-    
+    suite->peerA->sendData(broadcastMac, PktType::kDuelCommand, testData, 1);
+
     // Deliver pending packets, then drain the receiving driver's queue
     suite->broker_->deliverPackets();
-    suite->peerA_->exec();
-    suite->peerB_->exec();
+    suite->peerA->exec();
+    suite->peerB->exec();
 
     // B should receive, but A should not receive its own broadcast
     ASSERT_GE(suite->receivedPackets_, 1);
@@ -164,26 +164,26 @@ void peerBrokerBroadcastExcludesSender(NativePeerBrokerTestSuite* suite) {
 void peerBrokerPeerRegistration(NativePeerBrokerTestSuite* suite) {
     // Both peers should be registered by connect()
     // This test verifies the broker can route between them
-    
-    suite->peerB_->setPacketHandler(PktType::kQuickdrawCommand,
-        NativePeerBrokerTestSuite::packetCallback, suite);
-    
+
+    suite->peerB->setPacketHandler(PktType::kDuelCommand,
+                                   NativePeerBrokerTestSuite::packetCallback, suite);
+
     uint8_t testData[] = {0xAB, 0xCD};
-    suite->peerA_->sendData(suite->peerB_->getMacAddress(), PktType::kQuickdrawCommand,
+    suite->peerA->sendData(suite->peerB->getMacAddress(), PktType::kDuelCommand,
                            testData, sizeof(testData));
-    
+
     // Deliver pending packets, then drain the receiving driver's queue
     suite->broker_->deliverPackets();
-    suite->peerB_->exec();
+    suite->peerB->exec();
 
     ASSERT_EQ(suite->receivedPackets_, 1);
 }
 
 // Test: Unique MAC generation
 void peerBrokerUniqueMacGeneration(NativePeerBrokerTestSuite* suite) {
-    std::string macA = suite->peerA_->getMacString();
-    std::string macB = suite->peerB_->getMacString();
-    
+    std::string macA = suite->peerA->getMacString();
+    std::string macB = suite->peerB->getMacString();
+
     ASSERT_NE(macA, macB);
     
     // MAC should be in format XX:XX:XX:XX:XX:XX
@@ -193,17 +193,17 @@ void peerBrokerUniqueMacGeneration(NativePeerBrokerTestSuite* suite) {
 
 // Test: Disconnected peer doesn't receive
 void peerBrokerDisconnectedPeerNoReceive(NativePeerBrokerTestSuite* suite) {
-    suite->peerB_->setPacketHandler(PktType::kQuickdrawCommand,
-        NativePeerBrokerTestSuite::packetCallback, suite);
-    
-    suite->peerB_->disconnect();
-    
+    suite->peerB->setPacketHandler(PktType::kDuelCommand,
+                                   NativePeerBrokerTestSuite::packetCallback, suite);
+
+    suite->peerB->disconnect();
+
     uint8_t testData[] = {0x01};
-    suite->peerA_->sendData(suite->peerB_->getMacAddress(), PktType::kQuickdrawCommand,
+    suite->peerA->sendData(suite->peerB->getMacAddress(), PktType::kDuelCommand,
                            testData, 1);
-    
+
     // B is disconnected, should not receive
     ASSERT_EQ(suite->receivedPackets_, 0);
-    
-    suite->peerB_->connect();  // Reconnect for teardown
+
+    suite->peerB->connect();  // Reconnect for teardown
 }

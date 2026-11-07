@@ -61,7 +61,7 @@ public:
                             const char* hunterId = "hunt") {
         player->setIsHunter(false);
         static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-        QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, matchId, hunterId, 0, true);
+        DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, matchId, hunterId, 0, true);
         matchManager->listenForMatchEvents(cmd);
     }
 
@@ -147,7 +147,7 @@ inline void matchManagerInitializePreventsDoubleActive(MatchManager* mm, Player*
 inline void matchManagerBountyReceivesMatchViaHandshake(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "received-match", "hunt", 0, true);
+    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "received-match", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
 
     ASSERT_TRUE(mm->getCurrentMatch().has_value());
@@ -183,7 +183,7 @@ inline void matchManagerHunterLosesWhenSlower(MatchManager* mm, Player* player) 
 inline void matchManagerBountyWinsWhenFaster(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "duel-3", "hunt", 0, true);
+    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "duel-3", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
     mm->setHunterDrawTime(400);
     mm->setBountyDrawTime(250);
@@ -194,7 +194,7 @@ inline void matchManagerBountyWinsWhenFaster(MatchManager* mm, Player* player) {
 inline void matchManagerBountyLosesWhenSlower(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "duel-4", "hunt", 0, true);
+    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "duel-4", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
     mm->setHunterDrawTime(150);
     mm->setBountyDrawTime(300);
@@ -215,7 +215,7 @@ inline void matchManagerHunterWinsWhenBountyNeverPressed(MatchManager* mm, Playe
 inline void matchManagerBountyWinsWhenHunterNeverPressed(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "duel-6", "hunt", 0, true);
+    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "duel-6", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
     mm->setBountyDrawTime(300);
     mm->setOpponentNeverPressed();
@@ -308,7 +308,7 @@ inline void matchManagerRejectsNeverPressedFromStranger(MatchManager* mm, Player
     mm->setReceivedButtonPush();
 
     uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-    QuickdrawCommand forged(strangerMac, QDCommand::NEVER_PRESSED, realMatchId, "xxxx", 0, false);
+    DuelCommand forged(strangerMac, DuelCmd::NEVER_PRESSED, realMatchId, "xxxx", 0, false);
     mm->listenForMatchEvents(forged);
 
     EXPECT_FALSE(mm->didWin());
@@ -322,7 +322,7 @@ inline void matchManagerRejectsWrongMatchId(MatchManager* mm, Player* player) {
     uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     mm->initializeMatch(opponentMac);
 
-    QuickdrawCommand stale(opponentMac, QDCommand::DRAW_RESULT, "wrong-match-id-xxxxxxxxxxxxxxxxxxxx", "opp_", 222, false);
+    DuelCommand stale(opponentMac, DuelCmd::DRAW_RESULT, "wrong-match-id-xxxxxxxxxxxxxxxxxxxx", "opp_", 222, false);
     mm->listenForMatchEvents(stale);
 
     EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 0u);
@@ -335,7 +335,7 @@ inline void matchManagerRejectsWrongMatchId(MatchManager* mm, Player* player) {
 inline void matchManagerSendMatchIdRejectsUnknownPeer(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-    QuickdrawCommand cmd(strangerMac, QDCommand::SEND_MATCH_ID, "match-id-000000000000000000000000000", "xxxx", 0, true);
+    DuelCommand cmd(strangerMac, DuelCmd::SEND_MATCH_ID, "match-id-000000000000000000000000000", "xxxx", 0, true);
     mm->listenForMatchEvents(cmd);
 
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
@@ -348,7 +348,7 @@ inline void matchManagerAcceptsResultFromOpponent(MatchManager* mm, Player* play
     mm->initializeMatch(opponentMac);
     const char* realMatchId = mm->getCurrentMatch()->getMatchId();
 
-    QuickdrawCommand legit(opponentMac, QDCommand::DRAW_RESULT, realMatchId, "opp_", 150, false);
+    DuelCommand legit(opponentMac, DuelCmd::DRAW_RESULT, realMatchId, "opp_", 150, false);
     mm->listenForMatchEvents(legit);
 
     EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 150u);
@@ -473,7 +473,7 @@ inline void matchManagerHunterMatchIsReadyAfterAck(MatchManager* mm, Player* pla
     mm->initializeMatch(dummyMac);
 
     const char* matchId = mm->getCurrentMatch()->getMatchId();
-    QuickdrawCommand ack(dummyMac, QDCommand::MATCH_ID_ACK, matchId, "boun", 0, false);
+    DuelCommand ack(dummyMac, DuelCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
     mm->listenForMatchEvents(ack);
 
     EXPECT_TRUE(mm->isMatchReady());
@@ -483,7 +483,7 @@ inline void matchManagerHunterMatchIsReadyAfterAck(MatchManager* mm, Player* pla
 inline void matchManagerBountyMatchIsReadyAfterReceivingMatch(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
 
     EXPECT_TRUE(mm->isMatchReady());
@@ -493,7 +493,7 @@ inline void matchManagerBountyMatchIsReadyAfterReceivingMatch(MatchManager* mm, 
 inline void matchManagerClearMatchResetsMatchIsReadyFlag(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
     ASSERT_TRUE(mm->isMatchReady());
 
@@ -512,7 +512,7 @@ inline void matchManagerRoleMismatchClearsInitiatorMatch(MatchManager* mm, Playe
     ASSERT_FALSE(mm->isMatchReady());
 
     const char* matchId = mm->getCurrentMatch()->getMatchId();
-    QuickdrawCommand mismatch(dummyMac, QDCommand::MATCH_ROLE_MISMATCH, matchId, "hunt2", 0, true);
+    DuelCommand mismatch(dummyMac, DuelCmd::MATCH_ROLE_MISMATCH, matchId, "hunt2", 0, true);
     mm->listenForMatchEvents(mismatch);
 
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
@@ -522,11 +522,11 @@ inline void matchManagerRoleMismatchClearsInitiatorMatch(MatchManager* mm, Playe
 TEST_F(MatchManagerTestSuite, abandoningAHandshakeCancelsItsPendingRetries) {
     using ::testing::_;
     std::vector<int> sentCommands;
-    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kQuickdrawCommand, _, _))
+    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kDuelCommand, _, _))
         .WillByDefault(::testing::Invoke(
             [&sentCommands](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
-                if (len == sizeof(QuickdrawPacket)) {
-                    QuickdrawPacket packet{};
+                if (len == sizeof(DuelPacket)) {
+                    DuelPacket packet{};
                     memcpy(&packet, data, sizeof(packet));
                     sentCommands.push_back(packet.command);
                 }
@@ -553,11 +553,11 @@ TEST_F(MatchManagerTestSuite, abandoningAHandshakeCancelsItsPendingRetries) {
 TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
     using ::testing::_;
     std::vector<int> sentCommands;
-    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kQuickdrawCommand, _, _))
+    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kDuelCommand, _, _))
         .WillByDefault(::testing::Invoke(
             [&sentCommands](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
-                if (len == sizeof(QuickdrawPacket)) {
-                    QuickdrawPacket packet{};
+                if (len == sizeof(DuelPacket)) {
+                    DuelPacket packet{};
                     memcpy(&packet, data, sizeof(packet));
                     sentCommands.push_back(packet.command);
                 }
@@ -580,7 +580,7 @@ TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
 
     bool resultRetried = false;
     for (size_t i = afterResult; i < sentCommands.size(); ++i) {
-        if (sentCommands[i] == QDCommand::DRAW_RESULT) resultRetried = true;
+        if (sentCommands[i] == DuelCmd::DRAW_RESULT) resultRetried = true;
     }
     EXPECT_TRUE(resultRetried)
         << "clearing a finished match stripped the retransmits of its DRAW_RESULT";

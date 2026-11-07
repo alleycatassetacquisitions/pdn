@@ -7,23 +7,12 @@
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
-#include "wireless/quickdraw-packet.hpp"
+#include "wireless/duel-packet.hpp"
 #include "utils/simple-timer.hpp"
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
 
-// Verifies that the queue-based deferral in NativePeerCommsDriver eliminates the
-// race between the simulated WiFi task (receivePacket) and the main loop (exec +
-// MatchManager reads).
-//
-// Before the fix: receivePacket() called listenForMatchEvents() directly, racing
-// with the main loop reading isMatchReady() / getHunterDrawTime() etc.
-//
-// After the fix: receivePacket() only enqueues; exec() drains on the caller's
-// thread. MatchManager is therefore only ever touched from a single thread.
-//
-// Run under TSan to confirm zero race reports:
-//   pio test -e native_tsan -f test_core --filter "*MatchManagerConcurrent*"
+// receivePacket() enqueues while exec() drains on the caller's thread so MatchManager is single-threaded under TSan.
 inline void matchManagerConcurrentDriverVsReader() {
     FakePlatformClock clock;
     clock.setTime(1000);
@@ -68,14 +57,14 @@ inline void matchManagerConcurrentDriverVsReader() {
             char matchId[37] = {};
             snprintf(matchId, sizeof(matchId), "match-%08d", iter++);
 
-            QuickdrawPacket pkt = {};
+            DuelPacket pkt = {};
             strncpy(pkt.matchId,  matchId, sizeof(pkt.matchId) - 1);
             strncpy(pkt.playerId, "hunt",  sizeof(pkt.playerId) - 1);
-            pkt.command = QDCommand::SEND_MATCH_ID;
+            pkt.command = DuelCmd::SEND_MATCH_ID;
             pkt.isHunter       = true;
             pkt.playerDrawTime = 0;
 
-            driver.receivePacket(peerMac, PktType::kQuickdrawCommand,
+            driver.receivePacket(peerMac, PktType::kDuelCommand,
                                  reinterpret_cast<const uint8_t*>(&pkt),
                                  sizeof(pkt));
             std::this_thread::sleep_for(std::chrono::milliseconds(1));

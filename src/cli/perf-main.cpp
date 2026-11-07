@@ -35,7 +35,7 @@
 #include "game/player.hpp"
 #include "game/match-manager.hpp"
 #include "game/match.hpp"
-#include "wireless/quickdraw-packet.hpp"
+#include "wireless/duel-packet.hpp"
 
 // ============================================================
 // Null logger — suppresses all LOG_* output in the hot path
@@ -126,24 +126,23 @@ private:
     uint8_t mac_[6] = {0};
 };
 
-// Build a QuickdrawPacket (the real wire format) carrying a player's draw result.
-static QuickdrawPacket makeDrawResultPacket(const std::optional<Match>& match,
-                                            bool senderIsHunter,
-                                            const char* senderId) {
-    QuickdrawPacket p = {};
+static DuelPacket makeDrawResultPacket(const std::optional<Match>& match,
+                                       bool senderIsHunter,
+                                       const char* senderId) {
+    DuelPacket p = {};
     strncpy(p.matchId,  match->getMatchId(), sizeof(p.matchId) - 1);
     strncpy(p.playerId, senderId,            sizeof(p.playerId) - 1);
     p.isHunter       = senderIsHunter;
     p.playerDrawTime = senderIsHunter ? match->getHunterDrawTime()
                                       : match->getBountyDrawTime();
-    p.command        = QDCommand::DRAW_RESULT;
+    p.command = DuelCmd::DRAW_RESULT;
     return p;
 }
 
 static void deliver(StubPeerComms& target,
                     const uint8_t mac[6],
-                    QuickdrawPacket& pkt) {
-    target.deliver(PktType::kQuickdrawCommand, mac,
+                    DuelPacket& pkt) {
+    target.deliver(PktType::kDuelCommand, mac,
                    reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 }
 
@@ -229,8 +228,8 @@ int main(int argc, char** argv) {
         bounty.matchMgr->receiveMatch(matchId, "hunt", true,
                                       const_cast<uint8_t*>(kHunterMac));
 
-        QuickdrawCommand ackCmd(kBountyMac, QDCommand::MATCH_ID_ACK,
-                                matchId, "boun", 0, false);
+        DuelCommand ackCmd(kBountyMac, DuelCmd::MATCH_ID_ACK,
+                           matchId, "boun", 0, false);
         hunter.matchMgr->listenForMatchEvents(ackCmd);
 
         hunter.matchMgr->setDuelLocalStartTime(duelStart);
@@ -245,9 +244,9 @@ int main(int argc, char** argv) {
         clock.set(duelStart + bountyPress);
         bounty.matchMgr->getDuelButtonPush()(bounty.matchMgr);
 
-        QuickdrawPacket hunterPkt = makeDrawResultPacket(
+        DuelPacket hunterPkt = makeDrawResultPacket(
             hunter.matchMgr->getCurrentMatch(), true, "hunt");
-        QuickdrawPacket bountyPkt = makeDrawResultPacket(
+        DuelPacket bountyPkt = makeDrawResultPacket(
             bounty.matchMgr->getCurrentMatch(), false, "boun");
 
         deliver(bounty.peerComms, kHunterMac, hunterPkt);

@@ -6,7 +6,8 @@
 //PktType determines which callback will handle the packet on the receiving end
 enum class PktType : uint8_t {
     kPlayerInfoBroadcast = 0,
-    kQuickdrawCommand = 1,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kDuelCommand = 1,
     kDebugPacket = 2,
     kChainGameEvent = 6,
     kChainConfirm = 7,
