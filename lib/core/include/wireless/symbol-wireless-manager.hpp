@@ -37,16 +37,17 @@ public:
     /** Drives the channel's retransmits. */
     void sync();
 
-    /** Sends command to macPeer (serialPort is used for logging only). */
-    void sendPacket(int command, SymbolId symbolId, SerialIdentifier serialPort);
+    /** Sends command to macPeer (jack is used for logging only). */
+    void sendPacket(int command, SymbolId symbolId, SerialIdentifier jack);
 
     /** Sets the address every subsequent sendPacket goes to. */
     void setMacPeer(const uint8_t* macAddress);
 
-    /** Registers the callback for commands arriving on `port`. One slot per jack. */
-    void setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback, SerialIdentifier port);
+    /** Registers the callback for commands arriving on `jack`. One slot per jack. */
+    void setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback,
+                                   SerialIdentifier jack);
 
-    /** Drops every registered port callback and cancels pending sends. */
+    /** Drops every registered jack callback and cancels pending sends. */
     void clearCallback();
 
 private:

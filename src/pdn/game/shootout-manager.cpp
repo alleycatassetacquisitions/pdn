@@ -13,7 +13,7 @@
 
 namespace {
 void deriveShootoutMatchId(int matchIndex, char* out, size_t outSize) {
-    // Deterministic ID so both duelists prime MatchManager with the same
+    // Deterministic ID so both players prime MatchManager with the same
     // value without a SEND_MATCH_ID handshake.
     snprintf(out, outSize, "%s%032d", kShootoutMatchIdPrefix, matchIndex);
 }
@@ -74,11 +74,11 @@ int ShootoutManager::getCurrentMatchIndex() const {
     return currentMatchIndex;
 }
 
-bool ShootoutManager::isLocalDuelist() const {
+bool ShootoutManager::isInCurrentMatch() const {
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     if (selfMac == nullptr) return false;
-    return memcmp(selfMac, currentDuelistA.data(), 6) == 0 ||
-           memcmp(selfMac, currentDuelistB.data(), 6) == 0;
+    return memcmp(selfMac, currentPlayerA.data(), 6) == 0 ||
+           memcmp(selfMac, currentPlayerB.data(), 6) == 0;
 }
 
 // The single seqId allocator for every reliably-sent command this manager
@@ -171,13 +171,13 @@ void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac
     // Both questions are asked of the frame that was abandoned, not of the
     // manager's current state. A fan-out outlives the match it announced — it
     // keeps retrying a silent recipient for over a second — so by the time it is
-    // given up on, currentDuelist* may already name a different match, and a
+    // given up on, currentPlayer* may already name a different match, and a
     // finished tournament still names its final pair.
     bool blocksTournament = false;
     if (cmd == ShootoutCmd::BRACKET) {
         blocksTournament = containsMac(bracket, targetMac) && !isEliminated(targetMac);
     } else if (cmd == ShootoutCmd::MATCH_START && len >= 14) {
-        // [cmd, seqId, duelistA(6), duelistB(6), matchIndex] — see
+        // [cmd, seqId, playerA(6), playerB(6), matchIndex] — see
         // buildMatchStartPacket.
         blocksTournament = memcmp(&packet[2], targetMac, 6) == 0 ||
                            memcmp(&packet[8], targetMac, 6) == 0;
@@ -238,9 +238,9 @@ void ShootoutManager::resetToIdle() {
 
 void ShootoutManager::resetTournamentState() {
     phase = Phase::IDLE;
-    // Retire a match this tournament primed: the duel app's dismount is the only
+    // Retire a match this tournament primed: the match app's dismount is the only
     // other path and cannot run for a match abandoned before that app mounts,
-    // and Idle mounts a duel from whatever match is ready.
+    // and Idle mounts a match from whatever match is ready.
     if (matchManager) matchManager->clearShootoutMatch();
     confirmedSet.clear();
     bracket.clear();
@@ -261,8 +261,8 @@ void ShootoutManager::resetTournamentState() {
     currentMatchIndex = -1;
     memset(tournamentWinner.data(), 0, 6);
     memset(opponentMac.data(), 0, 6);
-    memset(currentDuelistA.data(), 0, 6);
-    memset(currentDuelistB.data(), 0, 6);
+    memset(currentPlayerA.data(), 0, 6);
+    memset(currentPlayerB.data(), 0, 6);
 }
 
 void ShootoutManager::startProposal() {
@@ -344,7 +344,7 @@ void ShootoutManager::confirmLocal() {
 
 void ShootoutManager::onConfirmReceived(const uint8_t* fromMac, const char* name) {
     if (phase != Phase::PROPOSAL) return;
-    // Fast path: already-confirmed peers bypass the loop-membership scan (this
+    // Fast path: already-confirmed peers bypass the ring-membership scan (this
     // is the common case during 1Hz rebroadcasts — the gate only needs to
     // block first-time stray CONFIRMs from outside the ring).
     if (!hasConfirmed(fromMac) && !containsMac(getRingMembers(), fromMac)) return;
@@ -450,11 +450,11 @@ void ShootoutManager::generateBracket() {
 
 void ShootoutManager::primeMatchManagerForMatch() {
     if (!matchManager) return;
-    if (!isLocalDuelist()) return;
+    if (!isInCurrentMatch()) return;
 
     // Role-for-this-match from MAC ordering: both sides compute the same
     // ordering so the hunter_draw_time and bounty_time slots in MatchManager
-    // are written by exactly one duelist each. It goes to the match, never to the
+    // are written by exactly one player each. It goes to the match, never to the
     // Player: the standing role outlives the match and answers other questions.
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     bool localIsHunterForMatch = selfMac != nullptr &&
@@ -485,7 +485,7 @@ std::vector<uint8_t> ShootoutManager::buildMacListPacket(
     packet.push_back(static_cast<uint8_t>(cmd));
     packet.push_back(seqId);
     // The roster is the RDC's 64 plus self, so it can land one over what the
-    // decoder accepts — and an over-long frame is dropped by every receiver, not
+    // codec accepts — and an over-long frame is dropped by every receiver, not
     // just the members past the cap. Truncating keeps the ring running.
     size_t count = macs.size();
     if (count > MAX_BRACKET_SIZE) {
@@ -617,7 +617,7 @@ void ShootoutManager::sync() {
 std::pair<std::array<uint8_t,6>, std::array<uint8_t,6>>
 ShootoutManager::getCurrentMatchPair() const {
     if (currentMatchIndex < 0) return {};
-    return {currentDuelistA, currentDuelistB};
+    return {currentPlayerA, currentPlayerB};
 }
 
 std::vector<uint8_t> ShootoutManager::buildMatchStartPacket(int matchIndex) const {
@@ -640,13 +640,13 @@ void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
     const std::array<uint8_t, 6>& a = currentRound[matchIndex * 2];
     const std::array<uint8_t, 6>& b = currentRound[matchIndex * 2 + 1];
     bool sameMatch = isSameMatch(matchIndex, a.data(), b.data());
-    currentDuelistA = a;
-    currentDuelistB = b;
+    currentPlayerA = a;
+    currentPlayerB = b;
     currentMatchIndex = matchIndex;
     if (!sameMatch) {
         reportedLocalWin = false;
     }
-    if (!sameMatch && isLocalDuelist() && selfMac != nullptr) {
+    if (!sameMatch && isInCurrentMatch() && selfMac != nullptr) {
         const uint8_t* opp = (memcmp(selfMac, a.data(), 6) == 0) ? b.data() : a.data();
         memcpy(opponentMac.data(), opp, 6);
         primeMatchManagerForMatch();
@@ -655,7 +655,8 @@ void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
 }
 
 bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const {
-    return matchIndex == currentMatchIndex && phase == Phase::MATCH_IN_PROGRESS && memcmp(currentDuelistA.data(), a, 6) == 0 && memcmp(currentDuelistB.data(), b, 6) == 0;
+    return matchIndex == currentMatchIndex && phase == Phase::MATCH_IN_PROGRESS &&
+           memcmp(currentPlayerA.data(), a, 6) == 0 && memcmp(currentPlayerB.data(), b, 6) == 0;
 }
 
 void ShootoutManager::maybeStartNextMatch() {
@@ -674,7 +675,7 @@ void ShootoutManager::maybeStartNextMatch() {
             if (!isEliminated(m.data())) survivors.push_back(m);
         }
         if (survivors.empty()) {
-            // Reachable: both duelists of one match can report a win, eliminating
+            // Reachable: both players of one match can report a win, eliminating
             // each other. currentRound starts as the bracket and only ever
             // narrows to survivors, so nobody is left anywhere to crown.
             LOG_E(TAG, "no survivor to crown; aborting");
@@ -718,9 +719,9 @@ void ShootoutManager::onBracketReceived(
     sendShootoutAck(ShootoutCmd::BRACKET, seqId, coordinatorMac.data());
 }
 
-void ShootoutManager::onMatchStartReceived(
-    const uint8_t* fromMac, const uint8_t* duelistA, const uint8_t* duelistB,
-    uint8_t matchIndex, uint8_t seqId) {
+void ShootoutManager::onMatchStartReceived(const uint8_t* fromMac, const uint8_t* playerA,
+                                           const uint8_t* playerB, uint8_t matchIndex,
+                                           uint8_t seqId) {
     if (isCoordinator()) return;
     if (!isFromCoordinator(fromMac)) return;
     // A tournament this device has already ended stays ended: TOURNAMENT_END
@@ -729,21 +730,21 @@ void ShootoutManager::onMatchStartReceived(
     if (isTerminalPhase()) return;
     // Admitted on the sender, so the ack is owed however the payload reads.
     sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
-    if (!containsMac(bracket, duelistA) || !containsMac(bracket, duelistB)) {
-        LOG_E(TAG, "MATCH_START from coordinator names a duelist outside our bracket");
+    if (!containsMac(bracket, playerA) || !containsMac(bracket, playerB)) {
+        LOG_E(TAG, "MATCH_START from coordinator names a player outside our bracket");
         return;
     }
     // maybeStartNextMatch does not wait on MATCH_START acks, so match N retries can arrive after match N+1 starts.
-    if (isEliminated(duelistA) || isEliminated(duelistB)) return;
-    if (isSameMatch(matchIndex, duelistA, duelistB)) return;
+    if (isEliminated(playerA) || isEliminated(playerB)) return;
+    if (isSameMatch(matchIndex, playerA, playerB)) return;
     currentMatchIndex = matchIndex;
-    memcpy(currentDuelistA.data(), duelistA, 6);
-    memcpy(currentDuelistB.data(), duelistB, 6);
+    memcpy(currentPlayerA.data(), playerA, 6);
+    memcpy(currentPlayerB.data(), playerB, 6);
     phase = Phase::MATCH_IN_PROGRESS;
     reportedLocalWin = false;
     const uint8_t* selfMac = wirelessManager->getMacAddress();
-    if (isLocalDuelist() && selfMac != nullptr) {
-        const uint8_t* opp = (memcmp(selfMac, duelistA, 6) == 0) ? duelistB : duelistA;
+    if (isInCurrentMatch() && selfMac != nullptr) {
+        const uint8_t* opp = (memcmp(selfMac, playerA, 6) == 0) ? playerB : playerA;
         memcpy(opponentMac.data(), opp, 6);
         primeMatchManagerForMatch();
     }
@@ -767,7 +768,7 @@ void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* los
         eliminated.push_back(mac);
     }
     if (!endsCurrentMatch) return;
-    // A duelist still mounted when the tournament ended resolves its own match and
+    // A player still mounted when the tournament ended resolves its own match and
     // reports it. Walking ENDED back reopens a round that no longer exists;
     // walking ABORTED back is worse, because the abort edge is read later in the
     // same tick and would then read false, stranding this device in a tournament
@@ -810,7 +811,7 @@ void ShootoutManager::reportLocalWin() {
     sendMatchResultToPeers(selfMac, opponentMac.data(), static_cast<uint8_t>(currentMatchIndex));
     applyMatchResult(selfMac, opponentMac.data());
     // The round advances on the next sync(), not from here. On the timeout path
-    // this is called from Duel::onStateLoop, and that state dismounts later in
+    // this is called from MatchState::onStateLoop, and that state dismounts later in
     // the same tick through clearCurrentMatch() — anything primed for the next
     // match from here is torn down by the match that is still being left.
 }
@@ -818,7 +819,7 @@ void ShootoutManager::reportLocalWin() {
 void ShootoutManager::onMatchResultReceived(
     const uint8_t* winner, const uint8_t* loser,
     uint8_t matchIndex, uint8_t seqId, const uint8_t* fromMac) {
-    // A result is fanned out by whichever duelist won it, so the sender being in
+    // A result is fanned out by whichever player won it, so the sender being in
     // our bracket is what says the frame is ours. A foreign ring's result is
     // refused before the ack for the same reason ABORT is: an ack is a unicast,
     // and a unicast takes a slot in the radio's 20-entry peer table, evicting

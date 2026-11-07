@@ -36,12 +36,12 @@ public:
     uint8_t* getMacAddress() override { return mac; }
     /** Unused by the transport. */
     void setPeerCommsState(PeerCommsState) override {}
-    /** Always connected. */
-    PeerCommsState getPeerCommsState() override { return PeerCommsState::CONNECTED; }
+    /** Always enabled. */
+    PeerCommsState getPeerCommsState() override { return PeerCommsState::ENABLED; }
     /** Unused by the transport. */
-    void connect() override {}
+    void enable() override {}
     /** Unused by the transport. */
-    void disconnect() override {}
+    void disable() override {}
 
     /** Hands a frame to this radio's registered firmware handler. */
     void deliver(const std::vector<uint8_t>& frame) {

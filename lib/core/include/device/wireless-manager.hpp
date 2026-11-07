@@ -26,12 +26,12 @@ static const char* WM_TAG = "WirelessManager";
  * reliably between devices, they must all be on the same channel.
  *
  * This manager handles switching between modes using explicit state management:
- * - WIFI mode: HTTP client CONNECTED, ESP-NOW DISCONNECTED
- * - ESPNOW mode: HTTP client DISCONNECTED, ESP-NOW CONNECTED
+ * - WIFI mode: HTTP client CONNECTED, ESP-NOW DISABLED
+ * - ESPNOW mode: HTTP client DISCONNECTED, ESP-NOW ENABLED
  *
  * State transitions are performed atomically:
- * 1. Disconnect the currently active subsystem first
- * 2. Connect the target subsystem
+ * 1. Disable or disconnect the currently active subsystem first
+ * 2. Enable or connect the target subsystem
  *
  * This is a pure C++ class that delegates platform-specific operations to the
  * HttpClientInterface and PeerCommsInterface.
@@ -55,7 +55,7 @@ public:
 
         // Start with ESP-NOW active (default mode)
         httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
-        peerComms->setPeerCommsState(PeerCommsState::CONNECTED);
+        peerComms->setPeerCommsState(PeerCommsState::ENABLED);
         currentMode = WirelessMode::ESPNOW;
 
         LOG_I(WM_TAG, "Wireless manager initialized in ESP-NOW mode");
@@ -63,7 +63,7 @@ public:
 
     /**
      * Switch to WiFi mode - connects to AP for HTTP requests.
-     * This will disconnect ESP-NOW first, then establish WiFi connection.
+     * This will disable ESP-NOW first, then establish WiFi connection.
      * This may take time as it needs to establish connection.
      */
     void enableWifiMode() {
@@ -75,10 +75,10 @@ public:
 
         LOG_I(WM_TAG, "Switching to WiFi mode...");
 
-        // Step 1: Disconnect ESP-NOW first to release the WiFi radio
-        if (peerComms->getPeerCommsState() == PeerCommsState::CONNECTED) {
-            LOG_D(WM_TAG, "Disconnecting ESP-NOW...");
-            peerComms->setPeerCommsState(PeerCommsState::DISCONNECTED);
+        // Step 1: Disable ESP-NOW first to release the WiFi radio
+        if (peerComms->getPeerCommsState() == PeerCommsState::ENABLED) {
+            LOG_D(WM_TAG, "Disabling ESP-NOW...");
+            peerComms->setPeerCommsState(PeerCommsState::DISABLED);
         }
 
         // Step 2: Connect HTTP client (will establish WiFi AP connection)
@@ -97,12 +97,12 @@ public:
 
     /**
      * Switch to ESP-NOW mode - disconnects from AP, sets fixed channel.
-     * This will disconnect WiFi/HTTP first, then initialize ESP-NOW.
+     * This will disconnect WiFi/HTTP first, then enable ESP-NOW.
      * All devices must be in this mode on the same channel for ESP-NOW to work.
      */
     void enablePeerCommsMode() {
         if (currentMode == WirelessMode::ESPNOW &&
-            peerComms->getPeerCommsState() == PeerCommsState::CONNECTED) {
+            peerComms->getPeerCommsState() == PeerCommsState::ENABLED) {
             LOG_D(WM_TAG, "Already in ESP-NOW mode");
             return;
         }
@@ -115,9 +115,9 @@ public:
             httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
         }
 
-        // Step 2: Connect ESP-NOW (will set WiFi to station mode on fixed channel)
-        LOG_D(WM_TAG, "Connecting ESP-NOW...");
-        peerComms->setPeerCommsState(PeerCommsState::CONNECTED);
+        // Step 2: Enable ESP-NOW (will set WiFi to station mode on fixed channel)
+        LOG_D(WM_TAG, "Enabling ESP-NOW...");
+        peerComms->setPeerCommsState(PeerCommsState::ENABLED);
 
         // Update mode tracking
         currentMode = WirelessMode::ESPNOW;
@@ -146,7 +146,7 @@ public:
      */
     bool isEspNowReady() {
         return currentMode == WirelessMode::ESPNOW &&
-               peerComms->getPeerCommsState() == PeerCommsState::CONNECTED;
+               peerComms->getPeerCommsState() == PeerCommsState::ENABLED;
     }
 
     /** True while a queued HTTP request has not had its callback. */

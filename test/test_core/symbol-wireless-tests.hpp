@@ -17,7 +17,7 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
 
         ON_CALL(peerComms, getPeerCommsState())
-            .WillByDefault(testing::Return(PeerCommsState::CONNECTED));
+        .WillByDefault(testing::Return(PeerCommsState::ENABLED));
         ON_CALL(peerComms, sendData(testing::_, PktType::kSymbolMatchCommand,
                                     testing::_, testing::_))
             .WillByDefault(testing::Invoke(

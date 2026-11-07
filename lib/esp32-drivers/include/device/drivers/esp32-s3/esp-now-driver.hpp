@@ -77,10 +77,10 @@ public:
      * sorts ahead of "serial_in"/"serial_out".
      */
     void exec() override {
-        // Re-pin armed by connect(): retry (paced) until the readback sticks,
+        // Re-pin armed by enable(): retry (paced) until the readback sticks,
         // re-issuing the disconnect each attempt to kill whatever STA attempt
         // is blocking the pin. Stops if an excursion takes the radio.
-        if (channelPinPending && peerCommsState == PeerCommsState::CONNECTED) {
+        if (channelPinPending && peerCommsState == PeerCommsState::ENABLED) {
             unsigned long now = nowMs();
             if (now - lastChannelPinMs >= CHANNEL_PIN_RETRY_MS) {
                 lastChannelPinMs = now;
@@ -124,12 +124,12 @@ public:
      * dropped, PS_NONE, channel pinned (with exec() retry when a STA scan
      * blocks the pin).
      */
-    void connect() override {
+    void enable() override {
         // The STA netif must exist before esp_wifi_start(): esp_netif_start() runs
         // only off WIFI_EVENT_STA_START, so a netif created after that event has
         // been posted never starts, never gets an MTU, and DHCP refuses it.
         // ESP-NOW needs no netif; the HTTP driver's WiFi excursion does. This
-        // runs first on every boot, but connect() re-runs on each return to
+        // runs first on every boot, but enable() re-runs on each return to
         // ESP-NOW mode, so the steps are guarded rather than assumed-once.
         wifi_mode_t currentMode;
         if (esp_wifi_get_mode(&currentMode) == ESP_ERR_WIFI_NOT_INIT) {
@@ -195,22 +195,22 @@ public:
         }
 
         if (initializeEspNow() != 0) {
-            // Leaving the state DISCONNECTED keeps sendData refusing and lets a
-            // later connect() try again. Marking it CONNECTED would accept frames
+            // Leaving the state DISABLED keeps sendData refusing and lets a
+            // later enable() try again. Marking it ENABLED would accept frames
             // the radio can never report, and the slot has no deadline.
-            LOG_E("ENC", "ESPNOW init failed; staying disconnected");
-            peerCommsState = PeerCommsState::DISCONNECTED;
+            LOG_E("ENC", "ESPNOW init failed; staying disabled");
+            peerCommsState = PeerCommsState::DISABLED;
             return;
         }
-        peerCommsState = PeerCommsState::CONNECTED;
+        peerCommsState = PeerCommsState::ENABLED;
     }
 
     /**
      * Tears down ESP-NOW for a WiFi excursion, releasing both the queued frames
      * and the one the radio holds.
      */
-    void disconnect() override {
-        // An excursion owns the radio now; the next connect() re-evaluates.
+    void disable() override {
+        // An excursion owns the radio now; the next enable() re-evaluates.
         channelPinPending = false;
         // Whatever is still queued does not go out: it would arrive after the
         // excursion as stale traffic, and the reliable layer resends what matters
@@ -225,25 +225,25 @@ public:
 
         // Unconditional: deinit unregisters the send callback, so the completion
         // that would clear the slot is never coming, and an occupied slot blocks
-        // every later startNextSend. Leaving the state CONNECTED would stop connect()
+        // every later startNextSend. Leaving the state ENABLED would stop enable()
         // re-running. A completion that does still arrive lands on an empty slot
         // and applySendResult drops it.
         discardInFlight();
-        peerCommsState = PeerCommsState::DISCONNECTED;
+        peerCommsState = PeerCommsState::DISABLED;
     }
 
-    /** Current radio mode (ESP-NOW connected vs released for WiFi). */
+    /** Current radio mode (ESP-NOW enabled vs disabled for WiFi). */
     PeerCommsState getPeerCommsState() override {
         return peerCommsState;
     }
 
-    /** Transitions the radio between ESP-NOW and released states. */
+    /** Transitions the radio between ESP-NOW enabled and disabled states. */
     void setPeerCommsState(PeerCommsState state) override {
-        if(state == PeerCommsState::CONNECTED && peerCommsState != PeerCommsState::CONNECTED) {
-            connect();
-        }
-        else if(state == PeerCommsState::DISCONNECTED && peerCommsState != PeerCommsState::DISCONNECTED) {
-            disconnect();
+        if (state == PeerCommsState::ENABLED && peerCommsState != PeerCommsState::ENABLED) {
+            enable();
+        } else if (state == PeerCommsState::DISABLED &&
+                   peerCommsState != PeerCommsState::DISABLED) {
+            disable();
         }
     }
 
@@ -257,7 +257,7 @@ public:
         // and an excursion long enough to matter would grow the queue by one
         // allocation per attempt. Callers that care retry; the reliable layer
         // has its own timer.
-        if (peerCommsState != PeerCommsState::CONNECTED) return -1;
+        if (peerCommsState != PeerCommsState::ENABLED) return -1;
         if (length > MAX_PKT_DATA_SIZE) {
             LOG_W("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
                   length,
@@ -544,7 +544,7 @@ private:
     void startNextSend() {
         // exec() runs whatever the state, and esp_now_send must not follow a
         // deinit.
-        if (peerCommsState != PeerCommsState::CONNECTED) return;
+        if (peerCommsState != PeerCommsState::ENABLED) return;
         if (inFlight.ptr != nullptr) return;
 
         // The lock covers sendQueue and nothing else; the slot is this task's.
@@ -748,7 +748,7 @@ private:
     bool channelPinPending = false;
     unsigned long lastChannelPinMs = 0;
 
-    PeerCommsState peerCommsState = PeerCommsState::DISCONNECTED;
+    PeerCommsState peerCommsState = PeerCommsState::DISABLED;
 
     //Storage for MAC address
     uint8_t macAddress[6];

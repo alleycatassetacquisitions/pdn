@@ -31,7 +31,7 @@ public:
      * Build a valid binary frame for a given opcode + payload; appends the CRC-16
      * computed over (opcode + payload). The 0xAA 0x55 preamble is prepended.
      * Built by hand rather than via encodeFramed so the tests cross-check the
-     * encoder and parser against an independent construction.
+     * framing codec and parser against an independent construction.
      */
     std::vector<uint8_t> buildFrame(uint8_t opcode, const std::vector<uint8_t>& payload) {
         std::vector<uint8_t> crcInput;
@@ -110,7 +110,7 @@ TEST_F(SerialFrameParserTests, decodeMapsEveryWireByteToItsField) {
 }
 
 TEST_F(SerialFrameParserTests, encodeFramedEmitsExactFrameBytes) {
-    // The typed encoder must produce the identical bytes the hand oracle above
+    // The typed framing codec must produce the identical bytes the hand oracle above
     // expects: preamble + opcode + packed payload + precomputed CRC.
     HelloPayload hello{};
     const uint8_t source[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
@@ -129,7 +129,7 @@ TEST_F(SerialFrameParserTests, encodeFramedEmitsExactFrameBytes) {
 }
 
 TEST_F(SerialFrameParserTests, encodeFramedRoundTripsThroughParser) {
-    // The typed encoder is the parser's inverse: a HelloPayload framed by
+    // The typed framing codec is the parser's inverse: a HelloPayload framed by
     // encodeFramed must decode back to the identical field values.
     int frameCount = 0;
     HelloPayload got{};

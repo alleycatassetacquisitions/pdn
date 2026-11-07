@@ -77,7 +77,7 @@ public:
 
     void clearUserID();
 
-    /** @return Milliseconds for the most recent duel reaction sample. */
+    /** @return Milliseconds for the most recent match reaction sample. */
     unsigned long getLastReactionTime() const;
 
     /** @return Mean reaction time across recorded matches, or 0 when none played. */
@@ -129,12 +129,12 @@ public:
 
     /**
      * Replaces registration fields and syncs legacy gameplay fields. Used by the device player
-     * decoder and demo registration paths.
+     * codec and demo registration paths.
      */
     void applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
                                   const Team& team, const std::vector<Affiliation>& affiliations);
 
-    /** Clears registration fields only; does not reset duel stats or legacy fields. */
+    /** Clears registration fields only; does not reset match stats or legacy fields. */
     void clearRegistrationProfile();
 
 private:

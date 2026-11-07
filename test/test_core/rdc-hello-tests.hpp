@@ -32,7 +32,7 @@ inline void wireRadioDefaults(MockDevice& device, uint8_t* mac) {
     ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(mac));
     ON_CALL(*device.mockPeerComms, getPeerCommsState())
-        .WillByDefault(Return(PeerCommsState::CONNECTED));
+    .WillByDefault(Return(PeerCommsState::ENABLED));
 }
 
 // One direction of a cable: drains `from`'s emitted bytes into `to`'s RX and
@@ -1330,7 +1330,7 @@ inline void pumpChainCycle(const std::vector<ChainRingNode*>& nodes,
 
 // Ring closure is visible at exactly one device — the one whose own MAC comes
 // back around — yet every member has to know it sits on a ring or the game layer
-// keeps running 1v1 duels inside the shootout's topology. Three devices, because
+// keeps running 1v1 matches inside the shootout's topology. Three devices, because
 // two is the case a per-jack peer comparison can still get right by accident:
 // here B and C never see their own MAC return and can only learn from A.
 inline void rdcRingMembershipReachesEveryMember() {
@@ -1794,7 +1794,7 @@ inline void rdcOutputLossOfOwnHeadSendsNoReport(RDCHelloTests* suite) {
 
     connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
                 chainHelloFrame(upstream, head));
-    // The OUTPUT peer IS the head: this device closes the loop back to it.
+    // The OUTPUT peer IS the head: this device closes the ring back to it.
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
                 chainHelloFrame(head, nullptr));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);

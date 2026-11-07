@@ -15,7 +15,7 @@ using ::testing::NiceMock;
 // Integration Test Fixture
 // ============================================
 
-class DuelIntegrationTestSuite : public testing::Test {
+class MatchIntegrationTestSuite : public testing::Test {
 public:
     void SetUp() override {
         fakeClock = new FakePlatformClock();
@@ -86,10 +86,10 @@ public:
 };
 
 // ============================================
-// Complete Duel Flow: Two Device Simulation - Hunter Wins
+// Complete Match Flow: Two Device Simulation - Hunter Wins
 // ============================================
 
-inline void completeDuelFlowHunterWins(DuelIntegrationTestSuite* suite) {
+inline void completeMatchFlowHunterWins(MatchIntegrationTestSuite* suite) {
     const unsigned long HUNTER_REACTION_MS = 200;
     const unsigned long BOUNTY_REACTION_MS = 300;
 
@@ -97,8 +97,8 @@ inline void completeDuelFlowHunterWins(DuelIntegrationTestSuite* suite) {
     ASSERT_TRUE(suite->hunterMatchManager->getCurrentMatch().has_value());
     ASSERT_TRUE(suite->bountyMatchManager->getCurrentMatch().has_value());
 
-    suite->hunterMatchManager->setDuelLocalStartTime(10000);
-    suite->bountyMatchManager->setDuelLocalStartTime(10000);
+    suite->hunterMatchManager->setMatchLocalStartTime(10000);
+    suite->bountyMatchManager->setMatchLocalStartTime(10000);
 
     // Hunter side
     suite->hunterMatchManager->setHunterDrawTime(HUNTER_REACTION_MS);
@@ -136,17 +136,17 @@ inline void completeDuelFlowHunterWins(DuelIntegrationTestSuite* suite) {
 }
 
 // ============================================
-// Complete Duel Flow: Two Device Simulation - Bounty Wins
+// Complete Match Flow: Two Device Simulation - Bounty Wins
 // ============================================
 
-inline void completeDuelFlowBountyWins(DuelIntegrationTestSuite* suite) {
+inline void completeMatchFlowBountyWins(MatchIntegrationTestSuite* suite) {
     const unsigned long HUNTER_REACTION_MS = 350;
     const unsigned long BOUNTY_REACTION_MS = 180;
 
     suite->performHandshake();
 
-    suite->hunterMatchManager->setDuelLocalStartTime(5000);
-    suite->bountyMatchManager->setDuelLocalStartTime(5000);
+    suite->hunterMatchManager->setMatchLocalStartTime(5000);
+    suite->bountyMatchManager->setMatchLocalStartTime(5000);
 
     // Hunter side
     suite->hunterMatchManager->setHunterDrawTime(HUNTER_REACTION_MS);
@@ -248,7 +248,7 @@ inline void playerStatsAccumulateAcrossMatches(Player* player) {
 // Edge Cases
 // ============================================
 
-inline void duelWithTiedReactionTimes(DuelIntegrationTestSuite* suite) {
+inline void matchWithTiedReactionTimes(MatchIntegrationTestSuite* suite) {
     suite->performHandshake();
 
     suite->hunterMatchManager->setHunterDrawTime(250);
@@ -260,7 +260,7 @@ inline void duelWithTiedReactionTimes(DuelIntegrationTestSuite* suite) {
     EXPECT_FALSE(suite->hunterMatchManager->didWin());
 }
 
-inline void duelWithOpponentTimeout(DuelIntegrationTestSuite* suite) {
+inline void matchWithOpponentTimeout(MatchIntegrationTestSuite* suite) {
     suite->performHandshake();
 
     suite->hunterMatchManager->setHunterDrawTime(300);

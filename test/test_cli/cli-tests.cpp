@@ -51,9 +51,7 @@ TEST_F(NativePeerBrokerTestSuite, UniqueMacGeneration) {
     peerBrokerUniqueMacGeneration(this);
 }
 
-TEST_F(NativePeerBrokerTestSuite, DisconnectedPeerNoReceive) {
-    peerBrokerDisconnectedPeerNoReceive(this);
-}
+TEST_F(NativePeerBrokerTestSuite, DisabledPeerNoReceive) { peerBrokerDisabledPeerNoReceive(this); }
 
 // ============================================
 // MOCK HTTP SERVER TESTS
@@ -171,8 +169,8 @@ TEST_F(NativePeerCommsDriverTestSuite, MacString) {
     peerCommsMacString(this);
 }
 
-TEST_F(NativePeerCommsDriverTestSuite, CannotSendWhenDisconnected) {
-    peerCommsCannotSendWhenDisconnected(this);
+TEST_F(NativePeerCommsDriverTestSuite, CannotSendWhenDisabled) {
+    peerCommsCannotSendWhenDisabled(this);
 }
 
 TEST_F(NativePeerCommsDriverTestSuite, HandlerRegistration) {

@@ -30,33 +30,33 @@ namespace quickdraw_state_graph_expectations {
 
 // Registration order of the pre-split graph with its slot-0 PlayerRegistrationApp
 // dropped — that app is now mounted by the device rather than nested as a state.
-// The hub, duel, shootout and symbol maps concatenate to this.
+// The hub, match, shootout and symbol maps concatenate to this.
 //
 // One deliberate divergence from the pre-split order: Sleep sat between
 // UploadMatches and the shootout states, and now sits in the hub with the other
 // three between-match states. Every edge is unchanged; only the flat position
 // moved.
 inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
-    AWAKEN_SEQUENCE,
-    IDLE,
-    SUPPORTER_READY,
-    SLEEP,
-    DUEL_COUNTDOWN,
-    DUEL,
-    DUEL_PUSHED,
-    DUEL_RECEIVED_RESULT,
-    DUEL_RESULT,
-    WIN,
-    LOSE,
-    UPLOAD_MATCHES,
-    SHOOTOUT_PROPOSAL,
-    SHOOTOUT_BRACKET_REVEAL,
-    SHOOTOUT_SPECTATOR,
-    SHOOTOUT_ELIMINATED,
-    SHOOTOUT_FINAL_STANDINGS,
-    SHOOTOUT_ABORTED,
-    SYMBOL,
-    SYMBOL_MATCHED,
+AWAKEN_SEQUENCE,
+IDLE,
+SUPPORTER_READY,
+SLEEP,
+MATCH_COUNTDOWN,
+MATCH,
+MATCH_PUSHED,
+MATCH_RECEIVED_RESULT,
+MATCH_RESULT,
+WIN,
+LOSE,
+UPLOAD_MATCHES,
+SHOOTOUT_PROPOSAL,
+SHOOTOUT_BRACKET_REVEAL,
+SHOOTOUT_SPECTATOR,
+SHOOTOUT_ELIMINATED,
+SHOOTOUT_FINAL_STANDINGS,
+SHOOTOUT_ABORTED,
+SYMBOL,
+SYMBOL_MATCHED,
 };
 
 // Per-state transition targets, in the order they were added. 47 edges — the
@@ -64,31 +64,28 @@ inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
 // the app object onto the state that triggered it (see
 // registrationHandsOffFromWelcomeMessage below).
 inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_EDGES = {
-    {AWAKEN_SEQUENCE, {IDLE}},
-    {IDLE,
-     {SHOOTOUT_PROPOSAL, DUEL_COUNTDOWN, SUPPORTER_READY, SHOOTOUT_ABORTED, SYMBOL}},
-    {SUPPORTER_READY, {IDLE}},
-    {DUEL_COUNTDOWN, {SHOOTOUT_ABORTED, DUEL, IDLE}},
-    {DUEL,
-     {SHOOTOUT_ABORTED, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED, IDLE,
-      DUEL_RECEIVED_RESULT, DUEL_PUSHED}},
-    {DUEL_PUSHED, {SHOOTOUT_ABORTED, IDLE, DUEL_RESULT}},
-    {DUEL_RECEIVED_RESULT, {SHOOTOUT_ABORTED, IDLE, DUEL_RESULT}},
-    {DUEL_RESULT,
-     {SHOOTOUT_ABORTED, WIN, LOSE, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED}},
-    {WIN, {UPLOAD_MATCHES}},
-    {LOSE, {UPLOAD_MATCHES}},
-    {UPLOAD_MATCHES, {SLEEP}},
-    {SLEEP, {AWAKEN_SEQUENCE}},
-    {SHOOTOUT_PROPOSAL, {SHOOTOUT_BRACKET_REVEAL, SHOOTOUT_ABORTED}},
-    {SHOOTOUT_BRACKET_REVEAL, {DUEL_COUNTDOWN, SHOOTOUT_SPECTATOR, SHOOTOUT_ABORTED}},
-    {SHOOTOUT_SPECTATOR,
-     {DUEL_COUNTDOWN, SHOOTOUT_FINAL_STANDINGS, SHOOTOUT_ABORTED}},
-    {SHOOTOUT_ELIMINATED, {SHOOTOUT_FINAL_STANDINGS, SHOOTOUT_ABORTED}},
-    {SHOOTOUT_FINAL_STANDINGS, {SLEEP}},
-    {SHOOTOUT_ABORTED, {IDLE}},
-    {SYMBOL, {IDLE, SYMBOL_MATCHED}},
-    {SYMBOL_MATCHED, {SYMBOL, IDLE}},
+{AWAKEN_SEQUENCE, {IDLE}},
+{IDLE, {SHOOTOUT_PROPOSAL, MATCH_COUNTDOWN, SUPPORTER_READY, SHOOTOUT_ABORTED, SYMBOL}},
+{SUPPORTER_READY, {IDLE}},
+{MATCH_COUNTDOWN, {SHOOTOUT_ABORTED, MATCH, IDLE}},
+{MATCH,
+ {SHOOTOUT_ABORTED, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED, IDLE, MATCH_RECEIVED_RESULT,
+  MATCH_PUSHED}},
+{MATCH_PUSHED, {SHOOTOUT_ABORTED, IDLE, MATCH_RESULT}},
+{MATCH_RECEIVED_RESULT, {SHOOTOUT_ABORTED, IDLE, MATCH_RESULT}},
+{MATCH_RESULT, {SHOOTOUT_ABORTED, WIN, LOSE, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED}},
+{WIN, {UPLOAD_MATCHES}},
+{LOSE, {UPLOAD_MATCHES}},
+{UPLOAD_MATCHES, {SLEEP}},
+{SLEEP, {AWAKEN_SEQUENCE}},
+{SHOOTOUT_PROPOSAL, {SHOOTOUT_BRACKET_REVEAL, SHOOTOUT_ABORTED}},
+{SHOOTOUT_BRACKET_REVEAL, {MATCH_COUNTDOWN, SHOOTOUT_SPECTATOR, SHOOTOUT_ABORTED}},
+{SHOOTOUT_SPECTATOR, {MATCH_COUNTDOWN, SHOOTOUT_FINAL_STANDINGS, SHOOTOUT_ABORTED}},
+{SHOOTOUT_ELIMINATED, {SHOOTOUT_FINAL_STANDINGS, SHOOTOUT_ABORTED}},
+{SHOOTOUT_FINAL_STANDINGS, {SLEEP}},
+{SHOOTOUT_ABORTED, {IDLE}},
+{SYMBOL, {IDLE, SYMBOL_MATCHED}},
+{SYMBOL_MATCHED, {SYMBOL, IDLE}},
 };
 
 // The edges the split turned into hand-offs, as (source state, position in that
@@ -98,30 +95,30 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 //
 // All 24 were intra-app edges pre-split, when the whole game was one machine.
 inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> CROSS_APP_EDGES = {
-    {{IDLE, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_PROPOSAL}},
-    {{IDLE, 1}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
-    {{IDLE, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
-    {{IDLE, 4}, {SYMBOL_APP_ID, SYMBOL}},
-    {{DUEL_COUNTDOWN, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
-    {{DUEL_COUNTDOWN, 2}, {HUB_APP_ID, IDLE}},
-    {{DUEL, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
-    {{DUEL, 1}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
-    {{DUEL, 2}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
-    {{DUEL, 3}, {HUB_APP_ID, IDLE}},
-    {{DUEL_PUSHED, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
-    {{DUEL_PUSHED, 1}, {HUB_APP_ID, IDLE}},
-    {{DUEL_RECEIVED_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
-    {{DUEL_RECEIVED_RESULT, 1}, {HUB_APP_ID, IDLE}},
-    {{DUEL_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
-    {{DUEL_RESULT, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
-    {{DUEL_RESULT, 4}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
-    {{UPLOAD_MATCHES, 0}, {HUB_APP_ID, SLEEP}},
-    {{SHOOTOUT_BRACKET_REVEAL, 0}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
-    {{SHOOTOUT_SPECTATOR, 0}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
-    {{SHOOTOUT_FINAL_STANDINGS, 0}, {HUB_APP_ID, SLEEP}},
-    {{SHOOTOUT_ABORTED, 0}, {HUB_APP_ID, IDLE}},
-    {{SYMBOL, 0}, {HUB_APP_ID, IDLE}},
-    {{SYMBOL_MATCHED, 1}, {HUB_APP_ID, IDLE}},
+{{IDLE, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_PROPOSAL}},
+{{IDLE, 1}, {MATCH_APP_ID, MATCH_COUNTDOWN}},
+{{IDLE, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+{{IDLE, 4}, {SYMBOL_APP_ID, SYMBOL}},
+{{MATCH_COUNTDOWN, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+{{MATCH_COUNTDOWN, 2}, {HUB_APP_ID, IDLE}},
+{{MATCH, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+{{MATCH, 1}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
+{{MATCH, 2}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
+{{MATCH, 3}, {HUB_APP_ID, IDLE}},
+{{MATCH_PUSHED, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+{{MATCH_PUSHED, 1}, {HUB_APP_ID, IDLE}},
+{{MATCH_RECEIVED_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+{{MATCH_RECEIVED_RESULT, 1}, {HUB_APP_ID, IDLE}},
+{{MATCH_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+{{MATCH_RESULT, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
+{{MATCH_RESULT, 4}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
+{{UPLOAD_MATCHES, 0}, {HUB_APP_ID, SLEEP}},
+{{SHOOTOUT_BRACKET_REVEAL, 0}, {MATCH_APP_ID, MATCH_COUNTDOWN}},
+{{SHOOTOUT_SPECTATOR, 0}, {MATCH_APP_ID, MATCH_COUNTDOWN}},
+{{SHOOTOUT_FINAL_STANDINGS, 0}, {HUB_APP_ID, SLEEP}},
+{{SHOOTOUT_ABORTED, 0}, {HUB_APP_ID, IDLE}},
+{{SYMBOL, 0}, {HUB_APP_ID, IDLE}},
+{{SYMBOL_MATCHED, 1}, {HUB_APP_ID, IDLE}},
 };
 
 }  // namespace quickdraw_state_graph_expectations
@@ -131,7 +128,7 @@ inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>>
 struct QuickdrawAppsForTest {
     PlayerFetchApp* playerFetch = nullptr;
     HubApp* hub = nullptr;
-    DuelApp* duel = nullptr;
+    MatchApp* match = nullptr;
     ShootoutApp* shootout = nullptr;
     SymbolApp* symbol = nullptr;
 
@@ -140,12 +137,12 @@ struct QuickdrawAppsForTest {
         GameContext context;
         playerFetch = new PlayerFetchApp(nullptr, nullptr, nullptr);
         hub = new HubApp(context);
-        duel = new DuelApp(context);
+        match = new MatchApp(context);
         shootout = new ShootoutApp(context);
         symbol = new SymbolApp(context);
         playerFetch->populateStateMap();
         hub->populateStateMap();
-        duel->populateStateMap();
+        match->populateStateMap();
         shootout->populateStateMap();
         symbol->populateStateMap();
     }
@@ -154,21 +151,21 @@ struct QuickdrawAppsForTest {
     ~QuickdrawAppsForTest() {
         delete playerFetch;
         delete hub;
-        delete duel;
+        delete match;
         delete shootout;
         delete symbol;
     }
 
     /**
-     * The gameplay apps' states in registration order: hub, duel, shootout,
+     * The gameplay apps' states in registration order: hub, match, shootout,
      * symbol.
      */
     std::vector<State*> gameplayStates() const {
         std::vector<State*> states;
-        for (const StateMachine* app : {static_cast<const StateMachine*>(hub),
-                                        static_cast<const StateMachine*>(duel),
-                                        static_cast<const StateMachine*>(shootout),
-                                        static_cast<const StateMachine*>(symbol)}) {
+        for (const StateMachine* app :
+             {static_cast<const StateMachine*>(hub), static_cast<const StateMachine*>(match),
+              static_cast<const StateMachine*>(shootout),
+              static_cast<const StateMachine*>(symbol)}) {
             for (State* state : app->getStateMap()) {
                 states.push_back(state);
             }
@@ -193,7 +190,7 @@ struct QuickdrawAppsForTest {
         if (edge->getNextState() != nullptr) return edge->getNextState();
         const StateMachine* target = nullptr;
         if (edge->getTargetAppId().id == HUB_APP_ID) target = hub;
-        if (edge->getTargetAppId().id == DUEL_APP_ID) target = duel;
+        if (edge->getTargetAppId().id == MATCH_APP_ID) target = match;
         if (edge->getTargetAppId().id == SHOOTOUT_APP_ID) target = shootout;
         if (edge->getTargetAppId().id == SYMBOL_APP_ID) target = symbol;
         if (target == nullptr) return nullptr;
@@ -221,7 +218,7 @@ inline void quickdrawAppsRegisterStatesInDeclaredOrder() {
     }
 
     EXPECT_EQ(apps.hub->getStateMap()[0]->getStateId(), AWAKEN_SEQUENCE);
-    EXPECT_EQ(apps.duel->getStateMap()[0]->getStateId(), DUEL_COUNTDOWN);
+    EXPECT_EQ(apps.match->getStateMap()[0]->getStateId(), MATCH_COUNTDOWN);
     EXPECT_EQ(apps.shootout->getStateMap()[0]->getStateId(), SHOOTOUT_PROPOSAL);
     EXPECT_EQ(apps.symbol->getStateMap()[0]->getStateId(), SYMBOL);
 }

@@ -1,6 +1,6 @@
 ## Context
 
-- **Wire:** `DevicePlayerResponse` decodes into registration fields on `Player` (`device-player-decoder.cpp`). Nanopb types live only in `device_api.pb.h`.
+- **Wire:** `DevicePlayerResponse` decodes into registration fields on `Player` (`device-player-codec.cpp`). Nanopb types live only in `device_api.pb.h`.
 - **Session:** `PlayerProvider` owns one `Player` for the device session; `main` passes `playerProvider.getPlayer()` to Quickdraw and `&playerProvider` to PlayerFetch.
 - **Dependency:** `alleycat-server` depends on `core` and decodes into `Player`.
 
@@ -26,7 +26,7 @@
 
 ### Codec stays in alleycat-server
 
-`DevicePlayerDecoder::decode(body, Player&)` fills registration fields and calls `Player::applyRegistrationProfile` (or equivalent) so legacy fields sync.
+`DevicePlayerCodec::decode(body, Player&)` fills registration fields and calls `Player::applyRegistrationProfile` (or equivalent) so legacy fields sync.
 
 ### `PlayerProvider`
 
@@ -43,6 +43,6 @@ States take `PlayerProvider*`. PIN and clear go through the provider; registrati
 
 ## Migration Plan
 
-1. Move registration fields onto `Player`; decoder targets `Player`.
+1. Move registration fields onto `Player`; codec targets `Player`.
 2. Repurpose `PlayerProvider` to own `Player`.
 3. Wire `main` with a single provider instance.

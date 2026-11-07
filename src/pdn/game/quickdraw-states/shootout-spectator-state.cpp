@@ -6,7 +6,7 @@
 
 ShootoutSpectator::ShootoutSpectator(const GameContext& ctx)
     : TypedState<PDN>(SHOOTOUT_SPECTATOR)
-    , shootout_(ctx.shootoutManager) {}
+    , shootout(ctx.shootoutManager) {}
 
 static void drawSpectatorScreen(PDN* pdn, ShootoutManager* shootout,
                                 const std::pair<std::array<uint8_t,6>, std::array<uint8_t,6>>& pair) {
@@ -25,21 +25,23 @@ void ShootoutSpectator::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
     pdn->getLightManager()->stopAnimation();
-    auto pair = shootout_->getCurrentMatchPair();
+    std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> pair =
+    shootout->getCurrentMatchPair();
     lastDisplayedA_ = pair.first;
     lastDisplayedB_ = pair.second;
-    drawSpectatorScreen(pdn, shootout_, pair);
+    drawSpectatorScreen(pdn, shootout, pair);
 }
 
 void ShootoutSpectator::onStateLoop(PDN* pdn) {
-    auto p = shootout_->getPhase();
-    if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS && shootout_->isLocalDuelist()) {
-        shouldGoToDuelCountdown_ = true;
+    ShootoutManager::Phase p = shootout->getPhase();
+    if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS && shootout->isInCurrentMatch()) {
+        shouldGoToMatchCountdown = true;
     }
     if (p == ShootoutManager::Phase::ENDED) shouldGoToFinalStandings_ = true;
 
-    auto pair = shootout_->getCurrentMatchPair();
-    // A teardown zeroes the pair, and an all-zero MAC names no duelist. Without
+    std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> pair =
+    shootout->getCurrentMatchPair();
+    // A teardown zeroes the pair, and an all-zero MAC names no player. Without
     // this the change test fires on the way out and repaints WATCHING over two
     // blank names, for the one tick before the abort edge lifts the state.
     const std::array<uint8_t, 6> noMatch{};
@@ -48,14 +50,14 @@ void ShootoutSpectator::onStateLoop(PDN* pdn) {
         memcmp(pair.second.data(), lastDisplayedB_.data(), 6) != 0) {
         lastDisplayedA_ = pair.first;
         lastDisplayedB_ = pair.second;
-        drawSpectatorScreen(pdn, shootout_, pair);
+        drawSpectatorScreen(pdn, shootout, pair);
     }
 }
 
 void ShootoutSpectator::onStateDismounted(PDN* pdn) {
-    shouldGoToDuelCountdown_ = false;
+    shouldGoToMatchCountdown = false;
     shouldGoToFinalStandings_ = false;
 }
 
-bool ShootoutSpectator::transitionToDuelCountdown() { return shouldGoToDuelCountdown_; }
+bool ShootoutSpectator::transitionToMatchCountdown() const { return shouldGoToMatchCountdown; }
 bool ShootoutSpectator::transitionToFinalStandings() { return shouldGoToFinalStandings_; }

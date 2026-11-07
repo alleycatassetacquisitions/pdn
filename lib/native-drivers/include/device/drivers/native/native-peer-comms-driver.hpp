@@ -73,32 +73,34 @@ public:
         }
     }
 
-    void connect() override {
-        // In native simulation, connect is instant
-        peerCommsState_ = PeerCommsState::CONNECTED;
+    /** Brings up the simulated peer-to-peer radio. */
+    void enable() override {
+        // In native simulation, enable is instant
+        peerCommsState = PeerCommsState::ENABLED;
     }
 
-    void disconnect() override {
-        peerCommsState_ = PeerCommsState::DISCONNECTED;
-    }
+    /** Tears down the simulated peer-to-peer radio. */
+    void disable() override { peerCommsState = PeerCommsState::DISABLED; }
 
-    PeerCommsState getPeerCommsState() override {
-        return peerCommsState_;
-    }
+    /** Current simulated radio state. */
+    PeerCommsState getPeerCommsState() override { return peerCommsState; }
 
+    /** Transitions the simulated radio between enabled and disabled states. */
     void setPeerCommsState(PeerCommsState state) override {
-        if (state == PeerCommsState::CONNECTED && peerCommsState_ != PeerCommsState::CONNECTED) {
-            connect();
-        } else if (state == PeerCommsState::DISCONNECTED && peerCommsState_ != PeerCommsState::DISCONNECTED) {
-            disconnect();
+        if (state == PeerCommsState::ENABLED && peerCommsState != PeerCommsState::ENABLED) {
+            enable();
+        } else if (state == PeerCommsState::DISABLED &&
+                   peerCommsState != PeerCommsState::DISABLED) {
+            disable();
         }
     }
 
+    /** Sends a packet over the simulated peer broker when enabled. */
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
-        if (peerCommsState_ != PeerCommsState::CONNECTED) {
-            return -1;  // Cannot send when disconnected
+        if (peerCommsState != PeerCommsState::ENABLED) {
+            return -1;  // Cannot send when disabled
         }
-        
+
         // Track sent packet
         PacketHistoryEntry entry;
         entry.isSent = true;
@@ -158,7 +160,7 @@ public:
      */
     void receivePacket(const uint8_t* srcMac, PktType packetType, 
                        const uint8_t* data, size_t length) {
-        if (peerCommsState_ != PeerCommsState::CONNECTED) {
+        if (peerCommsState != PeerCommsState::ENABLED) {
             return;
         }
 
@@ -181,12 +183,12 @@ public:
                  macAddress_[3], macAddress_[4], macAddress_[5]);
         return std::string(buf);
     }
-    
+
     /**
-     * Get connection state as string for display.
+     * Get radio state as string for display.
      */
     std::string getStateString() const {
-        return peerCommsState_ == PeerCommsState::CONNECTED ? "CONNECTED" : "DISCONNECTED";
+        return peerCommsState == PeerCommsState::ENABLED ? "ENABLED" : "DISABLED";
     }
     
     /**
@@ -226,7 +228,7 @@ private:
     std::mutex recvMutex_;
     std::queue<DeferredPacket> recvQueue_;
     uint8_t macAddress_[6];
-    PeerCommsState peerCommsState_ = PeerCommsState::DISCONNECTED;
+    PeerCommsState peerCommsState = PeerCommsState::DISABLED;
     std::deque<PacketHistoryEntry> packetHistory_;
     static const size_t MAX_HISTORY = 5;
     

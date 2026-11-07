@@ -61,7 +61,7 @@ public:
                             const char* hunterId = "hunt") {
         player->setIsHunter(false);
         static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-        DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, matchId, hunterId, 0, true);
+        MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, matchId, hunterId, 0, true);
         matchManager->listenForMatchEvents(cmd);
     }
 
@@ -85,7 +85,7 @@ inline void matchManagerInitializeStoresGeneratedMatchId(MatchManagerTestSuite* 
 }
 
 // ============================================
-// Boost (chain duel support)
+// Boost (posse support)
 // ============================================
 
 inline void matchManagerSetBoostStoresValue(MatchManager* mm, Player* player) {
@@ -107,10 +107,10 @@ inline void matchManagerBoostSubtractedFromHunterReactionTime(MatchManagerTestSu
 
     suite->matchManager->setBoostProvider([]() -> unsigned long { return 50; });
     suite->fakeClock->setTime(10000);
-    suite->matchManager->setDuelLocalStartTime(10000);
+    suite->matchManager->setMatchLocalStartTime(10000);
     suite->fakeClock->setTime(10200);  // 200ms reaction
 
-    auto callback = suite->matchManager->getDuelButtonPush();
+    parameterizedCallbackFunction callback = suite->matchManager->getMatchButtonPush();
     callback(suite->matchManager);
 
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 150u);
@@ -147,7 +147,7 @@ inline void matchManagerInitializePreventsDoubleActive(MatchManager* mm, Player*
 inline void matchManagerBountyReceivesMatchViaHandshake(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "received-match", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "received-match", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
 
     ASSERT_TRUE(mm->getCurrentMatch().has_value());
@@ -183,7 +183,7 @@ inline void matchManagerHunterLosesWhenSlower(MatchManager* mm, Player* player) 
 inline void matchManagerBountyWinsWhenFaster(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "duel-3", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-3", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
     mm->setHunterDrawTime(400);
     mm->setBountyDrawTime(250);
@@ -194,7 +194,7 @@ inline void matchManagerBountyWinsWhenFaster(MatchManager* mm, Player* player) {
 inline void matchManagerBountyLosesWhenSlower(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "duel-4", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-4", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
     mm->setHunterDrawTime(150);
     mm->setBountyDrawTime(300);
@@ -215,7 +215,7 @@ inline void matchManagerHunterWinsWhenBountyNeverPressed(MatchManager* mm, Playe
 inline void matchManagerBountyWinsWhenHunterNeverPressed(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "duel-6", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-6", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
     mm->setBountyDrawTime(300);
     mm->setOpponentNeverPressed();
@@ -227,7 +227,7 @@ inline void matchManagerBountyWinsWhenHunterNeverPressed(MatchManager* mm, Playe
 // Match State Tests
 // ============================================
 
-inline void matchManagerTracksDuelState(MatchManager* mm, Player* player) {
+inline void matchManagerTracksMatchState(MatchManager* mm, Player* player) {
     player->setIsHunter(true);
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     mm->initializeMatch(dummyMac);
@@ -250,7 +250,7 @@ inline void matchManagerTracksDuelState(MatchManager* mm, Player* player) {
 // left alone, so the two disagree routinely.
 // ==========================================================================
 
-// The production sequence across a match boundary: the finished match's Duel
+// The production sequence across a match boundary: the finished match's MatchState
 // dismounts and clears, then the next match is announced. Both halves have to
 // land — a slot without a match cannot record a draw time, and the device times
 // out into a forfeit whose direction that same slot decides.
@@ -266,7 +266,7 @@ inline void eachMatchIsPrimedWithItsOwnDrawSlot(MatchManagerTestSuite* suite) {
         "SHT-00000000000000000000000000000001", nextOpponent, true);
 
     EXPECT_TRUE(suite->matchManager->isLocalHunter())
-        << "the new match's draw slot was dropped; the next duel resolves on the old one";
+    << "the new match's draw slot was dropped; the next match resolves on the old one";
     EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
         << "the next match was never primed, so a button press in it is discarded";
 }
@@ -284,17 +284,16 @@ inline void matchManagerShootoutDrawSlotDecidesTheWinner(MatchManager* mm, Playe
     mm->setReceivedButtonPush();
     mm->setReceivedDrawResult();
 
-    EXPECT_FALSE(mm->didWin())
-        << "the standing role, not the match's draw slot, decided the duel";
+    EXPECT_FALSE(mm->didWin()) << "the standing role, not the match's draw slot, decided the match";
 }
 
 // ============================================
-// Spoof rejection — packet-source authentication on duel commands
+// Spoof rejection — packet-source authentication on match commands
 // ============================================
 //
 // Commands that mutate an active match must only be accepted from the
 // match's established opponent (right MAC + right matchId). A neighbor
-// device forging results for someone else's duel must be ignored.
+// device forging results for someone else's match must be ignored.
 
 // NEVER_PRESSED forged by a non-opponent MAC must not set opponentNeverPressed
 // (which would otherwise force didWin() to true).
@@ -308,7 +307,7 @@ inline void matchManagerRejectsNeverPressedFromStranger(MatchManager* mm, Player
     mm->setReceivedButtonPush();
 
     uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-    DuelCommand forged(strangerMac, DuelCmd::NEVER_PRESSED, realMatchId, "xxxx", 0, false);
+    MatchCommand forged(strangerMac, MatchCmd::NEVER_PRESSED, realMatchId, "xxxx", 0, false);
     mm->listenForMatchEvents(forged);
 
     EXPECT_FALSE(mm->didWin());
@@ -322,7 +321,8 @@ inline void matchManagerRejectsWrongMatchId(MatchManager* mm, Player* player) {
     uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     mm->initializeMatch(opponentMac);
 
-    DuelCommand stale(opponentMac, DuelCmd::DRAW_RESULT, "wrong-match-id-xxxxxxxxxxxxxxxxxxxx", "opp_", 222, false);
+    MatchCommand stale(opponentMac, MatchCmd::DRAW_RESULT, "wrong-match-id-xxxxxxxxxxxxxxxxxxxx",
+                       "opp_", 222, false);
     mm->listenForMatchEvents(stale);
 
     EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 0u);
@@ -335,7 +335,8 @@ inline void matchManagerRejectsWrongMatchId(MatchManager* mm, Player* player) {
 inline void matchManagerSendMatchIdRejectsUnknownPeer(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-    DuelCommand cmd(strangerMac, DuelCmd::SEND_MATCH_ID, "match-id-000000000000000000000000000", "xxxx", 0, true);
+    MatchCommand cmd(strangerMac, MatchCmd::SEND_MATCH_ID, "match-id-000000000000000000000000000",
+                     "xxxx", 0, true);
     mm->listenForMatchEvents(cmd);
 
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
@@ -348,7 +349,7 @@ inline void matchManagerAcceptsResultFromOpponent(MatchManager* mm, Player* play
     mm->initializeMatch(opponentMac);
     const char* realMatchId = mm->getCurrentMatch()->getMatchId();
 
-    DuelCommand legit(opponentMac, DuelCmd::DRAW_RESULT, realMatchId, "opp_", 150, false);
+    MatchCommand legit(opponentMac, MatchCmd::DRAW_RESULT, realMatchId, "opp_", 150, false);
     mm->listenForMatchEvents(legit);
 
     EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 150u);
@@ -392,7 +393,7 @@ inline void matchManagerClearMatchResetsState(MatchManager* mm, Player* player) 
     mm->initializeMatch(dummyMac);
     mm->setReceivedButtonPush();
     mm->setReceivedDrawResult();
-    mm->setDuelLocalStartTime(1000);
+    mm->setMatchLocalStartTime(1000);
 
     mm->clearCurrentMatch();
 
@@ -419,14 +420,14 @@ inline void matchManagerSetDrawTimesRequiresActiveMatch(MatchManager* mm, Player
     EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 200);
 }
 
-inline void matchManagerDuelStartTimeTracking(MatchManager* mm, Player* player) {
+inline void matchManagerMatchStartTimeTracking(MatchManager* mm, Player* player) {
     player->setIsHunter(true);
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     mm->initializeMatch(dummyMac);
 
-    EXPECT_EQ(mm->getDuelLocalStartTime(), 0);
-    mm->setDuelLocalStartTime(5000);
-    EXPECT_EQ(mm->getDuelLocalStartTime(), 5000);
+    EXPECT_EQ(mm->getMatchLocalStartTime(), 0);
+    mm->setMatchLocalStartTime(5000);
+    EXPECT_EQ(mm->getMatchLocalStartTime(), 5000);
 }
 
 // ============================================
@@ -473,7 +474,7 @@ inline void matchManagerHunterMatchIsReadyAfterAck(MatchManager* mm, Player* pla
     mm->initializeMatch(dummyMac);
 
     const char* matchId = mm->getCurrentMatch()->getMatchId();
-    DuelCommand ack(dummyMac, DuelCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
+    MatchCommand ack(dummyMac, MatchCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
     mm->listenForMatchEvents(ack);
 
     EXPECT_TRUE(mm->isMatchReady());
@@ -483,17 +484,17 @@ inline void matchManagerHunterMatchIsReadyAfterAck(MatchManager* mm, Player* pla
 inline void matchManagerBountyMatchIsReadyAfterReceivingMatch(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
 
     EXPECT_TRUE(mm->isMatchReady());
 }
 
-// clearCurrentMatch resets the matchIsReady flag along with all other duel state.
+// clearCurrentMatch resets the matchIsReady flag along with all other match state.
 inline void matchManagerClearMatchResetsMatchIsReadyFlag(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    DuelCommand cmd(dummyMac, DuelCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
     ASSERT_TRUE(mm->isMatchReady());
 
@@ -512,7 +513,7 @@ inline void matchManagerRoleMismatchClearsInitiatorMatch(MatchManager* mm, Playe
     ASSERT_FALSE(mm->isMatchReady());
 
     const char* matchId = mm->getCurrentMatch()->getMatchId();
-    DuelCommand mismatch(dummyMac, DuelCmd::MATCH_ROLE_MISMATCH, matchId, "hunt2", 0, true);
+    MatchCommand mismatch(dummyMac, MatchCmd::MATCH_ROLE_MISMATCH, matchId, "hunt2", 0, true);
     mm->listenForMatchEvents(mismatch);
 
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
@@ -522,16 +523,16 @@ inline void matchManagerRoleMismatchClearsInitiatorMatch(MatchManager* mm, Playe
 TEST_F(MatchManagerTestSuite, abandoningAHandshakeCancelsItsPendingRetries) {
     using ::testing::_;
     std::vector<int> sentCommands;
-    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kDuelCommand, _, _))
-        .WillByDefault(::testing::Invoke(
-            [&sentCommands](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
-                if (len == sizeof(DuelPacket)) {
-                    DuelPacket packet{};
-                    memcpy(&packet, data, sizeof(packet));
-                    sentCommands.push_back(packet.command);
-                }
-                return 1;
-            }));
+    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kMatchCommand, _, _))
+    .WillByDefault(::testing::Invoke(
+    [&sentCommands](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+        if (len == sizeof(MatchPacket)) {
+            MatchPacket packet{};
+            memcpy(&packet, data, sizeof(packet));
+            sentCommands.push_back(packet.command);
+        }
+        return 1;
+    }));
 
     uint8_t opponent[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     matchManager->initializeMatch(opponent);
@@ -553,24 +554,24 @@ TEST_F(MatchManagerTestSuite, abandoningAHandshakeCancelsItsPendingRetries) {
 TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
     using ::testing::_;
     std::vector<int> sentCommands;
-    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kDuelCommand, _, _))
-        .WillByDefault(::testing::Invoke(
-            [&sentCommands](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
-                if (len == sizeof(DuelPacket)) {
-                    DuelPacket packet{};
-                    memcpy(&packet, data, sizeof(packet));
-                    sentCommands.push_back(packet.command);
-                }
-                return 1;
-            }));
+    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kMatchCommand, _, _))
+    .WillByDefault(::testing::Invoke(
+    [&sentCommands](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+        if (len == sizeof(MatchPacket)) {
+            MatchPacket packet{};
+            memcpy(&packet, data, sizeof(packet));
+            sentCommands.push_back(packet.command);
+        }
+        return 1;
+    }));
 
     uint8_t opponent[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     matchManager->initializeMatch(opponent);
     ASSERT_FALSE(sentCommands.empty());
 
-    matchManager->setDuelLocalStartTime(fakeClock->milliseconds());
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
     fakeClock->advance(150);
-    matchManager->getDuelButtonPush()(matchManager);
+    matchManager->getMatchButtonPush()(matchManager);
     const size_t afterResult = sentCommands.size();
     ASSERT_GT(afterResult, 0u) << "the button push sent nothing";
 
@@ -580,7 +581,7 @@ TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
 
     bool resultRetried = false;
     for (size_t i = afterResult; i < sentCommands.size(); ++i) {
-        if (sentCommands[i] == DuelCmd::DRAW_RESULT) resultRetried = true;
+        if (sentCommands[i] == MatchCmd::DRAW_RESULT) resultRetried = true;
     }
     EXPECT_TRUE(resultRetried)
         << "clearing a finished match stripped the retransmits of its DRAW_RESULT";

@@ -35,7 +35,7 @@ public:
     uint8_t buf[CrashCodec::MAX_ENCODED_SIZE]{};
 };
 
-inline void encoderRoundTripPopulatesAllFields(CrashCodecTestSuite* suite) {
+inline void crashCodecRoundTripPopulatesAllFields(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
 
     size_t len = CrashCodec::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
@@ -58,7 +58,7 @@ inline void encoderRoundTripPopulatesAllFields(CrashCodecTestSuite* suite) {
     EXPECT_TRUE(msg.has_task_name);
 }
 
-inline void encoderOmitsUnsetOptionalFields(CrashCodecTestSuite* suite) {
+inline void crashCodecOmitsUnsetOptionalFields(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
     rec.coreDumpDetails.reset();
 
@@ -73,7 +73,7 @@ inline void encoderOmitsUnsetOptionalFields(CrashCodecTestSuite* suite) {
     EXPECT_FALSE(msg.has_task_name);
 }
 
-inline void encoderReturnZeroWhenBufferTooSmall(CrashCodecTestSuite* suite) {
+inline void crashCodecReturnZeroWhenBufferTooSmall(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
     uint8_t tinyBuf[4]{};
 
@@ -82,7 +82,7 @@ inline void encoderReturnZeroWhenBufferTooSmall(CrashCodecTestSuite* suite) {
     EXPECT_EQ(len, 0u);
 }
 
-inline void encoderKeepsExceptionCauseZero(CrashCodecTestSuite* suite) {
+inline void crashCodecKeepsExceptionCauseZero(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
     rec.coreDumpDetails->exceptionCause = 0;  // IllegalInstruction
 
@@ -96,7 +96,7 @@ inline void encoderKeepsExceptionCauseZero(CrashCodecTestSuite* suite) {
     EXPECT_TRUE(msg.has_task_name);
 }
 
-inline void encoderOmitsMissingExceptionCause(CrashCodecTestSuite* suite) {
+inline void crashCodecOmitsMissingExceptionCause(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
     rec.coreDumpDetails->exceptionCause.reset();
 

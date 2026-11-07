@@ -14,7 +14,7 @@
 #include "utils/simple-timer.hpp"
 #include "id-generator.hpp"
 
-// CLI modules
+// CLI components
 #include "cli/cli-terminal.hpp"
 #include "cli/cli-device.hpp"
 #include "cli/cli-renderer.hpp"

@@ -192,7 +192,7 @@ private:
     static std::string getPacketTypeName(PktType type) {
         switch (type) {
             case PktType::kPlayerInfoBroadcast: return "INFO";
-            case PktType::kDuelCommand: return "CMD";
+            case PktType::kMatchCommand: return "CMD";
             case PktType::kDebugPacket: return "DBG";
             default: return "?" + std::to_string(static_cast<int>(type));
         }

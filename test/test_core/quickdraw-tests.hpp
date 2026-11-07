@@ -37,7 +37,7 @@ inline void wireFixtureRdcForMatchManager(MockDevice& device, MatchManager* mm) 
 
 static const uint8_t kTestMacBytes[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
-// Stands a ShootoutManager up to MATCH_IN_PROGRESS with this device as a duelist
+// Stands a ShootoutManager up to MATCH_IN_PROGRESS with this device in the match
 // against the coordinator, and lets it prime `matchManager` the way MATCH_START
 // does on hardware. `selfMac` sorts above the coordinator's, which puts the local
 // side in the BOUNTY draw slot — the opposite of the fixtures' standing hunter
@@ -128,7 +128,7 @@ inline void idleMountRegistersButtonCallbacks(IdleStateTests* suite) {
     suite->idleState->onStateMounted(&suite->device);
 
     // With FakeRemoteDeviceCoordinator always returning DISCONNECTED, should not transition
-    EXPECT_FALSE(suite->idleState->transitionToDuelCountdown());
+    EXPECT_FALSE(suite->idleState->transitionToMatchCountdown());
 }
 
 // Test: Idle state does not transition without a connection
@@ -139,10 +139,10 @@ inline void idleDoesNotTransitionWhenDisconnected(IdleStateTests* suite) {
     suite->idleState->onStateMounted(&suite->device);
 
     suite->idleState->onStateLoop(&suite->device);
-    EXPECT_FALSE(suite->idleState->transitionToDuelCountdown());
+    EXPECT_FALSE(suite->idleState->transitionToMatchCountdown());
 
     suite->idleState->onStateLoop(&suite->device);
-    EXPECT_FALSE(suite->idleState->transitionToDuelCountdown());
+    EXPECT_FALSE(suite->idleState->transitionToMatchCountdown());
 }
 
 // Test: State cleanup on dismount
@@ -267,7 +267,7 @@ inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {
     seedScreen.onStateDismounted(&suite->device);
 }
 
-// Test: transitionToDuelCountdown stays false while match exists but ACK not yet received
+// Test: transitionToMatchCountdown stays false while match exists but ACK not yet received
 inline void idleDoesNotTransitionWithMatchButNotReady(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -278,11 +278,11 @@ inline void idleDoesNotTransitionWithMatchButNotReady(IdleStateTests* suite) {
     suite->matchManager->initializeMatch(dummyMac);
 
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
-    EXPECT_FALSE(suite->idleState->transitionToDuelCountdown());
+    EXPECT_FALSE(suite->idleState->transitionToMatchCountdown());
 }
 
-// Test: transitionToDuelCountdown returns true once matchIsReady is set via the full handshake
-inline void idleTransitionsToDuelCountdownWhenMatchIsReady(IdleStateTests* suite) {
+// Test: transitionToMatchCountdown returns true once matchIsReady is set via the full handshake
+inline void idleTransitionsToMatchCountdownWhenMatchIsReady(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     suite->idleState->onStateMounted(&suite->device);
@@ -291,10 +291,10 @@ inline void idleTransitionsToDuelCountdownWhenMatchIsReady(IdleStateTests* suite
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     const char* matchId = suite->matchManager->getCurrentMatch()->getMatchId();
-    DuelCommand ack(dummyMac, DuelCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
+    MatchCommand ack(dummyMac, MatchCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
     suite->matchManager->listenForMatchEvents(ack);
 
-    EXPECT_TRUE(suite->idleState->transitionToDuelCountdown());
+    EXPECT_TRUE(suite->idleState->transitionToMatchCountdown());
 }
 
 inline void idleDismountClearsUnreadyMatch(IdleStateTests* suite) {
@@ -317,7 +317,7 @@ inline void idleDismountClearsUnreadyMatch(IdleStateTests* suite) {
 // Countdown State Tests
 // ============================================
 
-class DuelCountdownTests : public testing::Test {
+class MatchCountdownTests : public testing::Test {
 public:
     void SetUp() override {
         fakeClock = new FakePlatformClock();
@@ -339,7 +339,7 @@ public:
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
         ctx.posseManager = posseManager;
-        countdownState = new DuelCountdown(ctx);
+        countdownState = new MatchCountdown(ctx);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -364,13 +364,13 @@ public:
     Player* player;
     MatchManager* matchManager;
     PosseManager* posseManager;
-    DuelCountdown* countdownState;
+    MatchCountdown* countdownState;
     GameContext ctx;
     FakePlatformClock* fakeClock;
 };
 
 // Test: Button masher penalty increments on button press
-inline void countdownButtonMasherPenaltyIncrementsOnButtonPress(DuelCountdownTests* suite) {
+inline void countdownButtonMasherPenaltyIncrementsOnButtonPress(MatchCountdownTests* suite) {
     // Capture the button callback when it's set
     parameterizedCallbackFunction capturedCallback = nullptr;
     void* capturedCtx = nullptr;
@@ -388,15 +388,15 @@ inline void countdownButtonMasherPenaltyIncrementsOnButtonPress(DuelCountdownTes
     // Invoke the button callback (simulating early button press)
     ASSERT_NE(capturedCallback, nullptr);
     capturedCallback(capturedCtx);
-    
+
     // The button masher count should be tracked in the match manager
-    // We can verify this by checking that a subsequent duel button press has penalty applied
+    // We can verify this by checking that a subsequent match button press has penalty applied
     // For now, we verify the callback was invokable
     SUCCEED();
 }
 
-// Test: Multiple early presses accumulate penalty  
-inline void countdownMultipleEarlyPressesAccumulatePenalty(DuelCountdownTests* suite) {
+// Test: Multiple early presses accumulate penalty
+inline void countdownMultipleEarlyPressesAccumulatePenalty(MatchCountdownTests* suite) {
     parameterizedCallbackFunction capturedCallback = nullptr;
     void* capturedCtx = nullptr;
     
@@ -416,14 +416,14 @@ inline void countdownMultipleEarlyPressesAccumulatePenalty(DuelCountdownTests* s
     capturedCallback(capturedCtx);
     capturedCallback(capturedCtx);
     capturedCallback(capturedCtx);
-    
+
     // The penalty should now be 3 * 75ms = 225ms
-    // This will be verified when the duel button is pressed
+    // This will be verified when the match button is pressed
     SUCCEED();
 }
 
 // Test: Countdown progresses through stages
-inline void countdownProgressesThroughStages(DuelCountdownTests* suite) {
+inline void countdownProgressesThroughStages(MatchCountdownTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
@@ -452,7 +452,7 @@ inline void countdownProgressesThroughStages(DuelCountdownTests* suite) {
 }
 
 // Test: Battle transition sets flag
-inline void countdownBattleTransitionSetsFlag(DuelCountdownTests* suite) {
+inline void countdownBattleTransitionSetsFlag(MatchCountdownTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
@@ -481,7 +481,7 @@ inline void countdownBattleTransitionSetsFlag(DuelCountdownTests* suite) {
 }
 
 // Test: Countdown cleanup on dismount
-inline void countdownCleansUpOnDismount(DuelCountdownTests* suite) {
+inline void countdownCleansUpOnDismount(MatchCountdownTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
@@ -509,10 +509,10 @@ inline void countdownCleansUpOnDismount(DuelCountdownTests* suite) {
 }
 
 // ============================================
-// Duel State Tests
+// Match State Tests
 // ============================================
 
-class DuelStateTests : public testing::Test {
+class MatchStateTests : public testing::Test {
 public:
     void SetUp() override {
         fakeClock = new FakePlatformClock();
@@ -566,10 +566,10 @@ public:
     FakePlatformClock* fakeClock;
 };
 
-// The shootout duel timeout forfeits the match's HUNTER. Which side that is comes
+// The shootout match timeout forfeits the match's HUNTER. Which side that is comes
 // from the match's draw slot, not the standing role: the two disagree for the whole
 // match, and reading the standing role here sends the wrong device to reportLocalWin.
-inline void duelShootoutTimeoutForfeitsTheMatchHunter(DuelStateTests* suite) {
+inline void matchShootoutTimeoutForfeitsTheMatchHunter(MatchStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
         .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
@@ -586,14 +586,14 @@ inline void duelShootoutTimeoutForfeitsTheMatchHunter(DuelStateTests* suite) {
     ASSERT_TRUE(suite->player->isHunter()) << "the standing role should be the opposite";
     ASSERT_FALSE(suite->matchManager->isLocalHunter());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
-    suite->fakeClock->advance(5000);  // past Duel::DUEL_TIMEOUT
-    duelState.onStateLoop(&suite->device);
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
+    suite->fakeClock->advance(5000);  // past MatchState::MATCH_TIMEOUT
+    matchState.onStateLoop(&suite->device);
 
-    EXPECT_TRUE(duelState.transitionToShootoutSpectator())
-        << "the match's bounty did not take the forfeit win";
-    EXPECT_FALSE(duelState.transitionToShootoutEliminated());
+    EXPECT_TRUE(matchState.transitionToShootoutSpectator())
+    << "the match's bounty did not take the forfeit win";
+    EXPECT_FALSE(matchState.transitionToShootoutEliminated());
     EXPECT_TRUE(shootout.isEliminated(opponent.data()));
 
     suite->ctx.shootoutManager = nullptr;
@@ -603,53 +603,53 @@ inline void duelShootoutTimeoutForfeitsTheMatchHunter(DuelStateTests* suite) {
 // Scenario 1: DUT presses button first, then receives result
 // ============================================
 
-// Test: Button press transitions to DuelPushed
-inline void duelButtonPressTransitionsToDuelPushed(DuelStateTests* suite) {
+// Test: Button press transitions to MatchPushed
+inline void matchButtonPressTransitionsToMatchPushed(MatchStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
-    
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
+
     // Initially should not transition
-    EXPECT_FALSE(duelState.transitionToDuelPushed());
-    
+    EXPECT_FALSE(matchState.transitionToMatchPushed());
+
     // Simulate button press via match manager callback
     suite->fakeClock->advance(200); // 200ms reaction time
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    
-    duelState.onStateLoop(&suite->device);
-    
-    EXPECT_TRUE(duelState.transitionToDuelPushed());
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
+
+    matchState.onStateLoop(&suite->device);
+
+    EXPECT_TRUE(matchState.transitionToMatchPushed());
 }
 
 // Test: Button press calculates reaction time correctly
-inline void duelButtonPressCalculatesReactionTime(DuelStateTests* suite) {
+inline void matchButtonPressCalculatesReactionTime(MatchStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
-    
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
+
     // Advance 250ms (simulating reaction time)
     suite->fakeClock->advance(250);
     
     // Trigger button press
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
+
     // Check that hunter draw time was set
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 250);
 }
 
 // Test: Button press applies button masher penalty
-inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
+inline void matchButtonPressAppliesMasherPenalty(MatchStateTests* suite) {
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
     // First, simulate button mashing during countdown
-    DuelCountdown countdownState(suite->ctx);
+    MatchCountdown countdownState(suite->ctx);
 
     parameterizedCallbackFunction masherCallback = nullptr;
     void* masherCtx = nullptr;
@@ -665,7 +665,7 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     masherCallback(masherCtx);
 
     // Cycle through THREE → TWO → ONE → BATTLE (3 × 2001ms) so the battle edge
-    // holds and the match survives the dismount into the duel.
+    // holds and the match survives the dismount into the match.
     // SimpleTimer::expired() uses strict '<', so we need elapsed > duration (2000ms).
     for (int i = 0; i < 3; i++) {
         suite->fakeClock->advance(2001);
@@ -676,68 +676,68 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
     countdownState.onStateDismounted(&suite->device);
 
-    Duel duelState(suite->ctx);
+    MatchState matchState(suite->ctx);
 
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
-    duelState.onStateMounted(&suite->device);
-    
+    matchState.onStateMounted(&suite->device);
+
     // Advance 200ms
     suite->fakeClock->advance(200);
     
     // Trigger button press
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
+
     // Reaction time should be 200ms + (2 * 75ms penalty) = 350ms
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 350);
 }
 
-inline void duelLaterCommandSupersedesEarlierRetries(DuelStateTests* suite) {
+inline void matchLaterCommandSupersedesEarlierRetries(MatchStateTests* suite) {
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
     auto countOf = [suite](int command) {
         size_t n = 0;
-        for (const DuelPacket& p : suite->wirelessManager->sentFrames) {
+        for (const MatchPacket& p : suite->wirelessManager->sentFrames) {
             if (p.command == command) n++;
         }
         return n;
     };
 
-    ASSERT_EQ(countOf(DuelCmd::SEND_MATCH_ID), 1u);
+    ASSERT_EQ(countOf(MatchCmd::SEND_MATCH_ID), 1u);
 
     suite->fakeClock->advance(200);
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    ASSERT_EQ(countOf(DuelCmd::DRAW_RESULT), 1u);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
+    ASSERT_EQ(countOf(MatchCmd::DRAW_RESULT), 1u);
 
     for (int i = 0; i < 4; i++) {
         suite->fakeClock->advance(150);
         suite->matchManager->sync();
     }
-    EXPECT_EQ(countOf(DuelCmd::SEND_MATCH_ID), 1u);
-    EXPECT_GT(countOf(DuelCmd::DRAW_RESULT), 1u);
+    EXPECT_EQ(countOf(MatchCmd::SEND_MATCH_ID), 1u);
+    EXPECT_GT(countOf(MatchCmd::DRAW_RESULT), 1u);
 }
 
-inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
+inline void matchButtonPressBroadcastsDrawResult(MatchStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
     size_t sentBefore = suite->wirelessManager->sentFrames.size();
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
 
     suite->fakeClock->advance(200);
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
 
     ASSERT_GT(suite->wirelessManager->sentFrames.size(), sentBefore);
-    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, DuelCmd::DRAW_RESULT);
+    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, MatchCmd::DRAW_RESULT);
 }
 
-// Test: DuelPushed waits for opponent result (grace period)
-inline void duelPushedWaitsForOpponentResult(DuelStateTests* suite) {
-    DuelPushed pushedState(suite->ctx);
+// Test: MatchPushed waits for opponent result (grace period)
+inline void matchPushedWaitsForOpponentResult(MatchStateTests* suite) {
+    MatchPushed pushedState(suite->ctx);
 
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setHunterDrawTime(200);
@@ -745,18 +745,18 @@ inline void duelPushedWaitsForOpponentResult(DuelStateTests* suite) {
     pushedState.onStateMounted(&suite->device);
     
     // Should not transition immediately
-    EXPECT_FALSE(pushedState.transitionToDuelResult());
-    
+    EXPECT_FALSE(pushedState.transitionToMatchResult());
+
     // Advance less than grace period (900ms)
     suite->fakeClock->advance(500);
     pushedState.onStateLoop(&suite->device);
-    
-    EXPECT_FALSE(pushedState.transitionToDuelResult());
+
+    EXPECT_FALSE(pushedState.transitionToMatchResult());
 }
 
-// Test: DuelPushed transitions when result received
-inline void duelPushedTransitionsOnResultReceived(DuelStateTests* suite) {
-    DuelPushed pushedState(suite->ctx);
+// Test: MatchPushed transitions when result received
+inline void matchPushedTransitionsOnResultReceived(MatchStateTests* suite) {
+    MatchPushed pushedState(suite->ctx);
 
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setHunterDrawTime(200);
@@ -769,42 +769,42 @@ inline void duelPushedTransitionsOnResultReceived(DuelStateTests* suite) {
     
     // Should now have all results
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
-    EXPECT_TRUE(pushedState.transitionToDuelResult());
+    EXPECT_TRUE(pushedState.transitionToMatchResult());
 }
 
 // ============================================
 // Scenario 2: DUT receives result first, then presses button
 // ============================================
 
-// Test: Received result transitions to DuelReceivedResult
-inline void duelReceivedResultTransitionsToDuelReceivedResult(DuelStateTests* suite) {
+// Test: Received result transitions to MatchReceivedResult
+inline void matchReceivedResultTransitionsToMatchReceivedResult(MatchStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
-    
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
+
     // Simulate receiving opponent's result before pressing button
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
-    
-    duelState.onStateLoop(&suite->device);
-    
-    EXPECT_TRUE(duelState.transitionToDuelReceivedResult());
+
+    matchState.onStateLoop(&suite->device);
+
+    EXPECT_TRUE(matchState.transitionToMatchReceivedResult());
 }
 
-// Test: DuelReceivedResult waits for button press
-inline void duelReceivedResultWaitsForButtonPress(DuelStateTests* suite) {
+// Test: MatchReceivedResult waits for button press
+inline void matchReceivedResultWaitsForButtonPress(MatchStateTests* suite) {
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
 
-    DuelReceivedResult receivedState(suite->ctx);
+    MatchReceivedResult receivedState(suite->ctx);
     receivedState.onStateMounted(&suite->device);
     
     // Should not transition immediately
-    EXPECT_FALSE(receivedState.transitionToDuelResult());
-    
+    EXPECT_FALSE(receivedState.transitionToMatchResult());
+
     // Advance less than grace period (750ms)
     suite->fakeClock->advance(400);
     receivedState.onStateLoop(&suite->device);
@@ -814,11 +814,11 @@ inline void duelReceivedResultWaitsForButtonPress(DuelStateTests* suite) {
 }
 
 // Test: Button press during grace period causes transition
-inline void duelButtonPressDuringGracePeriodTransitions(DuelStateTests* suite) {
+inline void matchButtonPressDuringGracePeriodTransitions(MatchStateTests* suite) {
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
 
-    DuelReceivedResult receivedState(suite->ctx);
+    MatchReceivedResult receivedState(suite->ctx);
     receivedState.onStateMounted(&suite->device);
     
     // Advance some time
@@ -831,53 +831,53 @@ inline void duelButtonPressDuringGracePeriodTransitions(DuelStateTests* suite) {
     receivedState.onStateLoop(&suite->device);
     
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
-    EXPECT_TRUE(receivedState.transitionToDuelResult());
+    EXPECT_TRUE(receivedState.transitionToMatchResult());
 }
 
 // ============================================
 // Scenario 3: Neither device presses (timeout)
 // ============================================
 
-// Test: Duel timeout transitions to idle
-inline void duelTimeoutTransitionsToIdle(DuelStateTests* suite) {
+// Test: Match timeout transitions to idle
+inline void matchTimeoutTransitionsToIdle(MatchStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->ctx);
-    duelState.onStateMounted(&suite->device);
-    
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
+
     // Initially should not timeout
-    EXPECT_FALSE(duelState.transitionToIdle());
-    
+    EXPECT_FALSE(matchState.transitionToIdle());
+
     // Advance past timeout (4000ms)
     suite->fakeClock->advance(4100);
-    duelState.onStateLoop(&suite->device);
-    
-    EXPECT_TRUE(duelState.transitionToIdle());
+    matchState.onStateLoop(&suite->device);
+
+    EXPECT_TRUE(matchState.transitionToIdle());
 }
 
 // ============================================
 // Scenario 4: DUT presses, opponent never responds
 // ============================================
 
-// Test: DuelPushed grace period expires and transitions
-inline void duelPushedGracePeriodExpiresTransitions(DuelStateTests* suite) {
+// Test: MatchPushed grace period expires and transitions
+inline void matchPushedGracePeriodExpiresTransitions(MatchStateTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setHunterDrawTime(200);
 
-    DuelPushed pushedState(suite->ctx);
+    MatchPushed pushedState(suite->ctx);
     pushedState.onStateMounted(&suite->device);
     
     // Advance past grace period (900ms)
     suite->fakeClock->advance(1000);
     pushedState.onStateLoop(&suite->device);
-    
-    EXPECT_TRUE(pushedState.transitionToDuelResult());
+
+    EXPECT_TRUE(pushedState.transitionToMatchResult());
 }
 
 // Test: Opponent timeout means win
-inline void duelOpponentTimeoutMeansWin(DuelStateTests* suite) {
+inline void matchOpponentTimeoutMeansWin(MatchStateTests* suite) {
     suite->player->setIsHunter(true);
 
     suite->matchManager->setReceivedButtonPush();
@@ -892,14 +892,14 @@ inline void duelOpponentTimeoutMeansWin(DuelStateTests* suite) {
 // ============================================
 
 // Test: Grace period expires sets never pressed
-inline void duelGracePeriodExpiresSetsNeverPressed(DuelStateTests* suite) {
+inline void matchGracePeriodExpiresSetsNeverPressed(MatchStateTests* suite) {
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
     
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
-    DuelReceivedResult receivedState(suite->ctx);
+    MatchReceivedResult receivedState(suite->ctx);
     receivedState.onStateMounted(&suite->device);
     
     // Advance past grace period (750ms)
@@ -907,18 +907,18 @@ inline void duelGracePeriodExpiresSetsNeverPressed(DuelStateTests* suite) {
     receivedState.onStateLoop(&suite->device);
     
     // Should have set pity time and transitioned
-    EXPECT_TRUE(receivedState.transitionToDuelResult());
+    EXPECT_TRUE(receivedState.transitionToMatchResult());
 }
 
 // Test: Grace period expiry sends pity time
-inline void duelGracePeriodExpiresSendsPityTime(DuelStateTests* suite) {
+inline void matchGracePeriodExpiresSendsPityTime(MatchStateTests* suite) {
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
     
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
-    DuelReceivedResult receivedState(suite->ctx);
+    MatchReceivedResult receivedState(suite->ctx);
     receivedState.onStateMounted(&suite->device);
     
     // Advance past grace period
@@ -931,7 +931,7 @@ inline void duelGracePeriodExpiresSendsPityTime(DuelStateTests* suite) {
 }
 
 // Test: Never pressed (pity time) means lose
-inline void duelNeverPressedMeansLose(DuelStateTests* suite) {
+inline void matchNeverPressedMeansLose(MatchStateTests* suite) {
     suite->player->setIsHunter(true);
     
     // Scenario: Hunter never pressed, bounty pressed quickly
@@ -945,10 +945,10 @@ inline void duelNeverPressedMeansLose(DuelStateTests* suite) {
 }
 
 // ============================================
-// Duel Result State Tests
+// Match Result State Tests
 // ============================================
 
-class DuelResultTests : public testing::Test {
+class MatchResultTests : public testing::Test {
 public:
     void SetUp() override {
         fakeClock = new FakePlatformClock();
@@ -993,7 +993,7 @@ public:
 };
 
 // Test: Hunter wins with faster time
-inline void resultHunterWinsWithFasterTime(DuelResultTests* suite) {
+inline void resultHunterWinsWithFasterTime(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
@@ -1006,12 +1006,13 @@ inline void resultHunterWinsWithFasterTime(DuelResultTests* suite) {
 }
 
 // Test: Bounty wins with faster time
-inline void resultBountyWinsWithFasterTime(DuelResultTests* suite) {
+inline void resultBountyWinsWithFasterTime(MatchResultTests* suite) {
     suite->player->setIsHunter(false);
     // Simulate hunter sending SEND_MATCH_ID; this bounty receives and creates the match.
     // Use the fixture's stubbed RDC peer MAC so the SEND_MATCH_ID gate accepts it.
     uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    DuelCommand sendMatchCmd(hunterMac, DuelCmd::SEND_MATCH_ID, "test-match-id-000000000000000", "5678", 0, true);
+    MatchCommand sendMatchCmd(hunterMac, MatchCmd::SEND_MATCH_ID, "test-match-id-000000000000000",
+                              "5678", 0, true);
     suite->matchManager->listenForMatchEvents(sendMatchCmd);
     suite->matchManager->setHunterDrawTime(250);
     suite->matchManager->setBountyDrawTime(150);
@@ -1022,7 +1023,7 @@ inline void resultBountyWinsWithFasterTime(DuelResultTests* suite) {
 }
 
 // Test: Tied times favor opponent (local player loses)
-inline void resultTiedTimesFavorOpponent(DuelResultTests* suite) {
+inline void resultTiedTimesFavorOpponent(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
@@ -1036,7 +1037,7 @@ inline void resultTiedTimesFavorOpponent(DuelResultTests* suite) {
 }
 
 // Test: Opponent timeout means auto win
-inline void resultOpponentTimeoutMeansAutoWin(DuelResultTests* suite) {
+inline void resultOpponentTimeoutMeansAutoWin(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
@@ -1048,7 +1049,7 @@ inline void resultOpponentTimeoutMeansAutoWin(DuelResultTests* suite) {
 }
 
 // Test: Win transitions to Win state
-inline void resultWinTransitionsToWinState(DuelResultTests* suite) {
+inline void resultWinTransitionsToWinState(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
@@ -1057,7 +1058,7 @@ inline void resultWinTransitionsToWinState(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
 
-    DuelResult resultState(suite->ctx);
+    MatchResult resultState(suite->ctx);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_TRUE(resultState.transitionToWin());
@@ -1065,7 +1066,7 @@ inline void resultWinTransitionsToWinState(DuelResultTests* suite) {
 }
 
 // Test: Lose transitions to Lose state
-inline void resultLoseTransitionsToLoseState(DuelResultTests* suite) {
+inline void resultLoseTransitionsToLoseState(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
@@ -1074,7 +1075,7 @@ inline void resultLoseTransitionsToLoseState(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
 
-    DuelResult resultState(suite->ctx);
+    MatchResult resultState(suite->ctx);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_FALSE(resultState.transitionToWin());
@@ -1082,7 +1083,7 @@ inline void resultLoseTransitionsToLoseState(DuelResultTests* suite) {
 }
 
 // Test: Player stats updated on win
-inline void resultPlayerStatsUpdatedOnWin(DuelResultTests* suite) {
+inline void resultPlayerStatsUpdatedOnWin(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
     
     int initialWins = suite->player->getWins();
@@ -1095,7 +1096,7 @@ inline void resultPlayerStatsUpdatedOnWin(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
 
-    DuelResult resultState(suite->ctx);
+    MatchResult resultState(suite->ctx);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_EQ(suite->player->getWins(), initialWins + 1);
@@ -1104,7 +1105,7 @@ inline void resultPlayerStatsUpdatedOnWin(DuelResultTests* suite) {
 }
 
 // Test: Player stats updated on loss
-inline void resultPlayerStatsUpdatedOnLoss(DuelResultTests* suite) {
+inline void resultPlayerStatsUpdatedOnLoss(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
     
     // Set up an initial streak
@@ -1121,7 +1122,7 @@ inline void resultPlayerStatsUpdatedOnLoss(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
 
-    DuelResult resultState(suite->ctx);
+    MatchResult resultState(suite->ctx);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_EQ(suite->player->getLosses(), initialLosses + 1);
@@ -1130,7 +1131,7 @@ inline void resultPlayerStatsUpdatedOnLoss(DuelResultTests* suite) {
 }
 
 // Test: Match finalized on result
-inline void resultMatchFinalizedOnResult(DuelResultTests* suite) {
+inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
     
     EXPECT_CALL(suite->storage, write(_, _, _))
@@ -1146,7 +1147,7 @@ inline void resultMatchFinalizedOnResult(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
 
-    DuelResult resultState(suite->ctx);
+    MatchResult resultState(suite->ctx);
     resultState.onStateMounted(&suite->device);
     
     // Match should be finalized (saved to storage)
@@ -1155,12 +1156,12 @@ inline void resultMatchFinalizedOnResult(DuelResultTests* suite) {
 }
 
 // The ordinary press-and-lose path, with no timeout involved. The winner's
-// MATCH_RESULT lands while this device's duel is still running — on hardware
-// that is the whole race — and DuelResult mounts after it. Resolving the outcome
+// MATCH_RESULT lands while this device's match is still running — on hardware
+// that is the whole race — and MatchResult mounts after it. Resolving the outcome
 // from the standing role there put the loser on the winner branch, so one match
 // produced two eliminations and a two-player final could eliminate both
 // finalists.
-inline void resultShootoutLoserDoesNotClaimTheWin(DuelResultTests* suite) {
+inline void resultShootoutLoserDoesNotClaimTheWin(MatchResultTests* suite) {
     uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
     ShootoutManager shootout(suite->player, suite->device.wirelessManager,
                              &suite->device.fakeRemoteDeviceCoordinator);
@@ -1180,7 +1181,7 @@ inline void resultShootoutLoserDoesNotClaimTheWin(DuelResultTests* suite) {
     shootout.onMatchResultReceived(opponent.data(), selfMac, 0, 9, opponent.data());
     ASSERT_EQ(shootout.getPhase(), ShootoutManager::Phase::BETWEEN_MATCHES);
 
-    DuelResult resultState(suite->ctx);
+    MatchResult resultState(suite->ctx);
     resultState.onStateMounted(&suite->device);
 
     EXPECT_FALSE(resultState.transitionToShootoutSpectator())
@@ -1264,7 +1265,7 @@ inline void cleanupIdleClearsButtonCallbacks(StateCleanupTests* suite) {
 
 // Test: Countdown state clears button callbacks on dismount
 inline void cleanupCountdownClearsButtonCallbacks(StateCleanupTests* suite) {
-    DuelCountdown countdownState(suite->ctx);
+    MatchCountdown countdownState(suite->ctx);
 
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1278,18 +1279,18 @@ inline void cleanupCountdownClearsButtonCallbacks(StateCleanupTests* suite) {
     countdownState.onStateDismounted(&suite->device);
 }
 
-// The duel continues into DuelPushed, so the match has to survive the dismount —
+// The match continues into MatchPushed, so the match has to survive the dismount —
 // that state reads it and writes the draw result against it.
-// Leaving the duel app is what ends a match, so DuelApp owns the teardown. The
+// Leaving the match app is what ends a match, so MatchApp owns the teardown. The
 // states inside it hand the match to one another and must not tear it down: which
 // edge the machine takes is decided by registration order in populateStateMap, so
 // no state can tell from its own flags whether it is handing off or leaving.
-inline void duelAppDismountEndsTheMatch(StateCleanupTests* suite) {
+inline void matchAppDismountEndsTheMatch(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
 
-    DuelApp app(suite->ctx);
+    MatchApp app(suite->ctx);
     app.populateStateMap();
 
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
@@ -1307,41 +1308,41 @@ inline void duelAppDismountEndsTheMatch(StateCleanupTests* suite) {
     app.onStateDismounted(&suite->device);
 
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value())
-        << "a match left ready bounces the device into a phantom duel from Idle";
+    << "a match left ready bounces the device into a phantom match from Idle";
 }
 
 // The other half of the same rule: a state dismounting on its own leaves the match
-// alone, because it may be handing off to a sibling that needs it. Pinned on Duel,
+// alone, because it may be handing off to a sibling that needs it. Pinned on MatchState,
 // whose exits used to be enumerated by flag — the case that broke was an abort
 // winning while the press flag was set.
-inline void aDuelStateDismountLeavesTheMatchToTheApp(StateCleanupTests* suite) {
+inline void aMatchStateDismountLeavesTheMatchToTheApp(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
 
-    Duel duelState(suite->ctx);
+    MatchState matchState(suite->ctx);
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
-    duelState.onStateMounted(&suite->device);
+    matchState.onStateMounted(&suite->device);
 
     suite->fakeClock->advance(200);
-    suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    duelState.onStateLoop(&suite->device);
-    ASSERT_TRUE(duelState.transitionToDuelPushed());
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
+    matchState.onStateLoop(&suite->device);
+    ASSERT_TRUE(matchState.transitionToMatchPushed());
 
-    duelState.onStateDismounted(&suite->device);
+    matchState.onStateDismounted(&suite->device);
     EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
-        << "the match was torn down on the way into DuelPushed";
+    << "the match was torn down on the way into MatchPushed";
 }
 
-// Test: DuelReceivedResult state clears button callbacks on dismount
-inline void cleanupDuelReceivedResultClearsButtonCallbacks(StateCleanupTests* suite) {
+// Test: MatchReceivedResult state clears button callbacks on dismount
+inline void cleanupMatchReceivedResultClearsButtonCallbacks(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
 
-    DuelReceivedResult receivedState(suite->ctx);
+    MatchReceivedResult receivedState(suite->ctx);
     receivedState.onStateMounted(&suite->device);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
@@ -1350,8 +1351,8 @@ inline void cleanupDuelReceivedResultClearsButtonCallbacks(StateCleanupTests* su
     receivedState.onStateDismounted(&suite->device);
 }
 
-// Test: Duel state invalidates timer on dismount
-inline void cleanupDuelStateInvalidatesTimer(StateCleanupTests* suite) {
+// Test: MatchState invalidates timer on dismount
+inline void cleanupMatchStateInvalidatesTimer(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
 
@@ -1360,33 +1361,33 @@ inline void cleanupDuelStateInvalidatesTimer(StateCleanupTests* suite) {
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
 
-    Duel duelState(suite->ctx);
+    MatchState matchState(suite->ctx);
 
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
-    
-    duelState.onStateMounted(&suite->device);
-    
+
+    matchState.onStateMounted(&suite->device);
+
     // Advance time but not enough to timeout
     suite->fakeClock->advance(2000);
-    duelState.onStateLoop(&suite->device);
-    
+    matchState.onStateLoop(&suite->device);
+
     // Should not timeout yet
-    EXPECT_FALSE(duelState.transitionToIdle());
-    
+    EXPECT_FALSE(matchState.transitionToIdle());
+
     // Dismount (timer should be invalidated)
-    duelState.onStateDismounted(&suite->device);
-    
+    matchState.onStateDismounted(&suite->device);
+
     // Transition flags should be reset
-    EXPECT_FALSE(duelState.transitionToIdle());
-    EXPECT_FALSE(duelState.transitionToDuelPushed());
-    EXPECT_FALSE(duelState.transitionToDuelReceivedResult());
+    EXPECT_FALSE(matchState.transitionToIdle());
+    EXPECT_FALSE(matchState.transitionToMatchPushed());
+    EXPECT_FALSE(matchState.transitionToMatchReceivedResult());
 }
 
 // Test: Countdown state invalidates timer on dismount
 inline void cleanupCountdownStateInvalidatesTimer(StateCleanupTests* suite) {
-    DuelCountdown countdownState(suite->ctx);
+    MatchCountdown countdownState(suite->ctx);
 
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1407,8 +1408,8 @@ inline void cleanupCountdownStateInvalidatesTimer(StateCleanupTests* suite) {
     EXPECT_FALSE(countdownState.shallWeBattle());
 }
 
-// Test: DuelResult state clears wireless callbacks on dismount
-inline void cleanupDuelResultClearsWirelessCallbacks(StateCleanupTests* suite) {
+// Test: MatchResult state clears wireless callbacks on dismount
+inline void cleanupMatchResultClearsWirelessCallbacks(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setHunterDrawTime(200);
@@ -1416,7 +1417,7 @@ inline void cleanupDuelResultClearsWirelessCallbacks(StateCleanupTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
 
-    DuelResult resultState(suite->ctx);
+    MatchResult resultState(suite->ctx);
     resultState.onStateMounted(&suite->device);
     
     // Dismount should clear state
@@ -1441,59 +1442,60 @@ inline void cleanupMatchManagerClearsCurrentMatch(StateCleanupTests* suite) {
     EXPECT_FALSE(suite->matchManager->getHasPressedButton());
 }
 
-// Test: Match manager clears duel state on match clear
-inline void cleanupMatchManagerClearsDuelState(StateCleanupTests* suite) {
+// Test: Match manager clears match state on match clear
+inline void cleanupMatchManagerClearsMatchState(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
-    
-    // Set up duel state
-    suite->matchManager->setDuelLocalStartTime(5000);
+
+    // Set up match state
+    suite->matchManager->setMatchLocalStartTime(5000);
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     suite->matchManager->setHunterDrawTime(200);
     
     // Clear match
     suite->matchManager->clearCurrentMatch();
-    
-    // All duel state should be reset
-    EXPECT_EQ(suite->matchManager->getDuelLocalStartTime(), 0);
+
+    // All match state should be reset
+    EXPECT_EQ(suite->matchManager->getMatchLocalStartTime(), 0);
     EXPECT_FALSE(suite->matchManager->getHasReceivedDrawResult());
     EXPECT_FALSE(suite->matchManager->getHasPressedButton());
 }
 
 // ============================================
-// Duel State Callback Cleanup (new behaviours from refactor)
+// MatchState Callback Cleanup (new behaviours from refactor)
 // ============================================
 
-// Test: Duel state removes button callbacks when transitioning to DuelReceivedResult
-inline void cleanupDuelStateClearsCallbacksWhenGoingToDuelReceivedResult(StateCleanupTests* suite) {
+// Test: MatchState removes button callbacks when transitioning to MatchReceivedResult
+inline void
+cleanupMatchStateClearsCallbacksWhenGoingToMatchReceivedResult(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
 
-    Duel duelState(suite->ctx);
+    MatchState matchState(suite->ctx);
 
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    duelState.onStateMounted(&suite->device);
+    matchState.onStateMounted(&suite->device);
 
-    // Simulate receiving opponent's result so transitionToDuelReceivedResult fires
+    // Simulate receiving opponent's result so transitionToMatchReceivedResult fires
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
-    duelState.onStateLoop(&suite->device);
-    ASSERT_TRUE(duelState.transitionToDuelReceivedResult());
+    matchState.onStateLoop(&suite->device);
+    ASSERT_TRUE(matchState.transitionToMatchReceivedResult());
 
-    // Duel must now remove callbacks on dismount so DuelReceivedResult starts clean
+    // MatchState must now remove callbacks on dismount so MatchReceivedResult starts clean
     EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
 
-    duelState.onStateDismounted(&suite->device);
+    matchState.onStateDismounted(&suite->device);
 }
 
 // A disconnect ends the match through the app's abandon edge, not through the
-// state. DuelPushed leaves the match alone even while disconnected, because the
-// same dismount also runs on the way to DuelResult — which scores the duel off
+// state. MatchPushed leaves the match alone even while disconnected, because the
+// same dismount also runs on the way to MatchResult — which scores the match off
 // that match, and used to be handed an empty one on this exact path.
 inline void pushedLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -1503,7 +1505,7 @@ inline void pushedLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) 
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
 
     // FakeRemoteDeviceCoordinator reports DISCONNECTED, so isConnected() == false
-    DuelPushed pushedState(suite->ctx);
+    MatchPushed pushedState(suite->ctx);
     pushedState.onStateMounted(&suite->device);
     pushedState.onStateDismounted(&suite->device);
 
@@ -1511,81 +1513,81 @@ inline void pushedLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) 
         << "the state cleared a match the app had not finished with";
 }
 
-// Test: DuelReceivedResult clears match when disconnected on dismount
-// Connection blip during a duel countdown must not abort the match: a single
-// !isConnected() tick triggered by a cable nudge previously sent the duelist
-// straight to Idle. In a shootout match this orphans the duelist (Idle's
+// Test: MatchReceivedResult clears match when disconnected on dismount
+// Connection blip during a match countdown must not abort the match: a single
+// !isConnected() tick triggered by a cable nudge previously sent the player
+// straight to Idle. In a shootout match this orphans the player (Idle's
 // auto-trigger to ShootoutProposal is gated on !shootout->active(), which is
 // false mid-match), and the spectators wait forever for a MATCH_RESULT that
 // will never arrive.
 inline void countdownDebouncesTransientDisconnect(StateCleanupTests* suite) {
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    DuelCountdown countdown(suite->ctx);
+    MatchCountdown countdown(suite->ctx);
 
     // Single-tick blip: should be absorbed by the debounce.
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     // Recovery within the window clears the timer.
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     // Persistent loss past the debounce window: now the abort fires.
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));  // start debounce
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));  // start debounce
     suite->fakeClock->advance(2000);
-    EXPECT_TRUE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_TRUE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
 }
 
-// Same debounce contract on DuelPushed (between BATTLE press and result
-// arrival). A blip here threw away the duel before the grace period could
+// Same debounce contract on MatchPushed (between BATTLE press and result
+// arrival). A blip here threw away the match before the grace period could
 // resolve it.
-inline void duelPushedDebouncesTransientDisconnect(StateCleanupTests* suite) {
+inline void matchPushedDebouncesTransientDisconnect(StateCleanupTests* suite) {
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    DuelPushed pushed(suite->ctx);
+    MatchPushed pushed(suite->ctx);
 
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(pushed, suite->ctx.shootoutManager));
 
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(pushed, suite->ctx.shootoutManager));
 
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(pushed, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
-    EXPECT_TRUE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
+    EXPECT_TRUE(matchReturnsToIdle(pushed, suite->ctx.shootoutManager));
 }
 
-// Same debounce contract on DuelReceivedResult.
-inline void duelReceivedResultDebouncesTransientDisconnect(StateCleanupTests* suite) {
+// Same debounce contract on MatchReceivedResult.
+inline void matchReceivedResultDebouncesTransientDisconnect(StateCleanupTests* suite) {
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    DuelReceivedResult received(suite->ctx);
+    MatchReceivedResult received(suite->ctx);
 
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(received, suite->ctx.shootoutManager));
 
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(received, suite->ctx.shootoutManager));
 
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(received, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
-    EXPECT_TRUE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
+    EXPECT_TRUE(matchReturnsToIdle(received, suite->ctx.shootoutManager));
 }
 
-// Regression: while a shootout is live, duelReturnsToIdle must suppress the
+// Regression: while a shootout is live, matchReturnsToIdle must suppress the
 // idle-return AND reset the disconnect debounce. The debounce ages on wall
 // clock even when unsampled, so a run started before or during the tournament
 // would otherwise fire the instant the shootout ends; a fresh full window
@@ -1599,44 +1601,44 @@ inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* 
 
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    DuelCountdown countdown(suite->ctx);
+    MatchCountdown countdown(suite->ctx);
 
     // Persistent loss during the tournament: suppressed, and the debounce must
     // not age even as wall-clock time passes.
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
-    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     // Tournament ends. One tick does not bail; a fresh full window is still
     // required.
     shootout.resetToIdle();
     ASSERT_FALSE(shootout.active());
-    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
-    EXPECT_TRUE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_TRUE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     // Ordering 2: the debounce starts BEFORE the tournament activates and
     // expires on wall clock while it is live. Without the in-flight reset the
     // first sample after the shootout ends snaps straight to Idle.
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));  // start debounce
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));  // start debounce
     suite->fakeClock->advance(2000);
 
     shootout.startProposal();
     ASSERT_TRUE(shootout.active());
-    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     shootout.resetToIdle();
     ASSERT_FALSE(shootout.active());
-    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
-    EXPECT_TRUE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_TRUE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     suite->ctx.shootoutManager = nullptr;
 }
@@ -1654,7 +1656,7 @@ inline void receivedResultLeavesTheMatchAloneWhenDisconnected(StateCleanupTests*
     EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(testing::AnyNumber());
 
-    DuelReceivedResult receivedState(suite->ctx);
+    MatchReceivedResult receivedState(suite->ctx);
     receivedState.onStateMounted(&suite->device);
     receivedState.onStateDismounted(&suite->device);
 
@@ -1723,7 +1725,7 @@ inline void gameSessionCtorDtorDoesNotLeak(GameSessionLifecycleTests* suite) {
 }
 
 // The supporter-side COUNTDOWN reset, driven the way the radio drives it. Its
-// sibling in chain-duel-manager-tests calls the manager directly, so it stays
+// sibling in posse-manager-tests calls the manager directly, so it stays
 // green even when nothing routes the packet there; this one fails instead.
 inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* suite) {
     suite->player->setIsHunter(true);
@@ -1774,7 +1776,7 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
 
 // The event's other consumer: the mounted SupporterReady, which the session finds
 // through the device instead of being handed a pointer at mount. A lookup that
-// misses arms no supporter, so the challenger duels without their boost.
+// misses arms no supporter, so the challenger plays without their boost.
 inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* suite) {
     suite->player->setIsHunter(true);
     uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};

@@ -598,7 +598,7 @@ void RemoteDeviceCoordinator::unpackMac(uint64_t value, uint8_t* out) {
 bool RemoteDeviceCoordinator::isInRing() const {
     if (ringLatched) return true;
     // Relayed membership. An upstream asserting closure only concerns this
-    // device while the loop can still run through it, so both chain links must
+    // device while the ring can still run through it, so both chain links must
     // be up — holding a head already implies a Connected INPUT, and the OUTPUT
     // check makes a pulled downstream cable drop membership here immediately
     // rather than waiting for the head's own evidence window.

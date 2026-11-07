@@ -281,7 +281,7 @@ static const LEDState COUNTDOWN_ONE_STATE = [](){
     return state;
 }();
 
-static const LEDState COUNTDOWN_DUEL_STATE = [](){
+static const LEDState COUNTDOWN_MATCH_STATE = []() {
     LEDState state;
     for(int i = 3; i < 9; i++) {
         state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
