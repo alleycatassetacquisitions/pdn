@@ -12,4 +12,8 @@ public:
     virtual int64_t unixMilliseconds() {
         return 0;
     }
+
+    /** Sets the UTC wall clock in milliseconds since the Unix epoch without affecting monotonic
+     * milliseconds(). */
+    virtual void setUnixMilliseconds(int64_t unixMs) { (void)unixMs; }
 };
