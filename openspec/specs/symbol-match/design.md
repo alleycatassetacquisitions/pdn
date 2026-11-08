@@ -21,7 +21,7 @@ Normative behavior is in [spec.md](./spec.md). This document helps implementatio
      └─────────────┘
 ```
 
-**Remove from legacy FDN symbol-match app:** upload pending, connection detected, auth, unauthorized, transition to main menu on win, `HackedPlayersManager` / HTTP from match success, `PDN_CONNECT` handling inside symbol match, optional nearby-player RSSI attract.
+**Separate from symbol-match app:** upload pending, connection detected, auth, unauthorized, and `HackedPlayersManager` / HTTP upload states live in `fdn-apps` rather than inside the symbol-match state machine itself.
 
 **Rename / replace:** `MatchSuccess` → codeword success (30s hold, then Selection; no main menu).
 
@@ -64,7 +64,7 @@ Incoming packets are mapped to left vs right jack by matching sender MAC to peer
 | `SymbolState` | Blink/show player symbol; RX FDN symbol; button send when symbols align; RX success / refresh |
 | `SymbolMatched` | Celebration blink; RX refresh → back to `SymbolState` |
 
-FDN peer MAC: whichever input jack reports `DeviceType::FDN`.
+FDN peer MAC on PDN: the PDN's **downstream jack** (`OUTPUT_JACK`) when it reports `DeviceType::FDN`.
 
 ## FDN play UI (legacy behavior to preserve)
 
@@ -83,4 +83,4 @@ FDN peer MAC: whichever input jack reports `DeviceType::FDN`.
 | PDN play | `src/game/quickdraw-states/symbol-state.cpp` |
 | PDN matched | `symbol-matched-state.cpp` |
 
-Do not port hacking, idle auth, or upload states into the symbol-match-only build.
+Keep symbol-match gameplay states independent of FDN background upload states (`fdn-apps`, `match-collection`, `crash-reporting`).

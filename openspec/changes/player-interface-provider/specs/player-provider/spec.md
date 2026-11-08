@@ -1,39 +1,39 @@
 ## ADDED Requirements
 
-### Requirement: PlayerProvider owns session Player
-Core SHALL define a concrete `PlayerProvider` that owns exactly one gameplay `Player` for the device session. `PlayerProvider::getPlayer()` SHALL return a non-null `Player*` to that owned instance.
+### Requirement: Session player provider owns a single player instance
+The session player provider SHALL own exactly one gameplay player instance for the lifetime of the device session.
 
 #### Scenario: Session player always exists
-- **WHEN** a provider has been constructed
-- **THEN** `getPlayer()` returns the same `Player` for the lifetime of the provider
+- **WHEN** the session player provider has been constructed
+- **THEN** querying the provider returns the same player instance for the lifetime of the provider
 
-### Requirement: Optional registration profile on Player
-Whether a server registration profile is present SHALL be tracked on the owned `Player` via `hasRegistrationProfile()`. `PlayerProvider::hasPlayer()` SHALL return the same value as `getPlayer()->hasRegistrationProfile()`.
+### Requirement: Optional registration profile on session player
+Whether a server registration profile is present SHALL be tracked on the owned session player and reflected by the provider's registration-present query.
 
 #### Scenario: Empty session
-- **WHEN** a provider has been constructed and no registration profile was applied
-- **THEN** `hasPlayer()` returns false
+- **WHEN** the session player provider has been constructed and no registration profile has been applied
+- **THEN** the provider reports that no registered player profile is present
 
 #### Scenario: Profile applied
-- **WHEN** a registration profile is stored on the owned `Player`
-- **THEN** `hasPlayer()` returns true
+- **WHEN** a registration profile is stored on the owned session player
+- **THEN** the provider reports that a registered player profile is present
 
 ### Requirement: Clear registration session
-`PlayerProvider::clear()` SHALL drop the registration profile on the owned `Player` and clear the stored registration PIN.
+Clearing the session player provider SHALL drop the registration profile on the owned player and reset the player identity to the unprovisioned nil UUID state.
 
 #### Scenario: Clear
-- **WHEN** `clear()` is called after a profile was applied
-- **THEN** `hasPlayer()` returns false
-- **AND** the registration PIN is empty
+- **WHEN** the session player provider is cleared after a profile was applied
+- **THEN** the provider reports that no registered player profile is present
+- **AND** the player's registration profile is cleared
 
-### Requirement: PlayerFetch uses PlayerProvider
-`PlayerFetchApp` SHALL receive `PlayerProvider*`. Its states SHALL use the provider for PIN and session clear, and SHALL read registration fields only through `playerProvider->getPlayer()` (server name, team, affiliations, server id). PlayerFetch SHALL NOT use legacy gameplay accessors (`getName()`, `getUserID()`, etc.) for registration UI.
+### Requirement: Provisioning app uses the session player provider
+The PDN provisioning app SHALL read and update registration fields (player UUID, display name, team, and affiliations) exclusively through the shared session player provider instance shared with gameplay apps.
 
-#### Scenario: Fetch success path
-- **WHEN** device player lookup succeeds
-- **THEN** the decoded protobuf is applied to the owned `Player` registration fields
-- **AND** welcome reads the display name via `getPlayer()->getServerPlayerName()`
+#### Scenario: Provisioning success path
+- **WHEN** a player profile is delivered from a Connected FDN
+- **THEN** the decoded profile is applied to the shared session player's registration fields
+- **AND** the welcome screen reads the player's display name from the applied registration profile
 
-#### Scenario: Main wiring
-- **WHEN** firmware constructs Quickdraw and PlayerFetch
-- **THEN** both receive the `Player*` from the same `PlayerProvider` instance created in `main`
+#### Scenario: Shared session player across provisioning and gameplay apps
+- **WHEN** firmware initializes the provisioning app and gameplay apps
+- **THEN** both operate on the same session player instance owned by the session player provider
