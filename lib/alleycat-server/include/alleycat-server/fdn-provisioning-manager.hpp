@@ -59,8 +59,8 @@ public:
     }
 
 private:
-    static constexpr unsigned long PROVISION_LOOKUP_TIMEOUT_MS =
-    8000;  // under the PDN's 10 s fetch timeout
+    // Shorter than the PDN's 10 s wait, so a request sent at mount is answered in time.
+    static constexpr unsigned long PROVISION_LOOKUP_TIMEOUT_MS = 8000;
 
     bool provisionPdn(const uint8_t* pdnMac, const std::string& pin) {
         if (!wirelessManager || !rdc || lookupInFlight ||
