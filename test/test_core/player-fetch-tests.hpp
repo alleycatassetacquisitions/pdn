@@ -96,7 +96,7 @@ inline PlayerProvisionPacket makeProvisionPacket(const char* name, int64_t serve
     Team team{};
     strncpy(team.name, "Hunter", sizeof(team.name) - 1);
     player.applyRegistrationProfile(playerId, name, team, {});
-    return FdnProvisioningManager::toProvisionPacket(player, serverUnixMs);
+    return PlayerProvisionCodec::encode(player, serverUnixMs);
 }
 
 inline void completePinOnEntry(PDN* pdn, PinEntryState* pinEntry,
@@ -286,6 +286,32 @@ inline void fetchUserTimesOutWithoutFdn(PlayerFetchTestSuite* suite) {
     fetch.onStateMounted(&suite->device);
 
     suite->fakeClock->advance(USER_DATA_FETCH_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch.transitionToPinEntry());
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fdnLookupDeadlineLeavesWifi(PlayerFetchTestSuite* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    suite->playerProvider.setRegistrationPin("1234");
+    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+    ASSERT_EQ(suite->queuedRequests.size(), 1u);
+    ASSERT_EQ(suite->fdnDevice.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
+
+    suite->fakeClock->advance(14000);
+    fdnProv.sync();
+    EXPECT_EQ(suite->fdnDevice.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
+
+    suite->fakeClock->advance(2000);
+    fdnProv.sync();
+    EXPECT_EQ(suite->fdnDevice.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW)
+    << "a lookup that never answers must not keep the FDN off ESP-NOW";
+
+    // Leaving Wi-Fi fails the queued request, as the HTTP driver's disconnect does.
+    suite->queuedRequests[0].onError({WirelessError::CONNECTION_FAILED, "Disconnected"});
     fetch.onStateLoop(&suite->device);
     suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
     fetch.onStateLoop(&suite->device);

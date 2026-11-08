@@ -123,7 +123,7 @@ public:
     /** Returns the 1-based monotonic match sequence number (0 when no matches finalized). */
     uint32_t getMatchSequenceNumber();
 
-    /** Returns the highest match sequence number a cabled FDN has acknowledged (<= seq). */
+    /** Returns the highest match sequence number a cabled FDN has acknowledged. */
     uint32_t getCollectedHighWaterMark();
 
     /** Reads the match for 1-based sequence number `seq` if still in the 32-slot ring buffer. */

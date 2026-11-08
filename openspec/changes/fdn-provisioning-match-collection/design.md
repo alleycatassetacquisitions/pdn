@@ -11,13 +11,13 @@ Every new frame is accepted only from the MAC of a peer on a Connected jack whos
 `ReliableChannel` clears a send on the radio's SEND_SUCCESS, which only means the FDN's radio heard the frame. Collection needs to know the FDN persisted the record, and needs the FDN to be able to refuse when its spool is full. So records and acknowledgements are plain frames on two packet types (`kMatchCollection`, `kMatchCollectionAck`), one payload size each. The PDN keeps one record in flight and resends it every 100 ms until acknowledged. The FDN deduplicates by match UUID, so a resent record is acknowledged without being stored twice.
 
 ### Provisioning is one request and one reply
-The PDN sends the PIN once per fetch screen, as soon as an FDN is cabled. The FDN ignores requests while a lookup is in flight. If the reply never comes, the existing 10 s fetch timeout shows the failure page and returns to PIN entry, so the player retries by re-entering the PIN.
+The PDN sends the PIN once per fetch screen, as soon as an FDN is cabled. The FDN ignores requests while a lookup is in flight, and gives a lookup 15 s before leaving Wi-Fi, which fails it and sends LOOKUP_FAILED; an AP the FDN cannot join would otherwise keep it off ESP-NOW for good. If the reply never comes, the PDN's 10 s fetch timeout shows the failure page and returns to PIN entry, so the player retries by re-entering the PIN.
 
 ### Wall clock rides on the provisioning reply
-The PDN has no other UTC source. The FDN stamps the reply with its clock right after the lookup's HTTP `Date` header synced it. The PDN ignores a timestamp before 2025-01-01, the same floor the `Date` parser uses, so an FDN that never reached the server does not set the PDN's clock to its boot epoch. Players are not persisted, so every boot re-registers and re-syncs.
+The PDN has no other UTC source. The FDN stamps the reply with its clock right after the lookup's HTTP `Date` header synced it. The PDN ignores a timestamp before 2025-01-01, the same floor the `Date` parser uses, so an FDN whose lookup answer carried no usable `Date` header does not set the PDN's clock to its boot epoch. Players are not persisted, so every boot re-registers and re-syncs.
 
 ### Upload retirement
-The server keeps the first report of a match ID. Any decodable response, including one with per-match rejections, retires the batch. A transport error or an undecodable body keeps it. A spool record that cannot be read is dropped before the batch is built, because it would otherwise fail every future batch.
+The server keeps the first report of a match ID. Any decodable response, including one with per-match rejections, retires the batch. A transport error or an undecodable body keeps it. A batch stops short of a spool record that cannot be read, because that record would fail the whole batch; once the records ahead of it are retired it is the oldest, and it is dropped.
 
 ### Not carried over from #298
 The PDN no longer sees upload responses, so the rejection handling #298 describes for the uploading device (returning to registration on an own-side `INVALID_UUID`, a visible submit-error counter) has no device to run on. Rejections are logged on the FDN.

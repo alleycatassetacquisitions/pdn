@@ -1107,6 +1107,8 @@ TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
 
 TEST_F(PlayerFetchTestSuite, fetchUserTimesOutWithoutFdn) { fetchUserTimesOutWithoutFdn(this); }
 
+TEST_F(PlayerFetchTestSuite, fdnLookupDeadlineLeavesWifi) { fdnLookupDeadlineLeavesWifi(this); }
+
 TEST_F(PlayerFetchTestSuite, fdnDropsMalformedOrUncabledProvisionRequest) {
     fdnDropsMalformedOrUncabledProvisionRequest(this);
 }

@@ -50,8 +50,9 @@ When the FDN's idle upload check fires and it holds records, it SHALL enable
 Wi-Fi and upload every held record in one `POST /quickdraw-matches` batch.
 On any decodable response, including one listing per-match rejections, it SHALL
 discard the uploaded records. On a transport error or an undecodable response
-it SHALL keep them for the next upload. A held record that cannot be read
-SHALL be discarded before the batch is built.
+it SHALL keep them for the next upload. A held record that cannot be read SHALL
+NOT be uploaded, SHALL NOT keep the records ahead of it from uploading, and SHALL
+be discarded once it is the oldest held record.
 
 #### Scenario: Server error keeps the batch
 - **WHEN** the upload fails with a 5xx response

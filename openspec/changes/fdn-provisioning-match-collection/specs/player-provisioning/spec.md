@@ -14,7 +14,8 @@ It SHALL send at most one request per fetch user mount.
 
 An FDN SHALL accept a lookup request only from the MAC of a PDN Connected on
 one of its jacks, and only when the PIN is four ASCII digits. It SHALL ignore a
-request while a lookup is already in progress. It SHALL look the player up with
+request while a lookup is already in progress, and SHALL end a lookup that has
+not answered within 15 s as a lookup failure. It SHALL look the player up with
 `device-player-lookup` over Wi-Fi, re-enable the peer-to-peer radio, and, if the
 requesting PDN is still Connected, reply with either the player's profile (server
 player ID, name, team, and affiliations) and the FDN's UTC wall clock, or a lookup

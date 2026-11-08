@@ -2,8 +2,7 @@
 
 ### Requirement: Fetch user only performs device player lookup
 Fetch user SHALL obtain the player through `player-provisioning`, show loading
-glyphs while waiting, and use the same fetch timeout constant as legacy fetch
-user. It SHALL NOT use Wi-Fi, SHALL NOT upload matches, and SHALL NOT branch
+glyphs while waiting, and time out 10 s after mounting without a reply. It SHALL NOT use Wi-Fi, SHALL NOT upload matches, and SHALL NOT branch
 on test or debug PIN constants.
 
 #### Scenario: Lookup requested

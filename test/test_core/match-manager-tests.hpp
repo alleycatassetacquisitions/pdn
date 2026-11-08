@@ -624,12 +624,13 @@ TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
 
 TEST_F(MatchManagerTestSuite, collectedHighWaterMarkClampsWhenCorruptedAboveSeq) {
     NativePrefsDriver prefs("clamp-prefs", {MATCHES_PREFS_NAMESPACE});
-    matchManager->initialize(player, &prefs);
-
     prefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, 5u);
     prefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 99u);
+    matchManager->initialize(player, &prefs);
 
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 5u);
+    EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 5u)
+    << "the clamp must persist, or matches 6..99 would read as collected once stored";
     matchManager->initialize(player, &mockStorage);
 }
 
@@ -830,6 +831,91 @@ TEST_F(MatchManagerTestSuite, fdnSpoolDropsUnreadableHeadInsteadOfFailingEveryBa
     EXPECT_EQ(fdnSpool.getStagedCount(), 1u);
     httpRequests[0].onSuccess("");
     EXPECT_EQ(fdnSpool.getStagedCount(), 0u);
+}
+
+TEST_F(MatchManagerTestSuite, fdnSpoolUploadStopsShortOfAnUnreadableRecord) {
+    using ::testing::_;
+    NativePrefsDriver fdnPrefs("fdn-mid-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    MockDevice fdnDevice;
+    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    FakeRemoteDeviceCoordinator fdnRdc;
+    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+
+    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x05};
+    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
+    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
+
+    for (uint32_t seq = 1; seq <= 3; ++seq) {
+        char mid[37];
+        snprintf(mid, sizeof(mid), "%08u-dddd-4000-8000-eeeeeeeeeeee", seq);
+        Match m(mid, "hunt", true);
+        MatchRecordPacket pkt{};
+        pkt.matchSeq = seq;
+        m.serialize(pkt.matchData);
+        fdnSpool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+    }
+    const uint8_t torn[3] = {1, 2, 3};
+    fdnPrefs.writeBytes(FDN_MATCH_SPOOL_NAMESPACE, "spool_1", torn, sizeof(torn));
+
+    std::vector<HttpRequest> httpRequests;
+    ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
+    .WillByDefault(::testing::Invoke([&httpRequests](HttpRequest&& req) {
+        httpRequests.push_back(std::move(req));
+        return true;
+    }));
+
+    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_EQ(httpRequests.size(), 1u) << "the record ahead of the torn one still goes up";
+    httpRequests[0].onSuccess("");
+    EXPECT_EQ(fdnSpool.getStagedCount(), 2u);
+
+    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_EQ(httpRequests.size(), 2u);
+    EXPECT_EQ(fdnSpool.getStagedCount(), 1u) << "the torn record is dropped once it is the oldest";
+    httpRequests[1].onSuccess("");
+    EXPECT_EQ(fdnSpool.getStagedCount(), 0u);
+}
+
+TEST_F(MatchManagerTestSuite, unreadableStoredMatchIsSkippedNotRetriedForever) {
+    NativePrefsDriver pdnPrefs("pdn-torn-prefs", {MATCHES_PREFS_NAMESPACE});
+    matchManager->initialize(player, &pdnPrefs);
+    for (int i = 0; i < 2; ++i) {
+        setupMatchAsBounty(i == 0 ? "33333333-2222-4000-8000-333333333333"
+                                  : "44444444-2222-4000-8000-333333333333",
+                           "hunt");
+        matchManager->setHunterDrawTime(180);
+        matchManager->setBountyDrawTime(120);
+        matchManager->setReceivedButtonPush();
+        matchManager->setReceivedDrawResult();
+        EXPECT_TRUE(matchManager->finalizeMatch());
+    }
+    const uint8_t torn[3] = {1, 2, 3};
+    pdnPrefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_0", torn, sizeof(torn));
+
+    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x06};
+    fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
+    fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
+    ON_CALL(*device.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+
+    std::vector<uint32_t> sentSeqs;
+    ON_CALL(*device.mockPeerComms,
+            sendData(::testing::_, PktType::kMatchCollection, ::testing::_, ::testing::_))
+    .WillByDefault(
+    ::testing::Invoke([&sentSeqs](const uint8_t*, PktType, const uint8_t* data, const size_t) {
+        MatchRecordPacket pkt{};
+        memcpy(&pkt, data, sizeof(pkt));
+        sentSeqs.push_back(pkt.matchSeq);
+        return 1;
+    }));
+
+    matchManager->sync();
+    matchManager->sync();
+    EXPECT_EQ(sentSeqs, (std::vector<uint32_t>{2u})) << "record 1 is unreadable and skipped";
+    matchManager->initialize(player, &mockStorage);
 }
 
 TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {

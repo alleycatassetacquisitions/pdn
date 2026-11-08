@@ -94,9 +94,10 @@ public:
     }
 
     /**
-     * Uploads every staged match as one POST /quickdraw-matches batch. The server
+     * Uploads the staged matches as one POST /quickdraw-matches batch. The server
      * keeps the first report of a match ID, so a batch is retired on any decodable
-     * response, rejections included, and kept for retry on a transport error.
+     * response, rejections included, and kept for retry on any error, an
+     * undecodable response included.
      *
      * @return false when nothing was queued; @p onComplete then never fires.
      */
@@ -105,7 +106,13 @@ public:
             return false;
         }
         dropUnreadableHead();
-        const size_t batchCount = getStagedCount();
+        // Stop short of an unreadable record so it fails no batch; once the records
+        // ahead of it are retired it is the head, and dropUnreadableHead discards it.
+        size_t batchCount = 0;
+        Match probe{};
+        while (batchCount < getStagedCount() && readStagedMatch(batchCount, probe)) {
+            ++batchCount;
+        }
         if (batchCount == 0) {
             return false;
         }

@@ -1,6 +1,6 @@
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include <cstring>
-#include "alleycat-server/fdn-provisioning-manager.hpp"
+#include "alleycat-server/player-provision-codec.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/remote-device-coordinator.hpp"
@@ -120,12 +120,12 @@ void FetchUserState::onProvisionPacket(const uint8_t* fromMac, const uint8_t* da
     }
 
     Player* player = playerProvider->getPlayer();
-    if (!FdnProvisioningManager::applyProvisionPacket(pkt, *player)) {
+    if (!PlayerProvisionCodec::decode(pkt, *player)) {
         LOG_W(TAG, "Ignoring invalid PlayerProvisionPacket payload");
         return;
     }
 
-    // An FDN that never reached the server is still on its boot epoch; keep ours.
+    // A lookup answer without a usable Date header leaves the FDN on its boot epoch; keep ours.
     PlatformClock* clock = SimpleTimer::getPlatformClock();
     if (clock != nullptr && pkt.serverUnixMs >= MIN_PROVISIONED_UNIX_MS) {
         clock->setUnixMilliseconds(pkt.serverUnixMs);

@@ -305,9 +305,7 @@ uint32_t MatchManager::getMatchSequenceNumber() {
 
 uint32_t MatchManager::getCollectedHighWaterMark() {
     if (!storage) return 0;
-    // An NVS wipe of "seq" alone would otherwise leave every new match marked collected.
-    return std::min(storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0),
-                    getMatchSequenceNumber());
+    return storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
 }
 
 uint32_t MatchManager::getOldestStoredSequence() {
@@ -381,6 +379,9 @@ void MatchManager::syncFdnMatchTransfer() {
     pkt.matchSeq = nextToSend;
     Match match{};
     if (!readMatchBySequence(nextToSend, match)) {
+        // An unreadable record would hold back every record after it.
+        LOG_E(MATCH_MANAGER_TAG, "Skipping unreadable stored match %u", nextToSend);
+        storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, nextToSend);
         return;
     }
     match.serialize(pkt.matchData);
@@ -420,6 +421,11 @@ parameterizedCallbackFunction MatchManager::getButtonMasher() {
 void MatchManager::initialize(Player* player, StorageInterface* storage) {
     this->player = player;
     this->storage = storage;
+    // An NVS wipe of "seq" alone would otherwise leave every new match marked collected.
+    if (storage && getCollectedHighWaterMark() > getMatchSequenceNumber()) {
+        storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY,
+                           getMatchSequenceNumber());
+    }
 
     matchButtonPush = [](void* ctx) {
         if (!ctx) {

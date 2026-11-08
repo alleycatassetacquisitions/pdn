@@ -37,7 +37,7 @@ public:
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
-    /** @return true when a non-demo PIN is ready for protobuf fetch. */
+    /** @return true when a non-demo PIN was entered and the FDN lookup should be requested. */
     bool transitionToFetchUser() const;
     /** @return true when PIN @ref DEMO_PIN was entered. */
     bool transitionToChooseTeam() const;
