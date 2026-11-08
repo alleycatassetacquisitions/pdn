@@ -32,26 +32,14 @@ public:
                           KEEP_DISTINCT };
 
     /**
-     * Retry tuning, shared by every channel: first retransmit after 100ms, the
-     * gap doubling each round, until the frame's span runs out — three retransmits
-     * at these values. The count is not theirs alone: sync() tests the deadline
-     * before the round, and that order is load-bearing rather than cosmetic. Test
-     * the round first and a loop that stalled past the span emits one more
-     * retransmit on the way out, after the window the receiver claims the seqId
-     * for has been sized shut.
+     * First retransmit backoff; doubles each round for three retransmits within
+     * RETRANSMIT_SPAN_MS because sync() checks the deadline before the round.
      */
     static constexpr unsigned long INITIAL_TIMEOUT_MS = 100;
 
     /**
-     * Wall-clock span from a frame's first send to its recipients being given up
-     * on. Every group is armed with this as a deadline, so it bounds the frame
-     * whatever the local send path does.
-     *
-     * Both ends read it, which is why it is one stated number: past it the sender
-     * hands the send path no further copy, and the receiver holds a seqId claim
-     * wider than it on that promise (see ReliableChannel::RX_SEQ_CLAIM_MS). Nothing
-     * on the wire carries a deadline, so a per-frame one would drive the claim to
-     * the widest caller's regardless. Widen this and the claim widens with it.
+     * Wall-clock deadline from a frame's first send to abandonment, bounding the
+     * frame whatever the local send path does.
      */
     static constexpr unsigned long RETRANSMIT_SPAN_MS = 1500;
 
@@ -61,12 +49,8 @@ public:
                   "a frame would be sent once and given up on, never retransmitted");
 
     /**
-     * The soonest a caller may treat a frame as finished with. The span bounds
-     * hand-off, not airtime: transmit() only queues, so a copy handed over just
-     * inside the span can leave the radio after it, and the 500ms covers that
-     * drain. Both the receiver's duplicate-claim window and a sender's repair
-     * cadence are this same question, so they read it here rather than each
-     * re-deriving the arithmetic.
+     * RETRANSMIT_SPAN_MS bounds queue hand-off, not airtime; the extra 500ms covers
+     * radio drain for a copy queued just inside the span.
      */
     static constexpr unsigned long STALE_AFTER_MS = RETRANSMIT_SPAN_MS + 500;
 
