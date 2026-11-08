@@ -26,9 +26,9 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     });
     if (this->wirelessManager) {
         this->wirelessManager->setEspNowPacketHandler(
-        PktType::kMatchCollection,
+        PktType::kMatchCollectionAck,
         [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<MatchManager*>(ctx)->onMatchCollectionPacket(fromMac, data, dataLen);
+            static_cast<MatchManager*>(ctx)->onMatchRecordAck(fromMac, data, dataLen);
         },
         this);
     }
@@ -58,7 +58,7 @@ void MatchManager::sendCommand(const uint8_t* mac, int command, const char* matc
 
 MatchManager::~MatchManager() {
     if (wirelessManager) {
-        wirelessManager->clearEspNowPacketHandler(PktType::kMatchCollection);
+        wirelessManager->clearEspNowPacketHandler(PktType::kMatchCollectionAck);
     }
     if (storage) {
         storage->end();
@@ -223,8 +223,8 @@ bool MatchManager::didWin() {
         return false;
     }
 
-    const long hunterTime = activeMatchState.match->getHunterDrawTime();
-    const long bountyTime = activeMatchState.match->getBountyDrawTime();
+    const unsigned long hunterTime = activeMatchState.match->getHunterDrawTime();
+    const unsigned long bountyTime = activeMatchState.match->getBountyDrawTime();
     return activeMatchState.localIsHunter ? hunterTime < bountyTime : bountyTime < hunterTime;
 }
 
@@ -235,15 +235,12 @@ bool MatchManager::finalizeMatch() {
     }
 
     // Snapshot times for the result screen (before clearCurrentMatch wipes the match).
-    const long mySignedTime = activeMatchState.localIsHunter
-                              ? activeMatchState.match->getHunterDrawTime()
-                              : activeMatchState.match->getBountyDrawTime();
-    const long opponentSignedTime = activeMatchState.localIsHunter
-                                    ? activeMatchState.match->getBountyDrawTime()
-                                    : activeMatchState.match->getHunterDrawTime();
-    lastMatchDisplay.myTimeMs = static_cast<unsigned long>(std::max<long>(0, mySignedTime));
-    lastMatchDisplay.opponentTimeMs =
-    static_cast<unsigned long>(std::max<long>(0, opponentSignedTime));
+    lastMatchDisplay.myTimeMs = activeMatchState.localIsHunter
+                                ? activeMatchState.match->getHunterDrawTime()
+                                : activeMatchState.match->getBountyDrawTime();
+    lastMatchDisplay.opponentTimeMs = activeMatchState.localIsHunter
+                                      ? activeMatchState.match->getBountyDrawTime()
+                                      : activeMatchState.match->getHunterDrawTime();
     lastMatchDisplay.hasData = true;
 
     const bool localWon = didWin();
@@ -285,7 +282,7 @@ parameterizedCallbackFunction MatchManager::getMatchButtonPush() { return matchB
 
 void MatchManager::setReceivedButtonPush() { activeMatchState.hasPressedButton = true; }
 
-bool MatchManager::setHunterDrawTime(long hunterTimeMs) {
+bool MatchManager::setHunterDrawTime(unsigned long hunterTimeMs) {
     if (!activeMatchState.match) {
         return false;
     }
@@ -293,7 +290,7 @@ bool MatchManager::setHunterDrawTime(long hunterTimeMs) {
     return true;
 }
 
-bool MatchManager::setBountyDrawTime(long bountyTimeMs) {
+bool MatchManager::setBountyDrawTime(unsigned long bountyTimeMs) {
     if (!activeMatchState.match) {
         return false;
     }
@@ -308,44 +305,23 @@ uint32_t MatchManager::getMatchSequenceNumber() {
 
 uint32_t MatchManager::getCollectedHighWaterMark() {
     if (!storage) return 0;
+    // An NVS wipe of "seq" alone would otherwise leave every new match marked collected.
+    return std::min(storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0),
+                    getMatchSequenceNumber());
+}
+
+uint32_t MatchManager::getOldestStoredSequence() {
     const uint32_t seq = getMatchSequenceNumber();
-    uint32_t collected = storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
-    if (collected > seq) {
-        collected = seq;
-        storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, collected);
-    }
-    return collected;
-}
-
-void MatchManager::setCollectedHighWaterMark(uint32_t seq) {
-    if (!storage) return;
-    const uint32_t currentSeq = getMatchSequenceNumber();
-    const uint32_t clamped = std::min(seq, currentSeq);
-    const uint32_t currentCollected = getCollectedHighWaterMark();
-    if (clamped > currentCollected) {
-        storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, clamped);
-    }
-}
-
-size_t MatchManager::getStoredMatchCount() {
-    return std::min<size_t>(getMatchSequenceNumber(), MATCH_RING_CAPACITY);
-}
-
-size_t MatchManager::getUncollectedMatchCount() {
-    const uint32_t seq = getMatchSequenceNumber();
-    const uint32_t collected = getCollectedHighWaterMark();
-    if (collected >= seq) return 0;
-    return std::min<size_t>(seq - collected, MATCH_RING_CAPACITY);
+    return (seq > MATCH_RING_CAPACITY) ? (seq - MATCH_RING_CAPACITY + 1) : 1;
 }
 
 bool MatchManager::appendMatchToStorage(const Match* match) {
     if (!match || !storage) return false;
 
     const uint32_t nextSeq = getMatchSequenceNumber() + 1;
-    const uint8_t slot = static_cast<uint8_t>((nextSeq - 1) % MATCH_RING_CAPACITY);
-
     char key[16];
-    snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX, slot);
+    snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
+             static_cast<unsigned>((nextSeq - 1) % MATCH_RING_CAPACITY));
 
     uint8_t buffer[MATCH_BINARY_SIZE] = {};
     match->serialize(buffer);
@@ -364,13 +340,14 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
     return true;
 }
 
-bool MatchManager::readMatchFromSlot(uint8_t slot, Match& out) {
-    if (!storage || slot >= MATCH_RING_CAPACITY) {
+bool MatchManager::readMatchBySequence(uint32_t seq, Match& out) {
+    if (!storage || seq == 0 || seq > getMatchSequenceNumber() || seq < getOldestStoredSequence()) {
         return false;
     }
 
     char key[16];
-    snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX, slot);
+    snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
+             static_cast<unsigned>((seq - 1) % MATCH_RING_CAPACITY));
 
     uint8_t buffer[MATCH_BINARY_SIZE] = {};
     if (storage->readBytes(MATCHES_PREFS_NAMESPACE, key, buffer, MATCH_BINARY_SIZE) !=
@@ -382,78 +359,30 @@ bool MatchManager::readMatchFromSlot(uint8_t slot, Match& out) {
     return true;
 }
 
-bool MatchManager::readMatchBySequence(uint32_t seq, Match& out) {
-    const uint32_t currentSeq = getMatchSequenceNumber();
-    if (seq == 0 || seq > currentSeq) {
-        return false;
-    }
-    if (currentSeq - seq >= MATCH_RING_CAPACITY) {
-        return false;
-    }
-    const uint8_t slot = static_cast<uint8_t>((seq - 1) % MATCH_RING_CAPACITY);
-    return readMatchFromSlot(slot, out);
-}
-
-const uint8_t* MatchManager::findConnectedFdnMac() const {
-    if (!rdc) return nullptr;
-    for (SerialIdentifier jack : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK,
-                                  SerialIdentifier::INPUT_JACK_SECONDARY}) {
-        if (rdc->getJackStatus(jack) == JackStatus::CONNECTED &&
-            rdc->getPeerDeviceType(jack) == DeviceType::FDN) {
-            const uint8_t* mac = rdc->getPeerMac(jack);
-            if (mac) return mac;
-        }
-    }
-    return nullptr;
-}
-
-bool MatchManager::isConnectedFdnMac(const uint8_t* mac) const {
-    if (!rdc || !mac) return false;
-    for (SerialIdentifier jack : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK,
-                                  SerialIdentifier::INPUT_JACK_SECONDARY}) {
-        if (rdc->getJackStatus(jack) == JackStatus::CONNECTED &&
-            rdc->getPeerDeviceType(jack) == DeviceType::FDN) {
-            const uint8_t* peer = rdc->getPeerMac(jack);
-            if (peer && memcmp(peer, mac, 6) == 0) return true;
-        }
-    }
-    return false;
-}
-
 void MatchManager::syncFdnMatchTransfer() {
     if (!storage || !wirelessManager) return;
 
-    const uint8_t* fdnMac = findConnectedFdnMac();
-    if (!fdnMac) {
-        inFlightTransferSeq = 0;
-        transferRetryTimer.invalidate();
-        return;
-    }
-
-    const uint32_t seq = getMatchSequenceNumber();
+    const uint8_t* fdnMac = rdc ? rdc->getConnectedPeerMac(DeviceType::FDN) : nullptr;
     const uint32_t collected = getCollectedHighWaterMark();
-    if (collected >= seq) {
+    if (!fdnMac || collected >= getMatchSequenceNumber()) {
         inFlightTransferSeq = 0;
         transferRetryTimer.invalidate();
         return;
     }
 
-    const uint32_t oldestSeq = (seq > MATCH_RING_CAPACITY) ? (seq - MATCH_RING_CAPACITY + 1) : 1;
-    const uint32_t nextToSend = std::max<uint32_t>(collected + 1, oldestSeq);
-
+    // Matches the ring already overwrote are gone; resume from the oldest still held.
+    const uint32_t nextToSend = std::max(collected + 1, getOldestStoredSequence());
     if (inFlightTransferSeq == nextToSend && transferRetryTimer.isRunning() &&
         !transferRetryTimer.expired()) {
         return;
     }
 
+    MatchRecordPacket pkt{};
+    pkt.matchSeq = nextToSend;
     Match match{};
     if (!readMatchBySequence(nextToSend, match)) {
         return;
     }
-
-    MatchTransferPacket pkt{};
-    pkt.cmd = static_cast<uint8_t>(MatchCollectionCmd::RECORD);
-    pkt.matchSeq = nextToSend;
     match.serialize(pkt.matchData);
 
     wirelessManager->sendEspNowData(fdnMac, PktType::kMatchCollection,
@@ -462,31 +391,25 @@ void MatchManager::syncFdnMatchTransfer() {
     transferRetryTimer.setTimer(MATCH_TRANSFER_RETRY_MS);
 }
 
-void MatchManager::onMatchCollectionPacket(const uint8_t* fromMac, const uint8_t* data,
-                                           size_t dataLen) {
-    if (!isConnectedFdnMac(fromMac)) {
+void MatchManager::onMatchRecordAck(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+    if (!storage || !rdc || !rdc->isConnectedPeer(DeviceType::FDN, fromMac)) {
         return;
     }
-    if (!data || dataLen < sizeof(MatchTransferAckPacket)) {
-        return;
-    }
-    if (data[0] != static_cast<uint8_t>(MatchCollectionCmd::ACK)) {
+    if (!data || dataLen != sizeof(MatchRecordAckPacket)) {
+        LOG_W(MATCH_MANAGER_TAG, "Dropping match ack of %zu bytes", dataLen);
         return;
     }
 
-    MatchTransferAckPacket ack{};
+    MatchRecordAckPacket ack{};
     memcpy(&ack, data, sizeof(ack));
 
-    const uint32_t seq = getMatchSequenceNumber();
-    const uint32_t collected = getCollectedHighWaterMark();
-    const uint32_t oldestSeq = (seq > MATCH_RING_CAPACITY) ? (seq - MATCH_RING_CAPACITY + 1) : 1;
-
-    if (ack.matchSeq >= oldestSeq && ack.matchSeq <= seq && ack.matchSeq > collected) {
-        setCollectedHighWaterMark(ack.matchSeq);
-        if (inFlightTransferSeq <= ack.matchSeq) {
-            inFlightTransferSeq = 0;
-            transferRetryTimer.invalidate();
-        }
+    if (ack.matchSeq <= getCollectedHighWaterMark() || ack.matchSeq > getMatchSequenceNumber()) {
+        return;
+    }
+    storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, ack.matchSeq);
+    if (inFlightTransferSeq <= ack.matchSeq) {
+        inFlightTransferSeq = 0;
+        transferRetryTimer.invalidate();
     }
 }
 
@@ -532,16 +455,13 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
         }
 
         unsigned long boost = matchManager->boostProvider_ ? matchManager->boostProvider_() : 0;
-        long boostedTimeMs = static_cast<long>(reactionTimeMs) - static_cast<long>(boost);
-        if (boostedTimeMs < MIN_DRAW_TIME_MS) {
-            boostedTimeMs = MIN_DRAW_TIME_MS;
-        }
+        unsigned long boostedTimeMs = (boost >= reactionTimeMs) ? 0 : (reactionTimeMs - boost);
 
         // Snapshot boost at press time so the result screen can display it
         // even if supporters unplug before the match finalizes.
         matchManager->lastMatchDisplay.boostMs = boost;
 
-        LOG_I(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %ld ms (boost %lu) for %s",
+        LOG_I(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms (boost %lu) for %s",
               boostedTimeMs, boost, activeMatchState->localIsHunter ? "Hunter" : "Bounty");
 
         activeMatchState->localIsHunter ? matchManager->setHunterDrawTime(boostedTimeMs)
@@ -592,27 +512,10 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
             return;
         }
-        if (player && player->hasRegistrationProfile()) {
-            if (command.playerUuid.isZero() || command.playerUuid == player->getServerPlayerId()) {
-                LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: missing or self playerUuid");
-                return;
-            }
-        } else {
-            if (!command.playerUuid.isZero() && player &&
-                command.playerUuid == player->getServerPlayerId()) {
-                LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: self playerUuid");
-                return;
-            }
-            if (command.playerId[0] == '\0' && command.playerUuid.isZero()) {
-                LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: missing playerId");
-                return;
-            }
-            if (player && !player->getUserID().empty() &&
-                strcmp(command.playerId, player->getUserID().c_str()) == 0 &&
-                command.playerUuid == player->getServerPlayerId()) {
-                LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: self playerId");
-                return;
-            }
+        if (player && player->hasRegistrationProfile() &&
+            (command.playerUuid.isZero() || command.playerUuid == player->getServerPlayerId())) {
+            LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: missing or self playerUuid");
+            return;
         }
         bool shootoutActive = shootoutManager_ && shootoutManager_->active();
         if(!shootoutActive && player->isHunter() == command.isHunter) {

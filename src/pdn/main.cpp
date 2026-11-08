@@ -123,7 +123,6 @@ static void setup() {
     {HAPTICS_DRIVER_NAME, hapticsDriver},
     {SERIAL_OUT_DRIVER_NAME, serialOutDriver},
     {SERIAL_IN_DRIVER_NAME, serialInDriver},
-    {HTTP_CLIENT_DRIVER_NAME, nullptr},
     {PEER_COMMS_DRIVER_NAME, peerCommsDriver},
     {PLATFORM_CLOCK_DRIVER_NAME, clockDriver},
     {LOGGER_DRIVER_NAME, loggerDriver},

@@ -102,8 +102,8 @@ inline QuickdrawMatchRecord fromMatch(const Match& match) {
     rec.playerATeamId = match.getHunterTeamId();
     rec.playerBTeamId = match.getBountyTeamId();
     rec.winnerPlayerId = match.getWinnerPlayerId();
-    rec.playerADrawTimeMs = match.getClampedHunterDrawTimeMs();
-    rec.playerBDrawTimeMs = match.getClampedBountyDrawTimeMs();
+    rec.playerADrawTimeMs = match.getHunterDrawTime();
+    rec.playerBDrawTimeMs = match.getBountyDrawTime();
     rec.occurredAtUnixMs = match.getOccurredAtUnixMs();
     return rec;
 }

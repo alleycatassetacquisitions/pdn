@@ -38,6 +38,7 @@ static const char* WM_TAG = "WirelessManager";
  */
 class WirelessManager {
 public:
+    /** httpClient is null on a device without WiFi (the PDN); HTTP calls then fail closed. */
     WirelessManager(PeerCommsInterface* peerComms, HttpClientInterface* httpClient)
         : peerComms(peerComms)
         , httpClient(httpClient)
@@ -50,7 +51,9 @@ public:
     void initialize() {
         LOG_I(WM_TAG, "Initializing wireless manager...");
 
-        httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
+        if (httpClient != nullptr) {
+            httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
+        }
         peerComms->setPeerCommsState(PeerCommsState::ENABLED);
         currentMode = WirelessMode::ESPNOW;
 
@@ -59,6 +62,10 @@ public:
 
     /** Disables ESP-NOW and connects the HTTP client over WiFi. */
     void enableWifiMode() {
+        if (httpClient == nullptr) {
+            LOG_E(WM_TAG, "No HTTP client on this device; staying in ESP-NOW mode");
+            return;
+        }
         if (currentMode == WirelessMode::WIFI &&
             httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
             LOG_D(WM_TAG, "Already in WiFi mode");
@@ -94,7 +101,8 @@ public:
 
         LOG_I(WM_TAG, "Switching to ESP-NOW mode...");
 
-        if (httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
+        if (httpClient != nullptr &&
+            httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
             LOG_D(WM_TAG, "Disconnecting HTTP client...");
             httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
         }
@@ -114,7 +122,7 @@ public:
 
     /** True when WiFi mode is active and the HTTP client is connected. */
     bool isWifiConnected() {
-        return currentMode == WirelessMode::WIFI &&
+        return currentMode == WirelessMode::WIFI && httpClient != nullptr &&
                httpClient->getHttpClientState() == HttpClientState::CONNECTED &&
                httpClient->isConnected();
     }
@@ -126,10 +134,16 @@ public:
     }
 
     /** True while a queued HTTP request has not had its callback. */
-    bool hasQueuedHttpRequests() { return httpClient->hasQueuedRequests(); }
+    bool hasQueuedHttpRequests() {
+        return httpClient != nullptr && httpClient->hasQueuedRequests();
+    }
 
     /** Queues an HTTP request, automatically switching to WiFi mode if needed. */
     bool queueHttpRequest(HttpRequest&& request) {
+        if (httpClient == nullptr) {
+            LOG_E(WM_TAG, "No HTTP client on this device; dropping %s", request.path.c_str());
+            return false;
+        }
         if (currentMode != WirelessMode::WIFI) {
             LOG_I(WM_TAG, "Auto-switching to WiFi mode for HTTP request");
             enableWifiMode();

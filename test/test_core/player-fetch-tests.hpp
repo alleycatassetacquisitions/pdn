@@ -16,7 +16,7 @@ using ::testing::Return;
 
 class PlayerFetchTestSuite : public testing::Test {
 public:
-    /** Wires mocks and a fake platform clock for cabled FDN-to-PDN PlayerFetch tests. */
+    /** Wires a PDN and a cabled FDN whose provision frames route to each other. */
     void SetUp() override {
         fakeClock = new FakePlatformClock();
         SimpleTimer::setPlatformClock(fakeClock);
@@ -41,16 +41,18 @@ public:
         ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
         .WillByDefault(Return(PeerCommsState::ENABLED));
 
-        device.fakeRemoteDeviceCoordinator.setJackStatus(SerialIdentifier::INPUT_JACK,
-                                                         JackStatus::CONNECTED);
-        device.fakeRemoteDeviceCoordinator.setPeerDeviceType(SerialIdentifier::INPUT_JACK,
-                                                             DeviceType::FDN);
-        device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
-
+        cableFdn(true);
         fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
         fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
         fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
 
+        ON_CALL(*device.mockPeerComms, sendData(_, PktType::kPlayerProvisionRequest, _, _))
+        .WillByDefault(
+        Invoke([this](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+            fdnDevice.mockPeerComms->triggerPacketCallback(pdnMac, PktType::kPlayerProvisionRequest,
+                                                           data, len);
+            return 1;
+        }));
         ON_CALL(*fdnDevice.mockPeerComms, sendData(_, PktType::kPlayerProvision, _, _))
         .WillByDefault(
         Invoke([this](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
@@ -67,6 +69,15 @@ public:
         delete fakeClock;
     }
 
+    /** Plugs or unplugs the FDN on the PDN's input jack. */
+    void cableFdn(bool connected) {
+        device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::INPUT_JACK, connected ? JackStatus::CONNECTED : JackStatus::DISCONNECTED);
+        device.fakeRemoteDeviceCoordinator.setPeerDeviceType(SerialIdentifier::INPUT_JACK,
+                                                             DeviceType::FDN);
+        device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
+    }
+
     FakePlatformClock* fakeClock = nullptr;
     PlayerProvider playerProvider;
     MockDevice device;
@@ -77,121 +88,246 @@ public:
     std::vector<HttpRequest> queuedRequests;
 };
 
-inline void pinEntryRoutesNonDemoPinToFetch(PlayerFetchTestSuite* suite) {
-    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
-    EXPECT_FALSE(fdnProv.provisionConnectedPdnByPin("123")) << "3-digit PIN must be rejected";
-    EXPECT_FALSE(fdnProv.provisionConnectedPdnByPin("12a4")) << "non-digit PIN must be rejected";
-    EXPECT_TRUE(suite->queuedRequests.empty());
-
-    EXPECT_TRUE(fdnProv.provisionConnectedPdnByPin("0007"));
-    ASSERT_EQ(suite->queuedRequests.size(), 1u);
-    EXPECT_EQ(suite->queuedRequests[0].path, "/device/players/by-pin/0007");
-}
-
-inline void pinEntryRoutesDemoPinToChooseTeam(PlayerFetchTestSuite* suite) {
-    // Unprovisioned PDN starts with userId == 0xFFFF and zero UUIDs; provisioning assigns a
-    // non-0xFFFF userId
-    Player* player = suite->playerProvider.getPlayer();
-    PlayerProfile unprov = player->toProfile();
-    EXPECT_EQ(unprov.userId, 0xFFFFu);
-
-    bool roleCallbackFired = false;
-    player->setOnRoleChanged([&roleCallbackFired]() { roleCallbackFired = true; });
-
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
-    fetch.onStateMounted(&suite->device);
-
-    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
-    ASSERT_TRUE(fdnProv.provisionConnectedPdnByPin("0000"));
-    ASSERT_EQ(suite->queuedRequests.size(), 1u);
-
-    std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "RebootAsset");
-    appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Bounty");
-    appendTestAffiliationNamed(body, "Reboot Syndicate");
-    suite->queuedRequests[0].onSuccess(body);
-
-    EXPECT_TRUE(roleCallbackFired) << "applying registration profile must notify connected peers";
-    EXPECT_FALSE(player->isHunter());
-    EXPECT_EQ(player->getAllegiance(), Allegiance::RESISTANCE);
-    EXPECT_NE(player->toProfile().userId, 0xFFFFu);
-    EXPECT_TRUE(fetch.transitionToWelcome());
-    fetch.onStateDismounted(&suite->device);
-}
-
-inline void fetchUserQueuesDevicePlayerLookup(PlayerFetchTestSuite* suite) {
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
-    fetch.onStateMounted(&suite->device);
-
-    // Uncabled sender is ignored
-    const uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-    Player validPlayer{};
+/** A PROFILE_DELIVERED packet for TEST_PLAYER_ID named @p name. */
+inline PlayerProvisionPacket makeProvisionPacket(const char* name, int64_t serverUnixMs) {
+    Player player{};
     UUIDBytes playerId{};
     UUIDBytes::parse(TEST_PLAYER_ID, playerId);
     Team team{};
     strncpy(team.name, "Hunter", sizeof(team.name) - 1);
-    validPlayer.applyRegistrationProfile(playerId, "Spoofed", team, {});
-    PlayerProvisionPacket spoofPkt = FdnProvisioningManager::toProvisionPacket(validPlayer);
-    suite->device.mockPeerComms->triggerPacketCallback(strangerMac, PktType::kPlayerProvision,
-                                                       reinterpret_cast<const uint8_t*>(&spoofPkt),
-                                                       sizeof(spoofPkt));
-    EXPECT_FALSE(suite->playerProvider.hasPlayer());
-    EXPECT_FALSE(fetch.transitionToWelcome());
+    player.applyRegistrationProfile(playerId, name, team, {});
+    return FdnProvisioningManager::toProvisionPacket(player, serverUnixMs);
+}
 
-    // Malformed packet (empty playerName) from cabled FDN is also ignored
-    PlayerProvisionPacket badPkt = spoofPkt;
-    badPkt.playerName[0] = '\0';
-    suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
-                                                       reinterpret_cast<const uint8_t*>(&badPkt),
-                                                       sizeof(badPkt));
-    EXPECT_FALSE(suite->playerProvider.hasPlayer());
-    EXPECT_FALSE(fetch.transitionToWelcome());
+inline void completePinOnEntry(PDN* pdn, PinEntryState* pinEntry,
+                               parameterizedCallbackFunction& primaryPress,
+                               parameterizedCallbackFunction& secondaryPress, void*& ctx,
+                               const int digits[4]) {
+    pinEntry->onStateMounted(pdn);
+    ASSERT_NE(primaryPress, nullptr);
+    ASSERT_NE(secondaryPress, nullptr);
+    for (int index = 0; index < 4; index++) {
+        for (int press = 0; press < digits[index]; press++) {
+            primaryPress(ctx);
+        }
+        secondaryPress(ctx);
+    }
+}
 
+inline void pinEntryRoutesNonDemoPinToFetch(PlayerFetchTestSuite* suite) {
+    parameterizedCallbackFunction primaryPress = nullptr;
+    parameterizedCallbackFunction secondaryPress = nullptr;
+    void* ctx = nullptr;
+    ON_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
+    .WillByDefault(
+    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
+        primaryPress = fn;
+        ctx = buttonCtx;
+    }));
+    ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
+    .WillByDefault(
+    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
+        secondaryPress = fn;
+        ctx = buttonCtx;
+    }));
+
+    PinEntryState pinEntry(&suite->playerProvider);
+    const int digits[4] = {0, 0, 0, 7};
+    completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
+    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "0007");
+    EXPECT_TRUE(pinEntry.transitionToFetchUser());
+    EXPECT_FALSE(pinEntry.transitionToChooseTeam());
+    pinEntry.onStateDismounted(&suite->device);
+}
+
+inline void pinEntryRoutesDemoPinToChooseTeam(PlayerFetchTestSuite* suite) {
+    parameterizedCallbackFunction primaryPress = nullptr;
+    parameterizedCallbackFunction secondaryPress = nullptr;
+    void* ctx = nullptr;
+    ON_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
+    .WillByDefault(
+    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
+        primaryPress = fn;
+        ctx = buttonCtx;
+    }));
+    ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
+    .WillByDefault(
+    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
+        secondaryPress = fn;
+        ctx = buttonCtx;
+    }));
+
+    PinEntryState pinEntry(&suite->playerProvider);
+    const int digits[4] = {0, 0, 0, 0};
+    completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
+    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), DEMO_PIN);
+    EXPECT_TRUE(pinEntry.transitionToChooseTeam());
+    EXPECT_FALSE(pinEntry.transitionToFetchUser());
+    pinEntry.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserRequestsLookupFromCabledFdn(PlayerFetchTestSuite* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    suite->playerProvider.setRegistrationPin("1234");
+    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+    ASSERT_EQ(suite->queuedRequests.size(), 1u);
+    EXPECT_EQ(suite->queuedRequests[0].path, "/device/players/by-pin/1234");
+    EXPECT_TRUE(suite->queuedRequests[0].payload.empty());
     fetch.onStateDismounted(&suite->device);
 }
 
-inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
+inline void fetchUserRequestsOnceFdnIsCabled(PlayerFetchTestSuite* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    suite->cableFdn(false);
+    suite->playerProvider.setRegistrationPin("1234");
     FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
+    EXPECT_TRUE(suite->queuedRequests.empty());
 
+    suite->cableFdn(true);
+    fetch.onStateLoop(&suite->device);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_EQ(suite->queuedRequests.size(), 1u) << "one request per mount";
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserStoresProvisionedPlayerOnSuccess(PlayerFetchTestSuite* suite) {
     FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
-    ASSERT_TRUE(fdnProv.provisionConnectedPdnByPin("0007"));
+    Player* player = suite->playerProvider.getPlayer();
+    bool roleCallbackFired = false;
+    player->setOnRoleChanged([&roleCallbackFired]() { roleCallbackFired = true; });
+
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
 
     std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada");
-    appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Hunter");
+    appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Bounty");
+    appendTestAffiliationNamed(body, "Reboot Syndicate");
     suite->queuedRequests[0].onSuccess(body);
 
     fetch.onStateLoop(&suite->device);
     EXPECT_TRUE(suite->playerProvider.hasPlayer());
-    EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
-    EXPECT_TRUE(suite->playerProvider.getPlayer()->isHunter());
+    EXPECT_STREQ(player->getServerPlayerName(), "Ada");
+    EXPECT_FALSE(player->isHunter());
+    EXPECT_EQ(player->getAllegiance(), Allegiance::RESISTANCE);
+    EXPECT_TRUE(roleCallbackFired) << "applying registration profile must notify connected peers";
+    EXPECT_STREQ(player->getUserID().c_str(), "7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11");
+    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "0007");
     EXPECT_TRUE(fetch.transitionToWelcome());
-    suite->queuedRequests.clear();
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserSetsWallClockFromProvision(PlayerFetchTestSuite* suite) {
+    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+
+    PlayerProvisionPacket preSync = makeProvisionPacket("Ada", 5000);
+    suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
+                                                       reinterpret_cast<const uint8_t*>(&preSync),
+                                                       sizeof(preSync));
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), 0) << "an unsynced FDN clock is ignored";
+
+    PlayerProvisionPacket synced = makeProvisionPacket("Ada", 1792359000000LL);
+    suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
+                                                       reinterpret_cast<const uint8_t*>(&synced),
+                                                       sizeof(synced));
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), 1792359000000LL);
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserIgnoresUncabledOrMalformedProvision(PlayerFetchTestSuite* suite) {
+    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+
+    const uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
+    PlayerProvisionPacket spoofed = makeProvisionPacket("Spoofed", 0);
+    suite->device.mockPeerComms->triggerPacketCallback(strangerMac, PktType::kPlayerProvision,
+                                                       reinterpret_cast<const uint8_t*>(&spoofed),
+                                                       sizeof(spoofed));
+    EXPECT_FALSE(suite->playerProvider.hasPlayer());
+
+    PlayerProvisionPacket unnamed = spoofed;
+    unnamed.playerName[0] = '\0';
+    suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
+                                                       reinterpret_cast<const uint8_t*>(&unnamed),
+                                                       sizeof(unnamed));
+    suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
+                                                       reinterpret_cast<const uint8_t*>(&spoofed),
+                                                       sizeof(spoofed) - 1);
+    EXPECT_FALSE(suite->playerProvider.hasPlayer());
+    EXPECT_FALSE(fetch.transitionToWelcome());
     fetch.onStateDismounted(&suite->device);
 }
 
 inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    suite->playerProvider.setRegistrationPin("9999");
     FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
-
-    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
-    ASSERT_TRUE(fdnProv.provisionConnectedPdnByPin("9999"));
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
     suite->queuedRequests[0].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404"});
 
     fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(fetch.isShowingFailurePage());
-    EXPECT_FALSE(fetch.transitionToWelcome());
+    EXPECT_FALSE(fetch.transitionToPinEntry());
 
     suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
     fetch.onStateLoop(&suite->device);
-    EXPECT_FALSE(fetch.isShowingFailurePage());
-    suite->queuedRequests.clear();
+    EXPECT_TRUE(fetch.transitionToPinEntry());
     fetch.onStateDismounted(&suite->device);
 }
 
+inline void fetchUserTimesOutWithoutFdn(PlayerFetchTestSuite* suite) {
+    suite->cableFdn(false);
+    suite->playerProvider.setRegistrationPin("1234");
+    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+
+    suite->fakeClock->advance(USER_DATA_FETCH_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch.transitionToPinEntry());
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fdnDropsMalformedOrUncabledProvisionRequest(PlayerFetchTestSuite* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    PlayerProvisionRequestPacket malformed{};
+    strncpy(malformed.pin, "12/4", sizeof(malformed.pin) - 1);
+    suite->fdnDevice.mockPeerComms->triggerPacketCallback(
+    suite->pdnMac, PktType::kPlayerProvisionRequest, reinterpret_cast<const uint8_t*>(&malformed),
+    sizeof(malformed));
+    EXPECT_TRUE(suite->queuedRequests.empty());
+
+    const uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
+    PlayerProvisionRequestPacket valid{};
+    strncpy(valid.pin, "1234", sizeof(valid.pin) - 1);
+    suite->fdnDevice.mockPeerComms->triggerPacketCallback(
+    strangerMac, PktType::kPlayerProvisionRequest, reinterpret_cast<const uint8_t*>(&valid),
+    sizeof(valid));
+    EXPECT_TRUE(suite->queuedRequests.empty());
+}
+
 inline void chooseTeamConfirmReachesDemoStub(PlayerFetchTestSuite* suite) {
-    // Re-provisioning overwrites identity and notifies connected peers even when role is unchanged
+    ChooseTeamState chooseTeam(&suite->playerProvider);
+    parameterizedCallbackFunction secondaryPress = nullptr;
+    void* secondaryCtx = nullptr;
+    ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
+    .WillByDefault(Invoke([&](parameterizedCallbackFunction fn, void* ctx, ButtonInteraction) {
+        secondaryPress = fn;
+        secondaryCtx = ctx;
+    }));
+    chooseTeam.onStateMounted(&suite->device);
+    ASSERT_NE(secondaryPress, nullptr);
+    secondaryPress(secondaryCtx);
+    EXPECT_TRUE(chooseTeam.transitionToDemoStub());
+    chooseTeam.onStateDismounted(&suite->device);
+}
+
+inline void reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged(PlayerFetchTestSuite* suite) {
     Player* player = suite->playerProvider.getPlayer();
     int roleNotifications = 0;
     player->setOnRoleChanged([&roleNotifications]() { roleNotifications++; });

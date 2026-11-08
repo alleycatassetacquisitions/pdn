@@ -7,6 +7,7 @@
 #include "device/fdn.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "wireless/fdn-connect-wireless-manager.hpp"
+#include "alleycat-server/fdn-match-spool.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "utils/simple-timer.hpp"
@@ -25,10 +26,10 @@ enum IdleStateId {
 // ---------------------------------------------------------------------------
 class IdleState : public FDNConnectState {
 public:
-    IdleState(RemotePlayerManager* remotePlayerManager,
-              HackedPlayersManager* hackedPlayersManager,
+    /** FDN home screen; also schedules hack and match spool uploads. */
+    IdleState(RemotePlayerManager* remotePlayerManager, HackedPlayersManager* hackedPlayersManager,
               FDNConnectWirelessManager* fdnConnectWirelessManager,
-              RemoteDeviceCoordinator* remoteDeviceCoordinator);
+              RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool);
     ~IdleState();
 
     void onStateMounted(FDN* fdn) override;
@@ -45,6 +46,7 @@ private:
     RemotePlayerManager* remotePlayerManager;
     HackedPlayersManager* hackedPlayersManager;
     FDNConnectWirelessManager* fdnConnectWirelessManager;
+    FdnMatchSpool* fdnMatchSpool;
 
     std::function<void(const std::string&, const uint8_t*)> connectionHandler;
 
@@ -189,7 +191,9 @@ private:
 // ---------------------------------------------------------------------------
 class UploadPendingHacksState : public TypedState<FDN> {
 public:
-    explicit UploadPendingHacksState(HackedPlayersManager* hackedPlayersManager);
+    /** Uploads pending hacks and every staged match spool record over Wi-Fi. */
+    UploadPendingHacksState(HackedPlayersManager* hackedPlayersManager,
+                            FdnMatchSpool* fdnMatchSpool);
     ~UploadPendingHacksState();
 
     void onStateMounted(FDN* fdn) override;
@@ -200,6 +204,7 @@ public:
 
 private:
     HackedPlayersManager* hackedPlayersManager;
+    FdnMatchSpool* fdnMatchSpool;
 
     SimpleTimer glyphTimer;
     SimpleTimer fallbackTimer;

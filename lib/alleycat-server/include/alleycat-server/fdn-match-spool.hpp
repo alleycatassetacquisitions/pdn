@@ -1,10 +1,8 @@
 #pragma once
 
-#include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <optional>
-#include <vector>
+#include <functional>
 #include "alleycat-server/matches-api.hpp"
 #include "alleycat-server/quickdraw-match-codec.hpp"
 #include "device/drivers/logger.hpp"
@@ -20,19 +18,22 @@ inline constexpr const char SPOOL_TAIL_KEY[] = "spool_tail";
 inline constexpr const char SPOOL_SLOT_PREFIX[] = "spool_";
 inline constexpr size_t FDN_MATCH_SPOOL_CAPACITY = 64;
 
+static_assert(FDN_MATCH_SPOOL_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH,
+              "one upload must be able to drain the whole spool");
+
 /**
  * FDN persistent 64-slot match spool and batch uploader.
  *
- * Accepts MatchTransferPacket frames over PktType::kMatchCollection only from a
- * PDN that is Connected on an FDN serial jack, persists up to 64 records in NVS,
- * withholds MatchTransferAckPacket when full, and uploads staged batches via
- * POST /quickdraw-matches.
+ * Accepts MatchRecordPackets over PktType::kMatchCollection only from a PDN that is
+ * Connected on an FDN jack, persists up to 64 records in NVS, acknowledges each
+ * persisted record over PktType::kMatchCollectionAck (withholding the ack when full),
+ * and uploads staged records through POST /quickdraw-matches when asked.
  */
 class FdnMatchSpool {
 public:
     /** Constructs the FDN match spool and registers the kMatchCollection handler. */
     FdnMatchSpool(WirelessManager* wirelessManager, StorageInterface* storage,
-                  RemoteDeviceCoordinator* rdc = nullptr)
+                  RemoteDeviceCoordinator* rdc)
         : wirelessManager(wirelessManager)
         , storage(storage)
         , rdc(rdc) {
@@ -40,7 +41,7 @@ public:
             this->wirelessManager->setEspNowPacketHandler(
             PktType::kMatchCollection,
             [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                static_cast<FdnMatchSpool*>(ctx)->onMatchCollectionPacket(fromMac, data, dataLen);
+                static_cast<FdnMatchSpool*>(ctx)->onMatchRecord(fromMac, data, dataLen);
             },
             this);
         }
@@ -53,50 +54,121 @@ public:
         }
     }
 
-    /** Injects the RemoteDeviceCoordinator used to verify Connected PDN jacks. */
-    void setRemoteDeviceCoordinator(RemoteDeviceCoordinator* coordinator) { rdc = coordinator; }
+    /** @return Number of staged matches awaiting upload (0..64). */
+    size_t getStagedCount() const { return getTail() - getHead(); }
 
-    /** @return Monotonic head sequence index of the spool (clamped against corruption). */
+    /** Reads the staged match at @p offset from the oldest staged record. */
+    bool readStagedMatch(size_t offset, Match& out) const {
+        if (offset >= getStagedCount()) return false;
+        return readSlot(getHead() + static_cast<uint32_t>(offset), out);
+    }
+
+    /** Handles an inbound MatchRecordPacket from a Connected PDN. */
+    void onMatchRecord(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+        if (!storage || !rdc || !rdc->isConnectedPeer(DeviceType::PDN, fromMac)) {
+            return;
+        }
+        if (!data || dataLen != sizeof(MatchRecordPacket)) {
+            LOG_W("FDN_SPOOL", "Dropping match record of %zu bytes", dataLen);
+            return;
+        }
+
+        MatchRecordPacket pkt{};
+        memcpy(&pkt, data, sizeof(pkt));
+
+        Match incoming{};
+        incoming.deserialize(pkt.matchData);
+
+        // A lost ack makes the PDN resend a record that is already staged.
+        if (!containsMatchUuid(incoming.getMatchUuid())) {
+            if (getStagedCount() >= FDN_MATCH_SPOOL_CAPACITY) {
+                LOG_W("FDN_SPOOL", "Spool full; withholding ack for seq %u",
+                      static_cast<unsigned>(pkt.matchSeq));
+                return;
+            }
+            if (!stageMatch(pkt.matchData)) {
+                return;
+            }
+        }
+        sendAck(fromMac, pkt.matchSeq);
+    }
+
+    /**
+     * Uploads every staged match as one POST /quickdraw-matches batch. The server
+     * keeps the first report of a match ID, so a batch is retired on any decodable
+     * response, rejections included, and kept for retry on a transport error.
+     *
+     * @return false when nothing was queued; @p onComplete then never fires.
+     */
+    bool uploadPendingBatch(const std::function<void(bool uploaded)>& onComplete) {
+        if (!wirelessManager || !storage || uploadInFlight) {
+            return false;
+        }
+        dropUnreadableHead();
+        const size_t batchCount = getStagedCount();
+        if (batchCount == 0) {
+            return false;
+        }
+
+        const uint32_t batchHead = getHead();
+        uploadInFlight = true;
+
+        MatchesApi::uploadQuickdrawMatches(
+        wirelessManager, batchCount,
+        [this, batchHead](size_t index, QuickdrawMatchRecord& record) -> bool {
+            Match match{};
+            if (!readSlot(batchHead + static_cast<uint32_t>(index), match)) {
+                return false;
+            }
+            record = QuickdrawMatchCodec::fromMatch(match);
+            return true;
+        },
+        [](const QuickdrawMatchRejection& rejection) {
+            char uuidText[UUIDBytes::TEXT_BUFFER_SIZE] = {};
+            rejection.matchId.format(uuidText);
+            LOG_W("FDN_SPOOL", "Server rejected match[%u] %s (code=%d)",
+                  static_cast<unsigned>(rejection.matchIndex), uuidText,
+                  static_cast<int>(rejection.rawCode));
+        },
+        [this, batchHead, batchCount, onComplete](const QuickdrawUploadResult&) {
+            storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY,
+                               batchHead + static_cast<uint32_t>(batchCount));
+            uploadInFlight = false;
+            if (onComplete) onComplete(true);
+        },
+        [this, onComplete](const WirelessErrorInfo& error) {
+            LOG_W("FDN_SPOOL", "Match upload failed: %s", error.message.c_str());
+            uploadInFlight = false;
+            if (onComplete) onComplete(false);
+        });
+        return true;
+    }
+
+private:
+    uint32_t getTail() const {
+        return storage ? storage->readUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_TAIL_KEY, 0) : 0;
+    }
+
+    // Clamped so a torn head/tail pair from NVS corruption reads as at most a full spool.
     uint32_t getHead() const {
         if (!storage) return 0;
-        const uint32_t tail = storage->readUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_TAIL_KEY, 0);
-        uint32_t head = storage->readUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, 0);
-        if (head > tail) {
-            head = tail;
-            storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, head);
-        } else if (tail - head > FDN_MATCH_SPOOL_CAPACITY) {
-            head = tail - static_cast<uint32_t>(FDN_MATCH_SPOOL_CAPACITY);
-            storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, head);
+        const uint32_t tail = getTail();
+        const uint32_t head = storage->readUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, 0);
+        if (head > tail) return tail;
+        if (tail - head > FDN_MATCH_SPOOL_CAPACITY) {
+            return tail - static_cast<uint32_t>(FDN_MATCH_SPOOL_CAPACITY);
         }
         return head;
     }
 
-    /** @return Monotonic tail sequence index of the spool. */
-    uint32_t getTail() const {
-        if (!storage) return 0;
-        return storage->readUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_TAIL_KEY, 0);
+    static void slotKey(uint32_t index, char (&key)[16]) {
+        snprintf(key, sizeof(key), "%s%u", SPOOL_SLOT_PREFIX,
+                 static_cast<unsigned>(index % FDN_MATCH_SPOOL_CAPACITY));
     }
 
-    /** @return Number of staged matches awaiting upload (0..64). */
-    size_t getStagedCount() const {
-        const uint32_t head = getHead();
-        const uint32_t tail = getTail();
-        return (tail >= head) ? static_cast<size_t>(tail - head) : 0;
-    }
-
-    /** @return true when all 64 spool slots are occupied by unuploaded matches. */
-    bool isFull() const { return getStagedCount() >= FDN_MATCH_SPOOL_CAPACITY; }
-
-    /** Reads the staged match at @p offset relative to `getHead()`. */
-    bool readStagedMatch(size_t offset, Match& out) const {
-        const size_t count = getStagedCount();
-        if (!storage || offset >= count) return false;
-        const uint32_t index = getHead() + static_cast<uint32_t>(offset);
-        const uint32_t slot = index % static_cast<uint32_t>(FDN_MATCH_SPOOL_CAPACITY);
-
+    bool readSlot(uint32_t index, Match& out) const {
         char key[16];
-        snprintf(key, sizeof(key), "%s%u", SPOOL_SLOT_PREFIX, static_cast<unsigned>(slot));
-
+        slotKey(index, key);
         uint8_t buffer[MATCH_BINARY_SIZE] = {};
         if (storage->readBytes(FDN_MATCH_SPOOL_NAMESPACE, key, buffer, MATCH_BINARY_SIZE) !=
             MATCH_BINARY_SIZE) {
@@ -106,122 +178,14 @@ public:
         return true;
     }
 
-    /** Handles an inbound MatchTransferPacket from a Connected PDN. */
-    void onMatchCollectionPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-        if (!isConnectedPdnMac(fromMac)) {
-            return;
+    // An unreadable record would fail every batch it heads, so it is dropped instead.
+    void dropUnreadableHead() {
+        Match probe{};
+        while (getStagedCount() > 0 && !readSlot(getHead(), probe)) {
+            LOG_E("FDN_SPOOL", "Dropping unreadable spool slot %u",
+                  static_cast<unsigned>(getHead() % FDN_MATCH_SPOOL_CAPACITY));
+            storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, getHead() + 1);
         }
-        if (!data || dataLen < sizeof(MatchTransferPacket)) {
-            return;
-        }
-        if (data[0] != static_cast<uint8_t>(MatchCollectionCmd::RECORD)) {
-            return;
-        }
-
-        MatchTransferPacket pkt{};
-        memcpy(&pkt, data, sizeof(pkt));
-
-        Match incoming{};
-        incoming.deserialize(pkt.matchData);
-
-        if (containsMatchUuid(incoming.getMatchUuid())) {
-            sendAck(fromMac, pkt.matchSeq);
-            return;
-        }
-
-        if (isFull()) {
-            LOG_W("FDN_SPOOL", "Spool full (%u records); withholding ACK for seq %u",
-                  static_cast<unsigned>(FDN_MATCH_SPOOL_CAPACITY),
-                  static_cast<unsigned>(pkt.matchSeq));
-            return;
-        }
-
-        if (!stageMatch(incoming)) {
-            return;
-        }
-
-        sendAck(fromMac, pkt.matchSeq);
-    }
-
-    /** Uploads all currently staged matches as a protobuf batch via POST /quickdraw-matches. */
-    bool uploadPendingBatch() {
-        if (!wirelessManager || !storage || uploadInFlight) {
-            return false;
-        }
-        const size_t batchCount = getStagedCount();
-        if (batchCount == 0) {
-            return false;
-        }
-
-        const uint32_t batchHead = getHead();
-        uploadInFlight = true;
-        lastRejections.clear();
-        lastError.reset();
-
-        MatchesApi::uploadQuickdrawMatches(
-        wirelessManager, batchCount,
-        [this, batchHead](size_t index, QuickdrawMatchRecord& record) -> bool {
-            const uint32_t slot = (batchHead + static_cast<uint32_t>(index)) %
-                                  static_cast<uint32_t>(FDN_MATCH_SPOOL_CAPACITY);
-            char key[16];
-            snprintf(key, sizeof(key), "%s%u", SPOOL_SLOT_PREFIX, static_cast<unsigned>(slot));
-            uint8_t buffer[MATCH_BINARY_SIZE] = {};
-            if (storage->readBytes(FDN_MATCH_SPOOL_NAMESPACE, key, buffer, MATCH_BINARY_SIZE) !=
-                MATCH_BINARY_SIZE) {
-                return false;
-            }
-            Match match{};
-            match.deserialize(buffer);
-            record = QuickdrawMatchCodec::fromMatch(match);
-            return true;
-        },
-        [this](const QuickdrawMatchRejection& rejection) {
-            lastRejections.push_back(rejection);
-            char uuidText[UUIDBytes::TEXT_BUFFER_SIZE] = {};
-            rejection.matchId.format(uuidText);
-            LOG_W("FDN_SPOOL", "Server rejected match[%u] %s (code=%d)",
-                  static_cast<unsigned>(rejection.matchIndex), uuidText,
-                  static_cast<int>(rejection.rawCode));
-        },
-        [this, batchHead, batchCount](const QuickdrawUploadResult& result) {
-            const uint32_t newHead = batchHead + static_cast<uint32_t>(batchCount);
-            storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, newHead);
-            lastUploadResult = result;
-            completedUploadCount++;
-            uploadInFlight = false;
-        },
-        [this](const WirelessErrorInfo& error) {
-            lastError = error;
-            uploadInFlight = false;
-        });
-        return true;
-    }
-
-    /** @return true while a batch upload HTTP request is in flight. */
-    bool isUploadInFlight() const { return uploadInFlight; }
-    /** @return Number of completed batch uploads. */
-    size_t getCompletedUploadCount() const { return completedUploadCount; }
-    /** @return Per-record rejections reported by the last batch upload. */
-    const std::vector<QuickdrawMatchRejection>& getLastRejections() const { return lastRejections; }
-    /** @return Summary result from the last completed batch upload. */
-    const std::optional<QuickdrawUploadResult>& getLastUploadResult() const {
-        return lastUploadResult;
-    }
-    /** @return Transport/HTTP error from the last failed batch upload. */
-    const std::optional<WirelessErrorInfo>& getLastError() const { return lastError; }
-
-private:
-    bool isConnectedPdnMac(const uint8_t* mac) const {
-        if (!rdc || !mac) return false;
-        for (SerialIdentifier jack : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK,
-                                      SerialIdentifier::INPUT_JACK_SECONDARY}) {
-            if (rdc->getJackStatus(jack) == JackStatus::CONNECTED &&
-                rdc->getPeerDeviceType(jack) == DeviceType::PDN) {
-                const uint8_t* peer = rdc->getPeerMac(jack);
-                if (peer && memcmp(peer, mac, 6) == 0) return true;
-            }
-        }
-        return false;
     }
 
     bool containsMatchUuid(const UUIDBytes& uuid) const {
@@ -236,34 +200,22 @@ private:
         return false;
     }
 
-    bool stageMatch(const Match& match) {
-        if (!storage || isFull()) return false;
+    bool stageMatch(const uint8_t (&record)[MATCH_BINARY_SIZE]) {
         const uint32_t tail = getTail();
-        const uint32_t slot = tail % static_cast<uint32_t>(FDN_MATCH_SPOOL_CAPACITY);
-
         char key[16];
-        snprintf(key, sizeof(key), "%s%u", SPOOL_SLOT_PREFIX, static_cast<unsigned>(slot));
-
-        uint8_t buffer[MATCH_BINARY_SIZE] = {};
-        match.serialize(buffer);
-
-        if (storage->writeBytes(FDN_MATCH_SPOOL_NAMESPACE, key, buffer, MATCH_BINARY_SIZE) !=
+        slotKey(tail, key);
+        if (storage->writeBytes(FDN_MATCH_SPOOL_NAMESPACE, key, record, MATCH_BINARY_SIZE) !=
             MATCH_BINARY_SIZE) {
             return false;
         }
-        if (storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_TAIL_KEY, tail + 1) !=
-            sizeof(uint32_t)) {
-            return false;
-        }
-        return true;
+        return storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_TAIL_KEY, tail + 1) ==
+               sizeof(uint32_t);
     }
 
     void sendAck(const uint8_t* toMac, uint32_t matchSeq) {
-        if (!wirelessManager || !toMac) return;
-        MatchTransferAckPacket ack{};
-        ack.cmd = static_cast<uint8_t>(MatchCollectionCmd::ACK);
+        MatchRecordAckPacket ack{};
         ack.matchSeq = matchSeq;
-        wirelessManager->sendEspNowData(toMac, PktType::kMatchCollection,
+        wirelessManager->sendEspNowData(toMac, PktType::kMatchCollectionAck,
                                         reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
     }
 
@@ -271,8 +223,4 @@ private:
     StorageInterface* storage = nullptr;
     RemoteDeviceCoordinator* rdc = nullptr;
     bool uploadInFlight = false;
-    size_t completedUploadCount = 0;
-    std::vector<QuickdrawMatchRejection> lastRejections;
-    std::optional<QuickdrawUploadResult> lastUploadResult;
-    std::optional<WirelessErrorInfo> lastError;
 };

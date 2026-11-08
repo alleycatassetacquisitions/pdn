@@ -37,7 +37,11 @@ enum class PktType : uint8_t {
     // NOLINTNEXTLINE(readability-identifier-naming)
     kMatchCollection = 23,
     // NOLINTNEXTLINE(readability-identifier-naming)
-    kPlayerProvision = 24,
+    kMatchCollectionAck = 24,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kPlayerProvision = 25,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kPlayerProvisionRequest = 26,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -51,8 +55,6 @@ struct PlayerProfile {
     uint8_t allegiance;
     char faction[8];
     char name[16];
-    uint8_t playerId[16];
-    uint8_t teamId[16];
 } __attribute__((packed));
 
 // PDN-to-neighbour connection context. seqId is stamped by the ReliableChannel.
@@ -198,48 +200,4 @@ struct FirmwareChunkHeader {
     /** Length of the whole image, signature sector included. */
     uint32_t imageLength;
     uint16_t index;
-} __attribute__((packed));
-
-enum class MatchCollectionCmd : uint8_t {
-    RECORD = 0,
-    ACK = 1,
-};
-
-struct MatchTransferPacket {
-    uint8_t cmd;
-    uint32_t matchSeq;
-    uint8_t matchData[140];
-} __attribute__((packed));
-
-struct MatchTransferAckPacket {
-    uint8_t cmd;
-    uint32_t matchSeq;
-} __attribute__((packed));
-
-enum class ProvisionStatus : uint8_t {
-    PROFILE_DELIVERED = 0,
-    LOOKUP_FAILED = 1,
-};
-
-struct WireAffiliation {
-    uint8_t categoryId[16];
-    char categoryName[32];
-    uint8_t affiliationId[16];
-    char affiliationName[32];
-} __attribute__((packed));
-
-struct PlayerProvisionPacket {
-    uint8_t status;
-    uint8_t playerId[16];
-    char playerName[32];
-    uint8_t teamId[16];
-    char teamName[32];
-    uint8_t affiliationCount;
-    WireAffiliation affiliations[5];
-    uint32_t wins;
-    uint32_t losses;
-    uint32_t matchesPlayed;
-    uint32_t winStreak;
-    uint32_t lastReactionTimeMs;
-    uint32_t totalReactionTimeMs;
 } __attribute__((packed));

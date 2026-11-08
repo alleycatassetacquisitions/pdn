@@ -7,16 +7,18 @@
 IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
                      HackedPlayersManager* hackedPlayersManager,
                      FDNConnectWirelessManager* fdnConnectWirelessManager,
-                     RemoteDeviceCoordinator* remoteDeviceCoordinator)
+                     RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::IDLE)
     , remotePlayerManager(remotePlayerManager)
     , hackedPlayersManager(hackedPlayersManager)
-    , fdnConnectWirelessManager(fdnConnectWirelessManager) {}
+    , fdnConnectWirelessManager(fdnConnectWirelessManager)
+    , fdnMatchSpool(fdnMatchSpool) {}
 
 IdleState::~IdleState() {
     remotePlayerManager       = nullptr;
     hackedPlayersManager      = nullptr;
     fdnConnectWirelessManager = nullptr;
+    fdnMatchSpool = nullptr;
 }
 
 void IdleState::setConnectionHandler(
@@ -74,5 +76,6 @@ bool IdleState::transitionToConnectionDetected() {
 }
 
 bool IdleState::transitionToUploadPending() {
-    return uploadTimer.expired() && !hackedPlayersManager->getPendingUploads().empty();
+    return uploadTimer.expired() && (!hackedPlayersManager->getPendingUploads().empty() ||
+                                     fdnMatchSpool->getStagedCount() > 0);
 }

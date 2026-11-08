@@ -182,8 +182,8 @@ static void setup() {
 
     // Apps
     RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
-    auto* idleApp =
-        new IdleApp(remotePlayerManager, hackedPlayersManager, fdnConnectWirelessManager, rdc);
+    auto* idleApp = new IdleApp(remotePlayerManager, hackedPlayersManager,
+                                fdnConnectWirelessManager, rdc, fdnMatchSpool);
     auto* mainMenuApp = new MainMenuApp(rdc);
     auto* hackingApp = new HackingApp(fdnConnectWirelessManager, hackedPlayersManager, rdc);
     auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager);

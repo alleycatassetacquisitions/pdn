@@ -29,6 +29,9 @@ public:
         unixTimeMs = timeMs;
     }
 
+    /** Sets simulated UTC milliseconds, as a provisioned PDN does. */
+    void setUnixMilliseconds(int64_t unixMs) override { unixTimeMs = unixMs; }
+
     void setTime(unsigned long time) {
         currentTime = time;
     }

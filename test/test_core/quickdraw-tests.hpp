@@ -174,20 +174,20 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
-    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
-    fetch.onStateMounted(&suite->device);
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 1000);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS - 1))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    fetch.onStateLoop(&suite->device);
-    EXPECT_FALSE(fetch.transitionToFirmwareUpdate());
-    fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(fetch.transitionToFirmwareUpdate());
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
 
-    fetch.onStateDismounted(&suite->device);
-    EXPECT_FALSE(fetch.transitionToFirmwareUpdate());
+    pinEntry.onStateDismounted(&suite->device);
+    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
 }
 
 // The button's pressed time counts from press-down, so a hold that began before the
@@ -195,27 +195,25 @@ inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
 inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
-    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
-    fetch.onStateMounted(&suite->device);
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS - 500);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    fetch.onStateLoop(&suite->device);
-    EXPECT_FALSE(fetch.transitionToFirmwareUpdate());
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 2000);
-    fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(fetch.transitionToFirmwareUpdate());
-    fetch.onStateDismounted(&suite->device);
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
+    pinEntry.onStateDismounted(&suite->device);
 }
 
-// The provisioning screen takes firmware updates for as long as it is up.
+// The pairing screen takes firmware updates for as long as it is up.
 inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PeerCommsInterface::PacketCallback onFrame;
-    EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kPlayerProvision, _, _))
-    .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
         .WillOnce(SaveArg<1>(&onFrame));
     FakeFirmwareStore store;
@@ -230,34 +228,25 @@ inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
 
     PlayerProvider playerProvider;
-    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
-    fetch.onStateMounted(&suite->device);
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 1);
 
-    fetch.onStateDismounted(&suite->device);
+    pinEntry.onStateDismounted(&suite->device);
     EXPECT_EQ(store.abortCalls, 1) << "leaving the screen drops the receive";
     suite->device.firmwareUpdateManager = nullptr;
 }
 
-// The provisioning screen leaves the radio mode alone on mount.
+// The pairing screen leaves the radio to whoever switched it to WiFi.
 inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     suite->device.wirelessManager->enableWifiMode();
     PlayerProvider playerProvider;
-    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
-    fetch.onStateMounted(&suite->device);
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
-    fetch.onStateDismounted(&suite->device);
-}
-
-inline void fetchExitPutsTheRadioBackOnEspNow(IdleStateTests* suite) {
-    suite->device.wirelessManager->enablePeerCommsMode();
-    PlayerProvider playerProvider;
-    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
-    fetch.onStateMounted(&suite->device);
-    fetch.onStateDismounted(&suite->device);
-    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
+    pinEntry.onStateDismounted(&suite->device);
 }
 
 inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {

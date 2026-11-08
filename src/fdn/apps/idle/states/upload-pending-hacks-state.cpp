@@ -6,12 +6,15 @@
 
 #define TAG "UPLOAD_PENDING"
 
-UploadPendingHacksState::UploadPendingHacksState(HackedPlayersManager* hackedPlayersManager)
+UploadPendingHacksState::UploadPendingHacksState(HackedPlayersManager* hackedPlayersManager,
+                                                 FdnMatchSpool* fdnMatchSpool)
     : TypedState<FDN>(IdleStateId::UPLOAD_PENDING)
-    , hackedPlayersManager(hackedPlayersManager) {}
+    , hackedPlayersManager(hackedPlayersManager)
+    , fdnMatchSpool(fdnMatchSpool) {}
 
 UploadPendingHacksState::~UploadPendingHacksState() {
     hackedPlayersManager = nullptr;
+    fdnMatchSpool = nullptr;
 }
 
 void UploadPendingHacksState::onStateMounted(FDN* fdn) {
@@ -25,8 +28,17 @@ void UploadPendingHacksState::onStateMounted(FDN* fdn) {
 
     LOG_I(TAG, "Mounted — %d pending upload(s)", pendingCount);
 
-    if (pendingCount > 0) {
+    const bool matchesStaged = fdnMatchSpool->getStagedCount() > 0;
+    if (pendingCount > 0 || matchesStaged) {
         fdn->getWirelessManager()->enableWifiMode();
+    }
+
+    // The whole spool goes up as one request, counted as one pending upload.
+    if (matchesStaged && fdnMatchSpool->uploadPendingBatch([this](bool uploaded) {
+            completedCount++;
+            if (!uploaded) failedCount++;
+        })) {
+        pendingCount++;
     }
 
     for (const auto& playerId : pending) {

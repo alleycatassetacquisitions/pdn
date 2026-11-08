@@ -23,7 +23,17 @@ class NativeClockDriver : public PlatformClockDriverInterface {
     }
 
     /** Returns UTC milliseconds from std::chrono::system_clock. */
-    int64_t unixMilliseconds() override {
+    int64_t unixMilliseconds() override { return systemUnixMilliseconds() + unixOffsetMs; }
+
+    /** Offsets the simulated wall clock; the host clock is never touched. */
+    void setUnixMilliseconds(int64_t unixMs) override {
+        unixOffsetMs = unixMs - systemUnixMilliseconds();
+    }
+
+private:
+    static int64_t systemUnixMilliseconds() {
         return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     }
+
+    int64_t unixOffsetMs = 0;
 };

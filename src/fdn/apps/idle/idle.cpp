@@ -5,17 +5,18 @@
 IdleApp::IdleApp(RemotePlayerManager* remotePlayerManager,
                  HackedPlayersManager* hackedPlayersManager,
                  FDNConnectWirelessManager* fdnConnectWirelessManager,
-                 RemoteDeviceCoordinator* remoteDeviceCoordinator)
+                 RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool)
     : StateMachine(IDLE_APP_ID)
     , remotePlayerManager(remotePlayerManager)
     , hackedPlayersManager(hackedPlayersManager)
     , fdnConnectWirelessManager(fdnConnectWirelessManager)
-    , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
+    , remoteDeviceCoordinator(remoteDeviceCoordinator)
+    , fdnMatchSpool(fdnMatchSpool) {}
 
 void IdleApp::populateStateMap() {
-    auto* idleState = new IdleState(
-        remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager, remoteDeviceCoordinator);
+    auto* idleState =
+    new IdleState(remotePlayerManager, hackedPlayersManager, fdnConnectWirelessManager,
+                  remoteDeviceCoordinator, fdnMatchSpool);
     auto* playerDetectedState = new PlayerDetectedState(
         remotePlayerManager, hackedPlayersManager,
         fdnConnectWirelessManager, remoteDeviceCoordinator);
@@ -23,7 +24,7 @@ void IdleApp::populateStateMap() {
     auto* unauthorizedDetectedState = new UnauthorizedDetectedState(remoteDeviceCoordinator);
     auto* connectionDetectedState   = new ConnectionDetectedState(
         hackedPlayersManager, fdnConnectWirelessManager, remoteDeviceCoordinator);
-    auto* uploadPendingState = new UploadPendingHacksState(hackedPlayersManager);
+    auto* uploadPendingState = new UploadPendingHacksState(hackedPlayersManager, fdnMatchSpool);
 
     // Shared connect handler: forwards the player ID to ConnectionDetectedState.
     auto connectHandler = [connectionDetectedState](

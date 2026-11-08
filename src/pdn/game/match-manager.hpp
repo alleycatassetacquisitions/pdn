@@ -90,9 +90,9 @@ public:
     bool finalizeMatch();
 
     /** Sets the hunter draw time (ms) on the active match. */
-    bool setHunterDrawTime(long hunterTimeMs);
+    bool setHunterDrawTime(unsigned long hunterTimeMs);
     /** Sets the bounty draw time (ms) on the active match. */
-    bool setBountyDrawTime(long bountyTimeMs);
+    bool setBountyDrawTime(unsigned long bountyTimeMs);
 
     /** Records the local timestamp when the match draw window starts. */
     void setMatchLocalStartTime(unsigned long localStartTimeMs);
@@ -123,21 +123,8 @@ public:
     /** Returns the 1-based monotonic match sequence number (0 when no matches finalized). */
     uint32_t getMatchSequenceNumber();
 
-    /** Returns the highest match sequence number acknowledged by a cabled FDN (clamped to <= seq).
-     */
+    /** Returns the highest match sequence number a cabled FDN has acknowledged (<= seq). */
     uint32_t getCollectedHighWaterMark();
-
-    /** Advances the collected high-water mark (clamped to <= getMatchSequenceNumber()). */
-    void setCollectedHighWaterMark(uint32_t seq);
-
-    /** Returns the number of matches currently held in the 32-slot ring buffer. */
-    size_t getStoredMatchCount();
-
-    /** Returns the number of uncollected matches still present in the 32-slot ring buffer. */
-    size_t getUncollectedMatchCount();
-
-    /** Reads the match stored at ring buffer slot [0, MATCH_RING_CAPACITY). */
-    bool readMatchFromSlot(uint8_t slot, Match& out);
 
     /** Reads the match for 1-based sequence number `seq` if still in the 32-slot ring buffer. */
     bool readMatchBySequence(uint32_t seq, Match& out);
@@ -225,10 +212,9 @@ private:
      */
     bool appendMatchToStorage(const Match* match);
 
-    const uint8_t* findConnectedFdnMac() const;
-    bool isConnectedFdnMac(const uint8_t* mac) const;
+    uint32_t getOldestStoredSequence();
     void syncFdnMatchTransfer();
-    void onMatchCollectionPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    void onMatchRecordAck(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake match commands

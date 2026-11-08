@@ -216,6 +216,28 @@ bool RemoteDeviceCoordinator::isDirectPeer(const uint8_t* mac) const {
     return false;
 }
 
+const uint8_t* RemoteDeviceCoordinator::getConnectedPeerMac(DeviceType type) {
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        if (getJackStatus(jack) == JackStatus::CONNECTED && getPeerDeviceType(jack) == type) {
+            const uint8_t* peer = getPeerMac(jack);
+            if (peer) return peer;
+        }
+    }
+    return nullptr;
+}
+
+bool RemoteDeviceCoordinator::isConnectedPeer(DeviceType type, const uint8_t* mac) {
+    if (!mac) return false;
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        if (getJackStatus(jack) != JackStatus::CONNECTED || getPeerDeviceType(jack) != type) {
+            continue;
+        }
+        const uint8_t* peer = getPeerMac(jack);
+        if (peer && memcmp(peer, mac, 6) == 0) return true;
+    }
+    return false;
+}
+
 void RemoteDeviceCoordinator::notifyChainChange() {
     // Copied before the call for the same reason the jack-change dispatch does
     // it: a handler that reacts by tearing its own state down clears this slot,

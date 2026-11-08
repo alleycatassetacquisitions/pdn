@@ -710,14 +710,6 @@ TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) {
     matchShorterIdOverwriteClearsTheTail();
 }
 
-TEST_F(MatchTestSuite, jsonRoundTripPreservesAllFields) {
-    matchJsonRoundTripPreservesAllFields();
-}
-
-TEST_F(MatchTestSuite, jsonContainsWinnerFlag) {
-    matchJsonContainsWinnerFlag();
-}
-
 TEST_F(MatchTestSuite, binaryRoundTripPreservesAllFields) {
     matchBinaryRoundTripPreservesAllFields();
 }
@@ -726,8 +718,8 @@ TEST_F(MatchTestSuite, binarySizeIsCorrect) {
     matchBinarySizeIsCorrect();
 }
 
-TEST_F(MatchTestSuite, binaryRoundTripPreservesUuidsWithEmbeddedZeroBytesAndSignedTimes) {
-    matchBinaryRoundTripPreservesUuidsWithEmbeddedZeroBytesAndSignedTimes();
+TEST_F(MatchTestSuite, binaryRoundTripPreservesUuidsWithEmbeddedZeroBytes) {
+    matchBinaryRoundTripPreservesUuidsWithEmbeddedZeroBytes();
 }
 
 TEST_F(MatchTestSuite, setupClearsDrawTimes) {
@@ -1089,20 +1081,42 @@ TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
     pinEntryRoutesDemoPinToChooseTeam(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserQueuesDevicePlayerLookup) {
-    fetchUserQueuesDevicePlayerLookup(this);
+TEST_F(PlayerFetchTestSuite, fetchUserRequestsLookupFromCabledFdn) {
+    fetchUserRequestsLookupFromCabledFdn(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserStoresDevicePlayerOnSuccess) {
-    fetchUserStoresDevicePlayerOnSuccess(this);
+TEST_F(PlayerFetchTestSuite, fetchUserRequestsOnceFdnIsCabled) {
+    fetchUserRequestsOnceFdnIsCabled(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserStoresProvisionedPlayerOnSuccess) {
+    fetchUserStoresProvisionedPlayerOnSuccess(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserSetsWallClockFromProvision) {
+    fetchUserSetsWallClockFromProvision(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserIgnoresUncabledOrMalformedProvision) {
+    fetchUserIgnoresUncabledOrMalformedProvision(this);
 }
 
 TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
     fetchUserFailureReturnsToPinAfterPageTimeout(this);
 }
 
+TEST_F(PlayerFetchTestSuite, fetchUserTimesOutWithoutFdn) { fetchUserTimesOutWithoutFdn(this); }
+
+TEST_F(PlayerFetchTestSuite, fdnDropsMalformedOrUncabledProvisionRequest) {
+    fdnDropsMalformedOrUncabledProvisionRequest(this);
+}
+
 TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
     chooseTeamConfirmReachesDemoStub(this);
+}
+
+TEST_F(PlayerFetchTestSuite, reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged) {
+    reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged(this);
 }
 
 // ============================================
@@ -1217,10 +1231,6 @@ TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
 
 TEST_F(IdleStateTests, pairingCodeLeavesTheRadioAlone) {
     pairingCodeLeavesTheRadioAlone(this);
-}
-
-TEST_F(IdleStateTests, fetchExitPutsTheRadioBackOnEspNow) {
-    fetchExitPutsTheRadioBackOnEspNow(this);
 }
 
 TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) {
