@@ -88,7 +88,7 @@ public:
     std::vector<HttpRequest> queuedRequests;
 };
 
-/** A PROFILE_DELIVERED packet for TEST_PLAYER_ID named @p name. */
+/** A PROFILE_DELIVERED packet for TEST_PLAYER_ID named @p name, answering PIN 0007. */
 inline PlayerProvisionPacket makeProvisionPacket(const char* name, int64_t serverUnixMs) {
     Player player{};
     UUIDBytes playerId{};
@@ -96,7 +96,9 @@ inline PlayerProvisionPacket makeProvisionPacket(const char* name, int64_t serve
     Team team{};
     strncpy(team.name, "Hunter", sizeof(team.name) - 1);
     player.applyRegistrationProfile(playerId, name, team, {});
-    return PlayerProvisionCodec::encode(player, serverUnixMs);
+    PlayerProvisionPacket pkt = PlayerProvisionCodec::encode(player, serverUnixMs);
+    strncpy(pkt.pin, "0007", sizeof(pkt.pin) - 1);
+    return pkt;
 }
 
 inline void completePinOnEntry(PDN* pdn, PinEntryState* pinEntry,
@@ -221,6 +223,7 @@ inline void fetchUserStoresProvisionedPlayerOnSuccess(PlayerFetchTestSuite* suit
 }
 
 inline void fetchUserSetsWallClockFromProvision(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.setRegistrationPin("0007");
     FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
 
@@ -239,8 +242,16 @@ inline void fetchUserSetsWallClockFromProvision(PlayerFetchTestSuite* suite) {
 }
 
 inline void fetchUserIgnoresUncabledOrMalformedProvision(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.setRegistrationPin("0007");
     FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
+
+    PlayerProvisionPacket otherPin = makeProvisionPacket("Stale", 0);
+    strncpy(otherPin.pin, "4321", sizeof(otherPin.pin) - 1);
+    suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
+                                                       reinterpret_cast<const uint8_t*>(&otherPin),
+                                                       sizeof(otherPin));
+    EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "a reply to an earlier PIN is not applied";
 
     const uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
     PlayerProvisionPacket spoofed = makeProvisionPacket("Spoofed", 0);
@@ -301,11 +312,11 @@ inline void fdnLookupDeadlineLeavesWifi(PlayerFetchTestSuite* suite) {
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
     ASSERT_EQ(suite->fdnDevice.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
 
-    suite->fakeClock->advance(14000);
+    suite->fakeClock->advance(7000);
     fdnProv.sync();
     EXPECT_EQ(suite->fdnDevice.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
 
-    suite->fakeClock->advance(2000);
+    suite->fakeClock->advance(1500);
     fdnProv.sync();
     EXPECT_EQ(suite->fdnDevice.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW)
     << "a lookup that never answers must not keep the FDN off ESP-NOW";
@@ -315,8 +326,16 @@ inline void fdnLookupDeadlineLeavesWifi(PlayerFetchTestSuite* suite) {
     fetch.onStateLoop(&suite->device);
     suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
     fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(fetch.transitionToPinEntry());
+    EXPECT_TRUE(fetch.transitionToPinEntry())
+    << "LOOKUP_FAILED reaches the PDN before its own 10 s timeout would";
     fetch.onStateDismounted(&suite->device);
+
+    PlayerProvisionRequestPacket retry{};
+    strncpy(retry.pin, "1234", sizeof(retry.pin) - 1);
+    suite->fdnDevice.mockPeerComms->triggerPacketCallback(
+    suite->pdnMac, PktType::kPlayerProvisionRequest, reinterpret_cast<const uint8_t*>(&retry),
+    sizeof(retry));
+    EXPECT_EQ(suite->queuedRequests.size(), 2u) << "the timed-out lookup no longer blocks the next";
 }
 
 inline void fdnDropsMalformedOrUncabledProvisionRequest(PlayerFetchTestSuite* suite) {

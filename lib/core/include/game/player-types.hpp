@@ -45,11 +45,13 @@ struct WireAffiliation {
 } __attribute__((packed));
 
 /**
- * FDN-to-PDN registration over PktType::kPlayerProvision. serverUnixMs carries the
- * FDN's wall clock, the PDN's only source of UTC since it has no HTTP client.
+ * FDN-to-PDN registration over PktType::kPlayerProvision. pin echoes the request so
+ * a late reply to an earlier PIN is not applied. serverUnixMs carries the FDN's wall
+ * clock, the PDN's only source of UTC since it has no HTTP client.
  */
 struct PlayerProvisionPacket {
     uint8_t status;
+    char pin[5];
     uint8_t playerId[UUIDBytes::SIZE];
     char playerName[PlayerLimits::NAME_BUFFER_SIZE];
     uint8_t teamId[UUIDBytes::SIZE];

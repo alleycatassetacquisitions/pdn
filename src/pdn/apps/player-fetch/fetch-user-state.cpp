@@ -112,6 +112,11 @@ void FetchUserState::onProvisionPacket(const uint8_t* fromMac, const uint8_t* da
     PlayerProvisionPacket pkt{};
     std::memcpy(&pkt, data, sizeof(pkt));
 
+    if (strncmp(pkt.pin, playerProvider->getRegistrationPin(), sizeof(pkt.pin) - 1) != 0) {
+        LOG_W(TAG, "Ignoring PlayerProvisionPacket for another PIN");
+        return;
+    }
+
     if (pkt.status == static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED)) {
         LOG_E(TAG, "FDN reported the lookup failed");
         fetchTimer.invalidate();

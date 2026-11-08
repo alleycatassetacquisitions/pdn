@@ -381,7 +381,12 @@ void MatchManager::syncFdnMatchTransfer() {
     if (!readMatchBySequence(nextToSend, match)) {
         // An unreadable record would hold back every record after it.
         LOG_E(MATCH_MANAGER_TAG, "Skipping unreadable stored match %u", nextToSend);
-        storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, nextToSend);
+        if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, nextToSend) !=
+            sizeof(uint32_t)) {
+            // Retry on the resend cadence rather than every tick.
+            inFlightTransferSeq = nextToSend;
+            transferRetryTimer.setTimer(MATCH_TRANSFER_RETRY_MS);
+        }
         return;
     }
     match.serialize(pkt.matchData);

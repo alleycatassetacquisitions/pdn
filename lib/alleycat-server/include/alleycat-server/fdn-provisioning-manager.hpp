@@ -59,7 +59,8 @@ public:
     }
 
 private:
-    static constexpr unsigned long PROVISION_LOOKUP_TIMEOUT_MS = 15000;
+    static constexpr unsigned long PROVISION_LOOKUP_TIMEOUT_MS =
+    8000;  // under the PDN's 10 s fetch timeout
 
     bool provisionPdn(const uint8_t* pdnMac, const std::string& pin) {
         if (!wirelessManager || !rdc || lookupInFlight ||
@@ -75,7 +76,7 @@ private:
 
         PlayerApi::getDevicePlayerByPin(
         wirelessManager, pin, &decodedPlayer,
-        [this, targetMac](Player& player) {
+        [this, targetMac, pin](Player& player) {
             lookupInFlight = false;
             lookupTimer.invalidate();
             wirelessManager->enablePeerCommsMode();
@@ -86,10 +87,11 @@ private:
             PlatformClock* clock = SimpleTimer::getPlatformClock();
             PlayerProvisionPacket pkt =
             PlayerProvisionCodec::encode(player, clock ? clock->unixMilliseconds() : 0);
+            strncpy(pkt.pin, pin.c_str(), sizeof(pkt.pin) - 1);
             wirelessManager->sendEspNowData(targetMac.data(), PktType::kPlayerProvision,
                                             reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
         },
-        [this, targetMac](const WirelessErrorInfo&) {
+        [this, targetMac, pin](const WirelessErrorInfo&) {
             lookupInFlight = false;
             lookupTimer.invalidate();
             wirelessManager->enablePeerCommsMode();
@@ -98,6 +100,7 @@ private:
             }
             PlayerProvisionPacket pkt{};
             pkt.status = static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED);
+            strncpy(pkt.pin, pin.c_str(), sizeof(pkt.pin) - 1);
             wirelessManager->sendEspNowData(targetMac.data(), PktType::kPlayerProvision,
                                             reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
         });

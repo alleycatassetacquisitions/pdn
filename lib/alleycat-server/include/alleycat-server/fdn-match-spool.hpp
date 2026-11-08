@@ -191,7 +191,10 @@ private:
         while (getStagedCount() > 0 && !readSlot(getHead(), probe)) {
             LOG_E("FDN_SPOOL", "Dropping unreadable spool slot %u",
                   static_cast<unsigned>(getHead() % FDN_MATCH_SPOOL_CAPACITY));
-            storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, getHead() + 1);
+            if (storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, getHead() + 1) !=
+                sizeof(uint32_t)) {
+                return;
+            }
         }
     }
 

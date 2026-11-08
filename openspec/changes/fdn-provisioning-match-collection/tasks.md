@@ -10,7 +10,7 @@
 
 - [x] 2.1 64-record match spool: stage, deduplicate by match UUID, acknowledge, withhold when full
 - [x] 2.2 Upload the spool from the idle upload state; retire on a decodable response, keep on error, stop short of and then drop unreadable records
-- [x] 2.3 Provisioning manager: validate the PIN, look it up with a 15 s deadline, reply to the requesting PDN if still Connected
+- [x] 2.3 Provisioning manager: validate the PIN, look it up with an 8 s deadline, echo the PIN in the reply, reply to the requesting PDN if still Connected
 
 ## 3. Shared
 

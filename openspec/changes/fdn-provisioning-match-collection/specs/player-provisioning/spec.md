@@ -15,7 +15,8 @@ It SHALL send at most one request per fetch user mount.
 An FDN SHALL accept a lookup request only from the MAC of a PDN Connected on
 one of its jacks, and only when the PIN is four ASCII digits. It SHALL ignore a
 request while a lookup is already in progress, and SHALL end a lookup that has
-not answered within 15 s as a lookup failure. It SHALL look the player up with
+not answered within 8 s as a lookup failure. Every reply SHALL carry the PIN it
+answers. It SHALL look the player up with
 `device-player-lookup` over Wi-Fi, re-enable the peer-to-peer radio, and, if the
 requesting PDN is still Connected, reply with either the player's profile (server
 player ID, name, team, and affiliations) and the FDN's UTC wall clock, or a lookup
@@ -32,8 +33,9 @@ failure.
 ### Requirement: PDN applies only a well-formed reply from its cabled FDN
 
 A PDN SHALL accept a provisioning reply only from the MAC of an FDN Connected
-on one of its jacks, and only at the reply's exact size. A profile reply with a
-nil player ID or an empty name SHALL be ignored. A valid profile SHALL become the
+on one of its jacks, and only at the reply's exact size. A reply whose PIN is not
+the one the PDN entered, or a profile reply with a nil player ID or an empty name,
+SHALL be ignored. A valid profile SHALL become the
 player's registration profile and move fetch user to welcome. A lookup failure
 SHALL show the failure page, then return to PIN entry after 3000 ms.
 

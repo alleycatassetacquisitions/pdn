@@ -931,6 +931,7 @@ inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
 
     PlayerProvisionPacket prov{};
     prov.status = static_cast<uint8_t>(ProvisionStatus::PROFILE_DELIVERED);
+    strncpy(prov.pin, device.playerProvider->getRegistrationPin(), sizeof(prov.pin) - 1);
     UUIDBytes playerId{};
     UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", playerId);
     memcpy(prov.playerId, playerId.bytes, UUIDBytes::SIZE);
