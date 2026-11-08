@@ -157,7 +157,7 @@ The capability SHALL guarantee that stale or concurrent disconnect reports never
 
 ### Requirement: Superseding and idempotent delivery
 
-For each device and each unicast update category (context exchange, link announcement, disconnect report, posse challenger announcement, posse join, or posse confirmation), a newer outbound update to the same recipient SHALL supersede any earlier unacknowledged outbound update of that category to that recipient.
+For each device and each state-carrying unicast update category (context exchange, link announcement, posse challenger announcement, posse join, or posse confirmation), a newer outbound update to the same recipient SHALL supersede any earlier unacknowledged outbound update of that category to that recipient. Disconnect reports SHALL use distinct retry slots so an intermediate node can forward multiple downstream disconnect reports to the same head concurrently while relying on `Edge authority and stale-event immunity` to make stale or replayed disconnect reports inert.
 
 A recipient SHALL deduplicate retransmissions of an already-applied update from a given sender so that lost acknowledgements never cause an older update to be re-applied after a newer state change.
 

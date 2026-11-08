@@ -64,7 +64,7 @@ On every main-loop pass while in the hub idle state, the PDN SHALL evaluate outg
 2. **1v1 match countdown**: Otherwise, if a 1v1 match has completed its role and player handshake on the player's opponent jack (downstream jack for a Hunter, upstream jack for a Bounty), the PDN SHALL transition to the match app's countdown state. While a Hunter is waiting for a newly initiated downstream-jack match handshake to complete, the PDN SHALL enforce a `1000 ms` initialization timeout before clearing a stalled handshake.
 3. **Posse supporter**: Otherwise, if the PDN is currently a chained posse supporter, the PDN SHALL transition to the hub supporter-ready state.
 4. **Shootout aborted**: Otherwise, if a shootout was aborted, the PDN SHALL transition to the shootout app's aborted state.
-5. **FDN symbol match**: Otherwise, if no 1v1 match handshake is in progress and an FDN peer is Connected on a serial jack, the PDN SHALL transition to the symbol app.
+5. **FDN symbol match**: Otherwise, if no 1v1 match handshake is in progress and an FDN peer is Connected on the PDN's **downstream jack**, the PDN SHALL transition to the symbol app.
 
 #### Scenario: Closed mixed-role ring takes precedence over 1v1 match initiation
 - **WHEN** a PDN in the hub idle state simultaneously satisfies shootout proposal entry and 1v1 opponent-jack match readiness
@@ -81,8 +81,8 @@ When the PDN is a posse supporter and receives wireless posse game-event broadca
 - The PDN SHALL ignore any posse game-event broadcast unless both the wireless sender MAC address and the payload's challenger MAC address equal the supporter's followed challenger MAC.
 - If the PDN ceases to be a posse supporter while in the supporter-ready state, it SHALL turn off any active haptics and transition back to the hub idle state.
 - Prior to a countdown, the button SHALL be disarmed and the display SHALL show `"Posse"` / `"Ready"`.
-- On a `COUNTDOWN` event from the followed challenger, the PDN SHALL clear any standing supporter confirmation or prior result, arm the primary and secondary buttons, and display `"Posse"` / `"PRESS"`, so a supporter who confirmed during an earlier aborted countdown must press again for the new countdown.
-- If the user clicks the primary or secondary button while armed, the PDN SHALL transmit a posse confirmation to the challenger, mark the supporter confirmed, and display `"Locked"` / `"In"`.
+- On a `COUNTDOWN` event from the followed challenger, the PDN SHALL clear any standing supporter confirmation or prior result, arm the primary and secondary buttons on the button down-edge (`PRESS`), and display `"Posse"` / `"PRESS"`, so a supporter who confirmed during an earlier aborted countdown must press again for the new countdown.
+- If the user presses the primary or secondary button (`PRESS` down-edge) while armed, the PDN SHALL transmit a posse confirmation to the challenger, mark the supporter confirmed, and display `"Locked"` / `"In"`.
 - On a `DRAW` event from the followed challenger, the PDN SHALL disarm the buttons.
 - On a `WIN` or `LOSS` event from the followed challenger, the PDN SHALL acknowledge the event to the challenger MAC (when the event carries a non-zero sequence ID), disarm the buttons, display `"Posse"` (if the supporter confirmed) or `"Missed"` (if the supporter did not confirm) paired with `"Won"` or `"Lost"`, and start an `8000 ms` result-clear timer.
 - When the `8000 ms` result-clear timer expires, the PDN SHALL clear both the displayed result and the confirmation flag, returning to `"Posse"` / `"Ready"`.
@@ -92,8 +92,8 @@ When the PDN is a posse supporter and receives wireless posse game-event broadca
 - **THEN** the event is ignored and the supporter's state and confirmation status remain unchanged
 
 #### Scenario: Supporter confirms during countdown and resets 8 seconds after challenger win
-- **WHEN** a mounted supporter receives `COUNTDOWN` from its followed challenger, clicks the primary button, receives `WIN`, and waits `8000 ms`
-- **THEN** the display shows `"Posse"` / `"PRESS"` on countdown, `"Locked"` / `"In"` on click, acknowledges the `WIN` and shows `"Posse"` / `"Won"`, and resets to `"Posse"` / `"Ready"` with confirmation cleared after `8000 ms`
+- **WHEN** a mounted supporter receives `COUNTDOWN` from its followed challenger, presses the primary button, receives `WIN`, and waits `8000 ms`
+- **THEN** the display shows `"Posse"` / `"PRESS"` on countdown, `"Locked"` / `"In"` on press, acknowledges the `WIN` and shows `"Posse"` / `"Won"`, and resets to `"Posse"` / `"Ready"` with confirmation cleared after `8000 ms`
 
 #### Scenario: Supporter who misses countdown window sees Missed result
 - **WHEN** a mounted supporter receives `COUNTDOWN`, does not press a button before `DRAW`, and then receives `LOSS`

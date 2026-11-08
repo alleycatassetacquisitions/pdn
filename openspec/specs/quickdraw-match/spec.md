@@ -14,7 +14,7 @@ Terms used throughout:
 - **Shootout match**: a match primed by a Shootout tournament coordinator between two paired players on a closed ring.
 - **Standing role**: a player's persistent Hunter or Bounty role from registration.
 - **Match draw slot**: the Hunter slot or Bounty slot assigned to a player for the duration of a single match. In a standalone match, each player's match draw slot equals their standing role; in a shootout match, the paired player with the lower MAC address takes the Hunter draw slot and the higher MAC takes the Bounty draw slot without altering either player's standing role.
-- **Raw reaction time**: the elapsed monotonic milliseconds from the start of the local draw window to the player's button press, plus any early-press countdown penalties.
+- **Raw reaction time**: the elapsed monotonic milliseconds from the start of the local draw window to the player's button down-edge press (`PRESS`), plus any early-press countdown penalties.
 - **Effective draw time**: the player's signed reaction time after subtracting any posse boost earned from confirmed supporters from the raw reaction time (which may be negative when the posse boost exceeds the raw reaction time).
 
 ## Requirements
@@ -65,11 +65,11 @@ At most one match SHALL be active on a device at any time. Every match SHALL hav
 
 ### Requirement: Countdown, early-press penalty, and posse notifications
 
-On entering the match countdown, the device SHALL run a 3-step visual and haptic countdown (3, 2, 1, at 2 seconds per step, 6 seconds total) before opening the draw window:
+On entering the match countdown, the device SHALL reset the local player's early-press counter to `0` and run a 3-step visual and haptic countdown (3, 2, 1, at 2 seconds per step, 6 seconds total) before opening the draw window:
 
 - On countdown entry, a posse challenger SHALL broadcast a countdown posse event to its posse supporters to arm their confirmation window and clear confirmations from any prior round.
-- Every button press by a paired player during the countdown (before the draw window opens) SHALL increment that player's early-press counter, adding a **75 ms penalty per early press** to that player's subsequent reaction time in the draw window.
-- On exiting the countdown (whether advancing into the draw window or aborting), a posse challenger SHALL broadcast a draw posse event so supporters do not remain stuck on the armed prompt.
+- Every button down-edge press (`PRESS` on either the primary or secondary button) by a paired player during the countdown (before the draw window opens) SHALL increment that player's early-press counter, adding a **75 ms penalty per early press** to that player's subsequent reaction time in the draw window.
+- On exiting the countdown (whether advancing into the draw window or aborting), the device SHALL detach the countdown early-press callbacks from both buttons (so subsequent draw-window presses never accrue countdown penalties), and a posse challenger SHALL broadcast a draw posse event so supporters do not remain stuck on the armed prompt.
 
 #### Scenario: Pressing twice during countdown adds 150 ms penalty
 - **WHEN** a player presses the button twice during the countdown and then presses 200 ms after the draw window opens with no posse boost
@@ -79,16 +79,16 @@ On entering the match countdown, the device SHALL run a 3-step visual and haptic
 
 When the countdown completes, the device SHALL open the active draw window for up to **4000 ms** and record the local monotonic start timestamp:
 
-- **First button press during the draw window (or post-receive grace window)**:
-  - Only the first button press in the draw window is counted; subsequent presses in the same match are ignored.
+- **First button down-edge press during the draw window (or post-receive grace window)**:
+  - Both the primary and secondary buttons SHALL score on the button down-edge (`PRESS`, not button release/click resolution) so grip hold duration does not inflate reaction time; only the first button down-edge press in the draw window is counted and subsequent presses in the same match are ignored.
   - The device computes the player's raw reaction time (elapsed milliseconds since the draw window opened plus $75\text{ ms}$ per early countdown press) and signed effective draw time (raw reaction time minus posse supporter boost, allowing negative values down to $-300\text{ ms}$ when the posse boost exceeds the raw reaction time).
   - The device records the raw reaction time in the player's personal reaction-time history, records the signed effective draw time in its match draw slot (Hunter slot or Bounty slot), snapshots the posse boost and early-press penalty count for the result screen, and reliably sends a draw-result frame carrying its signed effective draw time and its match draw slot to the opponent.
 - **Validating an incoming draw result from the opponent**:
   - The device SHALL accept a draw-result frame only if it comes from the active opponent for the active match ID, names the opponent's match draw slot (never the local player's draw slot), and carries a signed effective draw time within valid bounds ($\ge -300\text{ ms}$).
 - **Pressing before receiving the opponent's result (post-push wait)**:
-  - If the local player presses before receiving a draw result or never-pressed report from the opponent, the device waits up to a **900 ms** result grace period for the opponent's result to arrive, then transitions to match resolution as soon as the opponent's result arrives or the 900 ms grace period expires.
+  - If the local player presses before receiving a draw result or never-pressed report from the opponent, the device waits up to a **2500 ms** result grace period (`750 ms` opponent button-push grace window plus the `1500 ms` reliable-channel retry deadline plus a `250 ms` margin) for the opponent's result to arrive, then transitions to match resolution as soon as the opponent's result arrives or the 2500 ms grace period expires.
 - **Receiving the opponent's result before pressing (post-receive wait)**:
-  - If the device receives the opponent's draw result or never-pressed report while in the draw window before pressing locally, it records the opponent's draw time and enters a **750 ms** button-push grace window during which the local player can still press.
+  - If the device receives the opponent's draw result or never-pressed report while in the draw window before pressing locally, it records the opponent's draw time and enters a **750 ms** button-push grace window during which the local player can still press (scored on the button down-edge `PRESS`).
   - If the local player presses within that 750 ms grace window, the device sends its draw result and immediately resolves the match.
   - If the 750 ms grace window expires without a local press, the device records a pity draw time (elapsed time since draw window start), marks itself as never having pressed, reliably sends a never-pressed report to the opponent, and resolves the match as a loss.
 
@@ -110,7 +110,7 @@ When a match resolves, the outcome SHALL be determined as follows:
 
 1. **Opponent never pressed**: If the local player pressed and received a never-pressed report from the opponent, the local player **wins**.
 2. **Local player never pressed**: If the local player's 750 ms post-receive grace period expired without a local press, the local player **loses**.
-3. **Both players pressed**: The local player **wins** if and only if both draw times are recorded and the local player's effective draw time is strictly less than the opponent's effective draw time; otherwise (including on an exact millisecond tie or if the opponent's result never arrived before the 900 ms post-push grace period expired) the local player **loses**.
+3. **Both players pressed**: The local player **wins** if and only if both draw times are recorded and the local player's effective draw time is strictly less than the opponent's effective draw time; otherwise (including on an exact millisecond tie or if the opponent's result never arrived before the 2500 ms post-push grace period expired) the local player **loses**.
 4. **Full 4000 ms draw-window timeout (neither player pressed and no result received)**:
    - **Standalone match**: Both devices abandon the match without recording a win, loss, or match played, and return to idle.
    - **Shootout match**: The player holding the **Hunter match draw slot** forfeits (transitions to shootout eliminated), and the player holding the **Bounty match draw slot** wins (reports the match win to the tournament and transitions to shootout spectator).

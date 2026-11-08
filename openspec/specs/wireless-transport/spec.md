@@ -39,7 +39,7 @@ The wireless transport SHALL operate within the following hardware and radio con
 
 Each reliable channel SHALL allocate outbound sequence IDs from a counter that cycles through `1..255` and skips `0` (wrapping from `255` to `1`). Sequence ID `0` SHALL be reserved exclusively for unsequenced fire-and-forget frames.
 
-To prevent a device that resets and transmits its first reliable frame from colliding with the sequence ID `1` it sent just before resetting, the outbound sequence counter SHALL be seeded with a non-zero random byte at boot (or the receiver's duplicate suppression SHALL otherwise distinguish post-reboot sends).
+To prevent a device that resets and transmits its first reliable frame from colliding with the sequence ID `1` it sent just before resetting, the outbound sequence counter SHALL be seeded with a non-zero random byte (`1..255`) at boot.
 
 Retransmissions of an in-flight frame SHALL carry the exact same sequence ID and payload bytes as the initial transmission of that frame.
 
@@ -56,10 +56,10 @@ Retransmissions of an in-flight frame SHALL carry the exact same sequence ID and
 Every unicast state-carrying channel SHALL use superseding mode so that at most one unacknowledged frame per `(packet type, sender, recipient)` is in flight at any time:
 
 - Queuing a new unicast send to recipient $R$ on packet type $P$ SHALL remove $R$ from any prior unacknowledged send on $P$ before arming the new frame.
-- On the receiver, each channel SHALL track the last delivered non-zero sequence ID and a duplicate-suppression claim window per sender MAC address (for up to 32 concurrent senders, evicting the oldest sender entry when full).
+- On the receiver, each channel SHALL track the last delivered non-zero sequence ID per sender MAC address (for up to 32 concurrent senders, evicting the oldest sender entry when full) without an expiring claim timer, relying on boot-seeded sequence IDs so delayed retransmissions after a temporary radio outage are still suppressed.
 - When a frame with a non-zero sequence ID arrives whose length matches the channel's expected payload size:
-  - If its sequence ID equals the recorded last sequence ID for that sender MAC and the sender's duplicate-suppression claim window has not expired, the channel SHALL suppress the duplicate without invoking the application receive callback.
-  - Otherwise, the channel SHALL record that sequence ID as the last delivered sequence ID for that sender MAC, refresh the sender's claim window, and invoke the application receive callback.
+  - If its sequence ID equals the recorded last sequence ID for that sender MAC, the channel SHALL suppress the duplicate without invoking the application receive callback.
+  - Otherwise, the channel SHALL record that sequence ID as the last delivered sequence ID for that sender MAC and invoke the application receive callback.
 - When a frame arrives whose byte length does not match the channel's payload size, the channel SHALL log a length mismatch and drop the frame without updating the sender's last sequence ID or invoking the receive callback.
 
 Unicast channels that rely on single-slot sequence-ID deduplication SHALL NOT use distinct retry mode, because concurrent in-flight frames with different sequence IDs from the same sender alternate on retransmission and defeat single-slot deduplication.
@@ -82,6 +82,7 @@ A reliable broadcast fan-out SHALL transmit one frame to the broadcast MAC addre
 
 - Queuing a broadcast fan-out with an empty recipient list SHALL send nothing and create no retry entry.
 - When an application acknowledgement arrives from a sender MAC naming a packet type and sequence ID, the transport SHALL remove that sender MAC from that frame's outstanding recipient list. Once the recipient list becomes empty, the frame's retry entry is retired.
+- Because a broadcast frame produces no per-recipient link-layer delivery evidence, an eligible recipient receiving a duplicate of an already-delivered sequenced broadcast fan-out frame SHALL still emit the application acknowledgement to the sender before suppressing duplicate application-state mutation, ensuring a lost acknowledgement does not cause the sender to retry to exhaustion.
 - On each retry timer expiry while at least one recipient remains unacknowledged and the frame's deadline has not expired, the transport SHALL emit a single broadcast retransmission of the frame (counting as one retry regardless of how many recipients remain).
 - Cancelling a specific recipient MAC on a packet type SHALL remove that recipient MAC from any in-flight unicast or broadcast fan-out on that packet type without firing the abandonment callback.
 - Cancelling all sends on a packet type, or cancelling all sends except a single retained sequence ID, SHALL silently drop the selected in-flight entries without firing the abandonment callback.

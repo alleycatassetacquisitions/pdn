@@ -182,11 +182,11 @@ The coordinator SHALL start the first match only after every bracket recipient h
 - Two or more: the survivors become the next round.
 - No survivors: the coordinator aborts.
 
-To start a match, the coordinator SHALL enter MATCH_IN_PROGRESS and send MATCH_START, carrying both paired players and the match index, reliably to the bracket. If the coordinator is one of the paired players, it primes its own match locally, since it does not receive its own broadcast.
+To start a match, the coordinator SHALL enter MATCH_IN_PROGRESS and send MATCH_START, carrying both paired players and a monotonic tournament-wide match index (`0, 1, 2, ...` across all rounds that never resets at round boundaries), reliably to the bracket. If the coordinator is one of the paired players, it primes its own match locally, since it does not receive its own broadcast.
 
 #### Scenario: Four-player tournament
-- **WHEN** the bracket is [A, B, C, D] and A beats B, then C beats D
-- **THEN** the next round is [A, C], and the winner of A vs C is declared tournament winner
+- **WHEN** the bracket is [A, B, C, D] and A beats B (match index `0`), then C beats D (match index `1`)
+- **THEN** the next round is [A, C] at match index `2` (never resetting to `0`), and the winner of A vs C is declared tournament winner
 
 #### Scenario: Odd bracket
 - **WHEN** the bracket is [A, B, C] and A beats B
@@ -218,7 +218,7 @@ Within a match, the paired player with the lower MAC address SHALL be the hunter
 
 The paired player who wins a match SHALL report it exactly once by sending MATCH_RESULT (winner, loser, match index) reliably to the bracket, and SHALL apply the result locally. If the match timer expires without a press, the match's hunter forfeits and its bounty reports the win.
 
-A device receiving MATCH_RESULT SHALL ignore it unless the sender is in its bracket. It SHALL acknowledge it, and apply it only if the winner and loser are both in its bracket and the loser is not already eliminated. Applying a result eliminates the loser and moves the device to BETWEEN_MATCHES, but only if the result names the device's current match. A result for an earlier match records the elimination without pulling the device out of a newer match. A device in a terminal phase records the elimination and stays in that phase.
+A device receiving MATCH_RESULT SHALL ignore it unless the sender is in its bracket and the tournament has entered match play (`MATCH_IN_PROGRESS`, `BETWEEN_MATCHES`, or a terminal phase, ignoring stray frames before the first match starts). It SHALL acknowledge it, and apply it only if the winner and loser are both in its bracket and the loser is not already eliminated. Applying a result eliminates the loser and moves the device to BETWEEN_MATCHES, but only if the result's monotonic match index names the device's current match. A result for an earlier match index records the elimination without pulling the device out of a newer match. A device in a terminal phase records the elimination and stays in that phase.
 
 #### Scenario: Match timeout
 - **WHEN** the match timer expires in a shootout match with neither paired player pressing

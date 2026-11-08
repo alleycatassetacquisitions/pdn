@@ -2,31 +2,29 @@
 
 ## Purpose
 
-Specify symbol match end-to-end: **FDN-hosted** dual-jack play, **offline** operation, **rotating symbols**, **dual-jack win**, **per-FDN fixed codeword** on success for **30 seconds**, then **reset**. PDN behavior is limited to jack detection and wireless symbol exchange; no server integration.
+Specify symbol match end-to-end: **FDN-hosted** dual-jack play, **offline** puzzle execution (requiring no live server round-trip during symbol matching or codeword reveal), **rotating symbols**, **dual-jack win**, **per-FDN fixed codeword** on success for **30 seconds**, then **reset**. On a PDN, symbol match is entered when an FDN is Connected on the PDN's **downstream jack**, exchanging symbols over the peer-to-peer radio and exiting non-blockingly on unplug.
 
 ## Requirements
 
-### Requirement: FDN SHALL boot directly into symbol match
+### Requirement: FDN SHALL mount symbol match for puzzle play
 
-The FDN firmware SHALL start in the symbol match application without requiring idle, hacking, or main menu applications first.
+When the FDN enters the symbol match application (either at boot when no other FDN flow is active or when routed from the FDN idle/connection flow for a provisioned PDN in `fdn-apps`), the symbol match state machine SHALL manage symbol selection, dual-jack play, and codeword reveal.
 
-#### Scenario: Cold boot
+#### Scenario: Symbol match activation
 
-- **GIVEN** a powered FDN running symbol-match firmware
-- **WHEN** startup completes
-- **THEN** the symbol match state machine is active
-- **AND** the user does not see hacking or unrelated app UI
+- **GIVEN** an FDN entering the symbol match application
+- **WHEN** the symbol match state machine mounts
+- **THEN** the FDN starts at the selection phase and enters dual-jack symbol play
 
-### Requirement: Symbol match SHALL run without a backend
+### Requirement: Symbol match gameplay SHALL run without a live backend round-trip
 
-The experience SHALL not depend on HTTP, cloud APIs, or server-backed authorization. Symbol play, codeword reveal, and reset SHALL complete with no network calls.
+Active symbol play, codeword reveal, and round reset SHALL NOT depend on live HTTP requests or cloud API availability during the puzzle; any FDN background server synchronization (for collected matches, crash logs, or hack records in `fdn-apps`, `match-collection`, and `crash-reporting`) runs outside active symbol play.
 
-#### Scenario: No server connectivity
+#### Scenario: No server connectivity during symbol match
 
 - **GIVEN** the FDN has no usable server connection
 - **WHEN** players play symbol match
-- **THEN** behavior is unchanged from the connected-server case
-- **AND** no upload or sync states run
+- **THEN** symbol matching, codeword reveal, and round reset complete normally without network calls
 
 ### Requirement: FDN SHALL assign independent symbols per jack
 
@@ -141,21 +139,27 @@ Codeword success SHALL last **thirty seconds**, then the FDN SHALL restart at th
 - **WHEN** thirty seconds elapse
 - **THEN** the FDN runs selection and begins a new play period
 
-### Requirement: PDN SHALL enter symbol play when FDN is on a jack
+### Requirement: PDN SHALL enter symbol play when FDN is on its downstream jack
 
-When the PDN detects a Connected FDN on a serial jack, it SHALL enter symbol play state and remain there while the FDN connection holds.
+When a provisioned PDN in its idle state detects a Connected FDN on its **downstream jack**, it SHALL enter symbol play state, remain there while the downstream-jack FDN connection holds, and exit to idle without blocking the main loop when the downstream jack disconnects (never spinning in a blocking wait on dismount that could starve the `100 ms` serial link liveness window).
 
-#### Scenario: FDN plugged in
+#### Scenario: FDN plugged into PDN downstream jack
 
-- **GIVEN** a registered PDN idle or gameplay shell that supports FDN detection
-- **WHEN** a Connected FDN is detected on a serial jack
+- **GIVEN** a provisioned PDN in its idle state
+- **WHEN** a Connected FDN is detected on the PDN's downstream jack
 - **THEN** the PDN enters symbol play for that session
 
-#### Scenario: FDN unplugged
+#### Scenario: FDN connected only on PDN upstream jack does not bounce into symbol play
+
+- **GIVEN** a provisioned PDN in its idle state
+- **WHEN** an FDN is Connected on the PDN's upstream jack and not on its downstream jack
+- **THEN** the PDN remains in idle and does not bounce into symbol play
+
+#### Scenario: FDN unplugged from PDN downstream jack exits non-blockingly
 
 - **GIVEN** the PDN is in symbol play
-- **WHEN** the FDN is no longer detected on the jack
-- **THEN** the PDN leaves symbol play for idle (or equivalent home state)
+- **WHEN** the FDN is no longer Connected on the PDN's downstream jack
+- **THEN** the PDN leaves symbol play for idle without blocking the main loop on dismount
 
 ### Requirement: PDN SHALL compare symbols before committing send
 
@@ -190,13 +194,12 @@ When the PDN receives round-success from the FDN, it SHALL enter a matched celeb
 - **WHEN** the refresh command is received
 - **THEN** the PDN returns to symbol play for the new period
 
-### Requirement: Symbol match SHALL exclude legacy FDN apps
+### Requirement: Symbol match SHALL keep puzzle play independent of Wi-Fi uploads
 
-Symbol match firmware SHALL NOT require hacking, idle authorization, hack storage, main-menu routing after win, or HTTP upload states.
+While players are actively connected and playing symbol match on the FDN, the FDN SHALL keep the peer-to-peer radio enabled on the fixed peer-to-peer channel (`6`) and SHALL NOT interrupt active symbol play to switch into Wi-Fi station mode.
 
 #### Scenario: PDN connects during play
 
 - **GIVEN** the FDN is in selection or play
-- **WHEN** a PDN connects
-- **THEN** only jack detection and symbol wireless messages apply
-- **AND** hack history or server auth does not alter the flow
+- **WHEN** a provisioned PDN connects on an FDN upstream jack
+- **THEN** the peer-to-peer radio remains enabled for jack detection, background match/crash collection, and symbol wireless messages without interrupting symbol play for a Wi-Fi upload
