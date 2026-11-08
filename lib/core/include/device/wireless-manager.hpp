@@ -140,13 +140,8 @@ public:
         return httpClient->queueRequest(std::move(request));
     }
 
-    /** Sends a peer-to-peer packet via ESP-NOW, switching to ESP-NOW mode if needed. */
+    /** Sends a peer-to-peer packet via ESP-NOW, rejecting sends while WiFi holds the radio. */
     int sendEspNowData(const uint8_t* dst, PktType packetType, const uint8_t* data, size_t length) {
-        if (currentMode != WirelessMode::ESPNOW) {
-            LOG_I(WM_TAG, "Auto-switching to ESP-NOW mode for peer communication");
-            enablePeerCommsMode();
-        }
-
         if (!isEspNowReady()) {
             LOG_W(WM_TAG, "Cannot send ESP-NOW data - ESP-NOW not ready");
             return -1;

@@ -203,9 +203,13 @@ private:
 
     SimpleTimer glyphTimer;
     SimpleTimer fallbackTimer;
-    bool contentReady  = false;
-    int  pendingCount  = 0;
+    SimpleTimer failureTimer;
+    bool contentReady = false;
+    bool showingFailure = false;
+    int pendingCount = 0;
     int  completedCount = 0;
+    int failedCount = 0;
 
     static constexpr int FALLBACK_TIMEOUT_MS = 15000;
+    static constexpr int FAILURE_DISPLAY_MS = 2000;
 };
