@@ -8,7 +8,7 @@ This specification states the required outcomes, invariants, and environmental c
 
 Terms used throughout:
 
-- **Match record**: the durable record of a completed standalone 1v1 match, containing the 16-byte match UUID, both players' 16-byte UUIDs, both players' 16-byte team UUIDs (or nil UUID when unassigned), both players' 6-byte MAC addresses, the 16-byte winner player UUID, both players' signed effective draw times in milliseconds, and the UTC occurrence timestamp in epoch milliseconds.
+- **Match record**: the durable record of a completed standalone 1v1 match, containing the 16-byte match UUID, both players' 16-byte UUIDs, both players' 16-byte team UUIDs (or nil UUID when unassigned), both players' 6-byte MAC addresses, the 16-byte winner player UUID (determined from the players' posse-boosted signed effective draw times), both players' unsigned raw reaction times in milliseconds ($\ge 0\text{ ms}$), and the UTC occurrence timestamp in epoch milliseconds.
 - **Match sequence number**: a monotonically increasing 1-based unsigned integer assigned to each standalone match persisted on a PDN.
 - **Collected high-water mark**: the highest match sequence number confirmed ingested by an FDN from a PDN.
 
@@ -58,11 +58,11 @@ An FDN holding ingested match records SHALL upload them to the central server in
 - For each match record in the batch, the codec SHALL write:
   - the match UUID, both player UUIDs (`player_a_id` and `player_b_id`), and the winner UUID (`winner_player_id`) formatted as lowercase `8-4-4-4-12` hexadecimal text;
   - each player's team UUID (`player_a_team_id`, `player_b_team_id`) as lowercase `8-4-4-4-12` hexadecimal text if and only if that team UUID is not nil;
-  - both players' draw times (`player_a_draw_time_ms`, `player_b_draw_time_ms`) as unsigned 64-bit millisecond values (`0..INT64_MAX`, clamping any negative posse-boosted effective draw time `< 0 ms` to `0 ms` so the record satisfies the server's non-negative `uint64` range check) and the UTC occurrence timestamp (`occurred_at_unix_ms`), marked present on the wire even when their numeric value is `0`.
+  - both players' raw reaction times (`player_a_draw_time_ms`, `player_b_draw_time_ms`) as unsigned 64-bit millisecond values (`0..INT64_MAX`) and the UTC occurrence timestamp (`occurred_at_unix_ms`), marked present on the wire even when their numeric value is `0`.
 
-#### Scenario: Batch of matches is encoded and queued to POST /quickdraw-matches with negative draw time clamped to 0
-- **WHEN** an FDN queues an upload of 2 collected match records (including a `-15 ms` posse-boosted effective draw time and one nil team UUID)
-- **THEN** the FDN sends `POST /quickdraw-matches` with `application/protobuf`, the `-15 ms` draw time clamped to `0 ms` and explicitly present on the wire, and the nil team UUID omitted
+#### Scenario: Batch of matches is encoded and queued to POST /quickdraw-matches with raw reaction times and effective-time winner
+- **WHEN** an FDN queues an upload of 2 collected match records (including a match won via posse boost where the winner's raw reaction time is `210 ms` against the opponent's `195 ms`, and one nil team UUID)
+- **THEN** the FDN sends `POST /quickdraw-matches` with `application/protobuf`, both players' unsigned raw reaction times (`210 ms` and `195 ms`) and the posse-boosted winner's `winner_player_id` explicitly present on the wire, and the nil team UUID omitted
 
 #### Scenario: Batch count outside 1..100 is rejected without queuing HTTP
 - **WHEN** a caller attempts to encode a match upload batch with `0` or `101` records

@@ -82,9 +82,9 @@ When the countdown completes, the device SHALL open the active draw window for u
 - **First button down-edge press during the draw window (or post-receive grace window)**:
   - Both the primary and secondary buttons SHALL score on the button down-edge (`PRESS`, not button release/click resolution) so grip hold duration does not inflate reaction time; only the first button down-edge press in the draw window is counted and subsequent presses in the same match are ignored.
   - The device computes the player's raw reaction time (elapsed milliseconds since the draw window opened plus $75\text{ ms}$ per early countdown press) and signed effective draw time (raw reaction time minus posse supporter boost, allowing negative values down to $-300\text{ ms}$ when the posse boost exceeds the raw reaction time).
-  - The device records the raw reaction time in the player's personal reaction-time history, records the signed effective draw time in its match draw slot (Hunter slot or Bounty slot), snapshots the posse boost and early-press penalty count for the result screen, and reliably sends a draw-result frame carrying its signed effective draw time and its match draw slot to the opponent.
+  - The device records the raw reaction time in the player's personal reaction-time history and in its match draw slot (Hunter slot or Bounty slot) on the match record, records the signed effective draw time for winner determination and the result screen (snapshotting the posse boost and early-press penalty), and reliably sends a draw-result frame carrying both its unsigned raw reaction time ($\ge 0\text{ ms}$) and its signed effective draw time ($\ge -300\text{ ms}$) alongside its match draw slot to the opponent.
 - **Validating an incoming draw result from the opponent**:
-  - The device SHALL accept a draw-result frame only if it comes from the active opponent for the active match ID, names the opponent's match draw slot (never the local player's draw slot), and carries a signed effective draw time within valid bounds ($\ge -300\text{ ms}$).
+  - The device SHALL accept a draw-result frame only if it comes from the active opponent for the active match ID, names the opponent's match draw slot (never the local player's draw slot), and carries a signed effective draw time within valid bounds ($\ge -300\text{ ms}$), recording the opponent's unsigned raw reaction time in the opponent's match draw slot on the match record and the opponent's signed effective draw time for winner determination and the result screen.
 - **Pressing before receiving the opponent's result (post-push wait)**:
   - If the local player presses before receiving a draw result or never-pressed report from the opponent, the device waits up to a **2500 ms** result grace period (`750 ms` opponent button-push grace window plus the `1500 ms` reliable-channel retry deadline plus a `250 ms` margin) for the opponent's result to arrive, then transitions to match resolution as soon as the opponent's result arrives or the 2500 ms grace period expires.
 - **Receiving the opponent's result before pressing (post-receive wait)**:
@@ -92,13 +92,13 @@ When the countdown completes, the device SHALL open the active draw window for u
   - If the local player presses within that 750 ms grace window, the device sends its draw result and immediately resolves the match.
   - If the 750 ms grace window expires without a local press, the device records a pity draw time (elapsed time since draw window start), marks itself as never having pressed, reliably sends a never-pressed report to the opponent, and resolves the match as a loss.
 
-#### Scenario: Posse boost reduces effective draw time sent to opponent
+#### Scenario: Posse boost reduces effective draw time for winner determination while preserving raw reaction times on the match record
 - **WHEN** a Hunter challenger with 2 confirmed supporters ($30\text{ ms}$ boost) presses 210 ms after the draw window opens with 0 early presses, and the Bounty opponent presses at 195 ms with 0 boost
-- **THEN** the Hunter records a personal reaction time of 210 ms, sends an effective draw time of $210 - 30 = 180\text{ ms}$ in its draw result, and wins the match ($180 < 195$)
+- **THEN** the Hunter records a personal and match-record raw reaction time of 210 ms, exchanges its 210 ms raw reaction time and $210 - 30 = 180\text{ ms}$ effective draw time in its draw result, and wins the match ($180 < 195$) while the finalized match record stores raw reaction times of 210 ms for the Hunter and 195 ms for the Bounty
 
-#### Scenario: Posse boost exceeding raw reaction time produces negative effective draw time
+#### Scenario: Posse boost exceeding raw reaction time produces negative effective draw time for winner determination and display
 - **WHEN** a challenger with 4 confirmed supporters ($60\text{ ms}$ boost) presses 45 ms after the draw window opens with 0 early presses
-- **THEN** the challenger computes and exchanges a signed effective draw time of $45 - 60 = -15\text{ ms}$ without clamping to $0\text{ ms}$
+- **THEN** the challenger computes and exchanges a signed effective draw time of $45 - 60 = -15\text{ ms}$ (without clamping to $0\text{ ms}$) alongside its unsigned raw reaction time of $45\text{ ms}$
 
 #### Scenario: Opponent presses first and local player fails to press within 750 ms grace
 - **WHEN** player $A$ receives a draw result of 220 ms from player $B$ and does not press within the 750 ms grace window
@@ -141,7 +141,7 @@ When a match resolves with a win or loss outcome:
 
 - The device SHALL increment the player's total matches played, and either increment wins and win streak (on a win) or increment losses and reset win streak to 0 (on a loss).
 - **Standalone match**:
-  - The finalized match record SHALL be appended to the 32-slot non-volatile match ring buffer for subsequent FDN collection (`match-collection`).
+  - The finalized match record (storing the winner player UUID decided by signed effective draw time alongside both players' unsigned raw reaction times) SHALL be appended to the 32-slot non-volatile match ring buffer for subsequent FDN collection (`match-collection`).
   - The device SHALL display the win or loss result screen for **8000 ms**, showing the player's signed effective draw time, the opponent's signed effective draw time, the number of posse supporter boosts applied, and any early-press countdown penalty incurred by the player, while broadcasting a posse win or loss event to its posse supporters.
   - After 8000 ms on the win or loss screen, the device SHALL pass through the dormant sleep and awaken screens before returning to idle.
 - **Shootout match**:
