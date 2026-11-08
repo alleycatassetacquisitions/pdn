@@ -59,10 +59,10 @@ struct PdnConnectionContext {
     PlayerProfile player;
 } __attribute__((packed));
 
-// FDN self-description. ponytail: fields TBD (#156-era); one reserved byte keeps
-// the struct non-empty and packed until the FDN profile is designed.
+// FDN self-description exchanged on cabled connection context. Carries the FDN's
+// synchronized UTC wall clock in epoch milliseconds (or 0 when unsynchronized).
 struct FdnProfile {
-    uint8_t reserved;
+    int64_t utcUnixMs;
 } __attribute__((packed));
 
 // FDN-to-neighbour connection context; same header as PdnConnectionContext, FDN body.
