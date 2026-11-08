@@ -18,7 +18,7 @@ When the FDN enters the symbol match application (either at boot when no other F
 
 ### Requirement: Symbol match gameplay SHALL run without a live backend round-trip
 
-Active symbol play, codeword reveal, and round reset SHALL NOT depend on live HTTP requests or cloud API availability during the puzzle; any FDN background server synchronization (for collected matches, crash logs, or hack records in `fdn-apps`, `match-collection`, and `crash-reporting`) runs outside active symbol play.
+Active symbol play, codeword reveal, and round reset SHALL NOT depend on live HTTP requests or cloud API availability during the puzzle; any FDN background server synchronization (for collected matches and crash logs in `fdn-apps`, `match-collection`, and `crash-reporting`) runs outside active symbol play.
 
 #### Scenario: No server connectivity during symbol match
 
