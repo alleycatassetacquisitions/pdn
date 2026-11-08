@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Synchronize the device's UTC wall clock from the `Date` header of HTTP responses from the game server, and expose UTC epoch milliseconds without disturbing the monotonic millisecond clock used by timers and gameplay.
+Synchronize an FDN's UTC wall clock from the `Date` header of HTTP responses from the game server (PDNs do not issue HTTP requests and instead communicate with FDNs), and expose UTC epoch milliseconds without disturbing the monotonic millisecond clock used by timers and gameplay.
 
 ## Requirements
 
@@ -21,9 +21,11 @@ Any malformed, empty, non-GMT, or out-of-range value SHALL be rejected without s
 - **WHEN** the parser is given `"Sun, 18 Oct 2026 21:30:00 GMT"`
 - **THEN** it returns `1792359000` Unix epoch seconds
 
-#### Scenario: Leap-day handling
+#### Scenario: Leap-day accepted in leap year
 - **WHEN** the parser is given `"Tue, 29 Feb 2028 00:00:00 GMT"`
 - **THEN** it accepts the date and returns `1835395200`
+
+#### Scenario: Leap-day rejected in non-leap year
 - **WHEN** the parser is given `"Sun, 29 Feb 2026 00:00:00 GMT"`
 - **THEN** it rejects the date because 2026 is not a leap year
 
@@ -37,8 +39,8 @@ Whenever the device receives an HTTP response header whose key matches `"Date"` 
 
 A response without a `Date` header, or with a `Date` header that fails `IMF-fixdate parsing`, SHALL leave the system wall clock unchanged.
 
-#### Scenario: Registration response syncs the clock
-- **WHEN** the PDN receives an HTTP response containing `Date: Sun, 18 Oct 2026 21:30:00 GMT`
+#### Scenario: Server HTTP response syncs the FDN clock
+- **WHEN** an FDN receives an HTTP response containing `Date: Sun, 18 Oct 2026 21:30:00 GMT`
 - **THEN** the system UTC wall clock is set to `1792359000` seconds (`1792359000000` ms)
 
 #### Scenario: Case-insensitive header key
@@ -59,3 +61,15 @@ Updating the UTC wall clock SHALL NOT alter the monotonic millisecond clock.
 #### Scenario: In-flight HTTP request does not time out when Date header arrives
 - **WHEN** an HTTP request starts when the monotonic clock is at `5000` ms and receives `Date: Sun, 18 Oct 2026 21:30:00 GMT` during header reception
 - **THEN** the UTC wall clock jumps to `1792359000000` ms, while the monotonic clock remains near `5000` ms and the in-flight request does not spuriously time out
+
+### Requirement: FDN-to-PDN UTC wall-clock propagation
+
+An FDN whose UTC wall clock has been synchronized (at least `2025-01-01T00:00:00Z`) SHALL propagate its current UTC epoch milliseconds to PDNs Connected on a physical serial jack:
+
+- A PDN SHALL accept a UTC wall-clock update only from the verified MAC address of an FDN currently Connected on a physical serial jack (never from an unauthenticated wireless broadcast beacon).
+- When the timestamp from the Connected FDN is within the valid range (`>= 1735689600000` and `<= 253402300799999`), the PDN SHALL update its local UTC wall clock to that timestamp without altering its monotonic millisecond clock.
+- An FDN whose own UTC wall clock has not yet been synchronized (`< 2025-01-01`) SHALL advertise `0` (unsynchronized) so a PDN never overwrites a valid clock with an unsynchronized value.
+
+#### Scenario: PDN syncs UTC wall clock from Connected FDN
+- **WHEN** a PDN connects on a serial jack to an FDN whose UTC wall clock is at `1792359000000` ms
+- **THEN** the PDN sets its UTC wall clock to `1792359000000` ms for stamping match occurrence timestamps while its monotonic clock remains unchanged

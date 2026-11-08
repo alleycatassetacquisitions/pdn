@@ -1,4 +1,4 @@
-# Symbol match
+# symbol-match Specification
 
 ## Purpose
 
@@ -30,7 +30,7 @@ The experience SHALL not depend on HTTP, cloud APIs, or server-backed authorizat
 
 ### Requirement: FDN SHALL assign independent symbols per jack
 
-The FDN SHALL hold one symbol per input jack from a shared **five-symbol** set. On each refresh, each new symbol SHALL differ from **both** symbols from the previous period.
+The FDN SHALL hold one symbol per upstream jack from a shared **five-symbol** set. On each refresh, each new symbol SHALL differ from **both** symbols from the previous period.
 
 #### Scenario: Symbol refresh
 
@@ -143,12 +143,12 @@ Codeword success SHALL last **thirty seconds**, then the FDN SHALL restart at th
 
 ### Requirement: PDN SHALL enter symbol play when FDN is on a jack
 
-When the PDN detects an FDN on an input jack, it SHALL enter symbol play state and remain there while the FDN connection holds.
+When the PDN detects a Connected FDN on a serial jack, it SHALL enter symbol play state and remain there while the FDN connection holds.
 
 #### Scenario: FDN plugged in
 
 - **GIVEN** a registered PDN idle or gameplay shell that supports FDN detection
-- **WHEN** an FDN is detected on an input jack
+- **WHEN** a Connected FDN is detected on a serial jack
 - **THEN** the PDN enters symbol play for that session
 
 #### Scenario: FDN unplugged

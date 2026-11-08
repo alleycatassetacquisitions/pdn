@@ -1,31 +1,17 @@
 ## ADDED Requirements
 
-### Requirement: Fetch session holds DevicePlayer
-After a successful device player lookup, PlayerFetch SHALL retain the full decoded `DevicePlayer` for the current registration session and SHALL use it as the source for welcome display (name, and team/affiliations when needed later).
+### Requirement: Session retains full player profile received from Connected FDN
 
-#### Scenario: Successful fetch
-- **WHEN** fetch user receives a `DevicePlayer` with name `Ada` and team fields
-- **THEN** the session retains that object
-- **AND** welcome can display `Ada`
+After a successful player registration via a Connected FDN (`player-provisioning`), the PDN session SHALL retain the decoded player profile (non-nil 16-byte player UUID, 16-byte team UUID or nil UUID, display name up to `31` ASCII characters in a `32`-byte buffer, and up to `5` affiliations) for welcome display and gameplay.
 
-### Requirement: PIN remains separate from server UUID
-The four-digit PIN from pin entry SHALL remain on `Player` via `getUserID` / `setUserID` for RNG seeding. The Alleycat player UUID in `DevicePlayer.id` SHALL be stored in session profile and SHALL NOT replace the PIN string used for seeding.
+#### Scenario: Successful FDN registration populates session profile
+- **WHEN** the PDN receives a valid player profile with display name `"Ada"`, team, and affiliation fields from its Connected FDN
+- **THEN** the session retains that profile and the welcome screen displays `"Ada"`
 
-#### Scenario: PIN and UUID both present
-- **WHEN** the player entered `0007` and the server returns a UUID in `DevicePlayer.id`
-- **THEN** `getUserID()` remains `"0007"`
-- **AND** the session profile includes the UUID
+### Requirement: Player profile populates standing role and allegiance with safe defaults
 
-### Requirement: PlayerFetch avoids isHunter
-PlayerFetch code SHALL NOT set or read `Player::isHunter`. Demo choose team SHALL NOT depend on hunter flag for persistence; stub only.
+When a registration profile from a Connected FDN is applied to the session player, the PDN SHALL derive the player's standing role (`Hunter` for team `"Hunter"`, or `Bounty` for `"Bounty"`, unassigned, or unrecognized team) and faction allegiance (`Helix`, `Endline`, `Resistance` for `"Reboot*"` or `"Resistance*"`, or `Alleycat` for `"Alleycat*"` or any unrecognized/absent affiliation).
 
-#### Scenario: Server path success
-- **WHEN** fetch succeeds with team fields populated
-- **THEN** registration code does not update `isHunter`
-
-### Requirement: Gameplay Player migration is out of scope
-This change SHALL NOT require global `Player` to fully replace legacy allegiance/faction/hunter fields for Idle or match code. Unifying `Player` with `DevicePlayer` for gameplay is a follow-up before Quickdraw wiring.
-
-#### Scenario: Standalone delivery
-- **WHEN** PlayerFetch is built and tested in isolation
-- **THEN** legacy gameplay code paths may still use the old `Player` fields unchanged
+#### Scenario: Registered profile sets standing role and allegiance
+- **WHEN** a player profile with team `"Hunter"` and affiliation `"Helix"` is applied from a Connected FDN
+- **THEN** the player's standing role is `Hunter` and the player's allegiance is `Helix`

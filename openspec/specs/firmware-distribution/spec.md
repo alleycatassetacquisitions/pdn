@@ -64,7 +64,7 @@ An image the store refuses, or a receive that is abandoned, SHALL leave the slot
 
 ### Requirement: Eligibility
 
-A PDN SHALL take an image only while its pairing-code screen is up; whoever is on that screen is not playing, so an update may cut short a code entry or a cabled registration. No other screen takes one: on game Idle a registered player's registration and stats live only in RAM, and the restart would lose them.
+A PDN SHALL take an image only while its unprovisioned provisioning screen is up (before a player profile has been provisioned from an FDN); whoever is on that screen is not playing, so an update may cut short a cabled FDN provisioning session. No other screen takes one: on game Idle a registered player's registration and stats live only in RAM, and the restart would lose them.
 
 #### Scenario: Registered player on game Idle
 - **WHEN** chunk 0 arrives at a PDN on game Idle
@@ -74,22 +74,22 @@ A PDN SHALL take an image only while its pairing-code screen is up; whoever is o
 - **WHEN** chunk 0 arrives at a device mid-match
 - **THEN** it does not start receiving
 
-#### Scenario: Leaving the pairing screen mid-transfer
-- **WHEN** the pairing-code screen gives way to another during a receive
+#### Scenario: Leaving the provisioning screen mid-transfer
+- **WHEN** the provisioning screen gives way to another during a receive
 - **THEN** the receive is dropped and the device keeps its current image
 
 ### Requirement: Operator trigger
 
-A device SHALL become a seed only when its holder keeps the secondary button down for 5 seconds on the PDN's pairing-code screen, and SHALL NOT become one in response to any frame. A hold already under way when the screen appears SHALL NOT count until the button has been released. Seeding never restarts the seed itself.
+A device SHALL become a seed only when its holder keeps the secondary button down for 5 seconds on the PDN's provisioning screen, and SHALL NOT become one in response to any frame. A hold already under way when the screen appears SHALL NOT count until the button has been released. Seeding never restarts the seed itself.
 
-Every PDN starts on the pairing-code screen, so any PDN can seed after a restart.
+Every PDN starts on the provisioning screen, so any PDN can seed after a restart.
 
 #### Scenario: Remote start refused
 - **WHEN** a device hears another seed's frames
 - **THEN** it does not seed
 
 #### Scenario: Hold carried onto the screen
-- **WHEN** the secondary button is already held as the pairing-code screen appears
+- **WHEN** the secondary button is already held as the provisioning screen appears
 - **THEN** no seed starts until the button is released and held again for 5 seconds
 
 #### Scenario: Hold on game Idle
@@ -155,6 +155,22 @@ A device SHALL take an image only if its build time is later than the running im
 #### Scenario: Older image
 - **WHEN** chunk 0 describes an image built before the running one
 - **THEN** the receiver neither erases nor receives anything
+
+### Requirement: Visual and LED feedback for receivers
+
+A receiver SHALL provide distinct visual and LED feedback while receiving an over-the-air image and after booting into a newly installed image:
+
+- While actively receiving chunks of an accepted image, the receiver SHALL display a dedicated OTA receive progress indication (including LED progress feedback distinguishable from the normal unprovisioned provisioning screen) until the transfer completes or is dropped.
+- If the receive is dropped or refused, the receiver SHALL restore the normal provisioning screen and LED state.
+- When a device boots into a newly installed OTA image pending confirmation, or upon confirming that image after 10 seconds of main-loop execution, the device SHALL surface a distinct visual/LED update-complete confirmation so an operator can verify which devices in a fleet took the update.
+
+#### Scenario: Receiver shows progress while chunks arrive
+- **WHEN** an eligible receiver accepts chunk 0 of a newer image and begins writing chunks
+- **THEN** the receiver displays OTA receive progress and LED feedback until the image is committed or the receive is dropped
+
+#### Scenario: Newly updated device indicates successful update on boot
+- **WHEN** a receiver commits a received image, restarts into the new slot, and confirms the image
+- **THEN** the device surfaces a visual/LED confirmation indicating that the firmware update succeeded
 
 ## Residual gaps
 
