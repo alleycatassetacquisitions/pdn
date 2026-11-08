@@ -491,3 +491,33 @@ TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
 
     SimpleTimer::setPlatformClock(nullptr);
 }
+
+TEST(ReliableTransportTest, backgroundEspNowSendDoesNotPreemptWifiMode) {
+    ::testing::NiceMock<MockPeerComms> comms;
+    ::testing::NiceMock<MockHttpClient> http;
+    WirelessManager wm{&comms, &http};
+
+    PeerCommsState commsState = PeerCommsState::ENABLED;
+    HttpClientState httpState = HttpClientState::DISCONNECTED;
+    ON_CALL(comms, getPeerCommsState()).WillByDefault(::testing::Invoke([&]() {
+        return commsState;
+    }));
+    ON_CALL(comms, setPeerCommsState(::testing::_))
+    .WillByDefault(::testing::Invoke([&](PeerCommsState s) { commsState = s; }));
+    ON_CALL(http, getHttpClientState()).WillByDefault(::testing::Invoke([&]() {
+        return httpState;
+    }));
+    ON_CALL(http, setHttpClientState(::testing::_))
+    .WillByDefault(::testing::Invoke([&](HttpClientState s) { httpState = s; }));
+
+    wm.enableWifiMode();
+    ASSERT_EQ(wm.getCurrentMode(), WirelessMode::WIFI);
+    ASSERT_EQ(httpState, HttpClientState::CONNECTED);
+    ASSERT_EQ(commsState, PeerCommsState::DISABLED);
+
+    const uint8_t dst[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    const uint8_t payload[4] = {1, 2, 3, 4};
+    EXPECT_EQ(wm.sendEspNowData(dst, PktType::kSymbolMatchCommand, payload, sizeof(payload)), -1);
+    EXPECT_EQ(wm.getCurrentMode(), WirelessMode::WIFI);
+    EXPECT_EQ(httpState, HttpClientState::CONNECTED);
+}
