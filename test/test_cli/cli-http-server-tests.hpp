@@ -20,17 +20,17 @@
 class MockHttpServerTestSuite : public testing::Test {
 public:  // Public for test function access
     void SetUp() override {
-        server_ = &cli::MockHttpServer::getInstance();
-        server_->clearHistory();
-        server_->setOffline(false);
+        server = &cli::MockHttpServer::getInstance();
+        server->clearHistory();
+        server->setOffline(false);
     }
 
     void TearDown() override {
-        server_->clearHistory();
-        server_->setOffline(false);
+        server->clearHistory();
+        server->setOffline(false);
     }
 
-    cli::MockHttpServer* server_;
+    cli::MockHttpServer* server;
 };
 
 static void configurePinPlayer(cli::MockHttpServer* server, const char* pin, const char* name) {
@@ -46,43 +46,44 @@ static void configurePinPlayer(cli::MockHttpServer* server, const char* pin, con
 
 // Test: Get device player by PIN returns protobuf body
 void httpServerGetDevicePlayerByPinReturnsData(MockHttpServerTestSuite* suite) {
-    configurePinPlayer(suite->server_, "1234", "TestPlayer");
+    configurePinPlayer(suite->server, "1234", "TestPlayer");
 
     std::string response;
-    int status =
-        suite->server_->handleRequest("GET", "/device/players/by-pin/1234", "", response);
+    int status = suite->server->handleRequest("GET", "/device/players/by-pin/1234", "", response);
 
     ASSERT_EQ(status, 200);
     ASSERT_FALSE(response.empty());
     ASSERT_NE(response.find("TestPlayer"), std::string::npos);
 
-    suite->server_->removePlayer("1234");
+    suite->server->removePlayer("1234");
 }
 
 // Test: Unknown PIN returns 404
 void httpServerGetDevicePlayerByPinReturns404(MockHttpServerTestSuite* suite) {
     std::string response;
-    int status =
-        suite->server_->handleRequest("GET", "/device/players/by-pin/5678", "", response);
+    int status = suite->server->handleRequest("GET", "/device/players/by-pin/5678", "", response);
 
     ASSERT_EQ(status, 404);
 }
 
-// Test: Put matches accepts request
+// Test: POST /quickdraw-matches accepts protobuf body with 204; retired PUT /api/matches returns
+// 404
 void httpServerPutMatchesAccepts(MockHttpServerTestSuite* suite) {
     std::string response;
-    std::string body = R"({"matches":[{"id":"match1"}]})";
+    int status =
+    suite->server->handleRequest("POST", "/quickdraw-matches", "protobuf-payload", response);
 
-    int status = suite->server_->handleRequest("PUT", "/api/matches", body, response);
+    ASSERT_EQ(status, 204);
+    ASSERT_TRUE(response.empty());
 
-    ASSERT_EQ(status, 200);
-    ASSERT_TRUE(response.find("success") != std::string::npos);
+    int retiredStatus = suite->server->handleRequest("PUT", "/api/matches", "{}", response);
+    ASSERT_EQ(retiredStatus, 404);
 }
 
 // Test: Unknown endpoint returns 404
 void httpServerUnknownEndpointReturns404(MockHttpServerTestSuite* suite) {
     std::string response;
-    int status = suite->server_->handleRequest("GET", "/api/unknown", "", response);
+    int status = suite->server->handleRequest("GET", "/api/unknown", "", response);
 
     ASSERT_EQ(status, 404);
     ASSERT_TRUE(response.find("Not found") != std::string::npos);
@@ -90,47 +91,47 @@ void httpServerUnknownEndpointReturns404(MockHttpServerTestSuite* suite) {
 
 // Test: History is tracked
 void httpServerTracksHistory(MockHttpServerTestSuite* suite) {
-    configurePinPlayer(suite->server_, "1111", "A");
-    configurePinPlayer(suite->server_, "2222", "B");
+    configurePinPlayer(suite->server, "1111", "A");
+    configurePinPlayer(suite->server, "2222", "B");
     std::string response;
-    suite->server_->handleRequest("GET", "/device/players/by-pin/1111", "", response);
-    suite->server_->handleRequest("GET", "/device/players/by-pin/2222", "", response);
+    suite->server->handleRequest("GET", "/device/players/by-pin/1111", "", response);
+    suite->server->handleRequest("GET", "/device/players/by-pin/2222", "", response);
 
-    const auto& history = suite->server_->getHistory();
+    const std::deque<cli::HttpHistoryEntry>& history = suite->server->getHistory();
     ASSERT_EQ(history.size(), 2);
     ASSERT_EQ(history[0].path, "/device/players/by-pin/1111");
     ASSERT_EQ(history[1].path, "/device/players/by-pin/2222");
 
-    suite->server_->removePlayer("1111");
-    suite->server_->removePlayer("2222");
+    suite->server->removePlayer("1111");
+    suite->server->removePlayer("2222");
 }
 
 // Test: Offline mode returns errors
 void httpServerOfflineModeSimulation(MockHttpServerTestSuite* suite) {
-    suite->server_->setOffline(true);
+    suite->server->setOffline(true);
     // Offline flag is available for future driver integration; routing still succeeds when called directly.
-    suite->server_->setOffline(false);
+    suite->server->setOffline(false);
 }
 
 void httpServerClearHistory(MockHttpServerTestSuite* suite) {
-    configurePinPlayer(suite->server_, "1111", "A");
-    configurePinPlayer(suite->server_, "2222", "B");
+    configurePinPlayer(suite->server, "1111", "A");
+    configurePinPlayer(suite->server, "2222", "B");
     std::string response;
-    suite->server_->handleRequest("GET", "/device/players/by-pin/1111", "", response);
-    suite->server_->handleRequest("GET", "/device/players/by-pin/2222", "", response);
+    suite->server->handleRequest("GET", "/device/players/by-pin/1111", "", response);
+    suite->server->handleRequest("GET", "/device/players/by-pin/2222", "", response);
 
-    ASSERT_GT(suite->server_->getHistory().size(), 0);
+    ASSERT_GT(suite->server->getHistory().size(), 0);
 
-    suite->server_->clearHistory();
-    ASSERT_EQ(suite->server_->getHistory().size(), 0);
+    suite->server->clearHistory();
+    ASSERT_EQ(suite->server->getHistory().size(), 0);
 
-    suite->server_->removePlayer("1111");
-    suite->server_->removePlayer("2222");
+    suite->server->removePlayer("1111");
+    suite->server->removePlayer("2222");
 }
 
 void httpServerDeviceLogsReturns204(MockHttpServerTestSuite* suite) {
     std::string response;
-    int status = suite->server_->handleRequest("POST", "/device-logs", "payload", response);
+    int status = suite->server->handleRequest("POST", "/device-logs", "payload", response);
 
     ASSERT_EQ(status, 204);
     ASSERT_TRUE(response.empty());
@@ -138,7 +139,7 @@ void httpServerDeviceLogsReturns204(MockHttpServerTestSuite* suite) {
 
 void httpServerDeviceLogsEmptyBodyReturns400(MockHttpServerTestSuite* suite) {
     std::string response;
-    int status = suite->server_->handleRequest("POST", "/device-logs", "", response);
+    int status = suite->server->handleRequest("POST", "/device-logs", "", response);
     ASSERT_EQ(status, 400);
 }
 

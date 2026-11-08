@@ -81,8 +81,8 @@ disconnect 0       # Disconnect device 0's cable
 
 The simulator includes a mock HTTP server that handles:
 
-- `GET /api/players/{id}` - Returns player data
-- `PUT /api/matches` - Accepts match uploads
+- `GET /device/players/by-pin/{pin}` - Returns protobuf player data
+- `POST /quickdraw-matches` - Accepts protobuf match batch uploads
 
 Use `http offline` to simulate network failures.
 

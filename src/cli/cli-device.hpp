@@ -47,10 +47,7 @@ namespace cli {
  */
 inline const char* getStateName(int stateId) {
     switch (stateId) {
-        case PlayerFetchStateId::PIN_ENTRY: return "PinEntry";
         case PlayerFetchStateId::FETCH_USER: return "FetchUser";
-        case PlayerFetchStateId::CHOOSE_TEAM: return "ChooseTeam";
-        case PlayerFetchStateId::DEMO_STUB: return "DemoStub";
         case PlayerFetchStateId::WELCOME: return "WelcomeMessage";
         case PlayerFetchStateId::FIRMWARE_UPDATE: return "FirmwareUpdate";
         case SLEEP: return "Sleep";
@@ -63,7 +60,6 @@ inline const char* getStateName(int stateId) {
         case MATCH_RESULT: return "MatchResult";
         case WIN: return "Win";
         case LOSE: return "Lose";
-        case UPLOAD_MATCHES: return "UploadMatches";
         case SUPPORTER_READY: return "SupporterReady";
         case SHOOTOUT_PROPOSAL: return "ShootoutProposal";
         case SHOOTOUT_BRACKET_REVEAL: return "ShootoutBracketReveal";

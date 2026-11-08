@@ -174,20 +174,20 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
+    fetch.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 1000);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS - 1))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
+    fetch.onStateLoop(&suite->device);
+    EXPECT_FALSE(fetch.transitionToFirmwareUpdate());
+    fetch.onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch.transitionToFirmwareUpdate());
 
-    pinEntry.onStateDismounted(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    fetch.onStateDismounted(&suite->device);
+    EXPECT_FALSE(fetch.transitionToFirmwareUpdate());
 }
 
 // The button's pressed time counts from press-down, so a hold that began before the
@@ -195,25 +195,27 @@ inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
 inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
+    fetch.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS - 500);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    fetch.onStateLoop(&suite->device);
+    EXPECT_FALSE(fetch.transitionToFirmwareUpdate());
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 2000);
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
-    pinEntry.onStateDismounted(&suite->device);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch.transitionToFirmwareUpdate());
+    fetch.onStateDismounted(&suite->device);
 }
 
-// The pairing screen takes firmware updates for as long as it is up.
+// The provisioning screen takes firmware updates for as long as it is up.
 inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PeerCommsInterface::PacketCallback onFrame;
+    EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kPlayerProvision, _, _))
+    .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
         .WillOnce(SaveArg<1>(&onFrame));
     FakeFirmwareStore store;
@@ -228,31 +230,32 @@ inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
 
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
+    fetch.onStateMounted(&suite->device);
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 1);
 
-    pinEntry.onStateDismounted(&suite->device);
+    fetch.onStateDismounted(&suite->device);
     EXPECT_EQ(store.abortCalls, 1) << "leaving the screen drops the receive";
     suite->device.firmwareUpdateManager = nullptr;
 }
 
-// The pairing screen leaves the radio to whoever switched it to WiFi.
+// The provisioning screen leaves the radio mode alone on mount.
 inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     suite->device.wirelessManager->enableWifiMode();
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
+    fetch.onStateMounted(&suite->device);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
-    pinEntry.onStateDismounted(&suite->device);
+    fetch.onStateDismounted(&suite->device);
 }
 
 inline void fetchExitPutsTheRadioBackOnEspNow(IdleStateTests* suite) {
-    suite->device.wirelessManager->enableWifiMode();
+    suite->device.wirelessManager->enablePeerCommsMode();
     PlayerProvider playerProvider;
     FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
+    fetch.onStateMounted(&suite->device);
     fetch.onStateDismounted(&suite->device);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
 }
@@ -1123,13 +1126,13 @@ inline void resultPlayerStatsUpdatedOnLoss(MatchResultTests* suite) {
 // Test: Match finalized on result
 inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
-    
-    EXPECT_CALL(suite->storage, write(_, _, _))
-        .Times(testing::AtLeast(1))
-        .WillRepeatedly(Return(100));
-    EXPECT_CALL(suite->storage, writeUChar(_, _, _))
-        .Times(testing::AtLeast(1))
-        .WillRepeatedly(Return(1));
+
+    EXPECT_CALL(suite->storage, writeBytes(MATCHES_PREFS_NAMESPACE, _, _, MATCH_BINARY_SIZE))
+    .Times(testing::AtLeast(1))
+    .WillRepeatedly(Return(MATCH_BINARY_SIZE));
+    EXPECT_CALL(suite->storage, writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, _))
+    .Times(testing::AtLeast(1))
+    .WillRepeatedly(Return(sizeof(uint32_t)));
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setHunterDrawTime(200);

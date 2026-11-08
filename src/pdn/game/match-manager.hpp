@@ -27,6 +27,11 @@ class ShootoutManager;
 
 // Preferences namespace and keys
 inline constexpr const char MATCHES_PREFS_NAMESPACE[] = "matches";
+inline constexpr const char PREF_SEQ_KEY[] = "seq";
+inline constexpr const char PREF_COLLECTED_SEQ_KEY[] = "collectedSeq";
+inline constexpr const char PREF_MATCH_KEY_PREFIX[] = "match_";
+inline constexpr uint8_t MATCH_RING_CAPACITY = 32;
+inline constexpr unsigned long MATCH_TRANSFER_RETRY_MS = 100;
 
 struct LastMatchDisplay {
     unsigned long myTimeMs = 0;       // boosted draw time, as used for winner calc
@@ -66,7 +71,8 @@ public:
 
     /** Primes a match from an incoming SEND_MATCH_ID and replies with MATCH_ID_ACK. */
     void receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter,
-                      uint8_t* opponentMac);
+                      uint8_t* opponentMac, const UUIDBytes& opponentPlayerUuid = UUIDBytes{},
+                      const UUIDBytes& opponentTeamUuid = UUIDBytes{});
 
     /**
      * Shootout mode: primes a match without the SEND_MATCH_ID handshake. Both
@@ -83,8 +89,10 @@ public:
      * match state. */
     bool finalizeMatch();
 
-    bool setHunterDrawTime(unsigned long hunter_time_ms);
-    bool setBountyDrawTime(unsigned long bounty_time_ms);
+    /** Sets the hunter draw time (ms) on the active match. */
+    bool setHunterDrawTime(long hunterTimeMs);
+    /** Sets the bounty draw time (ms) on the active match. */
+    bool setBountyDrawTime(long bountyTimeMs);
 
     /** Records the local timestamp when the match draw window starts. */
     void setMatchLocalStartTime(unsigned long localStartTimeMs);
@@ -112,14 +120,27 @@ public:
     /** Returns the active match, or std::nullopt if none. */
     std::optional<Match>& getCurrentMatch() { return activeMatchState.match; }
 
-    /** Serializes all stored matches to a JSON array string. */
-    std::string toJson();
+    /** Returns the 1-based monotonic match sequence number (0 when no matches finalized). */
+    uint32_t getMatchSequenceNumber();
 
-    /** Clears all matches from storage. */
-    void clearStorage();
+    /** Returns the highest match sequence number acknowledged by a cabled FDN (clamped to <= seq).
+     */
+    uint32_t getCollectedHighWaterMark();
 
-    /** Returns the number of stored matches. */
+    /** Advances the collected high-water mark (clamped to <= getMatchSequenceNumber()). */
+    void setCollectedHighWaterMark(uint32_t seq);
+
+    /** Returns the number of matches currently held in the 32-slot ring buffer. */
     size_t getStoredMatchCount();
+
+    /** Returns the number of uncollected matches still present in the 32-slot ring buffer. */
+    size_t getUncollectedMatchCount();
+
+    /** Reads the match stored at ring buffer slot [0, MATCH_RING_CAPACITY). */
+    bool readMatchFromSlot(uint8_t slot, Match& out);
+
+    /** Reads the match for 1-based sequence number `seq` if still in the 32-slot ring buffer. */
+    bool readMatchBySequence(uint32_t seq, Match& out);
 
     /** Clears the active match and resets all per-match state flags. */
     void clearCurrentMatch();
@@ -179,7 +200,7 @@ private:
     Player* player;
 
     std::function<unsigned long()> boostProvider_;
-    RemoteDeviceCoordinator* rdc_ = nullptr;
+    RemoteDeviceCoordinator* rdc = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
 
     ActiveMatchState activeMatchState;
@@ -189,28 +210,25 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
+    WirelessManager* wirelessManager = nullptr;
     Resender resender;
     ReliableChannel<MatchPacket> matchChannel;
+    uint32_t inFlightTransferSeq = 0;
+    SimpleTimer transferRetryTimer;
+
     void sendCommand(const uint8_t* mac, int command, const char* matchId,
                      long drawTime, bool isHunter);
     /**
-     * Appends a match to storage
+     * Appends a match to the 32-slot binary ring buffer and increments the sequence number.
      * @param match Match to save
      * @return true if save was successful
      */
     bool appendMatchToStorage(const Match* match);
 
-    /**
-     * Updates the stored match count
-     */
-    void updateStoredMatchCount(uint8_t count);
-
-    /**
-     * Reads a match from storage at the specified index
-     * @param index Index of the match to read
-     * @return New Match object if successful, nullptr if invalid
-     */
-    Match* readMatchFromStorage(uint8_t index);
+    const uint8_t* findConnectedFdnMac() const;
+    bool isConnectedFdnMac(const uint8_t* mac) const;
+    void syncFdnMatchTransfer();
+    void onMatchCollectionPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake match commands

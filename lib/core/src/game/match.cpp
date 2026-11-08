@@ -6,55 +6,61 @@
 
 Match::Match(const char* mid, const char* playerId, bool isHunter) {
     IdGenerator::copyId(match_id, mid);
-    if (isHunter) {
-        IdGenerator::copyId(hunter, playerId);
-    } else {
-        IdGenerator::copyId(bounty, playerId);
+    if (!UUIDBytes::parse(match_id, matchUuid)) {
+        IdGenerator::uuidStringToBytes(match_id, matchUuid.bytes);
     }
+    if (isHunter) {
+        setHunterId(playerId);
+    } else {
+        setBountyId(playerId);
+    }
+}
+
+void Match::setMatchUuid(const UUIDBytes& uuid) {
+    matchUuid = uuid;
+    uuid.format(match_id);
 }
 
 void Match::setHunterId(const char* hunterId) {
     IdGenerator::copyId(hunter, hunterId);
+    UUIDBytes parsed{};
+    if (UUIDBytes::parse(hunterId, parsed)) {
+        hunterPlayerId = parsed;
+    }
 }
 
 void Match::setBountyId(const char* bountyId) {
     IdGenerator::copyId(bounty, bountyId);
+    UUIDBytes parsed{};
+    if (UUIDBytes::parse(bountyId, parsed)) {
+        bountyPlayerId = parsed;
+    }
 }
 
-void Match::setHunterDrawTime(unsigned long timeMs) {
-    hunter_draw_time_ms = timeMs;
+void Match::setHunterDrawTime(long timeMs) {
+    hunterDrawTimeMs = (timeMs < MIN_DRAW_TIME_MS) ? MIN_DRAW_TIME_MS : timeMs;
 }
 
-void Match::setBountyDrawTime(unsigned long timeMs) {
-    bounty_draw_time_ms = timeMs;
+void Match::setBountyDrawTime(long timeMs) {
+    bountyDrawTimeMs = (timeMs < MIN_DRAW_TIME_MS) ? MIN_DRAW_TIME_MS : timeMs;
 }
 
-std::string Match::toJson() const
-{
-    // LOG_I("Match", "Serializing JSON: %s", match_id.c_str());
-    // LOG_I("Match", "Hunter: %s", hunter.c_str());
-    // LOG_I("Match", "Bounty: %s", bounty.c_str());
-    // LOG_I("Match", "Hunter draw time: %lu", hunter_draw_time_ms);
-    // LOG_I("Match", "Bounty draw time: %lu", bounty_draw_time_ms);
-
+std::string Match::toJson() const {
     JsonDocument doc;
     JsonObject matchObj = doc.to<JsonObject>();
     matchObj[JSON_KEY_MATCH_ID] = match_id;
     matchObj[JSON_KEY_HUNTER_ID] = hunter;
     matchObj[JSON_KEY_BOUNTY_ID] = bounty;
-    matchObj[JSON_KEY_WINNER_IS_HUNTER] = hunter_draw_time_ms < bounty_draw_time_ms;
-    matchObj[JSON_KEY_HUNTER_TIME] = hunter_draw_time_ms;
-    matchObj[JSON_KEY_BOUNTY_TIME] = bounty_draw_time_ms;
+    matchObj[JSON_KEY_WINNER_IS_HUNTER] = hunterDrawTimeMs < bountyDrawTimeMs;
+    matchObj[JSON_KEY_HUNTER_TIME] = hunterDrawTimeMs;
+    matchObj[JSON_KEY_BOUNTY_TIME] = bountyDrawTimeMs;
 
     std::string json;
     serializeJson(matchObj, json);
-
-    // LOG_I("Match", "Serialized JSON: %s", json.c_str());
     return json;
 }
 
-void Match::fromJson(const std::string &json) {
-    // LOG_I("Match", "Deserializing JSON: %s", json.c_str());
+void Match::fromJson(const std::string& json) {
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, json);
 
@@ -62,34 +68,33 @@ void Match::fromJson(const std::string &json) {
         if (doc[JSON_KEY_MATCH_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_MATCH_ID].as<const char*>();
             IdGenerator::copyId(match_id, v);
+            if (!UUIDBytes::parse(match_id, matchUuid)) {
+                IdGenerator::uuidStringToBytes(match_id, matchUuid.bytes);
+            }
         }
         if (doc[JSON_KEY_HUNTER_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_HUNTER_ID].as<const char*>();
-            IdGenerator::copyId(hunter, v);
+            setHunterId(v);
         }
         if (doc[JSON_KEY_BOUNTY_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_BOUNTY_ID].as<const char*>();
-            IdGenerator::copyId(bounty, v);
+            setBountyId(v);
         }
-        if (doc[JSON_KEY_HUNTER_TIME].is<unsigned long>()) {
-            hunter_draw_time_ms = doc[JSON_KEY_HUNTER_TIME].as<unsigned long>();
+        if (doc[JSON_KEY_HUNTER_TIME].is<long>()) {
+            setHunterDrawTime(doc[JSON_KEY_HUNTER_TIME].as<long>());
         }
-        if (doc[JSON_KEY_BOUNTY_TIME].is<unsigned long>()) {
-            bounty_draw_time_ms = doc[JSON_KEY_BOUNTY_TIME].as<unsigned long>();
+        if (doc[JSON_KEY_BOUNTY_TIME].is<long>()) {
+            setBountyDrawTime(doc[JSON_KEY_BOUNTY_TIME].as<long>());
         }
-    } else {
-        // LOG_E("Match", "Failed to parse JSON: %s", error.c_str());
     }
 }
 
 size_t Match::serialize(uint8_t* buffer) const {
     size_t currentPos = 0;
-    uint8_t uuidBytes[IdGenerator::UUID_BINARY_SIZE];
     uint8_t playerIdBytes[PLAYER_ID_BINARY_SIZE];
 
-    // Serialize match_id
-    IdGenerator::uuidStringToBytes(match_id, uuidBytes);
-    memcpy(buffer + currentPos, uuidBytes, IdGenerator::UUID_BINARY_SIZE);
+    // Serialize matchUuid (16 raw bytes)
+    memcpy(buffer + currentPos, matchUuid.bytes, IdGenerator::UUID_BINARY_SIZE);
     currentPos += IdGenerator::UUID_BINARY_SIZE;
 
     // Serialize hunter id (4 raw bytes)
@@ -103,24 +108,42 @@ size_t Match::serialize(uint8_t* buffer) const {
     currentPos += PLAYER_ID_BINARY_SIZE;
 
     // Serialize draw times
-    memcpy(buffer + currentPos, &hunter_draw_time_ms, sizeof(unsigned long));
-    currentPos += sizeof(unsigned long);
-    memcpy(buffer + currentPos, &bounty_draw_time_ms, sizeof(unsigned long));
-    currentPos += sizeof(unsigned long);
+    memcpy(buffer + currentPos, &hunterDrawTimeMs, sizeof(long));
+    currentPos += sizeof(long);
+    memcpy(buffer + currentPos, &bountyDrawTimeMs, sizeof(long));
+    currentPos += sizeof(long);
+
+    // Serialize 16-byte UUIDs
+    memcpy(buffer + currentPos, hunterPlayerId.bytes, UUIDBytes::SIZE);
+    currentPos += UUIDBytes::SIZE;
+    memcpy(buffer + currentPos, bountyPlayerId.bytes, UUIDBytes::SIZE);
+    currentPos += UUIDBytes::SIZE;
+    memcpy(buffer + currentPos, hunterTeamId.bytes, UUIDBytes::SIZE);
+    currentPos += UUIDBytes::SIZE;
+    memcpy(buffer + currentPos, bountyTeamId.bytes, UUIDBytes::SIZE);
+    currentPos += UUIDBytes::SIZE;
+    memcpy(buffer + currentPos, winnerPlayerId.bytes, UUIDBytes::SIZE);
+    currentPos += UUIDBytes::SIZE;
+
+    // Serialize MACs
+    memcpy(buffer + currentPos, hunterMac, MAC_BINARY_SIZE);
+    currentPos += MAC_BINARY_SIZE;
+    memcpy(buffer + currentPos, bountyMac, MAC_BINARY_SIZE);
+    currentPos += MAC_BINARY_SIZE;
+
+    // Serialize occurredAtUnixMs
+    memcpy(buffer + currentPos, &occurredAtUnixMs, sizeof(int64_t));
+    currentPos += sizeof(int64_t);
 
     return currentPos;
 }
 
 size_t Match::deserialize(const uint8_t* buffer) {
     size_t currentPos = 0;
-    uint8_t uuidBytes[IdGenerator::UUID_BINARY_SIZE];
 
-    // Deserialize match_id
-    memcpy(uuidBytes, buffer + currentPos, IdGenerator::UUID_BINARY_SIZE);
-    {
-        std::string tmp = IdGenerator::uuidBytesToString(uuidBytes);
-        IdGenerator::copyId(match_id, tmp.c_str());
-    }
+    // Deserialize matchUuid
+    memcpy(matchUuid.bytes, buffer + currentPos, IdGenerator::UUID_BINARY_SIZE);
+    matchUuid.format(match_id);
     currentPos += IdGenerator::UUID_BINARY_SIZE;
 
     // The wire field carries no terminator, so bound the read by the destination
@@ -133,10 +156,36 @@ size_t Match::deserialize(const uint8_t* buffer) {
     currentPos += PLAYER_ID_BINARY_SIZE;
 
     // Deserialize draw times
-    memcpy(&hunter_draw_time_ms, buffer + currentPos, sizeof(unsigned long));
-    currentPos += sizeof(unsigned long);
-    memcpy(&bounty_draw_time_ms, buffer + currentPos, sizeof(unsigned long));
-    currentPos += sizeof(unsigned long);
+    long hunterTime = 0;
+    long bountyTime = 0;
+    memcpy(&hunterTime, buffer + currentPos, sizeof(long));
+    currentPos += sizeof(long);
+    memcpy(&bountyTime, buffer + currentPos, sizeof(long));
+    currentPos += sizeof(long);
+    setHunterDrawTime(hunterTime);
+    setBountyDrawTime(bountyTime);
+
+    // Deserialize 16-byte UUIDs
+    memcpy(hunterPlayerId.bytes, buffer + currentPos, UUIDBytes::SIZE);
+    currentPos += UUIDBytes::SIZE;
+    memcpy(bountyPlayerId.bytes, buffer + currentPos, UUIDBytes::SIZE);
+    currentPos += UUIDBytes::SIZE;
+    memcpy(hunterTeamId.bytes, buffer + currentPos, UUIDBytes::SIZE);
+    currentPos += UUIDBytes::SIZE;
+    memcpy(bountyTeamId.bytes, buffer + currentPos, UUIDBytes::SIZE);
+    currentPos += UUIDBytes::SIZE;
+    memcpy(winnerPlayerId.bytes, buffer + currentPos, UUIDBytes::SIZE);
+    currentPos += UUIDBytes::SIZE;
+
+    // Deserialize MACs
+    memcpy(hunterMac, buffer + currentPos, MAC_BINARY_SIZE);
+    currentPos += MAC_BINARY_SIZE;
+    memcpy(bountyMac, buffer + currentPos, MAC_BINARY_SIZE);
+    currentPos += MAC_BINARY_SIZE;
+
+    // Deserialize occurredAtUnixMs
+    memcpy(&occurredAtUnixMs, buffer + currentPos, sizeof(int64_t));
+    currentPos += sizeof(int64_t);
 
     return currentPos;
 }

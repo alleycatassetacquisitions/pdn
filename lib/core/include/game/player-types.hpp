@@ -6,8 +6,8 @@
 
 /** Buffer limits for server registration fields on `Player`; the codec truncates names to fit. */
 namespace PlayerLimits {
-constexpr size_t NAME_BUFFER_SIZE = 37;
-constexpr size_t MAX_AFFILIATIONS = 3;
+constexpr size_t NAME_BUFFER_SIZE = 32;
+constexpr size_t MAX_AFFILIATIONS = 5;
 }  // namespace PlayerLimits
 
 /** The server team a player is assigned to. A nil id means no team. */

@@ -85,8 +85,8 @@ public:
         
         if (method == "GET" && path.find("/device/players/by-pin/") == 0) {
             statusCode = handleGetDevicePlayerByPin(path, responseBody);
-        } else if (method == "PUT" && path == "/api/matches") {
-            statusCode = handlePutMatches(body, responseBody);
+        } else if (method == "POST" && path == "/quickdraw-matches") {
+            statusCode = handlePostQuickdrawMatches(body, responseBody);
         } else if (method == "POST" && path == "/device-logs") {
             statusCode = handlePostDeviceLogs(body, responseBody);
         } else {
@@ -184,13 +184,15 @@ private:
     }
 
     /**
-     * Handle PUT /api/matches
+     * Handle POST /quickdraw-matches — acknowledges any non-empty protobuf body with 204.
      */
-    int handlePutMatches(const std::string& body, std::string& responseBody) {
-        // Just acknowledge the match upload
-        // In a real server, we'd parse and store the matches
-        responseBody = R"({"success":true,"message":"Matches uploaded"})";
-        return 200;
+    int handlePostQuickdrawMatches(const std::string& body, std::string& responseBody) {
+        responseBody = "";
+        if (body.empty()) {
+            responseBody = R"({"errors":["Empty body"]})";
+            return 400;
+        }
+        return 204;
     }
 
     /**

@@ -146,6 +146,27 @@ public:
 
 class MockPeerComms : public PeerCommsInterface {
 public:
+    /** Installs default packet-handler capture so triggerPacketCallback works without boilerplate.
+     */
+    MockPeerComms() {
+        ON_CALL(*this, setPacketHandler(::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault([this](PktType type, PacketCallback cb, void* ctx) {
+            registeredHandlers[type] = {cb, ctx};
+        });
+        ON_CALL(*this, clearPacketHandler(::testing::_)).WillByDefault([this](PktType type) {
+            registeredHandlers.erase(type);
+        });
+    }
+
+    /** Invokes the registered packet handler for @p type as if a frame arrived from @p srcMac. */
+    void triggerPacketCallback(const uint8_t* srcMac, PktType type, const uint8_t* data,
+                               size_t len) {
+        auto it = registeredHandlers.find(type);
+        if (it != registeredHandlers.end() && it->second.first != nullptr) {
+            it->second.first(srcMac, data, len, it->second.second);
+        }
+    }
+
     MOCK_METHOD(int, sendData, (const uint8_t*, PktType, const uint8_t*, const size_t), (override));
     MOCK_METHOD(void, setPacketHandler, (PktType, PacketCallback, void*), (override));
     MOCK_METHOD(void, clearPacketHandler, (PktType), (override));
@@ -160,10 +181,26 @@ public:
     MOCK_METHOD(void, setSendStatusHandler, (PktType, SendStatusCallback, void*), (override));
     /** Paired with setSendStatusHandler; dropped when an owner goes away. */
     MOCK_METHOD(void, clearSendStatusHandler, (PktType), (override));
+
+private:
+    std::map<PktType, std::pair<PacketCallback, void*>> registeredHandlers;
 };
 
 class MockStorage : public StorageInterface {
 public:
+    /** Installs default success return values for binary and uint32 NVS helpers. */
+    MockStorage() {
+        ON_CALL(*this, writeBytes(::testing::_, ::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault(
+        [](const std::string&, const std::string&, const uint8_t*, size_t len) { return len; });
+        ON_CALL(*this, readBytes(::testing::_, ::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault(::testing::Return(0));
+        ON_CALL(*this, writeUInt(::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault(::testing::Return(sizeof(uint32_t)));
+        ON_CALL(*this, readUInt(::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault([](const std::string&, const std::string&, uint32_t def) { return def; });
+    }
+
     MOCK_METHOD(size_t, write, (const std::string&, const std::string&, const std::string&), (override));
     MOCK_METHOD(std::string, read, (const std::string&, const std::string&, const std::string&), (override));
     MOCK_METHOD(bool, remove, (const std::string&, const std::string&), (override));
@@ -171,6 +208,12 @@ public:
     MOCK_METHOD(void, end, (), (override));
     MOCK_METHOD(uint8_t, readUChar, (const std::string&, const std::string&, uint8_t), (override));
     MOCK_METHOD(size_t, writeUChar, (const std::string&, const std::string&, uint8_t), (override));
+    MOCK_METHOD(uint32_t, readUInt, (const std::string&, const std::string&, uint32_t), (override));
+    MOCK_METHOD(size_t, writeUInt, (const std::string&, const std::string&, uint32_t), (override));
+    MOCK_METHOD(size_t, writeBytes,
+                (const std::string&, const std::string&, const uint8_t*, size_t), (override));
+    MOCK_METHOD(size_t, readBytes, (const std::string&, const std::string&, uint8_t*, size_t),
+                (override));
 };
 
 class FakeRemoteDeviceCoordinator : public RemoteDeviceCoordinator {

@@ -726,6 +726,10 @@ TEST_F(MatchTestSuite, binarySizeIsCorrect) {
     matchBinarySizeIsCorrect();
 }
 
+TEST_F(MatchTestSuite, binaryRoundTripPreservesUuidsWithEmbeddedZeroBytesAndSignedTimes) {
+    matchBinaryRoundTripPreservesUuidsWithEmbeddedZeroBytesAndSignedTimes();
+}
+
 TEST_F(MatchTestSuite, setupClearsDrawTimes) {
     matchSetupClearsDrawTimes();
 }
@@ -997,6 +1001,10 @@ TEST(StorageDriver, unknownNamespaceThrowsOnRead) {
 
 TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
     storageUCharRoundTripInRegisteredNamespace();
+}
+
+TEST(StorageDriver, uintAndBytesRoundTripInRegisteredNamespace) {
+    storageUIntAndBytesRoundTripInRegisteredNamespace();
 }
 
 // ============================================
