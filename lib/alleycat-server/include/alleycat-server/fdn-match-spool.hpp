@@ -37,6 +37,7 @@ public:
         : wirelessManager(wirelessManager)
         , storage(storage)
         , rdc(rdc) {
+        loadStagedUuids();
         if (this->wirelessManager) {
             this->wirelessManager->setEspNowPacketHandler(
             PktType::kMatchCollection,
@@ -79,15 +80,16 @@ public:
         Match incoming{};
         incoming.deserialize(pkt.matchData);
 
-        // Checked before the dedup scan so a full spool pays no scan per resend.
-        if (getStagedCount() >= FDN_MATCH_SPOOL_CAPACITY) {
-            LOG_W("FDN_SPOOL", "Spool full; withholding ack for seq %u",
-                  static_cast<unsigned>(pkt.matchSeq));
-            return;
-        }
-        // A lost ack makes the PDN resend a record that is already staged.
-        if (!containsMatchUuid(incoming.getMatchUuid()) && !stageMatch(pkt.matchData)) {
-            return;
+        // A lost ack makes the PDN resend a record that is already staged, full spool or not.
+        if (!containsMatchUuid(incoming.getMatchUuid())) {
+            if (getStagedCount() >= FDN_MATCH_SPOOL_CAPACITY) {
+                LOG_W("FDN_SPOOL", "Spool full; withholding ack for seq %u",
+                      static_cast<unsigned>(pkt.matchSeq));
+                return;
+            }
+            if (!stageMatch(pkt.matchData, incoming.getMatchUuid())) {
+                return;
+            }
         }
         sendAck(fromMac, pkt.matchSeq);
     }
@@ -197,19 +199,28 @@ private:
         }
     }
 
+    // NVS stays the record of truth; this copy only spares the per-resend dedup a
+    // slot-by-slot NVS scan. Retired slots fall outside [head, tail) and need no upkeep.
+    void loadStagedUuids() {
+        if (!storage) return;
+        const uint32_t tail = getTail();
+        for (uint32_t index = getHead(); index < tail; ++index) {
+            Match staged{};
+            stagedUuids[index % FDN_MATCH_SPOOL_CAPACITY] =
+            readSlot(index, staged) ? staged.getMatchUuid() : UUIDBytes{};
+        }
+    }
+
     bool containsMatchUuid(const UUIDBytes& uuid) const {
         if (uuid.isZero()) return false;
-        const size_t count = getStagedCount();
-        for (size_t i = 0; i < count; ++i) {
-            Match staged{};
-            if (readStagedMatch(i, staged) && staged.getMatchUuid() == uuid) {
-                return true;
-            }
+        const uint32_t tail = getTail();
+        for (uint32_t index = getHead(); index < tail; ++index) {
+            if (stagedUuids[index % FDN_MATCH_SPOOL_CAPACITY] == uuid) return true;
         }
         return false;
     }
 
-    bool stageMatch(const uint8_t (&record)[MATCH_BINARY_SIZE]) {
+    bool stageMatch(const uint8_t (&record)[MATCH_BINARY_SIZE], const UUIDBytes& uuid) {
         const uint32_t tail = getTail();
         char key[16];
         slotKey(tail, key);
@@ -217,6 +228,7 @@ private:
             MATCH_BINARY_SIZE) {
             return false;
         }
+        stagedUuids[tail % FDN_MATCH_SPOOL_CAPACITY] = uuid;
         return storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_TAIL_KEY, tail + 1) ==
                sizeof(uint32_t);
     }
@@ -232,4 +244,5 @@ private:
     StorageInterface* storage = nullptr;
     RemoteDeviceCoordinator* rdc = nullptr;
     bool uploadInFlight = false;
+    UUIDBytes stagedUuids[FDN_MATCH_SPOOL_CAPACITY] = {};
 };

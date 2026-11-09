@@ -795,18 +795,29 @@ TEST_F(MatchManagerTestSuite, fdnSpoolWithholdsAckWhenFullAt64Records) {
         return 1;
     }));
 
-    for (uint32_t seq = 1; seq <= 65; ++seq) {
+    auto send = [&pdnMac](FdnMatchSpool& spool, uint32_t seq) {
         char mid[37];
         snprintf(mid, sizeof(mid), "%08u-aaaa-4000-8000-bbbbbbbbbbbb", seq);
         Match m(mid, "hunt", true);
         MatchRecordPacket pkt{};
         pkt.matchSeq = seq;
         m.serialize(pkt.matchData);
-        fdnSpool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
-    }
+        spool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+    };
+    for (uint32_t seq = 1; seq <= 65; ++seq)
+        send(fdnSpool, seq);
 
     EXPECT_EQ(fdnSpool.getStagedCount(), 64u);
     EXPECT_EQ(acksSent, 64u) << "65th match must not be ACKed while spool is full";
+
+    send(fdnSpool, 64);
+    EXPECT_EQ(acksSent, 65u) << "a resend after a lost ack is re-acked even when full";
+    EXPECT_EQ(fdnSpool.getStagedCount(), 64u);
+
+    FdnMatchSpool rebooted(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+    send(rebooted, 1);
+    EXPECT_EQ(acksSent, 66u) << "staged records are known again after a reboot";
+    EXPECT_EQ(rebooted.getStagedCount(), 64u);
 }
 
 TEST_F(MatchManagerTestSuite, fdnSpoolDropsUnreadableHeadInsteadOfFailingEveryBatch) {
