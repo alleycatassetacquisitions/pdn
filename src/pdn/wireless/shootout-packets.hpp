@@ -5,11 +5,9 @@
 
 #include "device/drivers/peer-comms-types.hpp"
 
-// Shootout wire payloads: one packed struct per command, one PktType per
-// struct, every one ridden on a FAN_OUT channel owned by ShootoutManager. The
-// struct layout is the wire format; both ends run the same firmware. seqId is
-// stamped by the channel — nonzero on a reliable fan-out, 0 on a frame that is
-// rebroadcast on a timer instead and owes nothing back.
+// Shootout wire payloads, one PktType per command, every one ridden on a
+// FAN_OUT channel owned by ShootoutManager. seqId is nonzero on a reliable
+// fan-out and 0 on a frame that is rebroadcast on a timer instead.
 
 // Fixed on-wire name length for CONFIRM. Local Player names are null-padded or
 // truncated to this size.

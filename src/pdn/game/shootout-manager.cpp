@@ -141,30 +141,6 @@ bool ShootoutManager::hasBye() const {
     return bracket.size() % 2 == 1;
 }
 
-ReliableChannelBase* ShootoutManager::channelFor(PktType type) {
-    switch (type) {
-        case PktType::kShootoutBracket: return &bracketChannel;
-        case PktType::kShootoutMatchStart: return &matchStartChannel;
-        case PktType::kShootoutMatchResult: return &matchResultChannel;
-        case PktType::kShootoutTournamentEnd: return &tournamentEndChannel;
-        case PktType::kShootoutAbort: return &abortChannel;
-        default: return nullptr;
-    }
-}
-
-const ReliableChannelBase* ShootoutManager::channelFor(PktType type) const {
-    return const_cast<ShootoutManager*>(this)->channelFor(type);
-}
-
-size_t ShootoutManager::getPendingAckCount(PktType type, uint8_t seqId) const {
-    const ReliableChannelBase* channel = channelFor(type);
-    return channel != nullptr ? channel->pendingCount(seqId) : 0;
-}
-
-uint8_t ShootoutManager::getLastBracketSeqId() const {
-    return lastBracketSeqId;
-}
-
 int ShootoutManager::getCurrentMatchIndex() const {
     return currentMatchIndex;
 }
@@ -225,10 +201,6 @@ std::array<uint8_t, 6> ShootoutManager::getOpponentMac() const {
     return opponentMac;
 }
 
-uint8_t ShootoutManager::getLastMatchStartSeqId() const {
-    return lastMatchStartSeqId;
-}
-
 std::array<uint8_t, 6> ShootoutManager::getTournamentWinner() const {
     return tournamentWinner;
 }
@@ -261,22 +233,13 @@ void ShootoutManager::resetTournamentState() {
     currentRound.clear();
     memset(coordinatorMac.data(), 0, 6);
     // A retransmit landing after the reset would speak for a tournament that no
-    // longer exists — except the frame reporting the ending, whose recipients are
-    // exactly the members yet to hear it. Both the screen showing the ending and
-    // the proposal after it reset, so it has to survive more than one.
-    const std::array<ReliableChannelBase*, 5> reliableChannels = {
-    &bracketChannel, &matchStartChannel, &matchResultChannel, &tournamentEndChannel, &abortChannel};
-    for (ReliableChannelBase* channel : reliableChannels) {
-        if (channel == terminalFanOut) {
-            channel->cancelAllExcept(terminalFanOutSeqId);
-        } else {
-            channel->cancelAll();
-        }
-    }
-    if (terminalFanOut != nullptr && terminalFanOut->pendingCount(terminalFanOutSeqId) == 0) {
-        terminalFanOut = nullptr;
-        terminalFanOutSeqId = 0;
-    }
+    // longer exists. The two terminal commands are left alone: the frame
+    // reporting the ending owes delivery to exactly the members yet to hear it,
+    // and it has to survive both the screen showing the ending and the proposal
+    // after it; its own span bounds it.
+    bracketChannel.cancelAll();
+    matchStartChannel.cancelAll();
+    matchResultChannel.cancelAll();
     eliminated.clear();
     // Sampled only while the phase is PROPOSAL, so a tournament that leaves that
     // phase mid-window would carry a part-aged timer into the next one.
@@ -507,10 +470,10 @@ ShootoutRosterPayload
 ShootoutManager::buildRoster(const std::vector<std::array<uint8_t, 6>>& macs) {
     ShootoutRosterPayload roster{};
     size_t count = macs.size();
-    if (count > MAX_BRACKET_SIZE) {
+    if (count > MAX_CHAIN_MEMBERS) {
         LOG_E(TAG, "mac list %zu over cap %u; truncating", count,
-              static_cast<unsigned>(MAX_BRACKET_SIZE));
-        count = MAX_BRACKET_SIZE;
+              static_cast<unsigned>(MAX_CHAIN_MEMBERS));
+        count = MAX_CHAIN_MEMBERS;
     }
     roster.count = static_cast<uint8_t>(count);
     for (size_t i = 0; i < count; i++) {
@@ -522,7 +485,7 @@ ShootoutManager::buildRoster(const std::vector<std::array<uint8_t, 6>>& macs) {
 std::vector<std::array<uint8_t, 6>>
 ShootoutManager::unpackRoster(const ShootoutRosterPayload& roster) {
     // `count` is off the wire; the array is the bound.
-    const size_t count = std::min<size_t>(roster.count, MAX_BRACKET_SIZE);
+    const size_t count = std::min<size_t>(roster.count, MAX_CHAIN_MEMBERS);
     std::vector<std::array<uint8_t, 6>> macs;
     macs.reserve(count);
     for (size_t i = 0; i < count; i++) {
@@ -559,14 +522,8 @@ void ShootoutManager::abortTournament() {
     // from. Load-bearing on the abandonment path, where the ring is still closed
     // and no member's own ring-break guard will ever fire.
     ShootoutAbortPayload abort{};
-    const uint8_t seqId = abortChannel.sendBroadcast(peersExcludingSelf(targets), abort);
-    // Only if one actually went out. A ring of one names no recipients, so there
-    // is no group to spare and a seqId recorded here would spare a later frame
-    // that happens to reuse it.
-    if (abortChannel.pendingCount(seqId) > 0) {
-        terminalFanOut = &abortChannel;
-        terminalFanOutSeqId = seqId;
-    }
+    abortChannel.cancelAll();
+    abortChannel.sendBroadcast(peersExcludingSelf(targets), abort);
 }
 
 void ShootoutManager::sendLocalConfirm() {
@@ -661,7 +618,7 @@ void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
     memcpy(start.playerA, a.data(), 6);
     memcpy(start.playerB, b.data(), 6);
     start.matchIndex = static_cast<uint8_t>(matchIndex);
-    lastMatchStartSeqId = matchStartChannel.sendBroadcast(peersExcludingSelf(bracket), start);
+    matchStartChannel.sendBroadcast(peersExcludingSelf(bracket), start);
 }
 
 bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const {
@@ -718,10 +675,6 @@ void ShootoutManager::onBracketReceived(
         bracketChannel.ack(coordinatorMac.data(), seqId);
         return;
     }
-    // Adopting a bracket is the one way into a tournament that runs no reset, so
-    // an exemption left by the last one is retired here instead.
-    terminalFanOut = nullptr;
-    terminalFanOutSeqId = 0;
     bracket = offeredBracket;
     currentRound = offeredBracket;
     memcpy(coordinatorMac.data(), fromMac, 6);
@@ -795,7 +748,7 @@ void ShootoutManager::sendMatchResultToPeers(
     // as a recipient, so its result could never abandon against the coordinator
     // and the recovery in the abandon handler could never fire. The bracket is
     // the coordinator's own roster, acked on arrival.
-    lastMatchResultSeqId = matchResultChannel.sendBroadcast(peersExcludingSelf(bracket), result);
+    matchResultChannel.sendBroadcast(peersExcludingSelf(bracket), result);
 }
 
 void ShootoutManager::reportLocalWin() {
@@ -846,10 +799,8 @@ void ShootoutManager::sendTournamentEndToPeers(const uint8_t* winner) {
     memcpy(end.winner, winner, 6);
     // Targets confirmedSet rather than bracket: eliminated players need the
     // tournament-end transition or they stall in BETWEEN_MATCHES.
-    lastTournamentEndSeqId =
+    tournamentEndChannel.cancelAll();
     tournamentEndChannel.sendBroadcast(peersExcludingSelf(confirmedSet), end);
-    terminalFanOut = &tournamentEndChannel;
-    terminalFanOutSeqId = lastTournamentEndSeqId;
     memcpy(tournamentWinner.data(), winner, 6);
     phase = Phase::ENDED;
 }

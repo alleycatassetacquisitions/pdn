@@ -85,14 +85,6 @@ public:
     std::vector<std::array<uint8_t, 6>> getBracket() const;
     bool hasBye() const;
 
-    /**
-     * Recipients of the fan-out sent on `type` under `seqId` that have not yet
-     * acked. Zero once every one of them has answered or been given up on, and
-     * zero for a PktType this manager does not send reliably.
-     */
-    size_t getPendingAckCount(PktType type, uint8_t seqId) const;
-    uint8_t getLastBracketSeqId() const;
-
     int getCurrentMatchIndex() const;
     /**
      * The two devices of the current match index. Zero MACs only before the
@@ -117,23 +109,16 @@ public:
 
     void reportLocalWin();
 
-    void onMatchResultReceived(const uint8_t* winner, const uint8_t* loser,
-                               uint8_t matchIndex, uint8_t seqId,
-                               const uint8_t* fromMac);
-    /** seqId of the MATCH_RESULT this device most recently sent. */
-    uint8_t getLastMatchResultSeqId() const { return lastMatchResultSeqId; }
+    /** Inbound MATCH_RESULT, admitted on `fromMac` being in this device's bracket. */
+    void onMatchResultReceived(const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex,
+                               uint8_t seqId, const uint8_t* fromMac);
     bool isEliminated(const uint8_t* mac) const;
-
-    uint8_t getLastMatchStartSeqId() const;
 
     /**
      * Inbound TOURNAMENT_END, admitted on `fromMac` for the same reason as
      * onMatchStartReceived.
      */
-    void onTournamentEndReceived(const uint8_t* fromMac, const uint8_t* winner,
-                                 uint8_t seqId);
-    /** seqId of the TOURNAMENT_END this device most recently sent. */
-    uint8_t getLastTournamentEndSeqId() const { return lastTournamentEndSeqId; }
+    void onTournamentEndReceived(const uint8_t* fromMac, const uint8_t* winner, uint8_t seqId);
     /**
      * Tears down on a peer's ABORT. fromMac identifies the sending ring: the
      * command carries no MACs of its own, and a broadcast reaches every ring
@@ -186,10 +171,6 @@ public:
     // holding the start, with no timeout of its own to resolve it.
     static_assert(kBracketRevealMs > Resender::RETRANSMIT_SPAN_MS,
                   "the bracket-ack gate would hold the tournament with no timeout");
-    // Packet-validation clamp on an inbound roster's member count. A ring can
-    // hold as many devices as the chain does, so it tracks MAX_CHAIN_MEMBERS;
-    // the roster payload is sized to it.
-    static constexpr uint8_t MAX_BRACKET_SIZE = MAX_CHAIN_MEMBERS;
 
 private:
     struct NameEntry {
@@ -271,14 +252,9 @@ private:
     ReliableChannel<ShootoutMatchResultPayload> matchResultChannel;
     ReliableChannel<ShootoutTournamentEndPayload> tournamentEndChannel;
     ReliableChannel<ShootoutAbortPayload> abortChannel;
-    /** The channel sending `type`, or null for a type this manager does not send. */
-    ReliableChannelBase* channelFor(PktType type);
-    const ReliableChannelBase* channelFor(PktType type) const;
-
-    // Packs `macs` into a roster frame, truncated to the cap: the roster is the
-    // RDC's 64 plus self, so it can land one over what the codec accepts, and an
-    // over-long frame would be dropped by every receiver rather than the members
-    // past the cap. Truncating keeps the ring running.
+    // The roster is the RDC's 64 plus self, one past ShootoutRosterPayload::macs,
+    // so the last entry is dropped rather than overflowing the frame; a member
+    // past the cap never confirms and the proposal times out on it.
     static ShootoutRosterPayload buildRoster(const std::vector<std::array<uint8_t, 6>>& macs);
     static std::vector<std::array<uint8_t, 6>> unpackRoster(const ShootoutRosterPayload& roster);
     /** Broadcasts an unsequenced frame only when `peers` names someone besides this device. */
@@ -298,7 +274,6 @@ private:
     // player pair separately to stay valid on non-coordinators too.
     std::array<uint8_t, 6> currentPlayerA{};
     std::array<uint8_t, 6> currentPlayerB{};
-    uint8_t lastMatchStartSeqId = 0;
     SimpleTimer bracketRevealTimer;
     /**
      * Advances the bracket. Called only from sync(), on the main loop — a second
@@ -315,7 +290,6 @@ private:
     // names a different index and gets its own attempt. A device flag would have
     // to be reset wherever a match turns over, which differs by role.
     int matchResultResentIndex = -1;
-    uint8_t lastMatchResultSeqId = 0;
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,
                                 uint8_t matchIndex);
     /**
@@ -327,12 +301,5 @@ private:
                           bool endsCurrentMatch = true);
 
     std::array<uint8_t, 6> tournamentWinner{};
-    uint8_t lastTournamentEndSeqId = 0;
-    // The ABORT or TOURNAMENT_END this device sent to report the tournament
-    // ending, which a teardown spares — see resetTournamentState. Null until one
-    // is armed, and null on a device that only ever received the news.
-    ReliableChannelBase* terminalFanOut = nullptr;
-    uint8_t terminalFanOutSeqId = 0;
-
     void sendTournamentEndToPeers(const uint8_t* winner);
 };

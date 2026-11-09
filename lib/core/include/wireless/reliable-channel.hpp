@@ -86,14 +86,6 @@ public:
     void cancelAll();
 
     /**
-     * cancelAll, sparing the frame sent under `keepSeqId`: the frame reporting
-     * that a conversation is over owes delivery to exactly the peers that have
-     * not heard it yet, so it must outlive the teardown it reports. 0 spares
-     * nothing.
-     */
-    void cancelAllExcept(uint8_t keepSeqId);
-
-    /**
      * Answers a FAN_OUT frame received from `toMac`: sends the kReliableAck
      * that clears this recipient's slot on the sender. The receiving handler
      * calls it only for a frame it admitted, because an ack is a unicast and a

@@ -87,8 +87,6 @@ void GameSession::sync() {
             lastIsInRing = inRingNow;
         }
     }
-    // Driven here rather than from the shootout states so a tournament keeps
-    // advancing while the device is in the match app for a bracket match.
     if (shootoutManager) shootoutManager->sync();
 
     logRetryStats();

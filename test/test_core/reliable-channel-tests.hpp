@@ -104,10 +104,6 @@ TEST(ReliableChannelBaseTest, rxDedupEvictsOldestSenderWhenFull) {
 }
 
 TEST(ResenderTest, distinctSeqIdsToSameTargetCoexist) {
-    // A batch of distinct reliable packets to one peer on one channel (e.g. one
-    // BRACKET_ENTRY per bracket slot) must each retain an independent retry
-    // slot keyed by seqId; sharing (type, target) must not collapse them into
-    // one, or a dropped non-final slot would never retransmit.
     Resender resender(nullptr);  // null wm: transmit() no-ops, retry bookkeeping intact
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     uint8_t payload[4] = {0};

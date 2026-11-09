@@ -29,6 +29,13 @@ public:
                 setPacketHandler(testing::Eq(PktType::kPdnConnectionContext), testing::_, testing::_))
             .WillByDefault(testing::DoAll(testing::SaveArg<1>(&contextHandler),
                                           testing::SaveArg<2>(&contextCtx)));
+        // Record what goes on the air so tests can learn the seqId of the last
+        // frame of each type the way a peer would: from the payload itself.
+        ON_CALL(*device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(
+        testing::DoAll(testing::Invoke([this](const uint8_t*, PktType type, const uint8_t* data,
+                                              const size_t len) { recordFrame(type, data, len); }),
+                       testing::Return(1)));
 
         // Real jacks, so tests can drive topology through the production HELLO
         // path instead of calling the manager's handlers by hand. Idle unless a
@@ -87,7 +94,7 @@ public:
         shootout->startProposal();
         for (const std::array<uint8_t, 6>& m : members)
             shootout->onConfirmReceived(m.data());
-        const uint8_t bracketSeq = shootout->getLastBracketSeqId();
+        const uint8_t bracketSeq = lastSeqId(PktType::kShootoutBracket);
         for (size_t i = 1; i < members.size(); ++i) {
             ack(PktType::kShootoutBracket, members[i].data(), bracketSeq);
         }
@@ -119,6 +126,33 @@ public:
         device.wirelessManager->getReliableTransport()->deliverIncoming(
         PktType::kReliableAck, fromMac, reinterpret_cast<const uint8_t*>(&ackPayload),
         sizeof(ackPayload));
+    }
+
+    /**
+     * Notes one outgoing frame. Tests that install their own sendData action
+     * call this from it so lastSeqId()/frames() keep seeing the air.
+     */
+    void recordFrame(PktType type, const uint8_t* data, size_t len) {
+        if (len == 0) return;
+        lastSeqIdByType[type] = data[0];
+        framesByType[type]++;
+    }
+
+    /** seqId of the last `type` frame this device put on the air (0 if none). */
+    uint8_t lastSeqId(PktType type) const {
+        std::map<PktType, uint8_t>::const_iterator it = lastSeqIdByType.find(type);
+        return it == lastSeqIdByType.end() ? 0 : it->second;
+    }
+
+    /** Number of `type` frames this device put on the air since SetUp. */
+    int frames(PktType type) const {
+        std::map<PktType, int>::const_iterator it = framesByType.find(type);
+        return it == framesByType.end() ? 0 : it->second;
+    }
+
+    /** Unacked peers still owed the `type` frame carrying `seqId`. */
+    size_t pending(PktType type, uint8_t seqId) const {
+        return device.wirelessManager->getReliableTransport()->pendingCount(type, seqId);
     }
 
     /**
@@ -184,6 +218,8 @@ public:
     PeerCommsInterface::PacketCallback contextHandler = nullptr;
     void* contextCtx = nullptr;
     uint8_t contextSeqId = 0;
+    std::map<PktType, uint8_t> lastSeqIdByType;
+    std::map<PktType, int> framesByType;
     uint8_t localMac[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
     uint8_t peerMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
 };
@@ -392,9 +428,6 @@ inline void ringHeadMembersComeFromRdcRoster(ShootoutManagerTests* suite) {
     ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
         .WillByDefault(testing::Return(1));
 
-    // Rebinds the fixture's manager rather than building a second one: the
-    // transport admits one channel per PktType, so a second manager on the same
-    // WirelessManager runs with no radio.
     suite->headRingServing({{0x02, 0, 0, 0, 0, 0}, {0x03, 0, 0, 0, 0, 0}});
 
     std::vector<std::array<uint8_t, 6>> members = suite->shootout->getRingMembers();
@@ -790,8 +823,9 @@ inline void coordinatorBroadcastsBracketOnAdvance(ShootoutManagerTests* suite) {
     std::vector<std::array<uint8_t, 6>> destinations;
     ON_CALL(*suite->device.mockPeerComms,
             sendData(testing::_, PktType::kShootoutBracket, testing::_, testing::_))
-    .WillByDefault(
-    testing::Invoke([&destinations](const uint8_t* dst, PktType, const uint8_t*, const size_t) {
+    .WillByDefault(testing::Invoke([suite, &destinations](const uint8_t* dst, PktType type,
+                                                          const uint8_t* data, const size_t len) {
+        suite->recordFrame(type, data, len);
         std::array<uint8_t, 6> mac{};
         memcpy(mac.data(), dst, 6);
         destinations.push_back(mac);
@@ -804,20 +838,15 @@ inline void coordinatorBroadcastsBracketOnAdvance(ShootoutManagerTests* suite) {
     for (auto& m : members) suite->shootout->onConfirmReceived(m.data());
     suite->shootout->confirmLocal();
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket,
-                                                  suite->shootout->getLastBracketSeqId()),
-              2u);
+    EXPECT_EQ(
+    suite->pending(PktType::kShootoutBracket, suite->lastSeqId(PktType::kShootoutBracket)), 2u);
     ASSERT_EQ(destinations.size(), 1u);
     EXPECT_EQ(memcmp(destinations[0].data(), MockDevice::BROADCAST_MAC, 6), 0);
 }
 
 inline void bracketAckClearsPendingForThatPeer(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-        sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
     std::vector<std::array<uint8_t, 6>> members = {
         {0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}, {0x03, 0, 0, 0, 0, 0}
     };
@@ -827,12 +856,12 @@ inline void bracketAckClearsPendingForThatPeer(ShootoutManagerTests* suite) {
     suite->shootout->startProposal();
     for (auto& m : members) suite->shootout->onConfirmReceived(m.data());
     suite->shootout->confirmLocal();
-    uint8_t seqId = suite->shootout->getLastBracketSeqId();
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket, seqId), 2u);
+    uint8_t seqId = suite->lastSeqId(PktType::kShootoutBracket);
+    EXPECT_EQ(suite->pending(PktType::kShootoutBracket, seqId), 2u);
     suite->ack(PktType::kShootoutBracket, members[1].data(), seqId);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket, seqId), 1u);
+    EXPECT_EQ(suite->pending(PktType::kShootoutBracket, seqId), 1u);
     suite->ack(PktType::kShootoutBracket, members[2].data(), seqId);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket, seqId), 0u);
+    EXPECT_EQ(suite->pending(PktType::kShootoutBracket, seqId), 0u);
 }
 
 inline void bracketRetriesThreeTimesThenAborts(ShootoutManagerTests* suite) {
@@ -860,11 +889,7 @@ inline void bracketRetriesThreeTimesThenAborts(ShootoutManagerTests* suite) {
 
 inline void matchStartWaitsOutTheBracketRevealWindow(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-        sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
     std::vector<std::array<uint8_t, 6>> members = {
         {0x01,0,0,0,0,0}, {0x02,0,0,0,0,0}, {0x03,0,0,0,0,0}, {0x04,0,0,0,0,0}
     };
@@ -879,7 +904,7 @@ inline void matchStartWaitsOutTheBracketRevealWindow(ShootoutManagerTests* suite
     suite->shootout->confirmLocal();
 
     auto bracket = suite->shootout->getBracket();
-    uint8_t bracketSeq = suite->shootout->getLastBracketSeqId();
+    uint8_t bracketSeq = suite->lastSeqId(PktType::kShootoutBracket);
 
     // Ack from only one peer, kept inside the fan-out's span: past it the silent
     // members are given up on, which ends the tournament rather than delaying the
@@ -1008,11 +1033,7 @@ inline void eachMatchGetsItsOwnResultRetry(ShootoutManagerTests* suite) {
     std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> fourth = {0x04, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
 
     suite->followRingHead(coord);
     suite->shootout->setRingMembersForTest({coord, me, other, fourth});
@@ -1023,20 +1044,20 @@ inline void eachMatchGetsItsOwnResultRetry(ShootoutManagerTests* suite) {
 
     suite->shootout->onMatchStartReceived(coord.data(), me.data(), other.data(), 0, 2);
     suite->shootout->reportLocalWin();
-    const uint8_t firstSeq = suite->shootout->getLastMatchResultSeqId();
+    const uint8_t firstSeq = suite->lastSeqId(PktType::kShootoutMatchResult);
     suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
-    ASSERT_NE(suite->shootout->getLastMatchResultSeqId(), firstSeq)
-        << "first match was not recovered at all";
+    ASSERT_NE(suite->lastSeqId(PktType::kShootoutMatchResult), firstSeq)
+    << "first match was not recovered at all";
 
     // A later match on the same device. Its attempt must not have been spent.
     suite->shootout->onMatchStartReceived(coord.data(), me.data(), fourth.data(), 1, 3);
     suite->shootout->reportLocalWin();
-    const uint8_t secondSeq = suite->shootout->getLastMatchResultSeqId();
+    const uint8_t secondSeq = suite->lastSeqId(PktType::kShootoutMatchResult);
     suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
 
-    EXPECT_NE(suite->shootout->getLastMatchResultSeqId(), secondSeq)
-        << "the second match this device won got no retry; the latch was a "
-           "device-wide latch, not one per match";
+    EXPECT_NE(suite->lastSeqId(PktType::kShootoutMatchResult), secondSeq)
+    << "the second match this device won got no retry; the latch was a "
+       "device-wide latch, not one per match";
     EXPECT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED)
         << "a single lost ack on a later match ended the whole tournament";
 }
@@ -1089,10 +1110,6 @@ inline void coordinatorMissingOurResultIsRecoveredBySender(ShootoutManagerTests*
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
         .WillByDefault(testing::Return(selfMac));
 
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
-
     suite->followRingHead(coord);
     suite->shootout->setRingMembersForTest({coord, me, other});
     suite->shootout->startProposal();
@@ -1107,14 +1124,14 @@ inline void coordinatorMissingOurResultIsRecoveredBySender(ShootoutManagerTests*
     // Count the frame, not the retransmits: a retry re-sends the SAME seqId, so
     // only a fresh one distinguishes a genuine re-send from the retry machinery
     // doing its ordinary job.
-    const uint8_t firstSeq = suite->shootout->getLastMatchResultSeqId();
+    const uint8_t firstSeq = suite->lastSeqId(PktType::kShootoutMatchResult);
     ASSERT_NE(firstSeq, 0u);
 
     // Nobody acks. The fan-out runs out its span and gives up on the coordinator.
     suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
 
-    EXPECT_NE(suite->shootout->getLastMatchResultSeqId(), firstSeq)
-        << "the coordinator never took our result and nothing re-sent it";
+    EXPECT_NE(suite->lastSeqId(PktType::kShootoutMatchResult), firstSeq)
+    << "the coordinator never took our result and nothing re-sent it";
 }
 
 inline void matchStartRetriesToSilentMemberThenAborts(ShootoutManagerTests* suite) {
@@ -1163,8 +1180,10 @@ inline void resetCancelsInFlightFanOuts(ShootoutManagerTests* suite) {
     int abortFrames = 0;
     int tournamentFrames = 0;
     ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
-    .WillByDefault(testing::Invoke(
-    [&abortFrames, &tournamentFrames](const uint8_t*, PktType type, const uint8_t*, const size_t) {
+    .WillByDefault(
+    testing::Invoke([suite, &abortFrames, &tournamentFrames](
+                    const uint8_t*, PktType type, const uint8_t* data, const size_t len) {
+        suite->recordFrame(type, data, len);
         switch (type) {
             case PktType::kShootoutAbort: abortFrames++; break;
             case PktType::kShootoutRingClosed:
@@ -1180,14 +1199,14 @@ inline void resetCancelsInFlightFanOuts(ShootoutManagerTests* suite) {
 
     suite->driveToFirstMatch({me, opMac});
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
-    ASSERT_GT(suite->shootout->getPendingAckCount(PktType::kShootoutMatchStart,
-                                                  suite->shootout->getLastMatchStartSeqId()),
-              0u);
+    ASSERT_GT(
+    suite->pending(PktType::kShootoutMatchStart, suite->lastSeqId(PktType::kShootoutMatchStart)),
+    0u);
 
     suite->shootout->abortTournament();
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutMatchStart,
-                                                  suite->shootout->getLastMatchStartSeqId()),
-              0u);
+    EXPECT_EQ(
+    suite->pending(PktType::kShootoutMatchStart, suite->lastSeqId(PktType::kShootoutMatchStart)),
+    0u);
 
     // The dead tournament's fan-outs are cancelled and stay cancelled; the ABORT
     // that killed it is armed instead, and retrying is how a member that missed
@@ -1206,11 +1225,7 @@ inline void resetCancelsInFlightFanOuts(ShootoutManagerTests* suite) {
 // for the tick between the abort and the transition off this state.
 inline void spectatorDoesNotRepaintATornDownMatch(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
     // drawCenteredText chains off these, so a default-constructed nullptr return
     // dereferences on the first draw.
     MockDisplay* display = suite->device.mockDisplay;
@@ -1234,18 +1249,11 @@ inline void spectatorDoesNotRepaintATornDownMatch(ShootoutManagerTests* suite) {
     state.onStateLoop(&suite->device);
 }
 
-// Within a channel a fan-out is named by its seqId and nothing else: the ack
-// carries the PktType it answers and that seqId. An ack naming a live frame
-// clears that recipient; an ack naming no live frame clears nobody.
 inline void ackIsMatchedBySeqIdAlone(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
 
     suite->shootout->setRingMembersForTest({me, opMac});
     suite->closeRingOnJacks();
@@ -1253,16 +1261,14 @@ inline void ackIsMatchedBySeqIdAlone(ShootoutManagerTests* suite) {
     suite->shootout->startProposal();
     suite->shootout->onConfirmReceived(me.data());
     suite->shootout->onConfirmReceived(opMac.data());
-    const uint8_t bracketSeq = suite->shootout->getLastBracketSeqId();
-    ASSERT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket, bracketSeq), 1u);
+    const uint8_t bracketSeq = suite->lastSeqId(PktType::kShootoutBracket);
+    ASSERT_EQ(suite->pending(PktType::kShootoutBracket, bracketSeq), 1u);
 
-    // A seqId naming no live frame matches nothing and disturbs nothing.
     suite->ack(PktType::kShootoutBracket, opMac.data(), static_cast<uint8_t>(bracketSeq + 7));
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket, bracketSeq), 1u);
+    EXPECT_EQ(suite->pending(PktType::kShootoutBracket, bracketSeq), 1u);
 
-    // The seqId that names it clears it.
     suite->ack(PktType::kShootoutBracket, opMac.data(), bracketSeq);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket, bracketSeq), 0u);
+    EXPECT_EQ(suite->pending(PktType::kShootoutBracket, bracketSeq), 0u);
 }
 
 // A late MATCH_START for a finished match — the coordinator advances without
@@ -1350,11 +1356,7 @@ inline void abandonedMatchStartIsJudgedAgainstItsOwnMatch(ShootoutManagerTests* 
     std::array<uint8_t, 6> b = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> c = {0x03, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> d = {0x04, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
 
     suite->driveToFirstMatch({me, b, c, d});
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
@@ -1365,10 +1367,10 @@ inline void abandonedMatchStartIsJudgedAgainstItsOwnMatch(ShootoutManagerTests* 
         << "coordinator unexpectedly in match 0 — shuffle seed drifted";
 
     // Only the two fighting match 0 answer. The others are spectators for it.
-    const uint8_t msSeq = suite->shootout->getLastMatchStartSeqId();
+    const uint8_t msSeq = suite->lastSeqId(PktType::kShootoutMatchStart);
     suite->ack(PktType::kShootoutMatchStart, first.first.data(), msSeq);
     suite->ack(PktType::kShootoutMatchStart, first.second.data(), msSeq);
-    ASSERT_GT(suite->shootout->getPendingAckCount(PktType::kShootoutMatchStart, msSeq), 0u);
+    ASSERT_GT(suite->pending(PktType::kShootoutMatchStart, msSeq), 0u);
 
     // Match 0 finishes and the bracket moves on while that fan-out is still live.
     suite->shootout->onMatchResultReceived(first.first.data(), first.second.data(), 0,
@@ -1378,12 +1380,12 @@ inline void abandonedMatchStartIsJudgedAgainstItsOwnMatch(ShootoutManagerTests* 
     // Match 1 starts and everybody answers for it, so the only frame still owed
     // anything is match 0's — the stale one.
     suite->tick();
-    const uint8_t nextSeq = suite->shootout->getLastMatchStartSeqId();
+    const uint8_t nextSeq = suite->lastSeqId(PktType::kShootoutMatchStart);
     ASSERT_NE(nextSeq, msSeq) << "match 1 never started";
     for (auto& m : {b, c, d})
         suite->ack(PktType::kShootoutMatchStart, m.data(), nextSeq);
-    ASSERT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutMatchStart, nextSeq), 0u);
-    ASSERT_GT(suite->shootout->getPendingAckCount(PktType::kShootoutMatchStart, msSeq), 0u);
+    ASSERT_EQ(suite->pending(PktType::kShootoutMatchStart, nextSeq), 0u);
+    ASSERT_GT(suite->pending(PktType::kShootoutMatchStart, msSeq), 0u);
 
     // Now the stale fan-out gives up on a spectator of match 0 who is very
     // likely fighting match 1.
@@ -1401,11 +1403,7 @@ inline void silentSpectatorDoesNotAbortMatchStart(ShootoutManagerTests* suite) {
     std::array<uint8_t, 6> b = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> c = {0x03, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> d = {0x04, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
 
     suite->driveToFirstMatch({me, b, c, d});
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
@@ -1413,7 +1411,7 @@ inline void silentSpectatorDoesNotAbortMatchStart(ShootoutManagerTests* suite) {
     // Both fighters ack; the members not in this match stay silent.
     std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> pair =
         suite->shootout->getCurrentMatchPair();
-    uint8_t msSeq = suite->shootout->getLastMatchStartSeqId();
+    uint8_t msSeq = suite->lastSeqId(PktType::kShootoutMatchStart);
     suite->ack(PktType::kShootoutMatchStart, pair.first.data(), msSeq);
     suite->ack(PktType::kShootoutMatchStart, pair.second.data(), msSeq);
 
@@ -1426,10 +1424,7 @@ inline void finalMatchResultTriggersTournamentEnd(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};  // coord
     std::array<uint8_t, 6> me    = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
     suite->shootout->setRingMembersForTest({me, opMac});
     suite->closeRingOnJacks();
     suite->shootout->onRingClosed();
@@ -1437,11 +1432,11 @@ inline void finalMatchResultTriggersTournamentEnd(ShootoutManagerTests* suite) {
     suite->shootout->onConfirmReceived(me.data());
     suite->shootout->onConfirmReceived(opMac.data());
     // Self is coord; bracket is already set. Ack bracket from peer.
-    uint8_t bSeq = suite->shootout->getLastBracketSeqId();
+    uint8_t bSeq = suite->lastSeqId(PktType::kShootoutBracket);
     suite->ack(PktType::kShootoutBracket, opMac.data(), bSeq);
     suite->fakeClock->advance(6000);
     suite->tick();  // fires MATCH_START 0
-    uint8_t msSeq = suite->shootout->getLastMatchStartSeqId();
+    uint8_t msSeq = suite->lastSeqId(PktType::kShootoutMatchStart);
     suite->ack(PktType::kShootoutMatchStart, opMac.data(), msSeq);
     // Self wins.
     // reportLocalWin → applyMatchResult → BETWEEN_MATCHES. The coordinator then
@@ -1460,10 +1455,7 @@ inline void startProposalClearsAllPriorTournamentState(ShootoutManagerTests* sui
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me    = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
 
     // Tournament 1
     suite->shootout->setRingMembersForTest({me, opMac});
@@ -1472,11 +1464,11 @@ inline void startProposalClearsAllPriorTournamentState(ShootoutManagerTests* sui
     suite->shootout->startProposal();
     suite->shootout->onConfirmReceived(me.data());
     suite->shootout->onConfirmReceived(opMac.data());
-    uint8_t bSeq = suite->shootout->getLastBracketSeqId();
+    uint8_t bSeq = suite->lastSeqId(PktType::kShootoutBracket);
     suite->ack(PktType::kShootoutBracket, opMac.data(), bSeq);
     suite->fakeClock->advance(6000);
     suite->tick();
-    uint8_t msSeq = suite->shootout->getLastMatchStartSeqId();
+    uint8_t msSeq = suite->lastSeqId(PktType::kShootoutMatchStart);
     suite->ack(PktType::kShootoutMatchStart, opMac.data(), msSeq);
     suite->shootout->reportLocalWin();
     suite->shootout->sync();
@@ -1492,9 +1484,8 @@ inline void startProposalClearsAllPriorTournamentState(ShootoutManagerTests* sui
     EXPECT_EQ(suite->shootout->getConfirmedCount(), 0u);
     EXPECT_FALSE(suite->shootout->isEliminated(opMac.data()));
     EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), -1);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket,
-                                                  suite->shootout->getLastBracketSeqId()),
-              0u);
+    EXPECT_EQ(
+    suite->pending(PktType::kShootoutBracket, suite->lastSeqId(PktType::kShootoutBracket)), 0u);
 }
 
 inline void confirmRecordsPeerName(ShootoutManagerTests* suite) {
@@ -1524,17 +1515,13 @@ inline void duplicateMatchResultDoesNotDoubleAdvance(ShootoutManagerTests* suite
     std::array<uint8_t, 6> b   = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> c   = {0x03, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> d   = {0x04, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-        sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
     suite->shootout->setRingMembersForTest({me, b, c, d});
     suite->closeRingOnJacks();
     suite->shootout->onRingClosed();
     suite->shootout->startProposal();
     for (auto& m : {me, b, c, d}) suite->shootout->onConfirmReceived(m.data());
-    uint8_t bSeq = suite->shootout->getLastBracketSeqId();
+    uint8_t bSeq = suite->lastSeqId(PktType::kShootoutBracket);
     for (auto& m : {b, c, d})
         suite->ack(PktType::kShootoutBracket, m.data(), bSeq);
     suite->fakeClock->advance(6000);
@@ -1580,18 +1567,14 @@ inline void tournamentEndRetriesUntilAcked(ShootoutManagerTests* suite) {
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
         .WillByDefault(testing::Return(selfMac));
 
-    // Count sendData invocations so we can observe that sync() re-sends
-    // TOURNAMENT_END when the pending-ack timer expires. Regression guard:
-    // if sendTournamentEndToPeers is called once and never retried, the second
-    // send count below stays equal to the first and this test fails.
     std::atomic<int> sendCount{0};
-    ON_CALL(*suite->device.mockPeerComms,
-        sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Invoke(
-            [&sendCount](const uint8_t*, PktType, const uint8_t*, const size_t) {
-                sendCount.fetch_add(1);
-                return 1;
-            }));
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+    .WillByDefault(testing::Invoke(
+    [suite, &sendCount](const uint8_t*, PktType type, const uint8_t* data, const size_t len) {
+        suite->recordFrame(type, data, len);
+        sendCount.fetch_add(1);
+        return 1;
+    }));
 
     suite->shootout->setRingMembersForTest({me, opMac});
     suite->closeRingOnJacks();
@@ -1599,43 +1582,37 @@ inline void tournamentEndRetriesUntilAcked(ShootoutManagerTests* suite) {
     suite->shootout->startProposal();
     suite->shootout->onConfirmReceived(me.data());
     suite->shootout->onConfirmReceived(opMac.data());
-    uint8_t bSeq = suite->shootout->getLastBracketSeqId();
+    uint8_t bSeq = suite->lastSeqId(PktType::kShootoutBracket);
     suite->ack(PktType::kShootoutBracket, opMac.data(), bSeq);
     suite->fakeClock->advance(6000);
     suite->tick();
-    uint8_t msSeq = suite->shootout->getLastMatchStartSeqId();
+    uint8_t msSeq = suite->lastSeqId(PktType::kShootoutMatchStart);
     suite->ack(PktType::kShootoutMatchStart, opMac.data(), msSeq);
     suite->shootout->reportLocalWin();
     suite->shootout->sync();
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ENDED);
-    ASSERT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutTournamentEnd,
-                                                  suite->shootout->getLastTournamentEndSeqId()),
+    ASSERT_EQ(suite->pending(PktType::kShootoutTournamentEnd,
+                             suite->lastSeqId(PktType::kShootoutTournamentEnd)),
               1u);
 
     // Snapshot send count immediately after the initial TOURNAMENT_END
     // broadcast — anything further must come from the retry path.
     int sendCountAfterInitialBroadcast = sendCount.load();
 
-    // Advance past the first retry interval (Resender::backoffMs(0)=100ms) and
-    // drive sync(). A retry must re-broadcast TOURNAMENT_END.
     suite->fakeClock->advance(200);
     suite->tick();
     EXPECT_GT(sendCount.load(), sendCountAfterInitialBroadcast);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutTournamentEnd,
-                                                  suite->shootout->getLastTournamentEndSeqId()),
+    EXPECT_EQ(suite->pending(PktType::kShootoutTournamentEnd,
+                             suite->lastSeqId(PktType::kShootoutTournamentEnd)),
               1u);
 
     // Correct ack clears the pending entry.
-    uint8_t teSeq = suite->shootout->getLastTournamentEndSeqId();
+    uint8_t teSeq = suite->lastSeqId(PktType::kShootoutTournamentEnd);
     suite->ack(PktType::kShootoutTournamentEnd, opMac.data(), teSeq);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutTournamentEnd, teSeq), 0u);
+    EXPECT_EQ(suite->pending(PktType::kShootoutTournamentEnd, teSeq), 0u);
 }
 
 inline void matchResultRetriesUntilAcked(ShootoutManagerTests* suite) {
-    // Self is coord; match 0 is self vs opMac. reportLocalWin() broadcasts
-    // MATCH_RESULT to every confirmed peer (including coord, but
-    // sendReliablyToPeers skips self). Without retry, a single dropped packet
-    // would strand a peer whose state never advances.
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me    = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};
@@ -1644,13 +1621,13 @@ inline void matchResultRetriesUntilAcked(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(selfMac));
 
     std::atomic<int> sendCount{0};
-    ON_CALL(*suite->device.mockPeerComms,
-        sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Invoke(
-            [&sendCount](const uint8_t*, PktType, const uint8_t*, const size_t) {
-                sendCount.fetch_add(1);
-                return 1;
-            }));
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+    .WillByDefault(testing::Invoke(
+    [suite, &sendCount](const uint8_t*, PktType type, const uint8_t* data, const size_t len) {
+        suite->recordFrame(type, data, len);
+        sendCount.fetch_add(1);
+        return 1;
+    }));
 
     suite->closeRingOnJacks();
     suite->shootout->setRingMembersForTest({me, opMac, spec});
@@ -1659,37 +1636,36 @@ inline void matchResultRetriesUntilAcked(ShootoutManagerTests* suite) {
     suite->shootout->onConfirmReceived(me.data());
     suite->shootout->onConfirmReceived(opMac.data());
     suite->shootout->onConfirmReceived(spec.data());
-    uint8_t bSeq = suite->shootout->getLastBracketSeqId();
+    uint8_t bSeq = suite->lastSeqId(PktType::kShootoutBracket);
     suite->ack(PktType::kShootoutBracket, opMac.data(), bSeq);
     suite->ack(PktType::kShootoutBracket, spec.data(), bSeq);
     suite->fakeClock->advance(6000);
     suite->tick();
-    uint8_t msSeq = suite->shootout->getLastMatchStartSeqId();
+    uint8_t msSeq = suite->lastSeqId(PktType::kShootoutMatchStart);
     suite->ack(PktType::kShootoutMatchStart, opMac.data(), msSeq);
     suite->ack(PktType::kShootoutMatchStart, spec.data(), msSeq);
 
     // Self wins match 0 → broadcasts MATCH_RESULT to opMac and spec.
     suite->shootout->reportLocalWin();
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutMatchResult,
-                                                  suite->shootout->getLastMatchResultSeqId()),
-              2u);
+    EXPECT_EQ(
+    suite->pending(PktType::kShootoutMatchResult, suite->lastSeqId(PktType::kShootoutMatchResult)),
+    2u);
 
     int sendCountAfterInitial = sendCount.load();
 
-    // After Resender::backoffMs(0)=100ms, sync() retries to both pending peers.
     suite->fakeClock->advance(200);
     suite->tick();
     EXPECT_GT(sendCount.load(), sendCountAfterInitial);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutMatchResult,
-                                                  suite->shootout->getLastMatchResultSeqId()),
-              2u);
+    EXPECT_EQ(
+    suite->pending(PktType::kShootoutMatchResult, suite->lastSeqId(PktType::kShootoutMatchResult)),
+    2u);
 
     // Acks clear pending.
-    const uint8_t resultSeq = suite->shootout->getLastMatchResultSeqId();
+    const uint8_t resultSeq = suite->lastSeqId(PktType::kShootoutMatchResult);
     suite->ack(PktType::kShootoutMatchResult, opMac.data(), resultSeq);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutMatchResult, resultSeq), 1u);
+    EXPECT_EQ(suite->pending(PktType::kShootoutMatchResult, resultSeq), 1u);
     suite->ack(PktType::kShootoutMatchResult, spec.data(), resultSeq);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutMatchResult, resultSeq), 0u);
+    EXPECT_EQ(suite->pending(PktType::kShootoutMatchResult, resultSeq), 0u);
 }
 
 inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
@@ -1816,26 +1792,22 @@ inline void endingSurvivesTheTerminalScreenExit(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
 
     suite->driveToFirstMatch({me, opMac});
-    const uint8_t msSeq = suite->shootout->getLastMatchStartSeqId();
+    const uint8_t msSeq = suite->lastSeqId(PktType::kShootoutMatchStart);
     suite->ack(PktType::kShootoutMatchStart, opMac.data(), msSeq);
     suite->shootout->reportLocalWin();
     suite->shootout->sync();
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ENDED);
-    const uint8_t endSeq = suite->shootout->getLastTournamentEndSeqId();
-    ASSERT_GT(suite->shootout->getPendingAckCount(PktType::kShootoutTournamentEnd, endSeq), 0u);
+    const uint8_t endSeq = suite->lastSeqId(PktType::kShootoutTournamentEnd);
+    ASSERT_GT(suite->pending(PktType::kShootoutTournamentEnd, endSeq), 0u);
 
     // What ShootoutFinalStandings::onStateDismounted does when the ring opens.
     suite->shootout->resetToIdle();
 
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::IDLE);
-    EXPECT_GT(suite->shootout->getPendingAckCount(PktType::kShootoutTournamentEnd, endSeq), 0u)
+    EXPECT_GT(suite->pending(PktType::kShootoutTournamentEnd, endSeq), 0u)
     << "leaving the standings screen cancelled the TOURNAMENT_END still owed "
        "to a member that never acked it";
 }
@@ -1849,25 +1821,21 @@ inline void theEndingOutlivesAReProposal(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
 
     suite->driveToFirstMatch({me, opMac});
-    const uint8_t msSeq = suite->shootout->getLastMatchStartSeqId();
+    const uint8_t msSeq = suite->lastSeqId(PktType::kShootoutMatchStart);
     suite->ack(PktType::kShootoutMatchStart, opMac.data(), msSeq);
     suite->shootout->reportLocalWin();
     suite->shootout->sync();
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ENDED);
-    const uint8_t endSeq = suite->shootout->getLastTournamentEndSeqId();
-    ASSERT_GT(suite->shootout->getPendingAckCount(PktType::kShootoutTournamentEnd, endSeq), 0u);
+    const uint8_t endSeq = suite->lastSeqId(PktType::kShootoutTournamentEnd);
+    ASSERT_GT(suite->pending(PktType::kShootoutTournamentEnd, endSeq), 0u);
 
     suite->shootout->resetToIdle();    // the standings screen dismounting
     suite->shootout->startProposal();  // the ring is still closed, so straight back in
 
-    EXPECT_GT(suite->shootout->getPendingAckCount(PktType::kShootoutTournamentEnd, endSeq), 0u)
+    EXPECT_GT(suite->pending(PktType::kShootoutTournamentEnd, endSeq), 0u)
     << "re-proposing cancelled the ending still owed to a member that never acked";
 }
 
@@ -1884,7 +1852,8 @@ inline void anAbortSurvivesTheAbortedScreenExit(ShootoutManagerTests* suite) {
     int abortSeq = -1;
     ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
     .WillByDefault(testing::Invoke(
-    [&abortSeq](const uint8_t*, PktType type, const uint8_t* data, const size_t len) {
+    [suite, &abortSeq](const uint8_t*, PktType type, const uint8_t* data, const size_t len) {
+        suite->recordFrame(type, data, len);
         if (type == PktType::kShootoutAbort && len == sizeof(ShootoutAbortPayload)) {
             ShootoutAbortPayload payload;
             memcpy(&payload, data, sizeof(payload));
@@ -1897,16 +1866,13 @@ inline void anAbortSurvivesTheAbortedScreenExit(ShootoutManagerTests* suite) {
     suite->shootout->abortTournament();
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
     ASSERT_GE(abortSeq, 0);
-    const size_t owed =
-    suite->shootout->getPendingAckCount(PktType::kShootoutAbort, static_cast<uint8_t>(abortSeq));
+    const size_t owed = suite->pending(PktType::kShootoutAbort, static_cast<uint8_t>(abortSeq));
     ASSERT_GT(owed, 0u);
 
     // What ShootoutAborted::onStateDismounted does when its display timer expires.
     suite->shootout->resetToIdle();
 
-    EXPECT_EQ(
-    suite->shootout->getPendingAckCount(PktType::kShootoutAbort, static_cast<uint8_t>(abortSeq)),
-    owed)
+    EXPECT_EQ(suite->pending(PktType::kShootoutAbort, static_cast<uint8_t>(abortSeq)), owed)
     << "leaving the ABORTED screen cancelled the ABORT it was displaying";
 }
 
@@ -1918,11 +1884,7 @@ inline void aLocalWinDoesNotWalkBackAnAbortedTournament(ShootoutManagerTests* su
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
 
     suite->driveToFirstMatch({me, opMac});
     suite->shootout->abortTournament();
@@ -2115,11 +2077,7 @@ inline void tournamentWithNoSurvivorsAbortsInsteadOfNamingNobody(
     std::array<uint8_t, 6> b = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> c = {0x03, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> d = {0x04, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
 
     suite->driveToFirstMatch({me, b, c, d});
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
@@ -2282,10 +2240,6 @@ inline void transientRingBreakDoesNotAbortATournament(ShootoutManagerTests* suit
 // A settled break must abort even for a player mid-match, who is inside the match
 // app with no shootout state mounted to notice.
 inline void settledRingBreakAbortsALiveTournament(ShootoutManagerTests* suite) {
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
-
     suite->driveToFirstMatch({{0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}});
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
 
@@ -2297,8 +2251,6 @@ inline void settledRingBreakAbortsALiveTournament(ShootoutManagerTests* suite) {
         << "a tournament outlived the ring it ran on";
 }
 
-// ABORT rides the Resender now, so a receiver owes it an answer — otherwise the
-// sender retries to exhaustion at a device that already stopped.
 inline void abortIsAckedByItsRecipient(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
@@ -2376,8 +2328,9 @@ inline void bracketFanOutIsOneFrameBeyondPeerTable(ShootoutManagerTests* suite) 
     std::vector<std::array<uint8_t, 6>> destinations;
     ON_CALL(*suite->device.mockPeerComms,
             sendData(testing::_, PktType::kShootoutBracket, testing::_, testing::_))
-    .WillByDefault(
-    testing::Invoke([&destinations](const uint8_t* dst, PktType, const uint8_t*, const size_t) {
+    .WillByDefault(testing::Invoke([suite, &destinations](const uint8_t* dst, PktType type,
+                                                          const uint8_t* data, const size_t len) {
+        suite->recordFrame(type, data, len);
         std::array<uint8_t, 6> mac{};
         memcpy(mac.data(), dst, 6);
         destinations.push_back(mac);
@@ -2393,9 +2346,9 @@ inline void bracketFanOutIsOneFrameBeyondPeerTable(ShootoutManagerTests* suite) 
 
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
     EXPECT_EQ(suite->shootout->getBracket().size(), RING_SIZE);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket,
-                                                  suite->shootout->getLastBracketSeqId()),
-              RING_SIZE - 1);
+    EXPECT_EQ(
+    suite->pending(PktType::kShootoutBracket, suite->lastSeqId(PktType::kShootoutBracket)),
+    RING_SIZE - 1);
     ASSERT_EQ(destinations.size(), 1u);
     EXPECT_EQ(memcmp(destinations[0].data(), MockDevice::BROADCAST_MAC, 6), 0);
 }
@@ -2409,23 +2362,21 @@ inline void bracketRetryIsOneFramePerRound(ShootoutManagerTests* suite) {
     std::vector<std::array<uint8_t, 6>> members = {
         {0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}, {0x03, 0, 0, 0, 0, 0}, {0x04, 0, 0, 0, 0, 0}};
     suite->shootout->setRingMembersForTest(members);
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
 
     suite->closeRingOnJacks();
     suite->shootout->onRingClosed();
     suite->shootout->startProposal();
     for (auto& m : members)
         suite->shootout->onConfirmReceived(m.data());
-    ASSERT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket,
-                                                  suite->shootout->getLastBracketSeqId()),
-              3u);
+    ASSERT_EQ(
+    suite->pending(PktType::kShootoutBracket, suite->lastSeqId(PktType::kShootoutBracket)), 3u);
 
     int sends = 0;
     ON_CALL(*suite->device.mockPeerComms,
             sendData(testing::_, PktType::kShootoutBracket, testing::_, testing::_))
-    .WillByDefault(testing::Invoke([&sends](const uint8_t*, PktType, const uint8_t*, const size_t) {
+    .WillByDefault(testing::Invoke(
+    [suite, &sends](const uint8_t*, PktType type, const uint8_t* data, const size_t len) {
+        suite->recordFrame(type, data, len);
         sends++;
         return 1;
     }));
@@ -2435,9 +2386,8 @@ inline void bracketRetryIsOneFramePerRound(ShootoutManagerTests* suite) {
     suite->fakeClock->advance(150);
     suite->tick();
     EXPECT_EQ(sends, 1);
-    EXPECT_EQ(suite->shootout->getPendingAckCount(PktType::kShootoutBracket,
-                                                  suite->shootout->getLastBracketSeqId()),
-              3u);
+    EXPECT_EQ(
+    suite->pending(PktType::kShootoutBracket, suite->lastSeqId(PktType::kShootoutBracket)), 3u);
 }
 
 // Rings share the radio channel, so a broadcast bracket lands on devices that

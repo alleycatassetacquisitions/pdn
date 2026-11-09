@@ -43,6 +43,15 @@ public:
     const Resender::Stats& getStats() const { return resender.getStats(); }
 
     /**
+     * Recipients of the frame sent on `type` under `seqId` that still owe an
+     * ack. Observability for tests and diagnostics; channels gate on their own
+     * pendingCount.
+     */
+    size_t pendingCount(PktType type, uint8_t seqId) const {
+        return resender.pendingCount(type, seqId);
+    }
+
+    /**
      * Test seam: drives a radio send-result into the channel claiming this
      * PktType, for a caller holding a type rather than a channel handle. Not
      * on the driver's path — each channel installs its own send-status handler

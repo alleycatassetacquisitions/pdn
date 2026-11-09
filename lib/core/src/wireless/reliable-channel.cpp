@@ -85,10 +85,6 @@ void ReliableChannelBase::cancelAll() {
     if (resender != nullptr) resender->cancelAll(packetType);
 }
 
-void ReliableChannelBase::cancelAllExcept(uint8_t keepSeqId) {
-    if (resender != nullptr) resender->cancelAllExcept(packetType, keepSeqId);
-}
-
 void ReliableChannelBase::ack(const uint8_t* toMac, uint8_t seqId) {
     if (wirelessManager == nullptr || toMac == nullptr || seqId == 0) return;
     ReliableAckPayload ack{packetType, seqId};
