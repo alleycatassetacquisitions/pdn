@@ -14,9 +14,8 @@
  */
 namespace PlayerProvisionCodec {
 
-/** Packs @p player's registration fields into a PROFILE_DELIVERED packet stamped @p serverUnixMs.
- */
-inline PlayerProvisionPacket encode(const Player& player, int64_t serverUnixMs) {
+/** Packs @p player's registration fields into a PROFILE_DELIVERED packet. */
+inline PlayerProvisionPacket encode(const Player& player) {
     PlayerProvisionPacket pkt{};
     pkt.status = static_cast<uint8_t>(ProvisionStatus::PROFILE_DELIVERED);
     memcpy(pkt.playerId, player.getServerPlayerId().bytes, UUIDBytes::SIZE);
@@ -42,7 +41,6 @@ inline PlayerProvisionPacket encode(const Player& player, int64_t serverUnixMs) 
                 sizeof(pkt.affiliations[i].affiliationName) - 1);
         pkt.affiliations[i].affiliationName[sizeof(pkt.affiliations[i].affiliationName) - 1] = '\0';
     }
-    pkt.serverUnixMs = serverUnixMs;
     return pkt;
 }
 

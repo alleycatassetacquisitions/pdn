@@ -8,17 +8,19 @@
 #include "wireless/remote-player-manager.hpp"
 #include "wireless/fdn-connect-wireless-manager.hpp"
 #include "alleycat-server/fdn-match-spool.hpp"
+#include "alleycat-server/fdn-provisioning-manager.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "utils/simple-timer.hpp"
 
 enum IdleStateId {
-    IDLE                = 0,
-    PLAYER_DETECTED     = 1,
-    AUTHORIZED_PDN      = 2,
-    UNAUTHORIZED_PDN    = 3,
+    IDLE = 0,
+    PLAYER_DETECTED = 1,
+    AUTHORIZED_PDN = 2,
+    UNAUTHORIZED_PDN = 3,
     CONNECTION_DETECTED = 4,
-    UPLOAD_PENDING      = 5,
+    UPLOAD_PENDING = 5,
+    REGISTRATION = 6,
 };
 
 // ---------------------------------------------------------------------------
@@ -184,6 +186,41 @@ private:
 
     static constexpr int SWITCH_DELAY_MS = 5000;
     const char* ACCESS_DENIED_MESSAGE[2] = {"ACCESS", "DENIED"};
+};
+
+// ---------------------------------------------------------------------------
+// RegistrationState
+// ---------------------------------------------------------------------------
+class RegistrationState : public FDNConnectState {
+public:
+    /** Status screen while an unprovisioned PDN is cabled: waiting, lookup, result. */
+    RegistrationState(FdnProvisioningManager* fdnProvisioningManager,
+                      RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    /** @copydoc TypedState::~TypedState */
+    ~RegistrationState();
+
+    /** Shows the waiting screen and listens for the lookup result. */
+    void onStateMounted(FDN* fdn) override;
+    /** Redraws when the lookup starts or finishes. */
+    void onStateLoop(FDN* fdn) override;
+    /** Drops the lookup listener. */
+    void onStateDismounted(FDN* fdn) override;
+
+    /** @return true on unplug, once a result has been shown, or once the PDN is provisioned. */
+    bool transitionToIdle();
+
+private:
+    enum class Screen { WAITING, LOOKING_UP, WELCOME, FAILED };
+
+    void render(FDN* fdn);
+
+    FdnProvisioningManager* fdnProvisioningManager;
+    Screen screen = Screen::WAITING;
+    bool displayIsDirty = false;
+    std::string playerName;
+    SimpleTimer resultTimer;
+
+    static constexpr int RESULT_DISPLAY_MS = 3000;
 };
 
 // ---------------------------------------------------------------------------

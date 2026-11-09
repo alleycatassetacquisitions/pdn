@@ -5,6 +5,7 @@
 #include "wireless/fdn-connect-wireless-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "alleycat-server/fdn-match-spool.hpp"
+#include "alleycat-server/fdn-provisioning-manager.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
 
 class IdleApp : public StateMachine {
@@ -12,7 +13,8 @@ public:
     /** Constructs the FDN idle app state machine. */
     IdleApp(RemotePlayerManager* remotePlayerManager, HackedPlayersManager* hackedPlayersManager,
             FDNConnectWirelessManager* fdnConnectWirelessManager,
-            RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool);
+            RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
+            FdnProvisioningManager* fdnProvisioningManager);
 
     void populateStateMap() override;
 
@@ -22,4 +24,5 @@ private:
     FDNConnectWirelessManager* fdnConnectWirelessManager;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     FdnMatchSpool* fdnMatchSpool;
+    FdnProvisioningManager* fdnProvisioningManager;
 };

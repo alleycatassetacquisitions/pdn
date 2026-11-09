@@ -6,6 +6,7 @@
 #include "utils/simple-timer.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/player-provider.hpp"
+#include "apps/player-fetch/pdn-provisioning-client.hpp"
 
 class FirmwareUpdateManager;
 
@@ -13,7 +14,6 @@ namespace PlayerFetchStateId {
 constexpr int PIN_ENTRY = 0;
 constexpr int FETCH_USER = 1;
 constexpr int CHOOSE_TEAM = 2;
-constexpr int DEMO_STUB = 3;
 constexpr int WELCOME = 4;
 constexpr int FIRMWARE_UPDATE = 31;
 }  // namespace PlayerFetchStateId
@@ -61,7 +61,7 @@ private:
 class FetchUserState : public TypedState<PDN> {
 public:
     /** Asks the cabled FDN to look up the entered PIN, then waits for its PlayerProvisionPacket. */
-    FetchUserState(WirelessManager* wirelessManager, PlayerProvider* playerProvider);
+    FetchUserState(PdnProvisioningClient* provisioningClient, PlayerProvider* playerProvider);
     /** @copydoc TypedState::~TypedState */
     ~FetchUserState() override;
 
@@ -78,12 +78,12 @@ public:
 
 private:
     void requestProvisionFromCabledFdn();
-    void onProvisionPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    void onProvisionPacket(const uint8_t* fromMac, const PlayerProvisionPacket& pkt);
     void showLoadingGlyphs(PDN* pdn);
     void showAssetNotFoundPage(PDN* pdn);
     void beginFailurePage(PDN* pdn);
 
-    WirelessManager* wirelessManager = nullptr;
+    PdnProvisioningClient* provisioningClient = nullptr;
     PlayerProvider* playerProvider = nullptr;
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
     bool requestSent = false;
@@ -108,36 +108,16 @@ public:
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
-    /** @return true when demo team selection should mount the stub state. */
-    bool transitionToDemoStub() const;
+    /** @return true once a demo role is chosen and the hub should mount. */
+    bool transitionToHub() const;
 
 private:
     void renderUi(PDN* pdn) const;
 
     PlayerProvider* playerProvider = nullptr;
-    bool transitionToDemoStubState = false;
+    bool transitionToHubState = false;
     bool displayIsDirty = false;
     bool hunterSelected = true;
-};
-
-class DemoStubState : public TypedState<PDN> {
-public:
-    /** Placeholder demo mode after choose-team. */
-    DemoStubState();
-    /** @copydoc TypedState::~TypedState */
-    ~DemoStubState() override;
-
-    /** @copydoc TypedState::onStateMounted */
-    void onStateMounted(PDN* pdn) override;
-    /** @copydoc TypedState::onStateLoop */
-    void onStateLoop(PDN* pdn) override;
-    /** @copydoc TypedState::onStateDismounted */
-    void onStateDismounted(PDN* pdn) override;
-    /** @return true when the stub should return to pin entry. */
-    bool transitionToPinEntry() const;
-
-private:
-    bool transitionToPinEntryState = false;
 };
 
 class PlayerFetchWelcome : public TypedState<PDN> {

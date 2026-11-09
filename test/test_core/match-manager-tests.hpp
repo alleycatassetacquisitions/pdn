@@ -59,11 +59,18 @@ public:
 
     // Creates a match from the bounty's perspective by synthesizing a
     // SEND_MATCH_ID command from a fake hunter and feeding it to listenForMatchEvents().
+    // Both sides carry server ids, as registered players do, so the match is stored.
     void setupMatchAsBounty(const char* matchId = "test-match-id",
                             const char* hunterId = "hunt") {
-        player->setIsHunter(false);
+        UUIDBytes selfId{};
+        UUIDBytes::parse("0b0b0b0b-0000-4000-8000-000000000001", selfId);
+        Team bounty{};
+        strncpy(bounty.name, "Bounty", sizeof(bounty.name) - 1);
+        player->applyRegistrationProfile(selfId, "LocalBounty", bounty, {});
+        UUIDBytes hunterUuid{};
+        UUIDBytes::parse("0a0a0a0a-0000-4000-8000-000000000002", hunterUuid);
         static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-        MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, matchId, hunterId, 0, true);
+        MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, matchId, hunterId, 0, true, hunterUuid);
         matchManager->listenForMatchEvents(cmd);
     }
 
@@ -634,7 +641,9 @@ TEST_F(MatchManagerTestSuite, collectedHighWaterMarkClampsWhenCorruptedAboveSeq)
     matchManager->initialize(player, &mockStorage);
 }
 
-TEST_F(MatchManagerTestSuite, sendMatchIdRejectsMissingOrSelfPlayerUuid) {
+TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOpponent) {
+    NativePrefsDriver prefs("demo-prefs", {MATCHES_PREFS_NAMESPACE});
+    matchManager->initialize(player, &prefs);
     UUIDBytes selfId{};
     UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", selfId);
     Team team{};
@@ -643,12 +652,18 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsMissingOrSelfPlayerUuid) {
 
     static const uint8_t peerMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    // Missing/zero playerUuid must be rejected
-    MatchCommand missingIdCmd(peerMac, MatchCmd::SEND_MATCH_ID,
-                              "12345678-1234-4000-8000-000000000001", "hunt", 0, true, UUIDBytes{},
-                              UUIDBytes{});
-    matchManager->listenForMatchEvents(missingIdCmd);
+    // A demo opponent has no server id; the match runs but is never stored.
+    MatchCommand demoCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000001",
+                         "hunt", 0, true, UUIDBytes{}, UUIDBytes{});
+    matchManager->listenForMatchEvents(demoCmd);
+    ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
+    matchManager->setHunterDrawTime(300);
+    matchManager->setBountyDrawTime(200);
+    matchManager->setReceivedButtonPush();
+    matchManager->setReceivedDrawResult();
+    EXPECT_TRUE(matchManager->finalizeMatch());
     EXPECT_FALSE(matchManager->getCurrentMatch().has_value());
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u) << "a demo match is never stored";
 
     // Self playerUuid must be rejected
     MatchCommand selfIdCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000002",
@@ -665,6 +680,7 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsMissingOrSelfPlayerUuid) {
     ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
     EXPECT_EQ(matchManager->getCurrentMatch()->getHunterPlayerId(), distinctId);
     EXPECT_EQ(matchManager->getCurrentMatch()->getBountyPlayerId(), selfId);
+    matchManager->initialize(player, &mockStorage);
 }
 
 TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {

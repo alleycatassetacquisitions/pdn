@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstring>
+#include <functional>
 #include <string>
 #include "alleycat-server/player-api.hpp"
 #include "alleycat-server/player-provision-codec.hpp"
@@ -12,6 +13,8 @@
 #include "game/player.hpp"
 #include "game/player-types.hpp"
 #include "utils/simple-timer.hpp"
+#include "wireless/reliable-channel.hpp"
+#include "wireless/resender.hpp"
 
 /**
  * FDN-side player provisioning coordinator.
@@ -19,38 +22,34 @@
  * On a PlayerProvisionRequestPacket from a PDN Connected on an FDN jack, looks the
  * PIN up (`GET /device/players/by-pin/{pin}`) over Wi-Fi, restores peer comms mode,
  * and, if that PDN is still Connected, sends it a PlayerProvisionPacket
- * (PROFILE_DELIVERED or LOOKUP_FAILED) over PktType::kPlayerProvision.
+ * (PROFILE_DELIVERED or LOOKUP_FAILED). Request and reply ride reliable channels.
  */
 class FdnProvisioningManager {
 public:
+    /** Reports a finished lookup: the delivered player's name, or nullptr on failure. */
+    using OnLookupDone = std::function<void(const char* playerName)>;
+
     /** Constructs the FDN provisioning manager wired to wireless and RDC. */
     FdnProvisioningManager(WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
         : wirelessManager(wirelessManager)
-        , rdc(rdc) {
-        if (this->wirelessManager) {
-            this->wirelessManager->setEspNowPacketHandler(
-            PktType::kPlayerProvisionRequest,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                static_cast<FdnProvisioningManager*>(ctx)->onProvisionRequest(fromMac, data,
-                                                                              dataLen);
-            },
-            this);
-        }
-    }
-
-    /** Clears the kPlayerProvisionRequest packet handler on destruction. */
-    ~FdnProvisioningManager() {
-        if (wirelessManager) {
-            wirelessManager->clearEspNowPacketHandler(PktType::kPlayerProvisionRequest);
-        }
+        , rdc(rdc)
+        , resender(wirelessManager)
+        , requestChannel(wirelessManager, &resender, PktType::kPlayerProvisionRequest, nullptr)
+        , replyChannel(wirelessManager, &resender, PktType::kPlayerProvision, nullptr) {
+        requestChannel.onReceive(
+        [this](const uint8_t* fromMac, const PlayerProvisionRequestPacket& request) {
+            onProvisionRequest(fromMac, request);
+        });
     }
 
     /**
-     * Ends a lookup that has run past PROVISION_LOOKUP_TIMEOUT_MS. Leaving Wi-Fi fails
-     * the queued request, which clears the lookup and replies LOOKUP_FAILED; without
-     * it an unreachable AP keeps the FDN deaf to ESP-NOW. Call every tick.
+     * Pumps reply retries and ends a lookup that has run past
+     * PROVISION_LOOKUP_TIMEOUT_MS. Leaving Wi-Fi fails the queued request, which
+     * clears the lookup and replies LOOKUP_FAILED; without it an unreachable AP
+     * keeps the FDN deaf to ESP-NOW. Call every tick.
      */
     void sync() {
+        resender.sync();
         if (lookupInFlight && lookupTimer.expired()) {
             LOG_W("FDN_PROVISION", "Player lookup timed out");
             lookupTimer.invalidate();
@@ -58,14 +57,41 @@ public:
         }
     }
 
+    /** @return true while a PIN lookup is waiting on the server. */
+    bool isLookupInFlight() const { return lookupInFlight; }
+
+    /** Sets the lookup-finished listener; nullptr clears it. */
+    void setOnLookupDone(OnLookupDone listener) { onLookupDone = std::move(listener); }
+
+    /** @return true when a PDN with no server player id is Connected on an FDN jack. */
+    bool hasUnprovisionedPdnCabled() {
+        if (!rdc) return false;
+        for (SerialIdentifier jack :
+             {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
+            if (rdc->getJackStatus(jack) != JackStatus::CONNECTED ||
+                rdc->getPeerDeviceType(jack) != DeviceType::PDN) {
+                continue;
+            }
+            size_t length = 0;
+            const uint8_t* bytes = rdc->getPeerProfile(jack, length);
+            if (bytes == nullptr || length < sizeof(PlayerProfile)) continue;
+            PlayerProfile profile{};
+            memcpy(&profile, bytes, sizeof(profile));
+            UUIDBytes playerId{};
+            memcpy(playerId.bytes, profile.playerId, UUIDBytes::SIZE);
+            if (playerId.isZero()) return true;
+        }
+        return false;
+    }
+
 private:
     // Shorter than the PDN's 10 s wait, so a request sent at mount is answered in time.
     static constexpr unsigned long PROVISION_LOOKUP_TIMEOUT_MS = 8000;
 
-    bool provisionPdn(const uint8_t* pdnMac, const std::string& pin) {
+    void provisionPdn(const uint8_t* pdnMac, const std::string& pin) {
         if (!wirelessManager || !rdc || lookupInFlight ||
             !rdc->isConnectedPeer(DeviceType::PDN, pdnMac)) {
-            return false;
+            return;
         }
 
         std::array<uint8_t, 6> targetMac{};
@@ -77,43 +103,30 @@ private:
         PlayerApi::getDevicePlayerByPin(
         wirelessManager, pin, &decodedPlayer,
         [this, targetMac, pin](Player& player) {
-            lookupInFlight = false;
-            lookupTimer.invalidate();
-            wirelessManager->enablePeerCommsMode();
-            if (!rdc->isConnectedPeer(DeviceType::PDN, targetMac.data())) {
-                return;
-            }
-            // The lookup's HTTP Date header normally syncs this FDN's wall clock first.
-            PlatformClock* clock = SimpleTimer::getPlatformClock();
-            PlayerProvisionPacket pkt =
-            PlayerProvisionCodec::encode(player, clock ? clock->unixMilliseconds() : 0);
-            strncpy(pkt.pin, pin.c_str(), sizeof(pkt.pin) - 1);
-            wirelessManager->sendEspNowData(targetMac.data(), PktType::kPlayerProvision,
-                                            reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+            PlayerProvisionPacket pkt = PlayerProvisionCodec::encode(player);
+            finishLookup(targetMac, pin, pkt, player.getServerPlayerName());
         },
         [this, targetMac, pin](const WirelessErrorInfo&) {
-            lookupInFlight = false;
-            lookupTimer.invalidate();
-            wirelessManager->enablePeerCommsMode();
-            if (!rdc->isConnectedPeer(DeviceType::PDN, targetMac.data())) {
-                return;
-            }
             PlayerProvisionPacket pkt{};
             pkt.status = static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED);
-            strncpy(pkt.pin, pin.c_str(), sizeof(pkt.pin) - 1);
-            wirelessManager->sendEspNowData(targetMac.data(), PktType::kPlayerProvision,
-                                            reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+            finishLookup(targetMac, pin, pkt, nullptr);
         });
-        return true;
     }
 
-    void onProvisionRequest(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-        if (!data || dataLen != sizeof(PlayerProvisionRequestPacket)) {
-            LOG_W("FDN_PROVISION", "Dropping provision request of %zu bytes", dataLen);
+    void finishLookup(const std::array<uint8_t, 6>& targetMac, const std::string& pin,
+                      PlayerProvisionPacket& pkt, const char* playerName) {
+        lookupInFlight = false;
+        lookupTimer.invalidate();
+        wirelessManager->enablePeerCommsMode();
+        if (onLookupDone) onLookupDone(playerName);
+        if (!rdc->isConnectedPeer(DeviceType::PDN, targetMac.data())) {
             return;
         }
-        PlayerProvisionRequestPacket request{};
-        memcpy(&request, data, sizeof(request));
+        strncpy(pkt.pin, pin.c_str(), sizeof(pkt.pin) - 1);
+        replyChannel.sendReliable(targetMac.data(), pkt);
+    }
+
+    void onProvisionRequest(const uint8_t* fromMac, const PlayerProvisionRequestPacket& request) {
         // The PIN becomes a URL path segment, so only four ASCII digits leave the FDN.
         for (size_t i = 0; i < 4; ++i) {
             if (request.pin[i] < '0' || request.pin[i] > '9') {
@@ -126,7 +139,11 @@ private:
 
     WirelessManager* wirelessManager = nullptr;
     RemoteDeviceCoordinator* rdc = nullptr;
+    Resender resender;
+    ReliableChannel<PlayerProvisionRequestPacket> requestChannel;
+    ReliableChannel<PlayerProvisionPacket> replyChannel;
     bool lookupInFlight = false;
     SimpleTimer lookupTimer;
     Player decodedPlayer{};
+    OnLookupDone onLookupDone;
 };

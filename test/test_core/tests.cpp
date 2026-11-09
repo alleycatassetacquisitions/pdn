@@ -1093,10 +1093,6 @@ TEST_F(PlayerFetchTestSuite, fetchUserStoresProvisionedPlayerOnSuccess) {
     fetchUserStoresProvisionedPlayerOnSuccess(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserSetsWallClockFromProvision) {
-    fetchUserSetsWallClockFromProvision(this);
-}
-
 TEST_F(PlayerFetchTestSuite, fetchUserIgnoresUncabledOrMalformedProvision) {
     fetchUserIgnoresUncabledOrMalformedProvision(this);
 }
@@ -1113,8 +1109,14 @@ TEST_F(PlayerFetchTestSuite, fdnDropsMalformedOrUncabledProvisionRequest) {
     fdnDropsMalformedOrUncabledProvisionRequest(this);
 }
 
-TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
-    chooseTeamConfirmReachesDemoStub(this);
+TEST_F(PlayerFetchTestSuite, chooseTeamConfirmEntersHub) { chooseTeamConfirmEntersHub(this); }
+
+TEST_F(PlayerFetchTestSuite, fdnSeesUnprovisionedPdnUntilItRegisters) {
+    fdnSeesUnprovisionedPdnUntilItRegisters(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fdnReportsLookupResultAndResendsUnconfirmedReply) {
+    fdnReportsLookupResultAndResendsUnconfirmedReply(this);
 }
 
 TEST_F(PlayerFetchTestSuite, reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged) {

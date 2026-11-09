@@ -93,6 +93,8 @@ void Player::setOnRoleChanged(RoleChangedCallback callback) {
 PlayerProfile Player::toProfile() const {
     PlayerProfile profile{};
     if (registrationProfileStored && !serverPlayerId.isZero()) {
+        std::memcpy(profile.playerId, serverPlayerId.bytes, UUIDBytes::SIZE);
+        std::memcpy(profile.teamId, registrationTeam.id.bytes, UUIDBytes::SIZE);
         uint16_t derived = static_cast<uint16_t>(
         (static_cast<uint16_t>(serverPlayerId.bytes[0]) << 8) | serverPlayerId.bytes[1]);
         if (derived == 0xFFFF || derived == 0) {

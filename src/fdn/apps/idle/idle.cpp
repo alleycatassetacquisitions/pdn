@@ -5,13 +5,15 @@
 IdleApp::IdleApp(RemotePlayerManager* remotePlayerManager,
                  HackedPlayersManager* hackedPlayersManager,
                  FDNConnectWirelessManager* fdnConnectWirelessManager,
-                 RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool)
+                 RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
+                 FdnProvisioningManager* fdnProvisioningManager)
     : StateMachine(IDLE_APP_ID)
     , remotePlayerManager(remotePlayerManager)
     , hackedPlayersManager(hackedPlayersManager)
     , fdnConnectWirelessManager(fdnConnectWirelessManager)
     , remoteDeviceCoordinator(remoteDeviceCoordinator)
-    , fdnMatchSpool(fdnMatchSpool) {}
+    , fdnMatchSpool(fdnMatchSpool)
+    , fdnProvisioningManager(fdnProvisioningManager) {}
 
 void IdleApp::populateStateMap() {
     auto* idleState =
@@ -25,6 +27,8 @@ void IdleApp::populateStateMap() {
     auto* connectionDetectedState   = new ConnectionDetectedState(
         hackedPlayersManager, fdnConnectWirelessManager, remoteDeviceCoordinator);
     auto* uploadPendingState = new UploadPendingHacksState(hackedPlayersManager, fdnMatchSpool);
+    auto* registrationState =
+    new RegistrationState(fdnProvisioningManager, remoteDeviceCoordinator);
 
     // Shared connect handler: forwards the player ID to ConnectionDetectedState.
     auto connectHandler = [connectionDetectedState](
@@ -34,6 +38,14 @@ void IdleApp::populateStateMap() {
     idleState->setConnectionHandler(connectHandler);
     playerDetectedState->setConnectionHandler(connectHandler);
 
+    // An unprovisioned PDN is registered before any other cabled flow sees it.
+    FdnProvisioningManager* provisioning = fdnProvisioningManager;
+    idleState->addTransition(new StateTransition(
+    [idleState, provisioning]() {
+        return idleState->transitionToConnectionDetected() &&
+               provisioning->hasUnprovisionedPdnCabled();
+    },
+    registrationState));
     idleState->addTransition(new StateTransition(
         std::bind(&IdleState::transitionToPlayerDetected, idleState), playerDetectedState));
     idleState->addTransition(new StateTransition(
@@ -41,6 +53,12 @@ void IdleApp::populateStateMap() {
     idleState->addTransition(new StateTransition(
         std::bind(&IdleState::transitionToUploadPending, idleState), uploadPendingState));
 
+    playerDetectedState->addTransition(new StateTransition(
+    [playerDetectedState, provisioning]() {
+        return playerDetectedState->transitionToConnectionDetected() &&
+               provisioning->hasUnprovisionedPdnCabled();
+    },
+    registrationState));
     playerDetectedState->addTransition(new StateTransition(
         std::bind(&PlayerDetectedState::transitionToIdle, playerDetectedState), idleState));
     playerDetectedState->addTransition(new StateTransition(
@@ -71,10 +89,14 @@ void IdleApp::populateStateMap() {
     uploadPendingState->addTransition(new StateTransition(
         std::bind(&UploadPendingHacksState::transitionToIdle, uploadPendingState), idleState));
 
+    registrationState->addTransition(new StateTransition(
+    std::bind(&RegistrationState::transitionToIdle, registrationState), idleState));
+
     stateMap.push_back(idleState);                 // [0] IDLE
     stateMap.push_back(playerDetectedState);        // [1] PLAYER_DETECTED
     stateMap.push_back(authDetectedState);          // [2] AUTHORIZED_PDN
     stateMap.push_back(unauthorizedDetectedState);  // [3] UNAUTHORIZED_PDN
     stateMap.push_back(connectionDetectedState);    // [4] CONNECTION_DETECTED
     stateMap.push_back(uploadPendingState);         // [5] UPLOAD_PENDING
+    stateMap.push_back(registrationState);          // [6] REGISTRATION
 }

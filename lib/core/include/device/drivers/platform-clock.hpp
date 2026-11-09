@@ -12,6 +12,4 @@ public:
     virtual int64_t unixMilliseconds() {
         return 0;
     }
-    /** Sets the UTC wall clock; the monotonic milliseconds() is unaffected. */
-    virtual void setUnixMilliseconds(int64_t unixMs) { (void)unixMs; }
 };

@@ -254,8 +254,10 @@ bool MatchManager::finalizeMatch() {
 
     std::string matchId = activeMatchState.match->getMatchId();
 
-    // Shootout matches are local-ephemeral: no save, no upload.
-    if (currentMatchIsShootout()) {
+    // Shootout matches are local-ephemeral: no save, no upload. Neither is a match
+    // with a demo player, which has no server identity for the record to name.
+    if (currentMatchIsShootout() || activeMatchState.match->getHunterPlayerId().isZero() ||
+        activeMatchState.match->getBountyPlayerId().isZero()) {
         clearCurrentMatch();
         return true;
     }
@@ -523,9 +525,9 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
             return;
         }
-        if (player && player->hasRegistrationProfile() &&
-            (command.playerUuid.isZero() || command.playerUuid == player->getServerPlayerId())) {
-            LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: missing or self playerUuid");
+        if (player && !player->getServerPlayerId().isZero() &&
+            command.playerUuid == player->getServerPlayerId()) {
+            LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: self playerUuid");
             return;
         }
         bool shootoutActive = shootoutManager_ && shootoutManager_->active();

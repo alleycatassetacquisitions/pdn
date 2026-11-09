@@ -162,6 +162,7 @@ inline void devicePlayerDropsAffiliationsPastLimit() {
     appendTestAffiliationNamed(body, "Third");
     appendTestAffiliationNamed(body, "Fourth");
     appendTestAffiliationNamed(body, "Fifth");
+    appendTestAffiliationNamed(body, "Sixth");
     appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Night Shift");
 
     Player player;
@@ -171,6 +172,8 @@ inline void devicePlayerDropsAffiliationsPastLimit() {
     EXPECT_STREQ(player.getRegistrationAffiliations()[0].affiliationName, "First");
     EXPECT_STREQ(player.getRegistrationAffiliations()[1].affiliationName, "Second");
     EXPECT_STREQ(player.getRegistrationAffiliations()[2].affiliationName, "Third");
+    EXPECT_STREQ(player.getRegistrationAffiliations()[3].affiliationName, "Fourth");
+    EXPECT_STREQ(player.getRegistrationAffiliations()[4].affiliationName, "Fifth");
     EXPECT_STREQ(player.getRegistrationTeam().name, "Night Shift")
     << "fields after skipped affiliations must still decode";
 }
