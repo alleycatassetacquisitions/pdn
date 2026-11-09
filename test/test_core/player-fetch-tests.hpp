@@ -458,6 +458,7 @@ inline void fetchUserResendsAbandonedRequestWithinOneReplyWindow(PlayerFetchTest
     // The FDN is deaf on Wi-Fi, so no SEND_SUCCESS: the radio gives up after 1500 ms.
     for (int step = 0; step < 20; ++step) {
         suite->fakeClock->advance(100);
+        suite->device.wirelessManager->sync();
         fetch.onStateLoop(&suite->device);
     }
     std::set<uint8_t> distinct(requestSeqIds.begin(), requestSeqIds.end());
@@ -500,7 +501,7 @@ inline void fdnReportsLookupResultAndResendsUnconfirmedReply(PlayerFetchTestSuit
 
     // No SEND_SUCCESS came back, so the reply goes out again on the backoff.
     suite->fakeClock->advance(150);
-    fdnProv.sync();
+    suite->fdnDevice.wirelessManager->sync();
     EXPECT_EQ(replyFrames, 2) << "a reply the radio did not confirm is resent";
 
     request.seqId = 9;

@@ -6,7 +6,6 @@
 #include "device/wireless-manager.hpp"
 #include "game/player-types.hpp"
 #include "wireless/reliable-channel.hpp"
-#include "wireless/resender.hpp"
 
 /**
  * The PDN end of player provisioning: sends the entered PIN to the cabled FDN
@@ -19,20 +18,16 @@ public:
 
     /** Claims the PIN request (sent) and provision reply (received) packet types. */
     explicit PdnProvisioningClient(WirelessManager* wirelessManager)
-        : resender(wirelessManager)
-        , requestChannel(wirelessManager, &resender, PktType::kPlayerProvisionRequest, nullptr)
-        , replyChannel(wirelessManager, &resender, PktType::kPlayerProvision, nullptr) {
+        : requestChannel(wirelessManager, PktType::kPlayerProvisionRequest)
+        , replyChannel(wirelessManager, PktType::kPlayerProvision) {
         replyChannel.onReceive([this](const uint8_t* fromMac, const PlayerProvisionPacket& pkt) {
             if (onReply) onReply(fromMac, pkt);
         });
-        resender.setAbandonCallback(
-        [this](PktType type, uint8_t, const uint8_t*, const uint8_t*, size_t) {
-            if (type == PktType::kPlayerProvisionRequest) requestAbandoned = true;
+        requestChannel.setOnAbandon(
+        [this](uint8_t, const uint8_t*, const PlayerProvisionRequestPacket&) {
+            requestAbandoned = true;
         });
     }
-
-    /** Pumps request retries; call every tick while a request may be in flight. */
-    void sync() { resender.sync(); }
 
     /** Asks the FDN at @p fdnMac to look up @p pin for this PDN. */
     void sendRequest(const uint8_t* fdnMac, const char* pin) {
@@ -49,7 +44,6 @@ public:
     void setOnReply(OnReply listener) { onReply = std::move(listener); }
 
 private:
-    Resender resender;
     ReliableChannel<PlayerProvisionRequestPacket> requestChannel;
     ReliableChannel<PlayerProvisionPacket> replyChannel;
     OnReply onReply;

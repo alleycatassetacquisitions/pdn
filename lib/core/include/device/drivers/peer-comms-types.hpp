@@ -12,7 +12,8 @@ enum class PktType : uint8_t {
     kChainGameEvent = 6,
     kChainConfirm = 7,
     kRoleAnnounce = 8,
-    kChainGameEventAck = 10,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kReliableAck = 10,
     kShootoutCommand = 11,
     kShootoutCommandAck = 12,
     kSymbolMatchCommand = 13,
@@ -113,8 +114,11 @@ struct RoleAnnouncePayload
     uint8_t seqId;
 } __attribute__((packed));
 
-struct ChainGameEventAckPayload
-{
+// A fan-out recipient's answer to one reliable frame: names the channel the
+// frame rode and the seqId it carried. Routed by the ReliableTransport, which
+// is why one PktType serves every fan-out channel.
+struct ReliableAckPayload {
+    PktType ackedType;
     uint8_t seqId;
 } __attribute__((packed));
 

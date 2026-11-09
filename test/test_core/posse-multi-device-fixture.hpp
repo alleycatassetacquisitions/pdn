@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <array>
 #include <memory>
 #include <vector>
 #include <queue>
@@ -56,26 +57,18 @@ struct MultiDeviceNode {
         delete posse;
     }
 
-    // Per-device captured handlers (one slot per PktType the fixture routes).
-    PeerCommsInterface::PacketCallback contextHandler = nullptr;
-    void* contextCtx = nullptr;
-    PeerCommsInterface::SendStatusCallback contextSendStatus = nullptr;
-    void* contextSendStatusCtx = nullptr;
-    PeerCommsInterface::PacketCallback roleAnnounceHandler = nullptr;
-    void* roleAnnounceCtx = nullptr;
-    PeerCommsInterface::SendStatusCallback roleAnnounceSendStatus = nullptr;
-    void* roleAnnounceSendStatusCtx = nullptr;
-    PeerCommsInterface::PacketCallback chainConfirmHandler = nullptr;
-    void* chainConfirmCtx = nullptr;
-    PeerCommsInterface::PacketCallback chainJoinHandler = nullptr;
-    void* chainJoinCtx = nullptr;
-    PeerCommsInterface::PacketCallback chainGameEventHandler = nullptr;
-    void* chainGameEventCtx = nullptr;
-    PeerCommsInterface::PacketCallback shootoutHandler = nullptr;
-    void* shootoutCtx = nullptr;
-    PeerCommsInterface::PacketCallback shootoutAckHandler = nullptr;
-    void* shootoutAckCtx = nullptr;
-
+    // Per-device captured driver handlers, one slot per PktType, filled as the
+    // RDC, the managers and their channels register.
+    struct PacketSlot {
+        PeerCommsInterface::PacketCallback handler = nullptr;
+        void* ctx = nullptr;
+    };
+    struct SendStatusSlot {
+        PeerCommsInterface::SendStatusCallback handler = nullptr;
+        void* ctx = nullptr;
+    };
+    std::array<PacketSlot, static_cast<size_t>(PktType::kNumPacketTypes)> packetSlots{};
+    std::array<SendStatusSlot, static_cast<size_t>(PktType::kNumPacketTypes)> sendStatusSlots{};
     uint8_t mac[6] = {};
 };
 
@@ -132,8 +125,8 @@ public:
             node->rdc->initialize(node->device->wirelessManager, node->device->serialManager,
                                   node->device.get());
 
-            // PosseManager and chain-event handlers register after RDC so they don't
-            // compete with RDC's own setPacketHandler calls.
+            // The managers register after the RDC so their channels claim their
+            // own PktTypes without competing with the RDC's.
             node->posse =
             new PosseManager(node->player.get(), node->device->wirelessManager, node->rdc.get());
             node->shootout =
@@ -146,7 +139,6 @@ public:
                 r->resendContext();
                 c->onChainStateChanged();
             });
-            wireChainEventHandlers(*node);
             wireShootoutHandlers(*node);
 
             nodes.push_back(std::move(node));
@@ -262,6 +254,7 @@ public:
     void syncAll() {
         pumpHelloCycle();
         for (auto& n : nodes) {
+            n->device->wirelessManager->sync();
             n->posse->sync();
             n->shootout->sync();
         }
@@ -290,6 +283,7 @@ public:
             n->rdc->sync(n->device.get());
         deliverAllPackets();
         for (auto& n : nodes) {
+            n->device->wirelessManager->sync();
             n->posse->sync();
             n->shootout->sync();
         }
@@ -360,6 +354,26 @@ protected:
         return SIZE_MAX;
     }
 
+    /**
+     * The PktTypes this fixture carries between nodes. Deliberately not every
+     * type: kConnectionAnnounce is dropped so no roster ever reaches a head here
+     * (claimRing and seedRingRoster inject rosters instead), and the cases below
+     * were written against that.
+     */
+    static bool isRouted(PktType type) {
+        switch (type) {
+            case PktType::kPdnConnectionContext:
+            case PktType::kRoleAnnounce:
+            case PktType::kChainConfirm:
+            case PktType::kChainJoin:
+            case PktType::kChainGameEvent:
+            case PktType::kReliableAck:
+            case PktType::kShootoutCommand:
+            case PktType::kShootoutCommandAck: return true;
+            default: return false;
+        }
+    }
+
     void dispatch(const PendingPacket& p) {
         // A broadcast frame lands on every node in range except its sender,
         // which is what the radio does with the permanent broadcast peer.
@@ -374,45 +388,14 @@ protected:
         }
         size_t toIdx = indexOfMac(p.toMac.data());
         if (toIdx == SIZE_MAX) return;  // MAC unknown — drop (mirrors real ESP-NOW gating).
+        if (!isRouted(p.type)) return;
 
         MultiDeviceNode& target = *nodes[toIdx];
         MultiDeviceNode& source = *nodes[p.fromIndex];
 
-        PeerCommsInterface::PacketCallback handler = nullptr;
-        void* ctx = nullptr;
-        switch (p.type) {
-            case PktType::kPdnConnectionContext:
-                handler = target.contextHandler;
-                ctx = target.contextCtx;
-                break;
-            case PktType::kRoleAnnounce:
-                handler = target.roleAnnounceHandler;
-                ctx = target.roleAnnounceCtx;
-                break;
-            case PktType::kChainConfirm:
-                handler = target.chainConfirmHandler;
-                ctx = target.chainConfirmCtx;
-                break;
-            case PktType::kChainJoin:
-                handler = target.chainJoinHandler;
-                ctx = target.chainJoinCtx;
-                break;
-            case PktType::kChainGameEvent:
-                handler = target.chainGameEventHandler;
-                ctx = target.chainGameEventCtx;
-                break;
-            case PktType::kShootoutCommand:
-                handler = target.shootoutHandler;
-                ctx = target.shootoutCtx;
-                break;
-            case PktType::kShootoutCommandAck:
-                handler = target.shootoutAckHandler;
-                ctx = target.shootoutAckCtx;
-                break;
-            default: return;
-        }
-        if (!handler) return;
-        handler(source.mac, p.data.data(), p.data.size(), ctx);
+        const MultiDeviceNode::PacketSlot& slot = target.packetSlots[static_cast<size_t>(p.type)];
+        if (!slot.handler) return;
+        slot.handler(source.mac, p.data.data(), p.data.size(), slot.ctx);
 
         // Report delivery back to the sender: on channels with no reply packet
         // that report IS the delivery signal, and a fixture that routed the frame
@@ -424,14 +407,13 @@ protected:
         // that says nothing about the application. The case the production code
         // worries about, the radio acking while the peer is deaf, therefore
         // cannot be reproduced here; it needs a test that drives onSendResult by
-        // hand.
-        if (p.type == PktType::kPdnConnectionContext && source.contextSendStatus) {
-            source.contextSendStatus(p.toMac.data(), p.data.data(), p.data.size(),
-                                     /*success=*/true, source.contextSendStatusCtx);
-        }
-        if (p.type == PktType::kRoleAnnounce && source.roleAnnounceSendStatus) {
-            source.roleAnnounceSendStatus(p.toMac.data(), p.data.data(), p.data.size(),
-                                          /*success=*/true, source.roleAnnounceSendStatusCtx);
+        // hand. Only the two types the cases were written against get it.
+        if (p.type != PktType::kPdnConnectionContext && p.type != PktType::kRoleAnnounce) return;
+        const MultiDeviceNode::SendStatusSlot& status =
+        source.sendStatusSlots[static_cast<size_t>(p.type)];
+        if (status.handler) {
+            status.handler(p.toMac.data(), p.data.data(), p.data.size(), /*success=*/true,
+                           status.ctx);
         }
     }
 
@@ -455,79 +437,21 @@ protected:
             return 1;
         });
 
-        // Capture packet handlers as they are registered (RDC, then PosseManager-side
-        // shims below). Each PktType saves into its own slot.
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kPdnConnectionContext), _, _))
-        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-            n.contextHandler = cb;
-            n.contextCtx = ctx;
+        // Capture every driver handler as it is registered, one slot per PktType.
+        ON_CALL(*pc, setPacketHandler(_, _, _))
+        .WillByDefault([&n](PktType type, PeerCommsInterface::PacketCallback cb, void* ctx) {
+            n.packetSlots[static_cast<size_t>(type)] = {cb, ctx};
         });
-        ON_CALL(*pc, setSendStatusHandler(testing::Eq(PktType::kPdnConnectionContext), _, _))
-        .WillByDefault([&n](PktType, PeerCommsInterface::SendStatusCallback cb, void* ctx) {
-            n.contextSendStatus = cb;
-            n.contextSendStatusCtx = ctx;
+        ON_CALL(*pc, clearPacketHandler(_)).WillByDefault([&n](PktType type) {
+            n.packetSlots[static_cast<size_t>(type)] = {};
         });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kRoleAnnounce), _, _))
-        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-            n.roleAnnounceHandler = cb;
-            n.roleAnnounceCtx = ctx;
+        ON_CALL(*pc, setSendStatusHandler(_, _, _))
+        .WillByDefault([&n](PktType type, PeerCommsInterface::SendStatusCallback cb, void* ctx) {
+            n.sendStatusSlots[static_cast<size_t>(type)] = {cb, ctx};
         });
-        ON_CALL(*pc, setSendStatusHandler(testing::Eq(PktType::kRoleAnnounce), _, _))
-        .WillByDefault([&n](PktType, PeerCommsInterface::SendStatusCallback cb, void* ctx) {
-            n.roleAnnounceSendStatus = cb;
-            n.roleAnnounceSendStatusCtx = ctx;
+        ON_CALL(*pc, clearSendStatusHandler(_)).WillByDefault([&n](PktType type) {
+            n.sendStatusSlots[static_cast<size_t>(type)] = {};
         });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainConfirm), _, _))
-        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-            n.chainConfirmHandler = cb;
-            n.chainConfirmCtx = ctx;
-        });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainJoin), _, _))
-        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-            n.chainJoinHandler = cb;
-            n.chainJoinCtx = ctx;
-        });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainGameEvent), _, _))
-        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-            n.chainGameEventHandler = cb;
-            n.chainGameEventCtx = ctx;
-        });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kShootoutCommand), _, _))
-        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-            n.shootoutHandler = cb;
-            n.shootoutCtx = ctx;
-        });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kShootoutCommandAck), _, _))
-        .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-            n.shootoutAckHandler = cb;
-            n.shootoutAckCtx = ctx;
-        });
-    }
-
-    // Mirrors what the GameSession constructor installs for the posse packet
-    // types that no channel claims. Deliberately NOT kRoleAnnounce: the PosseManager's
-    // ReliableChannel claims that slot in its own constructor, and registering
-    // over it here would replace the channel with a trampoline that skips the
-    // length check, the decode and the duplicate suppression — leaving the
-    // production receive path untested by every chain and tournament case here.
-    void wireChainEventHandlers(MultiDeviceNode& n) {
-        PosseManager* posse = n.posse;
-
-        // GameSession fans this one to two consumers; only the manager half has a
-        // counterpart here, since the fixture stands up no states. Dropping it
-        // would leave a supporter's spent press standing into the next round.
-        // The challenger gate has to be mirrored too: without it a foreign chain's
-        // broadcast clears confirmSent here where hardware discards the frame.
-        n.device->wirelessManager->setEspNowPacketHandler(
-        PktType::kChainGameEvent,
-        [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
-            if (dataLen != sizeof(ChainGameEventPayload)) return;
-            const ChainGameEventPayload* p = reinterpret_cast<const ChainGameEventPayload*>(data);
-            PosseManager* manager = static_cast<PosseManager*>(ctx);
-            if (!manager->isEventFromOwnChallenger(p->challengerMac)) return;
-            manager->onChainGameEventReceived(p->event_type);
-        },
-        posse);
     }
 
     // Register Shootout command + ack handlers. Mirrors the dispatcher in

@@ -4,6 +4,7 @@
 
 #include "device/drivers/logger.hpp"
 #include "device/wireless-manager.hpp"
+#include "wireless/reliable-channel.hpp"
 
 namespace {
 constexpr const char* RELIABLE_TRANSPORT_TAG = "ReliableTransport";
@@ -13,52 +14,72 @@ ReliableTransport::ReliableTransport(WirelessManager* wm)
     : wirelessManager(wm)
     , resender(wm) {
     resender.setAbandonCallback(
-        [this](PktType type, uint8_t seqId, const uint8_t* targetMac,
-               const uint8_t*, size_t) {
-            onResenderAbandon(type, seqId, targetMac);
-        });
+    [this](PktType type, uint8_t seqId, const uint8_t* targetMac, const uint8_t* payload,
+           size_t len) { onResenderAbandon(type, seqId, targetMac, payload, len); });
+    if (wirelessManager == nullptr) return;
+    wirelessManager->setEspNowPacketHandler(
+    PktType::kReliableAck,
+    [](const uint8_t* src, const uint8_t* data, const size_t len, void* ctx) {
+        static_cast<ReliableTransport*>(ctx)->onAckPacket(src, data, len);
+    },
+    this);
 }
 
 ReliableTransport::~ReliableTransport() {
-    for (std::pair<const PktType, ReliableChannelBase*>& entry : registry) {
-        delete entry.second;
-        entry.second = nullptr;
+    if (wirelessManager != nullptr) {
+        wirelessManager->clearEspNowPacketHandler(PktType::kReliableAck);
     }
-    registry.clear();
-    // No driver callbacks to unregister here: each channel installs and drops
-    // its own receive and send-status handlers, and every channel is deleted
-    // above, so both slots are already free.
+}
+
+void ReliableTransport::sync() { resender.sync(); }
+
+void ReliableTransport::attach(ReliableChannelBase* channel) {
+    const size_t slot = static_cast<size_t>(channel->type());
+    if (slot >= channels.size()) return;
+    if (channels[slot] != nullptr) {
+        LOG_E(RELIABLE_TRANSPORT_TAG, "PktType %u claimed twice; newest channel takes it",
+              (unsigned)channel->type());
+    }
+    channels[slot] = channel;
+}
+
+void ReliableTransport::detach(ReliableChannelBase* channel) {
+    const size_t slot = static_cast<size_t>(channel->type());
+    if (slot < channels.size() && channels[slot] == channel) channels[slot] = nullptr;
+}
+
+ReliableChannelBase* ReliableTransport::channelFor(PktType type) const {
+    const size_t slot = static_cast<size_t>(type);
+    return slot < channels.size() ? channels[slot] : nullptr;
 }
 
 void ReliableTransport::onSendResult(PktType type, const uint8_t* toMac,
                                      const uint8_t* data, size_t len,
                                      bool success) {
-    std::map<PktType, ReliableChannelBase*>::iterator it = registry.find(type);
-    if (it == registry.end()) return;
-    it->second->onSendResult(toMac, data, len, success);
+    ReliableChannelBase* channel = channelFor(type);
+    if (channel != nullptr) channel->onSendResult(toMac, data, len, success);
 }
 
 bool ReliableTransport::deliverIncoming(PktType type, const uint8_t* fromMac,
                                         const uint8_t* data, size_t len) {
-    std::map<PktType, ReliableChannelBase*>::iterator it = registry.find(type);
-    if (it == registry.end()) return false;
-    return it->second->deliverBytes(fromMac, data, len);
+    if (type == PktType::kReliableAck) {
+        onAckPacket(fromMac, data, len);
+        return true;
+    }
+    ReliableChannelBase* channel = channelFor(type);
+    return channel != nullptr && channel->deliverBytes(fromMac, data, len);
 }
 
-void ReliableTransport::sync() {
-    resender.sync();
+void ReliableTransport::onAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t len) {
+    if (len != sizeof(ReliableAckPayload)) return;
+    ReliableAckPayload ack;
+    memcpy(&ack, data, sizeof(ack));
+    ReliableChannelBase* channel = channelFor(ack.ackedType);
+    if (channel != nullptr) channel->onPacketAck(fromMac, ack.seqId);
 }
 
-void ReliableTransport::onResenderAbandon(PktType type, uint8_t seqId,
-                                          const uint8_t* targetMac) {
-    std::map<PktType, ReliableChannelBase*>::iterator it = registry.find(type);
-    if (it == registry.end()) return;
-    it->second->onResenderAbandon(seqId, targetMac);
-}
-
-void ReliableTransport::logChannelTypeCollision(PktType type, size_t got, size_t have) {
-    LOG_E(RELIABLE_TRANSPORT_TAG,
-          "channel(): PktType %u already claimed by a %zu-byte payload; "
-          "rejected a %zu-byte claim (two subsystems on one PktType)",
-          (unsigned)type, have, got);
+void ReliableTransport::onResenderAbandon(PktType type, uint8_t seqId, const uint8_t* targetMac,
+                                          const uint8_t* payload, size_t len) {
+    ReliableChannelBase* channel = channelFor(type);
+    if (channel != nullptr) channel->onAbandon(seqId, targetMac, payload, len);
 }

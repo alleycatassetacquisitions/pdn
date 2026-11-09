@@ -13,8 +13,7 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     : player(nullptr)
     , storage(nullptr)
     , wirelessManager(wirelessManager)
-    , resender(wirelessManager)
-    , matchChannel(wirelessManager, &resender, PktType::kMatchCommand, nullptr) {
+    , matchChannel(wirelessManager, PktType::kMatchCommand) {
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
         UUIDBytes playerUuid{};
         UUIDBytes teamUuid{};
@@ -34,10 +33,7 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     }
 }
 
-void MatchManager::sync() {
-    resender.sync();
-    syncFdnMatchTransfer();
-}
+void MatchManager::sync() { syncFdnMatchTransfer(); }
 
 void MatchManager::sendCommand(const uint8_t* mac, int command, const char* matchId,
                                long drawTime, bool isHunter) {

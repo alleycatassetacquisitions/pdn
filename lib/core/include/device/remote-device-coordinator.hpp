@@ -11,7 +11,7 @@
 #include "device/serial-frame-parser.hpp"
 #include "utils/simple-timer.hpp"
 #include "device/wireless-manager.hpp"
-#include "wireless/reliable-transport.hpp"
+#include "wireless/reliable-channel.hpp"
 #include "device/device-type.hpp"
 
 #ifndef NATIVE_BUILD
@@ -21,7 +21,6 @@
 
 class Device;
 class HelloLinkMachine;
-class RDCHelloTests;  // drives the context exchange via the owned transport in tests
 
 enum class JackStatus {
     DISCONNECTED = 0,  // No HELLO peer on the jack.
@@ -43,10 +42,6 @@ enum class ChainRole {
 };
 
 class RemoteDeviceCoordinator {
-    // Reaches the owned transport to inject SEND_SUCCESS / inbound contexts without
-    // a radio; the transport stays out of the public API.
-    friend class RDCHelloTests;
-
 public:
     /** Fires on a per-jack connect (true) / disconnect (false) transition. */
     using JackChangeCallback = std::function<void(SerialIdentifier jack, bool connected)>;
@@ -77,8 +72,8 @@ public:
     void initialize(WirelessManager* radio, SerialManager* serial, Device* device);
 
     /**
-     * Must be called every loop tick (from PDN::loop). Pumps the reliable
-     * transport and drives each jack's HELLO link machine.
+     * Must be called every loop tick (from PDN::loop). Drives each jack's HELLO
+     * link machine.
      */
     void sync(Device* PDN);
 
@@ -339,10 +334,10 @@ private:
     std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 
-    // Owned reliable transport + one context channel per device-type PktType.
-    // Device-level, not per-jack: on receive the source MAC is matched back to a
-    // jack. Constructed in initialize() once the WirelessManager is known.
-    ReliableTransport* transport = nullptr;
+    // One context channel per device-type PktType, plus the head-roster
+    // channels. Device-level, not per-jack: on receive the source MAC is matched
+    // back to a jack. Constructed in initialize() once the WirelessManager is
+    // known; owned here and deleted by the destructor.
     ReliableChannel<PdnConnectionContext>* pdnContextChannel = nullptr;
     ReliableChannel<FdnConnectionContext>* fdnContextChannel = nullptr;
     ReliableChannel<ConnectionAnnouncePayload>* connectionAnnounceChannel = nullptr;

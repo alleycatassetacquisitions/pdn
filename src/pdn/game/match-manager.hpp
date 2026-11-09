@@ -20,7 +20,6 @@
 #include "wireless/mac-functions.hpp"
 #include "wireless/match-packet.hpp"
 #include "wireless/reliable-channel.hpp"
-#include "wireless/resender.hpp"
 #include "device/drivers/storage-interface.hpp"
 
 class ShootoutManager;
@@ -201,7 +200,6 @@ private:
 
     StorageInterface* storage;
     WirelessManager* wirelessManager = nullptr;
-    Resender resender;
     ReliableChannel<MatchPacket> matchChannel;
     SimpleTimer transferWindowTimer;
 

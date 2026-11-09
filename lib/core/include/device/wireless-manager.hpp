@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <utility>
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/logger.hpp"
+#include "wireless/reliable-transport.hpp"
 #include "wireless/wireless-types.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "protocol-constants.hpp"
@@ -19,7 +21,9 @@ enum class WirelessMode {
 static const char* WM_TAG = "WirelessManager";
 
 /**
- * WirelessManager coordinates between WiFi (HTTP) and ESP-NOW communication.
+ * WirelessManager coordinates between WiFi (HTTP) and ESP-NOW communication,
+ * and owns the device's one ReliableTransport, so every reliable channel on the
+ * device shares one retry queue and one pump.
  *
  * The ESP32 has a single WiFi radio that can only operate on one channel at a time.
  * When connected to a WiFi AP, the device uses the AP's channel. For ESP-NOW to work
@@ -166,7 +170,7 @@ public:
 
     /** Registers a handler for incoming ESP-NOW packets of the specified type. */
     void setEspNowPacketHandler(PktType packetType, PeerCommsInterface::PacketCallback callback, void* ctx) {
-        peerComms->setPacketHandler(packetType, callback, ctx);
+        if (peerComms != nullptr) peerComms->setPacketHandler(packetType, std::move(callback), ctx);
     }
 
     /**
@@ -180,7 +184,7 @@ public:
 
     /** Clears the packet handler for the specified packet type. */
     void clearEspNowPacketHandler(PktType packetType) {
-        peerComms->clearPacketHandler(packetType);
+        if (peerComms != nullptr) peerComms->clearPacketHandler(packetType);
     }
 
     /** Clears the send-status handler for the specified packet type. */
@@ -198,12 +202,15 @@ public:
         return peerComms->getGlobalBroadcastAddress();
     }
 
-    /** Main-loop wireless processing hook. */
-    void exec() {
-        // The drivers handle their own processing through their exec() methods
-        // called by the DriverManager. This method is here for any future
-        // coordination logic the WirelessManager might need.
-    }
+    /** The reliable transport every channel on this device shares. */
+    ReliableTransport* getReliableTransport() { return &reliableTransport; }
+
+    /**
+     * Drives reliable retransmits and abandonment. Called once per tick by the
+     * device loop, after the drivers have delivered the tick's receives and
+     * send verdicts; nothing else pumps it.
+     */
+    void sync() { reliableTransport.sync(); }
 
     /** Returns a debug string representing the current wireless state. */
     const char* getStateString() {
@@ -221,4 +228,6 @@ private:
     PeerCommsInterface* peerComms;
     HttpClientInterface* httpClient;
     WirelessMode currentMode;
+    // Last: its constructor registers the kReliableAck handler through peerComms.
+    ReliableTransport reliableTransport{this};
 };

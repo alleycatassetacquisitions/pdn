@@ -694,7 +694,7 @@ inline void matchLaterCommandSupersedesEarlierRetries(MatchStateTests* suite) {
 
     for (int i = 0; i < 4; i++) {
         suite->fakeClock->advance(150);
-        suite->matchManager->sync();
+        suite->device.wirelessManager->sync();
     }
     EXPECT_EQ(countOf(MatchCmd::SEND_MATCH_ID), 1u);
     EXPECT_GT(countOf(MatchCmd::DRAW_RESULT), 1u);

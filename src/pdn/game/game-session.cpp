@@ -5,13 +5,11 @@
 #include <array>
 #include <cstring>
 
-const std::array<GameSession::PacketRoute, 4>& GameSession::packetRoutes() {
+const std::array<GameSession::PacketRoute, 2>& GameSession::packetRoutes() {
     // Channel-owned PktTypes are omitted; registering them here after manager construction would clobber their channels.
-    static const std::array<PacketRoute, 4> ROUTES = {{
-        {PktType::kChainGameEvent, dispatchTo<&GameSession::onChainGameEventPacket>},
-        {PktType::kChainGameEventAck, dispatchTo<&GameSession::onChainGameEventAckPacket>},
-        {PktType::kShootoutCommand, dispatchTo<&GameSession::onShootoutCommandPacket>},
-        {PktType::kShootoutCommandAck, dispatchTo<&GameSession::onShootoutCommandAckPacket>},
+    static const std::array<PacketRoute, 2> ROUTES = {{
+    {PktType::kShootoutCommand, dispatchTo<&GameSession::onShootoutCommandPacket>},
+    {PktType::kShootoutCommandAck, dispatchTo<&GameSession::onShootoutCommandAckPacket>},
     }};
     return ROUTES;
 }
@@ -42,6 +40,14 @@ GameSession::GameSession(Player* player,
         wirelessManager->setEspNowPacketHandler(route.type, route.handler, this);
     }
 
+    // The posse admits and acks the frame; the session only knows which state is
+    // watching for it. Out-of-state events are dropped here, silently.
+    posseManager->setOnGameEvent([this](uint8_t eventType, const uint8_t* fromMac) {
+        SupporterReady* supporterReady = getMountedSupporterReady();
+        if (supporterReady != nullptr) {
+            supporterReady->onChainGameEventReceived(eventType, fromMac);
+        }
+    });
     // The Player is the authority on this device's identity; RDC only carries it.
     remoteDeviceCoordinator->setSelfProfileProvider([this]() -> PlayerProfile {
         return this->player->toProfile();
@@ -122,7 +128,6 @@ void GameSession::sync() {
     // retries keep running while the device is in the match app for a bracket
     // match.
     if (shootoutManager) shootoutManager->sync();
-    if (symbolWirelessManager) symbolWirelessManager->sync();
 
     logRetryStats();
 }
@@ -135,57 +140,25 @@ void GameSession::logRetryStats() {
     if (!statsLogTimer.expired()) return;
 
     // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2, which
-    // strips info-level calls. Both managers are reported: a venue reading one
-    // line to judge radio health would otherwise be shown the posse's
-    // retries and told nothing about the tournament's.
+    // strips info-level calls. The transport's counters cover every channel on
+    // the device; the posse adds the one thing only it can time, delivery
+    // latency, and the shootout still carries its own retry machine.
+    const Resender::Stats& t = wirelessManager->getReliableTransport()->getStats();
+    unsigned long ackMean = 0;
+    unsigned ackCount = 0;
     if (posseManager != nullptr) {
         PosseManager::RetryStats c = posseManager->getRetryStats();
-        unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
-        LOG_W("STATS", "POSSE s=%u r=%u ab=%u ack=%u/%lums", (unsigned)c.sends, (unsigned)c.retries,
-              (unsigned)c.abandons, (unsigned)c.ackCount, cMean);
+        ackCount = c.ackCount;
+        ackMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
     }
+    LOG_W("STATS", "RELIABLE s=%u r=%u ab=%u posseAck=%u/%lums", (unsigned)t.sends,
+          (unsigned)t.retries, (unsigned)t.abandons, ackCount, ackMean);
     if (shootoutManager != nullptr) {
         const Resender::Stats& s = shootoutManager->getRetryStats();
         LOG_W("STATS", "SHT s=%u r=%u ab=%u",
               (unsigned)s.sends, (unsigned)s.retries, (unsigned)s.abandons);
     }
     statsLogTimer.setTimer(STATS_LOG_INTERVAL_MS);
-}
-
-void GameSession::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainGameEventPayload)) return;
-    if (!posseManager) return;
-
-    const ChainGameEventPayload* payload = reinterpret_cast<const ChainGameEventPayload*>(data);
-    // The frame is broadcast, so every chain in radio range hears it. The
-    // challenger it names is the only thing that says whether it is ours.
-    if (!posseManager->isEventFromOwnChallenger(payload->challengerMac)) return;
-
-    // Ahead of the state dispatch and independent of it: a COUNTDOWN wipes the
-    // challenger's roll call whether or not this device is watching for it, and a
-    // confirm still held here would then re-register a press for a round the
-    // supporter has not answered.
-    posseManager->onChainGameEventReceived(payload->event_type);
-
-    // Out-of-state events dropped silently; challenger's retry machine bounds traffic cost.
-    SupporterReady* supporterReady = getMountedSupporterReady();
-    if (supporterReady != nullptr) {
-        supporterReady->onChainGameEventReceived(payload->event_type, fromMac);
-    }
-
-    // ACK regardless of whether we were in SupporterReady. Not ACKing after
-    // leaving the state would let the challenger keep retrying a WIN/LOSS we
-    // already received and can't act on. seqId=0 is the sentinel for
-    // fire-and-forget events (COUNTDOWN/DRAW) and must not be ACKed.
-    if (payload->seqId != 0) {
-        posseManager->sendGameEventAck(fromMac, payload->seqId);
-    }
-}
-
-void GameSession::onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainGameEventAckPayload) || !posseManager) return;
-    const ChainGameEventAckPayload* payload = reinterpret_cast<const ChainGameEventAckPayload*>(data);
-    posseManager->onChainGameEventAckReceived(fromMac, payload->seqId);
 }
 
 namespace {

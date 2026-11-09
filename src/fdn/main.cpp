@@ -152,10 +152,7 @@ static void setup() {
                                       fdn->getRemoteDeviceCoordinator());
     fdnProvisioningManager =
     new FdnProvisioningManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
-    fdn->setTickCallback([]() {
-        symbolWirelessManager->sync();
-        fdnProvisioningManager->sync();
-    });
+    fdn->setTickCallback([]() { fdnProvisioningManager->sync(); });
 
     setupEspNow(peerCommsDriver);
 

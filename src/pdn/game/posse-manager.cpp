@@ -4,22 +4,33 @@
 
 #define TAG "POSSE"
 
-PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
+PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager,
+                           RemoteDeviceCoordinator* rdc)
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
     , wasInRing(rdc->isInRing())
-    , resender(wirelessManager)
     // No abandon handler: a role announce that ran out its span is repaired by the
     // backstop in sync(), not by a callback.
-    , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr)
-    , chainConfirmChannel(wirelessManager, &resender, PktType::kChainConfirm, nullptr)
-    , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr) {
+    , roleAnnounceChannel(wirelessManager, PktType::kRoleAnnounce)
+    , chainConfirmChannel(wirelessManager, PktType::kChainConfirm)
+    , chainJoinChannel(wirelessManager, PktType::kChainJoin)
+    , gameEventChannel(wirelessManager, PktType::kChainGameEvent, ChannelMode::FAN_OUT) {
     chainConfirmChannel.onReceive([this](const uint8_t*, const ChainConfirmPayload& p) {
         onConfirmReceived(p.originatorMac);
     });
     chainJoinChannel.onReceive([this](const uint8_t* fromMac, const ChainJoinPayload& p) {
         onChainJoinReceived(fromMac, p.challengerMac);
+    });
+    gameEventChannel.onReceive([this](const uint8_t* fromMac, const ChainGameEventPayload& p) {
+        onGameEventFrame(fromMac, p);
+    });
+    // A broadcast carries no per-member delivery evidence from the radio, so a
+    // supporter's ack is the only thing that clears its slot — and the only
+    // moment its latency can be read.
+    gameEventChannel.setOnDelivered([this](uint8_t, const uint8_t*) {
+        ackLatencyMsSum += gameEventSentTimer.getElapsedTime();
+        ackCount++;
     });
     // The radio's delivery report is this channel's ack; there is no reply
     // packet. Latency is read here because the channel reports delivery but does
@@ -178,27 +189,20 @@ void PosseManager::sendGameEventToSupporters(ChainGameEventType eventType) {
     // already resolved; a late DRAW would disarm a supporter who just
     // entered a new COUNTDOWN. Keep them fire-and-forget: seqId=0.
     if (eventType == ChainGameEventType::WIN || eventType == ChainGameEventType::LOSS) {
-        payload.seqId = nextGameEventSeqId++;
-        if (nextGameEventSeqId == 0) nextGameEventSeqId = 1;
         gameEventSentTimer.setTimer(0);
         // A newer terminal event obsoletes the previous one for every supporter
         // at once: the supporter's screen shows the latest result, so an older
         // retransmit landing afterwards would flip it back. Dropping the prior
-        // fan-out is what SendMode::SUPERSEDE_PER_TARGET does for unicast.
-        resender.cancelAll(PktType::kChainGameEvent);
-        resender.sendBroadcast(peers, PktType::kChainGameEvent, payload.seqId,
-                               reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
+        // fan-out is what SUPERSEDE_PER_TARGET does for unicast.
+        gameEventChannel.cancelAll();
+        gameEventChannel.sendBroadcast(peers, payload);
     } else {
         // Fire-and-forget: no seqId, no ack owed, so it goes straight out. One
         // broadcast frame either way — addressing a supporter three cables away
         // by unicast costs a peer-table slot per device in the chain and the
         // table holds 20. Supporters keep only the events whose challengerMac
         // matches the challenger they follow.
-        wirelessManager->sendEspNowData(
-            wirelessManager->getBroadcastAddress(),
-            PktType::kChainGameEvent,
-            reinterpret_cast<const uint8_t*>(&payload),
-            sizeof(payload));
+        gameEventChannel.sendUnsequenced(wirelessManager->getBroadcastAddress(), payload);
     }
 
     // After the send, never before: the recipients above are the join roster and
@@ -209,23 +213,26 @@ void PosseManager::sendGameEventToSupporters(ChainGameEventType eventType) {
     }
 }
 
-void PosseManager::sendGameEventAck(const uint8_t* toMac, uint8_t seqId) {
-    if (toMac == nullptr || seqId == 0) return;
-    ChainGameEventAckPayload ack{};
-    ack.seqId = seqId;
-    wirelessManager->sendEspNowData(
-        toMac, PktType::kChainGameEventAck,
-        reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
-}
+void PosseManager::onGameEventFrame(const uint8_t* fromMac, const ChainGameEventPayload& payload) {
+    // The frame is broadcast, so every chain in radio range hears it. The
+    // challenger it names is the only thing that says whether it is ours.
+    if (!isEventFromOwnChallenger(payload.challengerMac)) return;
 
-void PosseManager::onChainGameEventAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    if (fromMac == nullptr || seqId == 0) return;
-    // A broadcast carries no per-member delivery evidence from the radio, so
-    // this reply is the only thing that clears a supporter's slot.
-    if (resender.onAck(PktType::kChainGameEvent, seqId, fromMac)) {
-        ackLatencyMsSum += gameEventSentTimer.getElapsedTime();
-        ackCount++;
-    }
+    // Ahead of the listener and independent of it: a COUNTDOWN wipes the
+    // challenger's roll call whether or not this device is watching for it, and a
+    // confirm still held here would then re-register a press for a round the
+    // supporter has not answered.
+    onChainGameEventReceived(payload.event_type);
+
+    // Out-of-state events are the listener's to drop; the challenger's retry
+    // machine bounds the traffic cost.
+    if (onGameEvent) onGameEvent(payload.event_type, fromMac);
+
+    // Acked whether or not anything was watching for it: not acking after
+    // leaving the state would let the challenger keep retrying a WIN/LOSS we
+    // already received and cannot act on. seqId 0 is the fire-and-forget
+    // sentinel and owes nothing.
+    if (payload.seqId != 0) gameEventChannel.ack(fromMac, payload.seqId);
 }
 
 void PosseManager::sendConfirm() {
@@ -253,7 +260,7 @@ void PosseManager::resendConfirm() {
 void PosseManager::onChainGameEventReceived(uint8_t eventType) {
     if (static_cast<ChainGameEventType>(eventType) != ChainGameEventType::COUNTDOWN) return;
     confirmSent = false;
-    resender.cancelAll(PktType::kChainConfirm);
+    chainConfirmChannel.cancelAll();
 }
 
 void PosseManager::onConfirmReceived(const uint8_t* originatorMac) {
@@ -333,8 +340,8 @@ void PosseManager::onChainStateChanged() {
     } else {
         // Clear confirmSent so patching into another chain mid-round cannot forward a prior press.
         confirmSent = false;
-        resender.cancelAll(PktType::kChainConfirm);
-        resender.cancelAll(PktType::kChainJoin);
+        chainConfirmChannel.cancelAll();
+        chainJoinChannel.cancelAll();
     }
 }
 
@@ -381,8 +388,8 @@ void PosseManager::onRoleAnnounceReceived(
     // the zero would cascade it onward as this device's challenger.
     if (MacToUInt64(announcedChallengerMac) == 0) {
         challengerMac.reset();
-        resender.cancelAll(PktType::kChainConfirm);
-        resender.cancelAll(PktType::kChainJoin);
+        chainConfirmChannel.cancelAll();
+        chainJoinChannel.cancelAll();
         if (isSupporter()) broadcastRoleAndChallenger();
         return;
     }
@@ -392,8 +399,8 @@ void PosseManager::onRoleAnnounceReceived(
     bool changed = !challengerMac.has_value() || *challengerMac != newMac;
     challengerMac = newMac;
     if (changed) {
-        resender.cancelAll(PktType::kChainConfirm);
-        resender.cancelAll(PktType::kChainJoin);
+        chainConfirmChannel.cancelAll();
+        chainJoinChannel.cancelAll();
     }
     if (!isSupporter()) return;
     const bool cascadeInFlight = supporterAnnounce.has_value() &&
@@ -455,10 +462,6 @@ void PosseManager::sync() {
     if (rdc->isInRing() != wasInRing) {
         onChainStateChanged();
     }
-
-    // The role announce clears on SEND_SUCCESS; the WIN/LOSS fan-out clears one
-    // supporter at a time, since a broadcast carries no per-member evidence.
-    resender.sync();
 
     if (roleAnnounceBackstopTimer.expired()) {
         roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);

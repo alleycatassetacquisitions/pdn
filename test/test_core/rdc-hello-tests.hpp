@@ -106,11 +106,10 @@ public:
     }
 
     /**
-     * The RDC's owned transport, reached via friendship so a test can inject
-     * SEND_SUCCESS (onSendResult) and inbound contexts (deliverIncoming) without a
-     * radio. Not part of the production API.
+     * The device's shared transport, so a test can inject SEND_SUCCESS
+     * (onSendResult) and inbound contexts (deliverIncoming) without a radio.
      */
-    ReliableTransport* transport() { return rdc.transport; }
+    ReliableTransport* transport() { return device.wirelessManager->getReliableTransport(); }
 
     MockDevice device;
     FakePlatformClock* fakeClock = nullptr;
@@ -2051,6 +2050,7 @@ inline void rdcBackToBackReportsBothRetryToHead(RDCHelloTests* suite) {
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
     suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
     suite->rdc.sync(&suite->device);
+    suite->device.wirelessManager->sync();
     EXPECT_EQ(forwarded.count, 4);
 }
 

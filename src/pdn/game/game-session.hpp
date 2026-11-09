@@ -39,7 +39,7 @@ public:
     /** Drops the callbacks that capture `this`, then frees the managers it owns. */
     ~GameSession();
 
-    /** Drives the session's retry machines and the periodic retry stats line. */
+    /** Drives the managers' per-tick logic and the periodic retry stats line. */
     void sync();
 
     /** The manager bundle every gameplay state is constructed from. */
@@ -53,8 +53,6 @@ private:
      */
     SupporterReady* getMountedSupporterReady();
 
-    void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void logRetryStats();
@@ -68,7 +66,7 @@ private:
         PktType type;
         PeerCommsInterface::PacketCallback handler;
     };
-    static const std::array<PacketRoute, 4>& packetRoutes();
+    static const std::array<PacketRoute, 2>& packetRoutes();
 
     /**
      * Wraps a member handler in the C-style callback the radio takes. The member

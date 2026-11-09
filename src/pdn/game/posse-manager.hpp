@@ -11,7 +11,6 @@
 #include "device/wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/serial-wrapper.hpp"
-#include "wireless/resender.hpp"
 #include "wireless/reliable-channel.hpp"
 
 enum class ChainGameEventType : uint8_t {
@@ -37,6 +36,10 @@ struct ChainGameEventPayload {
 
 class PosseManager {
 public:
+    /** A chain game event from the challenger this device follows, after the posse has applied it.
+     */
+    using GameEventListener = std::function<void(uint8_t eventType, const uint8_t* fromMac)>;
+
     /** Requires a live rdc and owns its single-subscriber topology/context callback slots. */
     PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
     /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
@@ -71,14 +74,12 @@ public:
      */
     void onChainGameEventReceived(uint8_t eventType);
 
-    // Supporter-side: ACK a received WIN/LOSS game event back to the
-    // challenger so it stops retransmitting. Called from GameSession's packet
-    // handler when the incoming payload has seqId != 0.
-    void sendGameEventAck(const uint8_t* toMac, uint8_t seqId);
-
-    // Challenger-side: called when a supporter's ACK arrives. Clears the
-    // matching pending game event so retransmission stops.
-    void onChainGameEventAckReceived(const uint8_t* fromMac, uint8_t seqId);
+    /**
+     * Registers the one listener told of each admitted game event, after
+     * onChainGameEventReceived has applied it and before the frame is acked.
+     * The session routes it to whichever state is watching for it.
+     */
+    void setOnGameEvent(GameEventListener listener) { onGameEvent = std::move(listener); }
 
     /**
      * True when a broadcast game event names the challenger this device follows.
@@ -122,15 +123,16 @@ public:
         uint32_t ackLatencyMsSum = 0;
         uint32_t ackCount = 0;
     };
-    /** Cumulative resender counts plus delivery latency sampled on kRoleAnnounce (to SEND_SUCCESS) and kChainGameEvent (to Ack). */
+    /** Cumulative transport counts plus delivery latency sampled on kRoleAnnounce (to SEND_SUCCESS)
+     * and kChainGameEvent (to its ack). */
     RetryStats getRetryStats() const {
-        const Resender::Stats& carried = resender.getStats();
+        const Resender::Stats& carried = wirelessManager->getReliableTransport()->getStats();
         return {carried.sends, carried.retries, carried.abandons,
                 ackLatencyMsSum, ackCount};
     }
 
 private:
-    // Delivery-time samples only; the retry counts live on the Resender.
+    // Delivery-time samples only; the retry counts live on the transport.
     uint32_t ackLatencyMsSum = 0;
     uint32_t ackCount = 0;
     Player* player;
@@ -204,13 +206,14 @@ private:
     };
     std::optional<RoleAnnounceState> supporterAnnounce;
 
-    uint8_t nextGameEventSeqId = 1;
-
-    Resender resender;
-
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
     ReliableChannel<ChainConfirmPayload> chainConfirmChannel;
     ReliableChannel<ChainJoinPayload> chainJoinChannel;
+    ReliableChannel<ChainGameEventPayload> gameEventChannel;
+    GameEventListener onGameEvent;
+
+    // Every game event frame the radio heard, ours or a neighbouring chain's.
+    void onGameEventFrame(const uint8_t* fromMac, const ChainGameEventPayload& payload);
 
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 

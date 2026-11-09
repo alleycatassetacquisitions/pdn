@@ -155,7 +155,7 @@ TEST_F(SymbolWirelessTests, aNewerCommandSupersedesAnOlderOnesRetries) {
     ASSERT_EQ(sent.size(), 1u);
 
     fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
-    manager->sync();
+    wirelessManager->sync();
     ASSERT_GE(sent.size(), 2u);
 
     manager->sendPacket(SMCommand::SYMBOLS_REFRESHED, SymbolId::SYMBOL_A,
@@ -163,7 +163,7 @@ TEST_F(SymbolWirelessTests, aNewerCommandSupersedesAnOlderOnesRetries) {
     const size_t afterRefresh = sent.size();
 
     fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 2 + 1);
-    manager->sync();
+    wirelessManager->sync();
 
     ASSERT_GT(sent.size(), afterRefresh) << "the refresh itself never retransmitted";
     for (size_t i = afterRefresh; i < sent.size(); ++i) {
@@ -183,7 +183,7 @@ TEST_F(SymbolWirelessTests, clearingCallbacksCancelsPendingRetries) {
 
     manager->clearCallback();
     fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
-    manager->sync();
+    wirelessManager->sync();
 
     EXPECT_EQ(sent.size(), 1u);
 }
@@ -208,13 +208,13 @@ TEST_F(SymbolWirelessTests, inboundRefreshCancelsOnlyWhenCallbackRegisteredForTh
     deliver(otherJackPeer, refresh);
 
     fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
-    manager->sync();
+    wirelessManager->sync();
     ASSERT_EQ(sent.size(), 2u);
 
     refresh.seqId = 2;
     deliver(fdnPeer, refresh);
 
     fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 2 + 1);
-    manager->sync();
+    wirelessManager->sync();
     EXPECT_EQ(sent.size(), 2u);
 }

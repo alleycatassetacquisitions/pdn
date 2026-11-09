@@ -14,7 +14,6 @@
 #include "game/player-types.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/reliable-channel.hpp"
-#include "wireless/resender.hpp"
 
 /**
  * FDN-side player provisioning coordinator.
@@ -33,9 +32,8 @@ public:
     FdnProvisioningManager(WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
         : wirelessManager(wirelessManager)
         , rdc(rdc)
-        , resender(wirelessManager)
-        , requestChannel(wirelessManager, &resender, PktType::kPlayerProvisionRequest, nullptr)
-        , replyChannel(wirelessManager, &resender, PktType::kPlayerProvision, nullptr) {
+        , requestChannel(wirelessManager, PktType::kPlayerProvisionRequest)
+        , replyChannel(wirelessManager, PktType::kPlayerProvision) {
         requestChannel.onReceive(
         [this](const uint8_t* fromMac, const PlayerProvisionRequestPacket& request) {
             onProvisionRequest(fromMac, request);
@@ -43,13 +41,12 @@ public:
     }
 
     /**
-     * Pumps reply retries and ends a lookup that has run past
-     * PROVISION_LOOKUP_TIMEOUT_MS. Leaving Wi-Fi fails the queued request, which
-     * clears the lookup and replies LOOKUP_FAILED; without it an unreachable AP
-     * keeps the FDN deaf to ESP-NOW. Call every tick.
+     * Ends a lookup that has run past PROVISION_LOOKUP_TIMEOUT_MS. Leaving
+     * Wi-Fi fails the queued request, which clears the lookup and replies
+     * LOOKUP_FAILED; without it an unreachable AP keeps the FDN deaf to
+     * ESP-NOW. Call every tick.
      */
     void sync() {
-        resender.sync();
         if (lookupInFlight && lookupTimer.expired()) {
             LOG_W("FDN_PROVISION", "Player lookup timed out");
             lookupTimer.invalidate();
@@ -151,7 +148,6 @@ private:
 
     WirelessManager* wirelessManager = nullptr;
     RemoteDeviceCoordinator* rdc = nullptr;
-    Resender resender;
     ReliableChannel<PlayerProvisionRequestPacket> requestChannel;
     ReliableChannel<PlayerProvisionPacket> replyChannel;
     bool lookupInFlight = false;
