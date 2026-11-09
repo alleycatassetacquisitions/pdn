@@ -6,15 +6,17 @@
 
 IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
                      RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
-                     SimpleTimer* uploadTimer)
+                     FdnProvisioningManager* fdnProvisioningManager, SimpleTimer* uploadTimer)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::IDLE)
     , remotePlayerManager(remotePlayerManager)
     , fdnMatchSpool(fdnMatchSpool)
+    , fdnProvisioningManager(fdnProvisioningManager)
     , uploadTimer(uploadTimer) {}
 
 IdleState::~IdleState() {
     remotePlayerManager = nullptr;
     fdnMatchSpool = nullptr;
+    fdnProvisioningManager = nullptr;
     uploadTimer = nullptr;
 }
 
@@ -52,5 +54,8 @@ bool IdleState::transitionToPlayerDetected() {
 }
 
 bool IdleState::transitionToUploadPending() {
-    return uploadTimer->expired() && fdnMatchSpool->getStagedCount() > 0;
+    // A lookup left running by an unplugged PDN would fail the upload when it ends
+    // and switches the radio back to ESP-NOW, so the upload waits it out (<= 8 s).
+    return uploadTimer->expired() && fdnMatchSpool->getStagedCount() > 0 &&
+           !fdnProvisioningManager->isLookupInFlight();
 }

@@ -28,7 +28,7 @@ public:
     /** FDN home screen; also schedules match spool uploads. */
     IdleState(RemotePlayerManager* remotePlayerManager,
               RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
-              SimpleTimer* uploadTimer);
+              FdnProvisioningManager* fdnProvisioningManager, SimpleTimer* uploadTimer);
     ~IdleState();
 
     void onStateMounted(FDN* fdn) override;
@@ -41,6 +41,7 @@ public:
 private:
     RemotePlayerManager* remotePlayerManager;
     FdnMatchSpool* fdnMatchSpool;
+    FdnProvisioningManager* fdnProvisioningManager;
     SimpleTimer* uploadTimer;
 };
 
