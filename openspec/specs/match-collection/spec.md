@@ -8,7 +8,7 @@ This specification states the required outcomes, invariants, and environmental c
 
 Terms used throughout:
 
-- **Match record**: the durable record of a completed standalone 1v1 match, containing the 16-byte match UUID, both players' 16-byte UUIDs, both players' 16-byte team UUIDs (or nil UUID when unassigned), both players' 6-byte MAC addresses, the 16-byte winner player UUID (determined from the players' posse-boosted signed effective draw times), both players' unsigned raw reaction times in milliseconds ($\ge 0\text{ ms}$), and the UTC occurrence timestamp in epoch milliseconds.
+- **Match record**: the durable record of a completed standalone 1v1 match, containing the 16-byte match UUID, both players' 16-byte UUIDs, both players' 16-byte team UUIDs (or nil UUID when unassigned), both players' 6-byte MAC addresses, the 16-byte winner player UUID (determined from the players' posse-boosted effective draw times), both players' raw reaction times in milliseconds, and the UTC occurrence timestamp in epoch milliseconds.
 - **Match sequence number**: a monotonically increasing 1-based unsigned integer assigned to each standalone match persisted on a PDN.
 - **Collected high-water mark**: the highest match sequence number confirmed ingested by an FDN from a PDN.
 
