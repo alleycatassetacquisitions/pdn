@@ -31,7 +31,7 @@ inline constexpr const char PREF_SEQ_KEY[] = "seq";
 inline constexpr const char PREF_COLLECTED_SEQ_KEY[] = "collectedSeq";
 inline constexpr const char PREF_MATCH_KEY_PREFIX[] = "match_";
 inline constexpr uint8_t MATCH_RING_CAPACITY = 32;
-inline constexpr unsigned long MATCH_TRANSFER_RETRY_MS = 100;
+inline constexpr unsigned long MATCH_TRANSFER_WINDOW_MS = 100;
 
 struct LastMatchDisplay {
     unsigned long myTimeMs = 0;       // boosted draw time, as used for winner calc

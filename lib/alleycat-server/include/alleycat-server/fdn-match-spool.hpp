@@ -79,7 +79,7 @@ public:
         Match incoming{};
         incoming.deserialize(pkt.matchData);
 
-        // Checked before the dedup scan, which a full spool's 10 Hz resends would repeat.
+        // Checked before the dedup scan so a full spool pays no scan per resend.
         if (getStagedCount() >= FDN_MATCH_SPOOL_CAPACITY) {
             LOG_W("FDN_SPOOL", "Spool full; withholding ack for seq %u",
                   static_cast<unsigned>(pkt.matchSeq));

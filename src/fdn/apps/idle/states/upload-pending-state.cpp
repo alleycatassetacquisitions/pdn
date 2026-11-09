@@ -23,10 +23,12 @@ void UploadPendingState::onStateMounted(FDN* fdn) {
     // One attempt per cycle, whatever its outcome.
     uploadTimer->setTimer(UPLOAD_CHECK_INTERVAL_MS);
     // One request carries the batch; queuing it switches the radio to Wi-Fi.
-    // Set first: a request that fails to queue completes inside uploadPendingBatch.
+    // Set first: a request that fails to queue completes inside uploadPendingBatch. A
+    // completion after the fallback timeout or dismount is ignored.
     phase = Phase::UPLOADING;
-    if (!fdnMatchSpool->uploadPendingBatch(
-        [this](bool uploaded) { phase = uploaded ? Phase::UPLOADED : Phase::FAILED; })) {
+    if (!fdnMatchSpool->uploadPendingBatch([this](bool uploaded) {
+            if (phase == Phase::UPLOADING) phase = uploaded ? Phase::UPLOADED : Phase::FAILED;
+        })) {
         phase = Phase::NOT_QUEUED;
     }
 

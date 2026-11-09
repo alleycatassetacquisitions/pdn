@@ -363,7 +363,7 @@ void MatchManager::syncFdnMatchTransfer() {
     }
     // NVS is polled and records sent at most once per window; an ack ends it early.
     if (transferWindowTimer.isRunning() && !transferWindowTimer.expired()) return;
-    transferWindowTimer.setTimer(MATCH_TRANSFER_RETRY_MS);
+    transferWindowTimer.setTimer(MATCH_TRANSFER_WINDOW_MS);
 
     const uint32_t collected = getCollectedHighWaterMark();
     if (collected >= getMatchSequenceNumber()) return;

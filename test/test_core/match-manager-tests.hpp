@@ -962,7 +962,7 @@ TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
     matchManager->sync();
     matchManager->sync();
     EXPECT_EQ(sends, 1) << "one send per window, not per tick";
-    fakeClock->advance(MATCH_TRANSFER_RETRY_MS + 1);
+    fakeClock->advance(MATCH_TRANSFER_WINDOW_MS + 1);
     matchManager->sync();
     EXPECT_EQ(sends, 2) << "an unacked record is resent once the window ends";
 
@@ -970,7 +970,7 @@ TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
     ack.matchSeq = 1;
     device.mockPeerComms->triggerPacketCallback(
     fdnMac, PktType::kMatchCollectionAck, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
-    fakeClock->advance(MATCH_TRANSFER_RETRY_MS + 1);
+    fakeClock->advance(MATCH_TRANSFER_WINDOW_MS + 1);
     matchManager->sync();
     EXPECT_EQ(sends, 2) << "an acked record is not resent";
     matchManager->initialize(player, &mockStorage);
