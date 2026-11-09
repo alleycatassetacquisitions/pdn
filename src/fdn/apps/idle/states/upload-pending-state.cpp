@@ -16,9 +16,6 @@ UploadPendingState::~UploadPendingState() {
 
 void UploadPendingState::onStateMounted(FDN* fdn) {
     contentReady = false;
-    showingFailure = false;
-    uploadDone = false;
-    uploadFailed = false;
 
     LOG_I(TAG, "Mounted — %u staged match(es)",
           static_cast<unsigned>(fdnMatchSpool->getStagedCount()));
@@ -26,10 +23,12 @@ void UploadPendingState::onStateMounted(FDN* fdn) {
     // One attempt per cycle, whatever its outcome.
     uploadTimer->setTimer(UPLOAD_CHECK_INTERVAL_MS);
     // One request carries the batch; queuing it switches the radio to Wi-Fi.
-    uploadQueued = fdnMatchSpool->uploadPendingBatch([this](bool uploaded) {
-        uploadDone = true;
-        uploadFailed = !uploaded;
-    });
+    // Set first: a request that fails to queue completes inside uploadPendingBatch.
+    phase = Phase::UPLOADING;
+    if (!fdnMatchSpool->uploadPendingBatch(
+        [this](bool uploaded) { phase = uploaded ? Phase::UPLOADED : Phase::FAILED; })) {
+        phase = Phase::NOT_QUEUED;
+    }
 
     fallbackTimer.setTimer(FALLBACK_TIMEOUT_MS);
     glyphTimer.setTimer(GLYPH_LOADING_DURATION_MS);
@@ -37,13 +36,9 @@ void UploadPendingState::onStateMounted(FDN* fdn) {
 }
 
 void UploadPendingState::onStateLoop(FDN* fdn) {
-    if (showingFailure || !uploadQueued) {
-        return;
-    }
-
-    const bool timedOut = !uploadDone && fallbackTimer.expired();
-    if ((uploadDone && uploadFailed) || timedOut) {
-        showingFailure = true;
+    if (phase == Phase::UPLOADING && fallbackTimer.expired()) phase = Phase::FAILED;
+    if (phase == Phase::FAILED) {
+        phase = Phase::SHOWING_FAILURE;
         fdn->getWirelessManager()->enablePeerCommsMode();
         fdn->getDisplay()
         ->invalidateScreen()
@@ -55,6 +50,7 @@ void UploadPendingState::onStateLoop(FDN* fdn) {
         return;
     }
 
+    if (phase != Phase::UPLOADING) return;
     if (isInGlyphLoadingPhase(fdn->getDisplay(), glyphTimer)) return;
 
     if (!contentReady) {
@@ -67,20 +63,16 @@ void UploadPendingState::onStateLoop(FDN* fdn) {
 }
 
 void UploadPendingState::onStateDismounted(FDN* fdn) {
-    LOG_I(TAG, "Dismounted — upload %s", uploadDone ? (uploadFailed ? "failed" : "done") : "open");
+    LOG_I(TAG, "Dismounted — upload %s", phase == Phase::UPLOADED ? "done" : "not done");
     fdn->getWirelessManager()->enablePeerCommsMode();
     glyphTimer.invalidate();
     fallbackTimer.invalidate();
     failureTimer.invalidate();
     contentReady = false;
-    showingFailure = false;
-    uploadQueued = false;
-    uploadDone = false;
-    uploadFailed = false;
+    phase = Phase::NOT_QUEUED;
 }
 
 bool UploadPendingState::transitionToIdle() {
-    if (!uploadQueued) return true;
-    if (showingFailure) return failureTimer.expired();
-    return uploadDone && !uploadFailed;
+    if (phase == Phase::SHOWING_FAILURE) return failureTimer.expired();
+    return phase == Phase::NOT_QUEUED || phase == Phase::UPLOADED;
 }

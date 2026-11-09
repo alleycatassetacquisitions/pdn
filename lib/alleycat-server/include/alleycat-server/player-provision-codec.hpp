@@ -20,11 +20,9 @@ inline PlayerProvisionPacket encode(const Player& player) {
     pkt.status = static_cast<uint8_t>(ProvisionStatus::PROFILE_DELIVERED);
     memcpy(pkt.playerId, player.getServerPlayerId().bytes, UUIDBytes::SIZE);
     strncpy(pkt.playerName, player.getServerPlayerName(), sizeof(pkt.playerName) - 1);
-    pkt.playerName[sizeof(pkt.playerName) - 1] = '\0';
     const Team& team = player.getRegistrationTeam();
     memcpy(pkt.teamId, team.id.bytes, UUIDBytes::SIZE);
     strncpy(pkt.teamName, team.name, sizeof(pkt.teamName) - 1);
-    pkt.teamName[sizeof(pkt.teamName) - 1] = '\0';
 
     const std::vector<Affiliation>& affiliations = player.getRegistrationAffiliations();
     const uint8_t count =
@@ -34,12 +32,10 @@ inline PlayerProvisionPacket encode(const Player& player) {
         memcpy(pkt.affiliations[i].categoryId, affiliations[i].categoryId.bytes, UUIDBytes::SIZE);
         strncpy(pkt.affiliations[i].categoryName, affiliations[i].categoryName,
                 sizeof(pkt.affiliations[i].categoryName) - 1);
-        pkt.affiliations[i].categoryName[sizeof(pkt.affiliations[i].categoryName) - 1] = '\0';
         memcpy(pkt.affiliations[i].affiliationId, affiliations[i].affiliationId.bytes,
                UUIDBytes::SIZE);
         strncpy(pkt.affiliations[i].affiliationName, affiliations[i].affiliationName,
                 sizeof(pkt.affiliations[i].affiliationName) - 1);
-        pkt.affiliations[i].affiliationName[sizeof(pkt.affiliations[i].affiliationName) - 1] = '\0';
     }
     return pkt;
 }
@@ -61,7 +57,6 @@ inline bool decode(const PlayerProvisionPacket& pkt, Player& outPlayer) {
     }
     char playerName[PlayerLimits::NAME_BUFFER_SIZE] = {};
     strncpy(playerName, pkt.playerName, PlayerLimits::NAME_BUFFER_SIZE - 1);
-    playerName[PlayerLimits::NAME_BUFFER_SIZE - 1] = '\0';
     if (playerName[0] == '\0') {
         return false;
     }
@@ -69,7 +64,6 @@ inline bool decode(const PlayerProvisionPacket& pkt, Player& outPlayer) {
     Team team{};
     memcpy(team.id.bytes, pkt.teamId, UUIDBytes::SIZE);
     strncpy(team.name, pkt.teamName, PlayerLimits::NAME_BUFFER_SIZE - 1);
-    team.name[PlayerLimits::NAME_BUFFER_SIZE - 1] = '\0';
 
     const size_t count = std::min<size_t>(pkt.affiliationCount, PlayerLimits::MAX_AFFILIATIONS);
     std::vector<Affiliation> affiliations;
@@ -79,11 +73,9 @@ inline bool decode(const PlayerProvisionPacket& pkt, Player& outPlayer) {
         memcpy(aff.categoryId.bytes, pkt.affiliations[i].categoryId, UUIDBytes::SIZE);
         strncpy(aff.categoryName, pkt.affiliations[i].categoryName,
                 PlayerLimits::NAME_BUFFER_SIZE - 1);
-        aff.categoryName[PlayerLimits::NAME_BUFFER_SIZE - 1] = '\0';
         memcpy(aff.affiliationId.bytes, pkt.affiliations[i].affiliationId, UUIDBytes::SIZE);
         strncpy(aff.affiliationName, pkt.affiliations[i].affiliationName,
                 PlayerLimits::NAME_BUFFER_SIZE - 1);
-        aff.affiliationName[PlayerLimits::NAME_BUFFER_SIZE - 1] = '\0';
         affiliations.push_back(aff);
     }
 

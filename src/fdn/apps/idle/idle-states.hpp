@@ -139,11 +139,9 @@ private:
     SimpleTimer glyphTimer;
     SimpleTimer fallbackTimer;
     SimpleTimer failureTimer;
+    enum class Phase : uint8_t { NOT_QUEUED, UPLOADING, UPLOADED, FAILED, SHOWING_FAILURE };
+    Phase phase = Phase::NOT_QUEUED;
     bool contentReady = false;
-    bool showingFailure = false;
-    bool uploadQueued = false;
-    bool uploadDone = false;
-    bool uploadFailed = false;
 
     static constexpr int FALLBACK_TIMEOUT_MS = 15000;
     static constexpr int FAILURE_DISPLAY_MS = 2000;

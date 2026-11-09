@@ -37,7 +37,6 @@ void IdleState::onStateMounted(FDN* fdn) {
 void IdleState::onStateLoop(FDN* fdn) {
     (void)fdn;
     remotePlayerManager->Update();
-    // Nothing to send this cycle; check again next cycle.
     if (uploadTimer->expired() && fdnMatchSpool->getStagedCount() == 0) {
         uploadTimer->setTimer(UPLOAD_CHECK_INTERVAL_MS);
     }
