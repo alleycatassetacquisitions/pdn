@@ -12,6 +12,7 @@ The FDN has no credential reader yet, so a player cannot present a credential at
 
 ### Modified Capabilities
 - `player-provisioning`: PIN entry on the PDN, forwarded to the cabled FDN, and the demo PIN.
+- `quickdraw-match`: a demo player with a nil player UUID can play; its matches are not stored.
 - `fdn-apps`: the FDN registration screen for a cabled unprovisioned PDN.
 
 ## Impact

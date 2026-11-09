@@ -28,6 +28,7 @@ void FetchUserState::onStateMounted(PDN* pdn) {
     transitionToWelcomeState = false;
     transitionToPinEntryState = false;
     requestSent = false;
+    requestEverSent = false;
     remoteDeviceCoordinator = pdn->getRemoteDeviceCoordinator();
     provisioningClient->setOnReply(
     [this](const uint8_t* fromMac, const PlayerProvisionPacket& pkt) {
@@ -53,7 +54,10 @@ void FetchUserState::onStateLoop(PDN* pdn) {
         return;
     }
 
-    // The FDN may be cabled after the PIN was entered.
+    // The FDN may be cabled after the PIN was entered, or deaf on Wi-Fi when it was sent.
+    if (provisioningClient->takeRequestAbandoned()) {
+        requestSent = false;
+    }
     if (!requestSent) {
         requestProvisionFromCabledFdn();
     }
@@ -77,6 +81,7 @@ void FetchUserState::onStateDismounted(PDN* pdn) {
     transitionToWelcomeState = false;
     transitionToPinEntryState = false;
     requestSent = false;
+    requestEverSent = false;
     fetchTimer.invalidate();
     failurePageTimer.invalidate();
 }
@@ -89,7 +94,12 @@ void FetchUserState::requestProvisionFromCabledFdn() {
         return;
     }
     provisioningClient->sendRequest(fdnMac, playerProvider->getRegistrationPin());
+    // The reply window runs from the first request, which can go out after the PIN was entered.
+    if (!requestEverSent) {
+        fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
+    }
     requestSent = true;
+    requestEverSent = true;
 }
 
 void FetchUserState::onProvisionPacket(const uint8_t* fromMac, const PlayerProvisionPacket& pkt) {

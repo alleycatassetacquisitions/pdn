@@ -110,6 +110,7 @@ PlayerProfile Player::toProfile() const {
                          ? static_cast<uint16_t>(parsed)
                          : 0xFFFF;
     }
+    profile.registered = registrationProfileStored ? 1 : 0;
     profile.gameRole = hunter ? 1 : 0;
     profile.allegiance = static_cast<uint8_t>(allegiance);
     // snprintf both truncates to the fixed wire width and NUL-terminates.

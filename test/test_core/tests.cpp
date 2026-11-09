@@ -1115,6 +1115,10 @@ TEST_F(PlayerFetchTestSuite, fdnSeesUnprovisionedPdnUntilItRegisters) {
     fdnSeesUnprovisionedPdnUntilItRegisters(this);
 }
 
+TEST_F(PlayerFetchTestSuite, fetchUserResendsAbandonedRequestWithinOneReplyWindow) {
+    fetchUserResendsAbandonedRequestWithinOneReplyWindow(this);
+}
+
 TEST_F(PlayerFetchTestSuite, fdnReportsLookupResultAndResendsUnconfirmedReply) {
     fdnReportsLookupResultAndResendsUnconfirmedReply(this);
 }

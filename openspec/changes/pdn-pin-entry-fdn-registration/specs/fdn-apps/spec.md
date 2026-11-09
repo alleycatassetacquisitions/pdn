@@ -2,13 +2,13 @@
 
 ### Requirement: Registration screen for a cabled unprovisioned PDN
 
-When a PDN whose connection context carries a nil player UUID becomes Connected on an FDN serial jack while the FDN is in the idle or player-detected state, the FDN SHALL show a registration screen ahead of any other cabled flow:
+When a PDN whose connection context shows no applied profile (unprovisioned, as distinct from a demo player) becomes Connected on an FDN serial jack while the FDN is in the idle or player-detected state, the FDN SHALL show a registration screen ahead of any other cabled flow:
 
 - While waiting for a lookup request, the FDN SHALL display `"REGISTER"` / `"ENTER CODE"`.
 - While a lookup for that PDN is in progress, the FDN SHALL display `"LOOKING"` / `"UP"`.
 - On a delivered profile, the FDN SHALL display `"WELCOME"` and the player's display name for `3000 ms`; on a lookup failure or timeout, `"UNABLE TO"` / `"LOCATE ASSET"` for `3000 ms`.
 - The FDN SHALL end a lookup that has not answered within `8000 ms` as a lookup failure.
-- The FDN SHALL leave the registration screen for the idle state when the PDN is unplugged, when a result has been shown, or when the cabled PDN's context no longer carries a nil player UUID.
+- The FDN SHALL leave the registration screen for the idle state when the PDN is unplugged, when a result has been shown, or, while waiting for a request, when the cabled PDN's context shows an applied profile.
 
 #### Scenario: Unprovisioned PDN plugged in shows the registration screen
 - **WHEN** an unprovisioned PDN becomes Connected on an idle FDN

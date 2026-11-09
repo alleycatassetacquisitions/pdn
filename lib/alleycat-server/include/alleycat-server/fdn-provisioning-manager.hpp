@@ -63,7 +63,7 @@ public:
     /** Sets the lookup-finished listener; nullptr clears it. */
     void setOnLookupDone(OnLookupDone listener) { onLookupDone = std::move(listener); }
 
-    /** @return true when a PDN with no server player id is Connected on an FDN jack. */
+    /** @return true when a PDN with no applied profile is Connected on an FDN jack. */
     bool hasUnprovisionedPdnCabled() {
         if (!rdc) return false;
         for (SerialIdentifier jack :
@@ -77,9 +77,8 @@ public:
             if (bytes == nullptr || length < sizeof(PlayerProfile)) continue;
             PlayerProfile profile{};
             memcpy(&profile, bytes, sizeof(profile));
-            UUIDBytes playerId{};
-            memcpy(playerId.bytes, profile.playerId, UUIDBytes::SIZE);
-            if (playerId.isZero()) return true;
+            // A demo player has no server id either, but is done registering.
+            if (profile.registered == 0) return true;
         }
         return false;
     }

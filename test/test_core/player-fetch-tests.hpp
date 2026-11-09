@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <set>
 
 #include "alleycat-protobuf-test-helpers.hpp"
 #include "alleycat-server/fdn-provisioning-manager.hpp"
@@ -390,9 +391,54 @@ inline void fdnSeesUnprovisionedPdnUntilItRegisters(PlayerFetchTestSuite* suite)
     suite->fdnRdc.setPeerProfile(SerialIdentifier::INPUT_JACK, profile);
     EXPECT_FALSE(fdnProv.hasUnprovisionedPdnCabled());
 
+    Player demo{};
+    Team hunter{};
+    strncpy(hunter.name, "Hunter", sizeof(hunter.name) - 1);
+    demo.applyRegistrationProfile(UUIDBytes(), "Demo", hunter, {});
+    suite->fdnRdc.setPeerProfile(SerialIdentifier::INPUT_JACK, demo.toProfile());
+    EXPECT_FALSE(fdnProv.hasUnprovisionedPdnCabled())
+    << "a demo player has no server id but is not waiting to register";
+
     suite->fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::DISCONNECTED);
     suite->fdnRdc.setPeerProfile(SerialIdentifier::INPUT_JACK, unregistered);
     EXPECT_FALSE(fdnProv.hasUnprovisionedPdnCabled()) << "only a Connected jack counts";
+}
+
+inline void fetchUserResendsAbandonedRequestWithinOneReplyWindow(PlayerFetchTestSuite* suite) {
+    std::vector<uint8_t> requestSeqIds;
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPlayerProvisionRequest, _, _))
+    .WillByDefault(
+    Invoke([&requestSeqIds](const uint8_t*, PktType, const uint8_t* data, const size_t) {
+        requestSeqIds.push_back(data[0]);
+        return 1;
+    }));
+    suite->cableFdn(false);
+    suite->playerProvider.setRegistrationPin("1234");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+
+    // Cabled late: the reply window starts with the request, not at mount.
+    suite->fakeClock->advance(9000);
+    suite->cableFdn(true);
+    fetch.onStateLoop(&suite->device);
+    ASSERT_EQ(requestSeqIds.size(), 1u);
+
+    // The FDN is deaf on Wi-Fi, so no SEND_SUCCESS: the radio gives up after 1500 ms.
+    for (int step = 0; step < 20; ++step) {
+        suite->fakeClock->advance(100);
+        fetch.onStateLoop(&suite->device);
+    }
+    std::set<uint8_t> distinct(requestSeqIds.begin(), requestSeqIds.end());
+    EXPECT_GE(distinct.size(), 2u) << "an abandoned request is sent again as a fresh frame";
+    EXPECT_FALSE(fetch.transitionToPinEntry()) << "11 s after mount, 2 s after the first send";
+
+    // Resends do not extend the window: it closes 10 s after the first send.
+    suite->fakeClock->advance(8100);
+    fetch.onStateLoop(&suite->device);
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch.transitionToPinEntry());
+    fetch.onStateDismounted(&suite->device);
 }
 
 inline void fdnReportsLookupResultAndResendsUnconfirmedReply(PlayerFetchTestSuite* suite) {

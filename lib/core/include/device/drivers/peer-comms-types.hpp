@@ -55,8 +55,9 @@ struct PlayerProfile {
     uint8_t allegiance;
     char faction[8];
     char name[16];
-    uint8_t playerId[16];  // nil while unregistered
+    uint8_t playerId[16];  // nil while unregistered, and for a demo player
     uint8_t teamId[16];    // nil when unassigned
+    uint8_t registered;    // 1 once a profile is applied, demo included
 } __attribute__((packed));
 
 // PDN-to-neighbour connection context. seqId is stamped by the ReliableChannel.
