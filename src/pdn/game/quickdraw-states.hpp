@@ -140,7 +140,8 @@ public:
     void onStateDismounted(PDN* pdn) override;
     bool transitionToIdle();
 
-    // Called by GameSession's chain-game-event packet handler.
+    /** A chain game event from the challenger this device follows, via
+     * PosseManager::setOnGameEvent. */
     void onChainGameEventReceived(uint8_t event_type, const uint8_t* senderMac);
 
 public:

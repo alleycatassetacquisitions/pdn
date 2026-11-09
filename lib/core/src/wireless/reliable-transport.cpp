@@ -30,21 +30,22 @@ ReliableTransport::~ReliableTransport() {
 
 void ReliableTransport::sync() { resender.sync(); }
 
-void ReliableTransport::attach(ReliableChannelBase* channel) {
+bool ReliableTransport::attach(ReliableChannelBase* channel) {
     const size_t slot = static_cast<size_t>(channel->type());
-    if (slot >= channels.size()) return;
+    if (slot >= channels.size()) return false;
     if (channels[slot] != nullptr) {
-        LOG_E(RELIABLE_TRANSPORT_TAG, "PktType %u claimed twice; newest channel takes it",
+        LOG_E(RELIABLE_TRANSPORT_TAG,
+              "PktType %u already claimed; second channel runs without a radio",
               (unsigned)channel->type());
+        return false;
     }
     channels[slot] = channel;
+    return true;
 }
 
-bool ReliableTransport::detach(ReliableChannelBase* channel) {
+void ReliableTransport::detach(ReliableChannelBase* channel) {
     const size_t slot = static_cast<size_t>(channel->type());
-    if (slot >= channels.size() || channels[slot] != channel) return false;
-    channels[slot] = nullptr;
-    return true;
+    if (slot < channels.size() && channels[slot] == channel) channels[slot] = nullptr;
 }
 
 ReliableChannelBase* ReliableTransport::channelFor(PktType type) const {

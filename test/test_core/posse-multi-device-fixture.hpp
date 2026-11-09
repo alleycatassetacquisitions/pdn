@@ -678,9 +678,7 @@ inline void posseMultiDeviceGameEventReachesDistantSupporter(PosseMultiDeviceFix
     MultiDeviceNode& challenger = suite->node(0);
     ASSERT_TRUE(challenger.posse->isChallenger());
 
-    // Observed through the posse's own listener, the production path: the
-    // channel decodes, the posse admits on challengerMac, then the listener
-    // runs. Installing a driver handler here would displace the channel's.
+    // Counted after admission, so a node only scores an event its posse took.
     std::vector<int> accepted(suite->nodeCount(), 0);
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         int* counter = &accepted[i];

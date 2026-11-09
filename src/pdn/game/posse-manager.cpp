@@ -207,7 +207,11 @@ void PosseManager::sendGameEventToSupporters(ChainGameEventType eventType) {
 }
 
 void PosseManager::onGameEventFrame(const uint8_t* fromMac, const ChainGameEventPayload& payload) {
+    // The frame is broadcast, so every chain in radio range hears it, and the
+    // ack below is a unicast to its source: a frame naming our challenger but
+    // sent from elsewhere would spend a peer-table slot on a stranger.
     if (!isEventFromOwnChallenger(payload.challengerMac)) return;
+    if (memcmp(fromMac, payload.challengerMac, 6) != 0) return;
 
     // Unconditional: a COUNTDOWN voids the standing confirm whether or not
     // SupporterReady is mounted to see it.

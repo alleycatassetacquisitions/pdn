@@ -56,8 +56,9 @@ public:
 
     /**
      * Claims `type` on wirelessManager's transport and installs the driver
-     * receive and send-status handlers. wirelessManager may be nullptr in
-     * probe-style unit tests; every use is then null-tolerant and nothing is sent.
+     * receive and send-status handlers. With a null wirelessManager (probe-style
+     * unit tests), or when `type` is already claimed on this device (a wiring
+     * bug, logged), the channel runs without a radio: nothing is sent or received.
      */
     ReliableChannelBase(WirelessManager* wirelessManager, PktType type, ChannelMode mode);
     /**

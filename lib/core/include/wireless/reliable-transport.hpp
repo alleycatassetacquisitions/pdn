@@ -63,12 +63,10 @@ private:
     friend class ReliableChannelBase;
 
     // One channel per PktType. A second channel on a claimed type is a wiring
-    // bug: it is logged, and the newest claimant owns the slot, matching what
-    // the driver's handler table does with the same collision. detach() says
-    // whether the channel still held its slot, so a displaced one tears down
-    // nothing that is now the claimant's.
-    void attach(ReliableChannelBase* channel);
-    bool detach(ReliableChannelBase* channel);
+    // bug: attach refuses it (logged), and that channel then runs without a
+    // radio, exactly as one built on a null WirelessManager does.
+    bool attach(ReliableChannelBase* channel);
+    void detach(ReliableChannelBase* channel);
     ReliableChannelBase* channelFor(PktType type) const;
 
     void onAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t len);

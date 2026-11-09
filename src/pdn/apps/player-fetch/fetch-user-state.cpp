@@ -107,11 +107,9 @@ void FetchUserState::onProvisionPacket(const uint8_t* fromMac, const PlayerProvi
         LOG_W(TAG, "Ignoring PlayerProvisionPacket for another PIN");
         return;
     }
-    // Answered, either way: a retry landing now would start a second lookup.
-    provisioningClient->cancelRequest();
-
     if (pkt.status == static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED)) {
         LOG_E(TAG, "FDN reported the lookup failed");
+        provisioningClient->cancelRequest();
         fetchTimer.invalidate();
         failurePagePending = true;
         return;
@@ -124,11 +122,14 @@ void FetchUserState::onProvisionPacket(const uint8_t* fromMac, const PlayerProvi
     }
 
     LOG_I(TAG, "Provisioned player: %s", player->getServerPlayerName());
+    // Answered: a retry landing now would start a second lookup on the FDN.
+    provisioningClient->cancelRequest();
     fetchTimer.invalidate();
     transitionToWelcomeState = true;
 }
 
 void FetchUserState::beginFailurePage(PDN* pdn) {
+    provisioningClient->cancelRequest();
     fetchTimer.invalidate();
     showingFailurePage = true;
     failurePageTimer.setTimer(FETCH_FAILURE_PAGE_TIMEOUT_MS);

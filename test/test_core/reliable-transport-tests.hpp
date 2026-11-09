@@ -109,6 +109,41 @@ TEST(ReliableTransportTest, aDestroyedChannelLeavesItsTypeUnclaimed) {
     PktType::kChainGameEvent, from, reinterpret_cast<const uint8_t*>(&p), sizeof(p)));
 }
 
+TEST(ReliableTransportTest, aSecondClaimOfAPktTypeRunsWithoutARadio) {
+    // Two owners of one PktType on one device is a wiring bug. The first keeps
+    // the type; the second neither sends nor receives, and its destruction
+    // leaves the first's registration alone.
+    ::testing::NiceMock<MockPeerComms> comms;
+    WirelessManager wm{&comms, nullptr};
+    RadioTap radio;
+    radio.attach(comms);
+    ON_CALL(comms, getPeerCommsState()).WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    const uint8_t peer[6] = {0x02, 0, 0, 0, 0, 0x0A};
+    TransportTestPayload p{};
+
+    ReliableChannel<TransportTestPayload> first(&wm, PktType::kChainGameEvent);
+    int firstDeliveries = 0;
+    first.onReceive([&](const uint8_t*, const TransportTestPayload&) { firstDeliveries++; });
+    {
+        ReliableChannel<TransportTestPayload> second(&wm, PktType::kChainGameEvent);
+        int secondDeliveries = 0;
+        second.onReceive([&](const uint8_t*, const TransportTestPayload&) { secondDeliveries++; });
+
+        second.sendReliable(peer, p);
+        EXPECT_TRUE(radio.frames.empty());
+        EXPECT_FALSE(second.isPending(peer));
+
+        wm.getReliableTransport()->deliverIncoming(PktType::kChainGameEvent, peer,
+                                                   reinterpret_cast<const uint8_t*>(&p), sizeof(p));
+        EXPECT_EQ(firstDeliveries, 1);
+        EXPECT_EQ(secondDeliveries, 0);
+    }
+
+    first.sendReliable(peer, p);
+    EXPECT_EQ(radio.frames.size(), 1u);
+    EXPECT_TRUE(first.isPending(peer));
+}
+
 TEST(ReliableTransportTest, sendReliableTriggersAck) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);

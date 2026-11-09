@@ -37,8 +37,11 @@ ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager, PktTy
     // whoever constructs it makes a second, undeclared step that every caller
     // has to imitate and any caller can forget.
     if (transport == nullptr) return;
+    if (!transport->attach(this)) {
+        transport = nullptr;
+        return;
+    }
     resender = &transport->resender;
-    transport->attach(this);
     wirelessManager->setEspNowPacketHandler(
     type,
     [](const uint8_t* src, const uint8_t* data, const size_t len, void* ctx) {
@@ -60,10 +63,8 @@ ReliableChannelBase::~ReliableChannelBase() {
     // records a send verdict, acting on both from the main loop, which
     // is also where channels are destroyed, so no dispatch can land mid-teardown.
     if (transport == nullptr) return;
-    // A channel displaced by a later claimant of its PktType owns nothing any
-    // more: the pending sends and the driver slots are the live channel's.
-    if (!transport->detach(this)) return;
     resender->cancelAll(packetType);
+    transport->detach(this);
     wirelessManager->clearEspNowPacketHandler(packetType);
     wirelessManager->clearEspNowSendStatusHandler(packetType);
 }
@@ -96,9 +97,6 @@ void ReliableChannelBase::ack(const uint8_t* toMac, uint8_t seqId) {
 }
 
 void ReliableChannelBase::onPacketAck(const uint8_t* fromMac, uint8_t seqId) {
-    // Anything in radio range can send one. A unicast channel's obligations are
-    // cleared by the radio alone, and on a fan-out only an ack that matches a
-    // recipient still owed is evidence of anything.
     if (channelMode != ChannelMode::FAN_OUT || resender == nullptr) return;
     if (!resender->onAck(packetType, seqId, fromMac)) return;
     if (onDeliveredCallback) onDeliveredCallback(seqId, fromMac);
