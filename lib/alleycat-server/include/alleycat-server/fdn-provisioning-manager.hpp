@@ -60,7 +60,11 @@ public:
     /** @return true while a PIN lookup is waiting on the server. */
     bool isLookupInFlight() const { return lookupInFlight; }
 
-    /** Sets the lookup-finished listener; nullptr clears it. */
+    /**
+     * Sets the lookup-finished listener; nullptr clears it. Without one, a request
+     * is dropped while a registered PDN is cabled, so a lookup's Wi-Fi excursion
+     * never cuts into that PDN's symbol-match game.
+     */
     void setOnLookupDone(OnLookupDone listener) { onLookupDone = std::move(listener); }
 
     /** @return true when a PDN with no applied profile is Connected on an FDN jack. */
@@ -131,6 +135,10 @@ private:
     }
 
     void onProvisionRequest(const uint8_t* fromMac, const PlayerProvisionRequestPacket& request) {
+        if (!onLookupDone && hasRegisteredPdnCabled()) {
+            LOG_W("FDN_PROVISION", "Dropping provision request during a registered PDN's game");
+            return;
+        }
         // The PIN becomes a URL path segment, so only four ASCII digits leave the FDN.
         for (size_t i = 0; i < 4; ++i) {
             if (request.pin[i] < '0' || request.pin[i] > '9') {

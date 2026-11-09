@@ -1109,6 +1109,10 @@ TEST_F(PlayerFetchTestSuite, fdnDropsMalformedOrUncabledProvisionRequest) {
     fdnDropsMalformedOrUncabledProvisionRequest(this);
 }
 
+TEST_F(PlayerFetchTestSuite, fdnHoldsLookupsWhileRegisteredPdnPlays) {
+    fdnHoldsLookupsWhileRegisteredPdnPlays(this);
+}
+
 TEST_F(PlayerFetchTestSuite, chooseTeamConfirmEntersHub) { chooseTeamConfirmEntersHub(this); }
 
 TEST_F(PlayerFetchTestSuite, fdnSeesUnprovisionedPdnUntilItRegisters) {

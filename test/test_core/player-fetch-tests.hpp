@@ -416,6 +416,26 @@ inline void fdnSeesUnprovisionedPdnUntilItRegisters(PlayerFetchTestSuite* suite)
     EXPECT_FALSE(fdnProv.hasUnprovisionedPdnCabled()) << "only a Connected jack counts";
 }
 
+inline void fdnHoldsLookupsWhileRegisteredPdnPlays(PlayerFetchTestSuite* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    Player demo{};
+    demo.applyRegistrationProfile(UUIDBytes(), "Demo", Team{}, {});
+    suite->fdnRdc.setPeerProfile(SerialIdentifier::INPUT_JACK, demo.toProfile());
+
+    PlayerProvisionRequestPacket request{};
+    strncpy(request.pin, "1234", sizeof(request.pin) - 1);
+    suite->fdnDevice.mockPeerComms->triggerPacketCallback(
+    suite->pdnMac, PktType::kPlayerProvisionRequest, reinterpret_cast<const uint8_t*>(&request),
+    sizeof(request));
+    EXPECT_TRUE(suite->queuedRequests.empty()) << "no Wi-Fi excursion during symbol-match";
+
+    fdnProv.setOnLookupDone([](const char*) {});
+    suite->fdnDevice.mockPeerComms->triggerPacketCallback(
+    suite->pdnMac, PktType::kPlayerProvisionRequest, reinterpret_cast<const uint8_t*>(&request),
+    sizeof(request));
+    EXPECT_EQ(suite->queuedRequests.size(), 1u) << "the registration screen takes it";
+}
+
 inline void fetchUserResendsAbandonedRequestWithinOneReplyWindow(PlayerFetchTestSuite* suite) {
     std::vector<uint8_t> requestSeqIds;
     ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPlayerProvisionRequest, _, _))

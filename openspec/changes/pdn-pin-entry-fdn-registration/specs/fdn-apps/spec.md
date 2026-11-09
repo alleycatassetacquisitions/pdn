@@ -8,6 +8,7 @@ When a PDN whose connection context shows no applied profile (unprovisioned, as 
 - While a lookup for that PDN is in progress, the FDN SHALL display `"LOOKING"` / `"UP"`.
 - On a delivered profile, the FDN SHALL display `"WELCOME"` and the player's display name for `3000 ms`; on a lookup failure or timeout, `"UNABLE TO"` / `"LOCATE ASSET"` for `3000 ms`.
 - The FDN SHALL end a lookup that has not answered within `8000 ms` as a lookup failure.
+- Outside the registration screen, the FDN SHALL drop a lookup request while a registered PDN is Connected on an FDN jack, so a lookup's Wi-Fi excursion never interrupts that PDN's symbol-match game.
 - The FDN SHALL leave the registration screen for the idle state when the PDN is unplugged, when a result has been shown, or, while waiting for a request, when the cabled PDN's context shows an applied profile.
 
 #### Scenario: Unprovisioned PDN plugged in shows the registration screen
