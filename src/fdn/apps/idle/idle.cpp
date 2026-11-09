@@ -13,20 +13,21 @@ IdleApp::IdleApp(RemotePlayerManager* remotePlayerManager,
     , fdnProvisioningManager(fdnProvisioningManager) {}
 
 void IdleApp::populateStateMap() {
-    auto* idleState = new IdleState(remotePlayerManager, remoteDeviceCoordinator, fdnMatchSpool);
+    auto* idleState =
+    new IdleState(remotePlayerManager, remoteDeviceCoordinator, fdnMatchSpool, &uploadTimer);
     auto* playerDetectedState =
     new PlayerDetectedState(remotePlayerManager, remoteDeviceCoordinator);
-    auto* uploadPendingState = new UploadPendingState(fdnMatchSpool);
+    auto* uploadPendingState = new UploadPendingState(fdnMatchSpool, &uploadTimer);
     auto* registrationState =
     new RegistrationState(fdnProvisioningManager, remoteDeviceCoordinator);
 
-    // A cabled PDN with no profile is registered; any other goes to the symbol-match game.
     FdnProvisioningManager* provisioning = fdnProvisioningManager;
     auto toRegistration = [provisioning](FDNConnectState* state) {
         return state->isConnected() && provisioning->hasUnprovisionedPdnCabled();
     };
     auto toSymbolMatch = [provisioning](FDNConnectState* state) {
-        return state->isConnected() && !provisioning->hasUnprovisionedPdnCabled();
+        return state->isConnected() && provisioning->hasRegisteredPdnCabled() &&
+               !provisioning->hasUnprovisionedPdnCabled();
     };
 
     idleState->addTransition(new StateTransition(

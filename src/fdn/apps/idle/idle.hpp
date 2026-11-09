@@ -5,6 +5,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "alleycat-server/fdn-match-spool.hpp"
 #include "alleycat-server/fdn-provisioning-manager.hpp"
+#include "utils/simple-timer.hpp"
 
 class IdleApp : public StateMachine {
 public:
@@ -20,4 +21,6 @@ private:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     FdnMatchSpool* fdnMatchSpool;
     FdnProvisioningManager* fdnProvisioningManager;
+    // Shared by idle (which waits on it) and the upload state (which re-arms it).
+    SimpleTimer uploadTimer;
 };

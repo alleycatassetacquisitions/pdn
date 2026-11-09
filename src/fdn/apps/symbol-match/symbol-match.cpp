@@ -21,16 +21,15 @@ void SymbolMatchApp::populateStateMap() {
     auto* matchSuccess = new MatchSuccess(remoteDeviceCoordinator, symbolWirelessManager);
 
     // The game ends once no registered PDN remains, so an unregistered one left behind can
-    // register; MatchSuccess holds its codeword first. The debounce rides out a cable jiggle.
+    // register; MatchSuccess holds its codeword first. One window spans both states, so a
+    // jiggled cable never ends a round.
     FdnProvisioningManager* provisioning = fdnProvisioningManager;
-    auto gameOver = [provisioning](FDNConnectState* state) {
-        return state->isPersistentlyDisconnected() ||
-               (state->isConnected() && !provisioning->hasRegisteredPdnCabled());
+    DebouncedCondition* debounce = &gameOverDebounce;
+    auto gameOver = [provisioning, debounce]() {
+        return debounce->heldFor(!provisioning->hasRegisteredPdnCabled(), GAME_OVER_DEBOUNCE_MS);
     };
-    selection->addAppTransition([selection, gameOver]() { return gameOver(selection); },
-                                StateId(IDLE_APP_ID));
-    symbolIdle->addAppTransition([symbolIdle, gameOver]() { return gameOver(symbolIdle); },
-                                 StateId(IDLE_APP_ID));
+    selection->addAppTransition(gameOver, StateId(IDLE_APP_ID));
+    symbolIdle->addAppTransition(gameOver, StateId(IDLE_APP_ID));
 
     selection->addTransition(
     new StateTransition([selection]() { return selection->transitionToIdle(); }, symbolIdle));

@@ -10,6 +10,9 @@
 #include "device/remote-device-coordinator.hpp"
 #include "utils/simple-timer.hpp"
 
+/** How often idle checks the match spool for an upload. */
+constexpr unsigned long UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+
 enum IdleStateId {
     IDLE = 0,
     PLAYER_DETECTED = 1,
@@ -24,7 +27,8 @@ class IdleState : public FDNConnectState {
 public:
     /** FDN home screen; also schedules match spool uploads. */
     IdleState(RemotePlayerManager* remotePlayerManager,
-              RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool);
+              RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
+              SimpleTimer* uploadTimer);
     ~IdleState();
 
     void onStateMounted(FDN* fdn) override;
@@ -37,10 +41,7 @@ public:
 private:
     RemotePlayerManager* remotePlayerManager;
     FdnMatchSpool* fdnMatchSpool;
-
-    SimpleTimer uploadTimer;
-
-    static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+    SimpleTimer* uploadTimer;
 };
 
 // ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ private:
 class UploadPendingState : public TypedState<FDN> {
 public:
     /** Uploads the staged match spool records over Wi-Fi. */
-    explicit UploadPendingState(FdnMatchSpool* fdnMatchSpool);
+    UploadPendingState(FdnMatchSpool* fdnMatchSpool, SimpleTimer* uploadTimer);
     /** @copydoc TypedState::~TypedState */
     ~UploadPendingState();
 
@@ -133,6 +134,7 @@ public:
 
 private:
     FdnMatchSpool* fdnMatchSpool;
+    SimpleTimer* uploadTimer;
 
     SimpleTimer glyphTimer;
     SimpleTimer fallbackTimer;

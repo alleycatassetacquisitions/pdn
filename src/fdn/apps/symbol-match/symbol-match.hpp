@@ -3,6 +3,7 @@
 #include "state/state-machine.hpp"
 #include "apps/symbol-match/symbol-match-states.hpp"
 #include "apps/symbol-match/symbol-manager.hpp"
+#include "utils/debounced-condition.hpp"
 
 class SymbolWirelessManager;
 class FdnProvisioningManager;
@@ -24,4 +25,7 @@ private:
     SymbolManager* symbolManager;
     SymbolWirelessManager* symbolWirelessManager;
     FdnProvisioningManager* fdnProvisioningManager;
+    DebouncedCondition gameOverDebounce;
+
+    static constexpr unsigned long GAME_OVER_DEBOUNCE_MS = 500;
 };

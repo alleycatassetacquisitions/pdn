@@ -58,6 +58,4 @@ void PlayerDetectedState::onStateDismounted(FDN* fdn) {
     activeConfig       = nullptr;
 }
 
-bool PlayerDetectedState::transitionToIdle() {
-    return playerDetectedTimer.expired();
-}
+bool PlayerDetectedState::transitionToIdle() { return playerDetectedTimer.expired(); }
