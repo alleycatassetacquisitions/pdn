@@ -23,14 +23,10 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "game/player.hpp"
 #include "device/fdn.hpp"
 #include "wireless/remote-player-manager.hpp"
-#include "wireless/fdn-connect-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/wireless-types.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
-#include "apps/main-menu/main-menu.hpp"
 #include "apps/idle/idle.hpp"
-#include "apps/hacking/hacking.hpp"
-#include "apps/hacking/hacked-players-manager.hpp"
 #include "apps/symbol-match/symbol-match.hpp"
 #include "apps/fdn-app-ids.hpp"
 
@@ -71,27 +67,18 @@ FDN* fdn = nullptr;
 Player fdnPlayer = FDN_PLAYER;
 
 // Managers
-RemotePlayerManager*      remotePlayerManager      = nullptr;
-FDNConnectWirelessManager* fdnConnectWirelessManager = nullptr;
-HackedPlayersManager*     hackedPlayersManager     = nullptr;
+RemotePlayerManager* remotePlayerManager = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
 
 static void setupEspNow(PeerCommsInterface* peerComms) {
     peerComms->setPacketHandler(
-        PktType::kPlayerInfoBroadcast,
-        [](const uint8_t* src, const uint8_t* data, size_t len, void* arg) {
-            static_cast<RemotePlayerManager*>(arg)->ProcessPlayerInfoPkt(src, data, len);
-        },
-        remotePlayerManager);
-
-    peerComms->setPacketHandler(
-        PktType::kFdnConnect,
-        [](const uint8_t* src, const uint8_t* data, size_t len, void* arg) {
-            static_cast<FDNConnectWirelessManager*>(arg)->processPacket(src, data, len);
-        },
-        fdnConnectWirelessManager);
+    PktType::kPlayerInfoBroadcast,
+    [](const uint8_t* src, const uint8_t* data, size_t len, void* arg) {
+        static_cast<RemotePlayerManager*>(arg)->ProcessPlayerInfoPkt(src, data, len);
+    },
+    remotePlayerManager);
 }
 
 static void setup() {
@@ -130,7 +117,7 @@ static void setup() {
     wifiConfig    = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
-    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_PREF_NAMESPACE, CRASH_LOG_NAMESPACE});
+    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {CRASH_LOG_NAMESPACE});
 
     DriverConfig fdnConfig = {
         {DISPLAY_DRIVER_NAME,              displayDriver},
@@ -154,11 +141,6 @@ static void setup() {
     // Managers — constructed after fdn->begin() so wireless is ready.
     remotePlayerManager = new RemotePlayerManager(peerCommsDriver);
 
-    fdnConnectWirelessManager = new FDNConnectWirelessManager();
-    fdnConnectWirelessManager->initialize(fdn->getWirelessManager());
-
-    hackedPlayersManager  = new HackedPlayersManager(fdn->getStorage());
-
     symbolWirelessManager = new SymbolWirelessManager(fdn->getWirelessManager(),
                                                       fdn->getRemoteDeviceCoordinator());
     fdn->setTickCallback([]() { symbolWirelessManager->sync(); });
@@ -173,10 +155,7 @@ static void setup() {
 
     // Apps
     RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
-    auto* idleApp =
-        new IdleApp(remotePlayerManager, hackedPlayersManager, fdnConnectWirelessManager, rdc);
-    auto* mainMenuApp = new MainMenuApp(rdc);
-    auto* hackingApp = new HackingApp(fdnConnectWirelessManager, hackedPlayersManager, rdc);
+    auto* idleApp = new IdleApp(remotePlayerManager, rdc);
     auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager);
 
     // Splash screen
@@ -187,12 +166,10 @@ static void setup() {
     vTaskDelay(pdMS_TO_TICKS(SPLASH_HOLD_MS));
 
     AppConfig apps = {
-        {StateId(SYMBOL_MATCH_APP_ID), symbolMatchApp},
-        {StateId(MAIN_MENU_APP_ID), mainMenuApp},
-        {StateId(HACKING_APP_ID), hackingApp},
-        {StateId(IDLE_APP_ID), idleApp},
+    {StateId(SYMBOL_MATCH_APP_ID), symbolMatchApp},
+    {StateId(IDLE_APP_ID), idleApp},
     };
-    fdn->loadAppConfig(apps, StateId(SYMBOL_MATCH_APP_ID));
+    fdn->loadAppConfig(apps, StateId(IDLE_APP_ID));
 }
 
 void loop() {
