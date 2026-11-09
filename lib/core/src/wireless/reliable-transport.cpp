@@ -16,7 +16,6 @@ ReliableTransport::ReliableTransport(WirelessManager* wm)
     resender.setAbandonCallback(
     [this](PktType type, uint8_t seqId, const uint8_t* targetMac, const uint8_t* payload,
            size_t len) { onResenderAbandon(type, seqId, targetMac, payload, len); });
-    if (wirelessManager == nullptr) return;
     wirelessManager->setEspNowPacketHandler(
     PktType::kReliableAck,
     [](const uint8_t* src, const uint8_t* data, const size_t len, void* ctx) {
@@ -26,9 +25,7 @@ ReliableTransport::ReliableTransport(WirelessManager* wm)
 }
 
 ReliableTransport::~ReliableTransport() {
-    if (wirelessManager != nullptr) {
-        wirelessManager->clearEspNowPacketHandler(PktType::kReliableAck);
-    }
+    wirelessManager->clearEspNowPacketHandler(PktType::kReliableAck);
 }
 
 void ReliableTransport::sync() { resender.sync(); }
@@ -43,9 +40,11 @@ void ReliableTransport::attach(ReliableChannelBase* channel) {
     channels[slot] = channel;
 }
 
-void ReliableTransport::detach(ReliableChannelBase* channel) {
+bool ReliableTransport::detach(ReliableChannelBase* channel) {
     const size_t slot = static_cast<size_t>(channel->type());
-    if (slot < channels.size() && channels[slot] == channel) channels[slot] = nullptr;
+    if (slot >= channels.size() || channels[slot] != channel) return false;
+    channels[slot] = nullptr;
+    return true;
 }
 
 ReliableChannelBase* ReliableTransport::channelFor(PktType type) const {

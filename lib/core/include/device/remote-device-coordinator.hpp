@@ -71,10 +71,7 @@ public:
      */
     void initialize(WirelessManager* radio, SerialManager* serial, Device* device);
 
-    /**
-     * Must be called every loop tick (from PDN::loop). Drives each jack's HELLO
-     * link machine.
-     */
+    /** Drives each jack's HELLO link machine; must be called every loop tick. */
     void sync(Device* PDN);
 
     /**
@@ -334,10 +331,9 @@ private:
     std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 
-    // One context channel per device-type PktType, plus the head-roster
-    // channels. Device-level, not per-jack: on receive the source MAC is matched
-    // back to a jack. Constructed in initialize() once the WirelessManager is
-    // known; owned here and deleted by the destructor.
+    // Context channels are device-level, not per-jack: on receive the source MAC
+    // is matched back to a jack. Constructed in initialize() once the
+    // WirelessManager is known.
     ReliableChannel<PdnConnectionContext>* pdnContextChannel = nullptr;
     ReliableChannel<FdnConnectionContext>* fdnContextChannel = nullptr;
     ReliableChannel<ConnectionAnnouncePayload>* connectionAnnounceChannel = nullptr;

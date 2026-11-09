@@ -15,7 +15,7 @@ const std::array<GameSession::PacketRoute, 2>& GameSession::packetRoutes() {
 }
 
 // The initializer list is in declaration order, which is also dependency order:
-// both managers read the two device-owned managers pulled off the PDN above them.
+// the managers read the device-owned ones pulled off the PDN above them.
 GameSession::GameSession(Player* player,
                          Device* pdn,
                          SymbolWirelessManager* symbolWirelessManager)
@@ -40,14 +40,6 @@ GameSession::GameSession(Player* player,
         wirelessManager->setEspNowPacketHandler(route.type, route.handler, this);
     }
 
-    // The posse admits and acks the frame; the session only knows which state is
-    // watching for it. Out-of-state events are dropped here, silently.
-    posseManager->setOnGameEvent([this](uint8_t eventType, const uint8_t* fromMac) {
-        SupporterReady* supporterReady = getMountedSupporterReady();
-        if (supporterReady != nullptr) {
-            supporterReady->onChainGameEventReceived(eventType, fromMac);
-        }
-    });
     // The Player is the authority on this device's identity; RDC only carries it.
     remoteDeviceCoordinator->setSelfProfileProvider([this]() -> PlayerProfile {
         return this->player->toProfile();
@@ -103,15 +95,6 @@ GameContext GameSession::getContext() {
     return context;
 }
 
-SupporterReady* GameSession::getMountedSupporterReady() {
-    if (pdn == nullptr) return nullptr;
-    StateMachine* activeApp = pdn->getActiveApp();
-    if (activeApp == nullptr) return nullptr;
-    State* current = activeApp->getCurrentState();
-    if (current == nullptr || current->getStateId() != SUPPORTER_READY) return nullptr;
-    return static_cast<SupporterReady*>(current);
-}
-
 void GameSession::sync() {
     if (matchManager) matchManager->sync();
 
@@ -140,16 +123,14 @@ void GameSession::logRetryStats() {
     if (!statsLogTimer.expired()) return;
 
     // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2, which
-    // strips info-level calls. The transport's counters cover every channel on
-    // the device; the posse adds the one thing only it can time, delivery
-    // latency, and the shootout still carries its own retry machine.
+    // strips info-level calls.
     const Resender::Stats& t = wirelessManager->getReliableTransport()->getStats();
     unsigned long ackMean = 0;
     unsigned ackCount = 0;
     if (posseManager != nullptr) {
-        PosseManager::RetryStats c = posseManager->getRetryStats();
-        ackCount = c.ackCount;
-        ackMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
+        PosseManager::AckLatency latency = posseManager->getAckLatency();
+        ackCount = latency.count;
+        ackMean = latency.count ? (latency.sumMs / latency.count) : 0;
     }
     LOG_W("STATS", "RELIABLE s=%u r=%u ab=%u posseAck=%u/%lums", (unsigned)t.sends,
           (unsigned)t.retries, (unsigned)t.abandons, ackCount, ackMean);

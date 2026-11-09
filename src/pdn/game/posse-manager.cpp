@@ -25,9 +25,7 @@ PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager,
     gameEventChannel.onReceive([this](const uint8_t* fromMac, const ChainGameEventPayload& p) {
         onGameEventFrame(fromMac, p);
     });
-    // A broadcast carries no per-member delivery evidence from the radio, so a
-    // supporter's ack is the only thing that clears its slot — and the only
-    // moment its latency can be read.
+    // The only moment a supporter's delivery can be timed.
     gameEventChannel.setOnDelivered([this](uint8_t, const uint8_t*) {
         ackLatencyMsSum += gameEventSentTimer.getElapsedTime();
         ackCount++;
@@ -190,18 +188,13 @@ void PosseManager::sendGameEventToSupporters(ChainGameEventType eventType) {
     // entered a new COUNTDOWN. Keep them fire-and-forget: seqId=0.
     if (eventType == ChainGameEventType::WIN || eventType == ChainGameEventType::LOSS) {
         gameEventSentTimer.setTimer(0);
-        // A newer terminal event obsoletes the previous one for every supporter
-        // at once: the supporter's screen shows the latest result, so an older
-        // retransmit landing afterwards would flip it back. Dropping the prior
-        // fan-out is what SUPERSEDE_PER_TARGET does for unicast.
+        // A newer terminal event obsoletes the prior fan-out, so an older
+        // retransmit cannot flip a supporter's result screen back.
         gameEventChannel.cancelAll();
         gameEventChannel.sendBroadcast(peers, payload);
     } else {
-        // Fire-and-forget: no seqId, no ack owed, so it goes straight out. One
-        // broadcast frame either way — addressing a supporter three cables away
-        // by unicast costs a peer-table slot per device in the chain and the
-        // table holds 20. Supporters keep only the events whose challengerMac
-        // matches the challenger they follow.
+        // Broadcast rather than unicast: a supporter three cables away would
+        // cost a peer-table slot per device in the chain, and the table holds 20.
         gameEventChannel.sendUnsequenced(wirelessManager->getBroadcastAddress(), payload);
     }
 
@@ -214,24 +207,16 @@ void PosseManager::sendGameEventToSupporters(ChainGameEventType eventType) {
 }
 
 void PosseManager::onGameEventFrame(const uint8_t* fromMac, const ChainGameEventPayload& payload) {
-    // The frame is broadcast, so every chain in radio range hears it. The
-    // challenger it names is the only thing that says whether it is ours.
     if (!isEventFromOwnChallenger(payload.challengerMac)) return;
 
-    // Ahead of the listener and independent of it: a COUNTDOWN wipes the
-    // challenger's roll call whether or not this device is watching for it, and a
-    // confirm still held here would then re-register a press for a round the
-    // supporter has not answered.
+    // Unconditional: a COUNTDOWN voids the standing confirm whether or not
+    // SupporterReady is mounted to see it.
     onChainGameEventReceived(payload.event_type);
 
-    // Out-of-state events are the listener's to drop; the challenger's retry
-    // machine bounds the traffic cost.
     if (onGameEvent) onGameEvent(payload.event_type, fromMac);
 
-    // Acked whether or not anything was watching for it: not acking after
-    // leaving the state would let the challenger keep retrying a WIN/LOSS we
-    // already received and cannot act on. seqId 0 is the fire-and-forget
-    // sentinel and owes nothing.
+    // Acked even with nothing mounted to act on it, or the challenger keeps
+    // retrying a WIN/LOSS this device has left behind.
     if (payload.seqId != 0) gameEventChannel.ack(fromMac, payload.seqId);
 }
 

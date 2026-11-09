@@ -165,7 +165,7 @@ public:
     /** Binds the player and storage this manager records matches against. */
     void initialize(Player* player, StorageInterface* storage);
 
-    /** Pumps match channel retries and the FDN match transfer. */
+    /** Pumps the FDN match transfer. */
     void sync();
 
     /** Button callback that records a valid match draw press and sends DRAW_RESULT. */

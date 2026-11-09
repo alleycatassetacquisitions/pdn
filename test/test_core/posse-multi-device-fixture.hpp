@@ -125,8 +125,6 @@ public:
             node->rdc->initialize(node->device->wirelessManager, node->device->serialManager,
                                   node->device.get());
 
-            // The managers register after the RDC so their channels claim their
-            // own PktTypes without competing with the RDC's.
             node->posse =
             new PosseManager(node->player.get(), node->device->wirelessManager, node->rdc.get());
             node->shootout =
@@ -220,9 +218,8 @@ public:
      * Claims on whichever node latched, which `closeRing()` makes the last-indexed
      * one. Production fires onRingClosed() only from that RDC callback, so a
      * self-claim on any other node is a state no device can reach. The roster is
-     * injected because `dispatch()` has no kConnectionAnnounce case, so the
-     * announces the RDC really sends fall through to `default:` and no roster
-     * ever reaches a head here.
+     * injected because the fixture does not route kConnectionAnnounce (see
+     * isRouted), so no roster ever reaches a head here.
      */
     void claimRing() {
         size_t headIndex = nodes.size();
@@ -681,17 +678,13 @@ inline void posseMultiDeviceGameEventReachesDistantSupporter(PosseMultiDeviceFix
     MultiDeviceNode& challenger = suite->node(0);
     ASSERT_TRUE(challenger.posse->isChallenger());
 
+    // Observed through the posse's own listener, the production path: the
+    // channel decodes, the posse admits on challengerMac, then the listener
+    // runs. Installing a driver handler here would displace the channel's.
     std::vector<int> accepted(suite->nodeCount(), 0);
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        MultiDeviceNode& n = suite->node(i);
         int* counter = &accepted[i];
-        n.device->wirelessManager->setEspNowPacketHandler(
-        PktType::kChainGameEvent,
-        [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
-            if (dataLen != sizeof(ChainGameEventPayload)) return;
-            static_cast<int*>(ctx)[0]++;
-        },
-        counter);
+        suite->node(i).posse->setOnGameEvent([counter](uint8_t, const uint8_t*) { (*counter)++; });
     }
 
     challenger.posse->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);

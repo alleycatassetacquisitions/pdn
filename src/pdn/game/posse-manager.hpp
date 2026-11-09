@@ -75,9 +75,9 @@ public:
     void onChainGameEventReceived(uint8_t eventType);
 
     /**
-     * Registers the one listener told of each admitted game event, after
-     * onChainGameEventReceived has applied it and before the frame is acked.
-     * The session routes it to whichever state is watching for it.
+     * One slot: the state watching for game events sets it on mount and clears
+     * it on dismount. Told after onChainGameEventReceived has applied the event
+     * and before the frame is acked.
      */
     void setOnGameEvent(GameEventListener listener) { onGameEvent = std::move(listener); }
 
@@ -116,23 +116,15 @@ public:
     /** Must exceed the retry span so the backstop does not supersede a live entry and reset its retry window. */
     static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::STALE_AFTER_MS;
 
-    struct RetryStats {
-        uint32_t sends = 0;
-        uint32_t retries = 0;
-        uint32_t abandons = 0;
-        uint32_t ackLatencyMsSum = 0;
-        uint32_t ackCount = 0;
+    struct AckLatency {
+        uint32_t sumMs = 0;
+        uint32_t count = 0;
     };
-    /** Cumulative transport counts plus delivery latency sampled on kRoleAnnounce (to SEND_SUCCESS)
-     * and kChainGameEvent (to its ack). */
-    RetryStats getRetryStats() const {
-        const Resender::Stats& carried = wirelessManager->getReliableTransport()->getStats();
-        return {carried.sends, carried.retries, carried.abandons,
-                ackLatencyMsSum, ackCount};
-    }
+    /** Delivery latency sampled on kRoleAnnounce (to SEND_SUCCESS) and kChainGameEvent (to its
+     * ack). */
+    AckLatency getAckLatency() const { return {ackLatencyMsSum, ackCount}; }
 
 private:
-    // Delivery-time samples only; the retry counts live on the transport.
     uint32_t ackLatencyMsSum = 0;
     uint32_t ackCount = 0;
     Player* player;
@@ -212,7 +204,6 @@ private:
     ReliableChannel<ChainGameEventPayload> gameEventChannel;
     GameEventListener onGameEvent;
 
-    // Every game event frame the radio heard, ours or a neighbouring chain's.
     void onGameEventFrame(const uint8_t* fromMac, const ChainGameEventPayload& payload);
 
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);

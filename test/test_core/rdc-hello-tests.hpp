@@ -612,6 +612,7 @@ inline void rdcLinkDeathCancelsPendingContextSend(RDCHelloTests* suite) {
     for (int i = 0; i < 4; ++i) {
         suite->fakeClock->advance(400);
         suite->rdc.sync(&suite->device);
+        suite->device.wirelessManager->sync();
     }
     EXPECT_EQ(contextSends, sendsAtDeath);
 }
@@ -2131,6 +2132,7 @@ inline void rdcPendingReportVoidedByBecomingHead(RDCHelloTests* suite) {
     // it (a resender retransmit to h1 may have fired) to isolate the h2 re-send.
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
+    suite->device.wirelessManager->sync();
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::STANDALONE);
     const int baseline = report.count;
 

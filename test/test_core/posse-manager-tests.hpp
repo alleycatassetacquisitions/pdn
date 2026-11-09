@@ -53,8 +53,8 @@ public:
     }
 
     /**
-     * Feeds a peer's PdnConnectionContext in through the handler the reliable
-     * transport registered with the radio driver — the production receive path.
+     * Feeds a peer's PdnConnectionContext in through the handler the RDC's
+     * context channel registered with the radio driver — the production receive path.
      */
     void deliverPdnContext(const uint8_t* peerMac, bool isHunter = false) {
         if (contextHandler == nullptr) return;
@@ -1061,11 +1061,12 @@ inline void posseRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
     suite->fakeClock->advance(50);
     suite->deliverRoleAnnounceSendResult(suite->supporterMac, seqId, /*success=*/true);
 
-    PosseManager::RetryStats s1 = posse.getRetryStats();
+    const Resender::Stats& s1 = suite->device.wirelessManager->getReliableTransport()->getStats();
     EXPECT_GE(s1.sends, 1u);
     EXPECT_EQ(s1.abandons, 0u);
-    EXPECT_GE(s1.ackCount, 1u);
-    EXPECT_GT(s1.ackLatencyMsSum, 0u);
+    PosseManager::AckLatency l1 = posse.getAckLatency();
+    EXPECT_GE(l1.count, 1u);
+    EXPECT_GT(l1.sumMs, 0u);
 
     // A NEW challenger is new content, so it goes out rather than being suppressed
     // as already-told. Nobody reports it delivered, so it exhausts its retries.
@@ -1079,7 +1080,7 @@ inline void posseRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
         suite->fakeClock->advance(100);
         suite->tick(posse);
     }
-    PosseManager::RetryStats s2 = posse.getRetryStats();
+    const Resender::Stats& s2 = suite->device.wirelessManager->getReliableTransport()->getStats();
     EXPECT_GE(s2.retries, 3u);
     EXPECT_GE(s2.abandons, 1u);
 }
@@ -1450,5 +1451,5 @@ inline void posseGameEventAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
 
     // The counter is the device's: the RDC's own unanswered sends in this
     // fixture land in it too, so only the floor is this fan-out's.
-    EXPECT_GE(posse.getRetryStats().abandons, 1u);
+    EXPECT_GE(suite->device.wirelessManager->getReliableTransport()->getStats().abandons, 1u);
 }

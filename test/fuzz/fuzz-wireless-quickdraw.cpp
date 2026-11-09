@@ -276,8 +276,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                     unsigned long delta = static_cast<unsigned long>(data[pos++]) * 25UL;
                     clock.advance(delta);
                 }
+                wirelessManager.sync();
                 matchManager.sync();
-                symbolWirelessManager.sync();
                 remotePlayerManager.Update();
                 break;
             }

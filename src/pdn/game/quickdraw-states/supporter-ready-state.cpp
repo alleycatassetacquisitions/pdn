@@ -75,6 +75,13 @@ void SupporterReady::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
     cachedPDN = pdn;
+    // The one slot: this is the only state that reads game events, and it holds
+    // the slot exactly while mounted so a frame landing between mounts is dropped.
+    if (posseManager != nullptr) {
+        posseManager->setOnGameEvent([this](uint8_t eventType, const uint8_t* senderMac) {
+            onChainGameEventReceived(eventType, senderMac);
+        });
+    }
 }
 
 void SupporterReady::onStateLoop(PDN* pdn) {
@@ -136,6 +143,7 @@ void SupporterReady::onStateLoop(PDN* pdn) {
 
 void SupporterReady::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "SupporterReady dismounted");
+    if (posseManager != nullptr) posseManager->setOnGameEvent(nullptr);
     transitionToIdleFlag = false;
     buttonArmed = false;
     hasConfirmed = false;

@@ -34,7 +34,9 @@ class ReliableTransport;
 // exists and deliver() emits nothing. A fan-out goes out as one broadcast frame
 // owed to several recipients, and a broadcast's SEND_SUCCESS names none of them,
 // so each recipient answers with a kReliableAck that the receiving handler
-// sends through ack() once it has admitted the frame.
+// sends through ack() once it has admitted the frame. Only a FAN_OUT channel
+// honours a kReliableAck: the ack comes off the air, and a unicast channel has
+// no obligation a stranger's frame should be able to clear.
 enum class ChannelMode : uint8_t {
     // Unicast carrying current state: a newer send to a peer obsoletes the
     // prior unacked one, so an older retransmit can never reinstate stale state.
@@ -59,16 +61,13 @@ public:
      */
     ReliableChannelBase(WirelessManager* wirelessManager, PktType type, ChannelMode mode);
     /**
-     * Virtual: channels are owned and deleted through the base pointer. Drops
-     * every pending send on this PktType and both driver registrations.
+     * Drops every pending send on this PktType, detaches from the transport,
+     * and clears both driver handlers.
      */
     virtual ~ReliableChannelBase();
 
     /** The PktType this channel claims. */
     PktType type() const { return packetType; }
-
-    /** How this channel's frames are addressed and acked. */
-    ChannelMode mode() const { return channelMode; }
 
     /** True when at least one send to this MAC is still awaiting its ack. */
     bool isPending(const uint8_t* mac) const;
@@ -130,7 +129,11 @@ public:
     virtual void onAbandon(uint8_t seqId, const uint8_t* targetMac, const uint8_t* payload,
                            size_t len) = 0;
 
-    /** A recipient's kReliableAck for the frame sent under `seqId`. */
+    /**
+     * A kReliableAck from `fromMac` for the frame sent under `seqId`. Honoured
+     * only on a FAN_OUT channel, and only when it clears an obligation this
+     * channel actually holds — anything else is noise off the air.
+     */
     void onPacketAck(const uint8_t* fromMac, uint8_t seqId);
 
 protected:
@@ -142,13 +145,13 @@ protected:
     static void logLengthMismatch(PktType type, size_t got, size_t want);
     // seqId == 0 is the unsequenced sentinel (see nextSeqId) and is never deduped here.
     bool isDuplicateReliableRx(const uint8_t* fromMac, uint8_t seqId);
-    void fireDelivered(uint8_t seqId, const uint8_t* mac);
 
     // Null when constructed without a WirelessManager; every send then no-ops.
     Resender* resender;
     PktType packetType;
     WirelessManager* wirelessManager;
     ChannelMode channelMode;
+    OnDelivered onDeliveredCallback;
 
 private:
     struct RxSeqRecord {
@@ -156,7 +159,6 @@ private:
         uint8_t lastSeqId;
     };
     ReliableTransport* transport;
-    OnDelivered onDeliveredCallback;
     // Seeded at construction so a rebooted peer does not systematically restart
     // on the same seqId a receiver's cursor is already holding.
     uint8_t lastSentSeqId;
@@ -240,7 +242,7 @@ public:
         return true;
     }
 
-    /** Untyped entry point used by the transport's rx routing. */
+    /** Untyped entry for the driver packet handler and the transport's deliverIncoming seam. */
     bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) override {
         return deliver(fromMac, data, len);
     }
@@ -261,7 +263,9 @@ public:
         std::memcpy(&p, data, sizeof(P));
         if (p.seqId == 0) return;  // fire-and-forget, no pending entry to clear
         if (resender != nullptr) resender->onAck(packetType, p.seqId, toMac);
-        fireDelivered(p.seqId, toMac);
+        // SEND_SUCCESS is the delivery signal whether or not a slot was still
+        // armed: a late radio duplicate re-fires it, so observers are idempotent.
+        if (onDeliveredCallback) onDeliveredCallback(p.seqId, toMac);
     }
 
     /** Decodes the abandoned frame and hands it to the abandon callback. */

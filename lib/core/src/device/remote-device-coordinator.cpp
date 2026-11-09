@@ -65,12 +65,11 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
         selfDeviceType = device->getDeviceType();
     }
 
-    // One device-level channel per device-type PktType. Constructing a channel
-    // makes its receive path live (it installs the driver rx handler). No abandon
-    // handler: an unreachable peer's jack link self-heals to IDLE via the
-    // context-exchange timeout (HelloConnectingState, contextTimeoutMs). The
-    // packet's PktType alone picks which channel decodes a context; the HELLO
-    // deviceType is not consulted. RDC forwards the profile bytes opaquely.
+    // No abandon handler on any of these: an unreachable peer's jack link
+    // self-heals to IDLE via the context-exchange timeout (HelloConnectingState,
+    // contextTimeoutMs). The packet's PktType alone picks which channel decodes
+    // a context; the HELLO deviceType is not consulted, and the profile bytes
+    // are forwarded opaquely.
     pdnContextChannel =
     new ReliableChannel<PdnConnectionContext>(wirelessManager, PktType::kPdnConnectionContext);
     pdnContextChannel->onReceive([this](const uint8_t* fromMac, const PdnConnectionContext& ctx) {

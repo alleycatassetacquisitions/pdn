@@ -37,6 +37,13 @@ public:
         requestChannel.sendReliable(fdnMac, request);
     }
 
+    /**
+     * Drops the request's retries. The transport pumps them from the device
+     * loop, so a request the FDN has answered, or that the state has walked
+     * away from, would otherwise keep going out and start a second lookup.
+     */
+    void cancelRequest() { requestChannel.cancelAll(); }
+
     /** @return true when the radio gave up on the last request; sendRequest clears it. */
     bool isRequestAbandoned() const { return requestAbandoned; }
 

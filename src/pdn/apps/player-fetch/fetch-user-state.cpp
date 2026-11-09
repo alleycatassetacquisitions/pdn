@@ -70,6 +70,7 @@ void FetchUserState::onStateLoop(PDN* pdn) {
 
 void FetchUserState::onStateDismounted(PDN* pdn) {
     provisioningClient->setOnReply(nullptr);
+    provisioningClient->cancelRequest();
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     showingFailurePage = false;
     failurePagePending = false;
@@ -106,6 +107,8 @@ void FetchUserState::onProvisionPacket(const uint8_t* fromMac, const PlayerProvi
         LOG_W(TAG, "Ignoring PlayerProvisionPacket for another PIN");
         return;
     }
+    // Answered, either way: a retry landing now would start a second lookup.
+    provisioningClient->cancelRequest();
 
     if (pkt.status == static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED)) {
         LOG_E(TAG, "FDN reported the lookup failed");

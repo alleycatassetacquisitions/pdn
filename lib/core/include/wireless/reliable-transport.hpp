@@ -29,7 +29,7 @@ class WirelessManager;
 //     constructor, straight into deliver. The transport is not on that path.
 class ReliableTransport {
 public:
-    /** wm may be nullptr in unit tests; channels then run without a radio. */
+    /** Built by the WirelessManager that owns it; registers the kReliableAck handler through wm. */
     explicit ReliableTransport(WirelessManager* wm);
     ~ReliableTransport();
 
@@ -64,9 +64,11 @@ private:
 
     // One channel per PktType. A second channel on a claimed type is a wiring
     // bug: it is logged, and the newest claimant owns the slot, matching what
-    // the driver's handler table does with the same collision.
+    // the driver's handler table does with the same collision. detach() says
+    // whether the channel still held its slot, so a displaced one tears down
+    // nothing that is now the claimant's.
     void attach(ReliableChannelBase* channel);
-    void detach(ReliableChannelBase* channel);
+    bool detach(ReliableChannelBase* channel);
     ReliableChannelBase* channelFor(PktType type) const;
 
     void onAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t len);

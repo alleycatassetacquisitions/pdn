@@ -391,9 +391,8 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
 }
 
 TEST(ReliableTransportTest, duplicateReliableDeliveryDispatchesOnce) {
-    // A lost ack makes the sender resend, so the receiver sees the same
-    // (sender, seqId) twice. The reliable layer must ack both (to silence the
-    // sender) yet dispatch onReceive only once.
+    // A lost SEND_SUCCESS makes the sender resend, so the receiver sees the same
+    // (sender, seqId) twice; a unicast channel dispatches onReceive only once.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
     ReliableTransport* transport = wm.getReliableTransport();
@@ -486,11 +485,6 @@ TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
 }
 
 // ---- Fan-out ----
-//
-// A fan-out is one broadcast frame owed to several recipients. The radio's
-// SEND_SUCCESS names the broadcast address and so proves nothing per recipient;
-// each recipient's kReliableAck is the delivery evidence, routed back to the
-// channel by the transport.
 
 TEST(ReliableTransportTest, fanOutIsClearedOneRecipientPerAckPacket) {
     ::testing::NiceMock<MockPeerComms> comms;
@@ -586,7 +580,7 @@ TEST(ReliableTransportTest, fanOutDeliversDuplicatesSoTheHandlerCanAnswerThem) {
 
 TEST(ReliableTransportTest, anAckForNothingIsIgnored) {
     // Acks arrive off the air: a type nothing claims, a type out of range, a
-    // truncated frame. None may reach a channel or fault.
+    // truncated frame, a seqId nobody owes. None may reach an observer or fault.
     ::testing::NiceMock<MockPeerComms> comms;
     WirelessManager wm{&comms, nullptr};
     ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent, ChannelMode::FAN_OUT);
@@ -596,14 +590,37 @@ TEST(ReliableTransportTest, anAckForNothingIsIgnored) {
 
     ackPacket(wm.getReliableTransport(), from, PktType::kMatchCommand, 1);
     ackPacket(wm.getReliableTransport(), from, static_cast<PktType>(200), 1);
+    ackPacket(wm.getReliableTransport(), from, PktType::kChainGameEvent, 1);
     const uint8_t truncated[1] = {static_cast<uint8_t>(PktType::kChainGameEvent)};
     wm.getReliableTransport()->deliverIncoming(PktType::kReliableAck, from, truncated, 1);
     EXPECT_EQ(delivered, 0);
 }
 
+TEST(ReliableTransportTest, aUnicastChannelIgnoresAckPackets) {
+    // A unicast obligation is cleared by the radio alone. Anyone in range can
+    // forge a kReliableAck naming any channel and the seqId read off our own
+    // frame; it must neither silence the retry nor read as delivery.
+    ::testing::NiceMock<MockPeerComms> comms;
+    WirelessManager wm{&comms, nullptr};
+    ON_CALL(comms, getPeerCommsState()).WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    ON_CALL(comms, sendData(::testing::_, ::testing::_, ::testing::_, ::testing::_))
+    .WillByDefault(::testing::Return(1));
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kMatchCommand);
+    int delivered = 0;
+    ch.setOnDelivered([&](uint8_t, const uint8_t*) { delivered++; });
+
+    const uint8_t peer[6] = {0x02, 0, 0, 0, 0, 0x0A};
+    TransportTestPayload p{};
+    const uint8_t seq = ch.sendReliable(peer, p);
+    ASSERT_TRUE(ch.isPending(peer));
+
+    ackPacket(wm.getReliableTransport(), peer, PktType::kMatchCommand, seq);
+    EXPECT_TRUE(ch.isPending(peer));
+    EXPECT_EQ(delivered, 0);
+}
+
 TEST(ReliableTransportTest, theDeviceLoopPumpsEveryChannel) {
-    // No manager pumps retries any more; a channel's retransmit happens because
-    // the device loop ran. A channel whose owner never ticks still retries.
+    // A channel whose owner never ticks still retries: the device loop is the pump.
     MockDevice device;
     FakePlatformClock clock;
     SimpleTimer::setPlatformClock(&clock);

@@ -170,22 +170,19 @@ public:
 
     /** Registers a handler for incoming ESP-NOW packets of the specified type. */
     void setEspNowPacketHandler(PktType packetType, PeerCommsInterface::PacketCallback callback, void* ctx) {
-        if (peerComms != nullptr) peerComms->setPacketHandler(packetType, std::move(callback), ctx);
+        peerComms->setPacketHandler(packetType, std::move(callback), ctx);
     }
 
     /**
-     * Set the radio send-result handler for a packet type. Fires per outbound
-     * packet with the MAC-layer SEND_SUCCESS/FAIL verdict; drives the reliable
-     * transport's ack in place of a round-trip ack packet.
+     * Registers the per-packet MAC-layer SEND_SUCCESS/FAIL callback for a packet
+     * type; a unicast reliable send is cleared by it.
      */
     void setEspNowSendStatusHandler(PktType packetType, PeerCommsInterface::SendStatusCallback callback, void* ctx) {
         peerComms->setSendStatusHandler(packetType, callback, ctx);
     }
 
     /** Clears the packet handler for the specified packet type. */
-    void clearEspNowPacketHandler(PktType packetType) {
-        if (peerComms != nullptr) peerComms->clearPacketHandler(packetType);
-    }
+    void clearEspNowPacketHandler(PktType packetType) { peerComms->clearPacketHandler(packetType); }
 
     /** Clears the send-status handler for the specified packet type. */
     void clearEspNowSendStatusHandler(PktType packetType) {
@@ -205,11 +202,7 @@ public:
     /** The reliable transport every channel on this device shares. */
     ReliableTransport* getReliableTransport() { return &reliableTransport; }
 
-    /**
-     * Drives reliable retransmits and abandonment. Called once per tick by the
-     * device loop, after the drivers have delivered the tick's receives and
-     * send verdicts; nothing else pumps it.
-     */
+    /** Drives reliable retransmits and abandonment; called once per tick by Device::loop(). */
     void sync() { reliableTransport.sync(); }
 
     /** Returns a debug string representing the current wireless state. */

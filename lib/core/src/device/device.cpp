@@ -62,9 +62,9 @@ void Device::setTickCallback(std::function<void()> tickCallback) {
 
 void Device::loop() {
     driverManager.execDrivers();
-    // After the drivers, so the tick's receives and send verdicts have cleared
-    // what they clear before anything is retransmitted or given up on; before
-    // the tick callback and the app, so an abandonment they react to has fired.
+    // After execDrivers() so this tick's receives and send verdicts clear what
+    // they clear before anything is retransmitted; before the tick callback and
+    // the app so an abandonment they react to has already fired.
     WirelessManager* wireless = getWirelessManager();
     if (wireless != nullptr) wireless->sync();
     if (tickCallback) {
