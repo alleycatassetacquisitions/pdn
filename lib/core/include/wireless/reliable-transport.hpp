@@ -43,9 +43,8 @@ public:
     const Resender::Stats& getStats() const { return resender.getStats(); }
 
     /**
-     * Recipients of the frame sent on `type` under `seqId` that still owe an
-     * ack. Observability for tests and diagnostics; channels gate on their own
-     * pendingCount.
+     * Test seam: recipients of the frame sent on `type` under `seqId` that
+     * still owe an ack. Channels gate on their own pendingCount.
      */
     size_t pendingCount(PktType type, uint8_t seqId) const {
         return resender.pendingCount(type, seqId);

@@ -133,11 +133,9 @@ public:
     void resetToIdle();
 
     /**
-     * Tears down, lands in Phase::ABORTED, and only then fans ABORT out to the
-     * ring (bracket, or confirmedSet before a bracket exists). Armed after the
-     * teardown because the teardown cancels the fan-outs in flight, sparing only
-     * the frame already recorded as terminal — which this one is not yet.
-     * Idempotent, and refuses ENDED as well as ABORTED.
+     * Fans ABORT out to the ring (bracket, or confirmedSet before a bracket
+     * exists), then tears down into Phase::ABORTED. Idempotent, and refuses
+     * ENDED as well as ABORTED.
      */
     void abortTournament();
 
@@ -252,9 +250,8 @@ private:
     ReliableChannel<ShootoutMatchResultPayload> matchResultChannel;
     ReliableChannel<ShootoutTournamentEndPayload> tournamentEndChannel;
     ReliableChannel<ShootoutAbortPayload> abortChannel;
-    // The roster is the RDC's 64 plus self, one past ShootoutRosterPayload::macs,
-    // so the last entry is dropped rather than overflowing the frame; a member
-    // past the cap never confirms and the proposal times out on it.
+    // The RDC's 64-member roster plus self can reach 65, one past
+    // ShootoutRosterPayload::macs; the last entry is dropped rather than overflowing.
     static ShootoutRosterPayload buildRoster(const std::vector<std::array<uint8_t, 6>>& macs);
     static std::vector<std::array<uint8_t, 6>> unpackRoster(const ShootoutRosterPayload& roster);
     /** Broadcasts an unsequenced frame only when `peers` names someone besides this device. */

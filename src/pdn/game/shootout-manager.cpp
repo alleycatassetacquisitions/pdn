@@ -510,20 +510,16 @@ void ShootoutManager::abortTournament() {
     if (isTerminalPhase()) return;
     LOG_W(TAG, "abortTournament from phase=%d", static_cast<int>(phase));
 
-    // Copied before resetToIdle clears bracket and confirmedSet.
-    const std::vector<std::array<uint8_t, 6>> targets =
-        bracket.empty() ? confirmedSet : bracket;
-
-    resetToIdle();
-    phase = Phase::ABORTED;
-
     // Reliable rather than rebroadcast on a timer like RING_CLOSED and CONFIRM:
-    // this device has already left the tournament and has nothing to rebroadcast
+    // this device is leaving the tournament and will have nothing to rebroadcast
     // from. Load-bearing on the abandonment path, where the ring is still closed
     // and no member's own ring-break guard will ever fire.
     ShootoutAbortPayload abort{};
     abortChannel.cancelAll();
-    abortChannel.sendBroadcast(peersExcludingSelf(targets), abort);
+    abortChannel.sendBroadcast(peersExcludingSelf(bracket.empty() ? confirmedSet : bracket), abort);
+
+    resetToIdle();
+    phase = Phase::ABORTED;
 }
 
 void ShootoutManager::sendLocalConfirm() {

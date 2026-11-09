@@ -29,8 +29,7 @@ public:
                 setPacketHandler(testing::Eq(PktType::kPdnConnectionContext), testing::_, testing::_))
             .WillByDefault(testing::DoAll(testing::SaveArg<1>(&contextHandler),
                                           testing::SaveArg<2>(&contextCtx)));
-        // Record what goes on the air so tests can learn the seqId of the last
-        // frame of each type the way a peer would: from the payload itself.
+        // What goes on the air, so a test learns a frame's seqId the way a peer does.
         ON_CALL(*device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
         .WillByDefault(
         testing::DoAll(testing::Invoke([this](const uint8_t*, PktType type, const uint8_t* data,
@@ -130,24 +129,17 @@ public:
 
     /**
      * Notes one outgoing frame. Tests that install their own sendData action
-     * call this from it so lastSeqId()/frames() keep seeing the air.
+     * call this from it so lastSeqId() keeps seeing the air.
      */
     void recordFrame(PktType type, const uint8_t* data, size_t len) {
         if (len == 0) return;
         lastSeqIdByType[type] = data[0];
-        framesByType[type]++;
     }
 
     /** seqId of the last `type` frame this device put on the air (0 if none). */
     uint8_t lastSeqId(PktType type) const {
         std::map<PktType, uint8_t>::const_iterator it = lastSeqIdByType.find(type);
         return it == lastSeqIdByType.end() ? 0 : it->second;
-    }
-
-    /** Number of `type` frames this device put on the air since SetUp. */
-    int frames(PktType type) const {
-        std::map<PktType, int>::const_iterator it = framesByType.find(type);
-        return it == framesByType.end() ? 0 : it->second;
     }
 
     /** Unacked peers still owed the `type` frame carrying `seqId`. */
@@ -219,7 +211,6 @@ public:
     void* contextCtx = nullptr;
     uint8_t contextSeqId = 0;
     std::map<PktType, uint8_t> lastSeqIdByType;
-    std::map<PktType, int> framesByType;
     uint8_t localMac[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
     uint8_t peerMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
 };
@@ -1168,8 +1159,7 @@ inline void matchStartRetriesToSilentMemberThenAborts(ShootoutManagerTests* suit
 
 // A tournament that ends says one thing and nothing else. Retransmits outlive
 // the state that produced them unless the reset cancels them, and a MATCH_START
-// landing after an abort would speak for a bracket that no longer exists — while
-// the ABORT itself has to survive the same reset, so it is armed after it.
+// landing after an abort would speak for a bracket that no longer exists.
 inline void resetCancelsInFlightFanOuts(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
@@ -1845,34 +1835,26 @@ inline void anAbortSurvivesTheAbortedScreenExit(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
-    // Read the ABORT's seqId off the frame rather than through an accessor: it is
-    // on the wire, in the payload every recipient decodes too.
-    int abortSeq = -1;
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
     ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
-    .WillByDefault(testing::Invoke(
-    [suite, &abortSeq](const uint8_t*, PktType type, const uint8_t* data, const size_t len) {
+    .WillByDefault(
+    testing::Invoke([suite](const uint8_t*, PktType type, const uint8_t* data, const size_t len) {
         suite->recordFrame(type, data, len);
-        if (type == PktType::kShootoutAbort && len == sizeof(ShootoutAbortPayload)) {
-            ShootoutAbortPayload payload;
-            memcpy(&payload, data, sizeof(payload));
-            abortSeq = payload.seqId;
-        }
         return 1;
     }));
 
     suite->driveToFirstMatch({me, opMac});
     suite->shootout->abortTournament();
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
-    ASSERT_GE(abortSeq, 0);
-    const size_t owed = suite->pending(PktType::kShootoutAbort, static_cast<uint8_t>(abortSeq));
+    const uint8_t abortSeq = suite->lastSeqId(PktType::kShootoutAbort);
+    ASSERT_NE(abortSeq, 0);
+    const size_t owed = suite->pending(PktType::kShootoutAbort, abortSeq);
     ASSERT_GT(owed, 0u);
 
     // What ShootoutAborted::onStateDismounted does when its display timer expires.
     suite->shootout->resetToIdle();
 
-    EXPECT_EQ(suite->pending(PktType::kShootoutAbort, static_cast<uint8_t>(abortSeq)), owed)
+    EXPECT_EQ(suite->pending(PktType::kShootoutAbort, abortSeq), owed)
     << "leaving the ABORTED screen cancelled the ABORT it was displaying";
 }
 
