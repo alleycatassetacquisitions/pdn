@@ -5,41 +5,21 @@
 #define TAG "IDLE_STATE"
 
 IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
-                     HackedPlayersManager* hackedPlayersManager,
-                     FDNConnectWirelessManager* fdnConnectWirelessManager,
                      RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::IDLE)
     , remotePlayerManager(remotePlayerManager)
-    , hackedPlayersManager(hackedPlayersManager)
-    , fdnConnectWirelessManager(fdnConnectWirelessManager)
     , fdnMatchSpool(fdnMatchSpool) {}
 
 IdleState::~IdleState() {
-    remotePlayerManager       = nullptr;
-    hackedPlayersManager      = nullptr;
-    fdnConnectWirelessManager = nullptr;
+    remotePlayerManager = nullptr;
     fdnMatchSpool = nullptr;
-}
-
-void IdleState::setConnectionHandler(
-    std::function<void(const std::string&, const uint8_t*)> handler) {
-    connectionHandler = std::move(handler);
 }
 
 void IdleState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted");
     fdn->getLightManager()->clear();
     remotePlayerManager->consumePacketReceived();
-    connectionResolved = false;
-    wasConnected       = false;
-
-    fdnConnectWirelessManager->setConnectCallback(
-        [this](const std::string& playerId, const uint8_t* senderMac) {
-            LOG_I(TAG, "PDN connected, player: %s", playerId.c_str());
-            fdnConnectWirelessManager->setPeer(senderMac);
-            if (connectionHandler) connectionHandler(playerId, senderMac);
-            connectionResolved = true;
-        });
+    pdnCabled = false;
 
     uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
 
@@ -51,31 +31,22 @@ void IdleState::onStateMounted(FDN* fdn) {
 
 void IdleState::onStateLoop(FDN* fdn) {
     remotePlayerManager->Update();
-
-    bool nowConnected = isConnected();
-    if (nowConnected && !wasConnected) {
-        connectionResolved = true;
-    }
-    wasConnected = nowConnected;
+    pdnCabled = isConnected();
 }
 
 void IdleState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
     (void)fdn;
-    fdnConnectWirelessManager->clearCallbacks();
     uploadTimer.invalidate();
-    connectionResolved = false;
+    pdnCabled = false;
 }
 
 bool IdleState::transitionToPlayerDetected() {
     return remotePlayerManager->consumePacketReceived();
 }
 
-bool IdleState::transitionToConnectionDetected() {
-    return connectionResolved;
-}
+bool IdleState::transitionToCabledPdn() { return pdnCabled; }
 
 bool IdleState::transitionToUploadPending() {
-    return uploadTimer.expired() && (!hackedPlayersManager->getPendingUploads().empty() ||
-                                     fdnMatchSpool->getStagedCount() > 0);
+    return uploadTimer.expired() && fdnMatchSpool->getStagedCount() > 0;
 }

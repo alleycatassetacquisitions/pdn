@@ -30,9 +30,6 @@ constexpr uint8_t fdnDisplayCS          = 10;
 constexpr uint8_t fdnDisplayDC          = 9;
 constexpr uint8_t fdnDisplayRST         = 14;
 
-// --- Persistent storage namespace ---
-constexpr const char* FDN_PREF_NAMESPACE = "fdn_hacks";
-
 // --- RSSI thresholds for player proximity detection ---
 constexpr int FDN_STRONG_RSSI_THRESHOLD = -30;
 constexpr int FDN_MEDIUM_RSSI_THRESHOLD = -50;

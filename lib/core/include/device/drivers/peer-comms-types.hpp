@@ -16,7 +16,6 @@ enum class PktType : uint8_t {
     kShootoutCommand = 11,
     kShootoutCommandAck = 12,
     kSymbolMatchCommand = 13,
-    kFdnConnect = 14,
     kPdnConnectionContext = 15,
     kFdnConnectionContext = 16,
     kConnectionAnnounce = 17,

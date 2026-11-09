@@ -6,24 +6,11 @@
 #define TAG "PLAYER_DETECTED"
 
 PlayerDetectedState::PlayerDetectedState(RemotePlayerManager* remotePlayerManager,
-                                         HackedPlayersManager* hackedPlayersManager,
-                                         FDNConnectWirelessManager* fdnConnectWirelessManager,
                                          RemoteDeviceCoordinator* remoteDeviceCoordinator)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::PLAYER_DETECTED)
-    , remotePlayerManager(remotePlayerManager)
-    , hackedPlayersManager(hackedPlayersManager)
-    , fdnConnectWirelessManager(fdnConnectWirelessManager) {}
+    , remotePlayerManager(remotePlayerManager) {}
 
-PlayerDetectedState::~PlayerDetectedState() {
-    remotePlayerManager       = nullptr;
-    hackedPlayersManager      = nullptr;
-    fdnConnectWirelessManager = nullptr;
-}
-
-void PlayerDetectedState::setConnectionHandler(
-    std::function<void(const std::string&, const uint8_t*)> handler) {
-    connectionHandler = std::move(handler);
-}
+PlayerDetectedState::~PlayerDetectedState() { remotePlayerManager = nullptr; }
 
 void PlayerDetectedState::onStateMounted(FDN* fdn) {
     int rssi = remotePlayerManager->getLastRssi();
@@ -33,16 +20,7 @@ void PlayerDetectedState::onStateMounted(FDN* fdn) {
 
     LOG_I(TAG, "Mounted — rssi %d, timeout %dms", rssi, activeConfig->timeout);
 
-    connectionResolved = false;
-    wasConnected       = false;
-
-    fdnConnectWirelessManager->setConnectCallback(
-        [this](const std::string& playerId, const uint8_t* senderMac) {
-            LOG_I(TAG, "PDN connected, player: %s", playerId.c_str());
-            fdnConnectWirelessManager->setPeer(senderMac);
-            if (connectionHandler) connectionHandler(playerId, senderMac);
-            connectionResolved = true;
-        });
+    pdnCabled = false;
 
     fdn->getDisplay()
         ->invalidateScreen()
@@ -73,20 +51,14 @@ void PlayerDetectedState::onStateMounted(FDN* fdn) {
 void PlayerDetectedState::onStateLoop(FDN* fdn) {
     (void)fdn;
     remotePlayerManager->Update();
-
-    bool nowConnected = isConnected();
-    if (nowConnected && !wasConnected) {
-        connectionResolved = true;
-    }
-    wasConnected = nowConnected;
+    pdnCabled = isConnected();
 }
 
 void PlayerDetectedState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
-    fdnConnectWirelessManager->clearCallbacks();
     fdn->getLightManager()->stopAnimation();
     playerDetectedTimer.invalidate();
-    connectionResolved = false;
+    pdnCabled = false;
     activeConfig       = nullptr;
 }
 
@@ -94,6 +66,4 @@ bool PlayerDetectedState::transitionToIdle() {
     return playerDetectedTimer.expired();
 }
 
-bool PlayerDetectedState::transitionToConnectionDetected() {
-    return connectionResolved;
-}
+bool PlayerDetectedState::transitionToCabledPdn() { return pdnCabled; }

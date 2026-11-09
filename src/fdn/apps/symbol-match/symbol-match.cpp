@@ -17,6 +17,12 @@ void SymbolMatchApp::populateStateMap() {
     auto* symbolIdle = new SymbolIdle(symbolManager, remoteDeviceCoordinator, symbolWirelessManager);
     auto* matchSuccess = new MatchSuccess(remoteDeviceCoordinator, symbolWirelessManager);
 
+    // The game ends when the last PDN unplugs, except during the codeword hold.
+    selection->addAppTransition([selection]() { return !selection->isConnected(); },
+                                StateId(IDLE_APP_ID));
+    symbolIdle->addAppTransition([symbolIdle]() { return !symbolIdle->isConnected(); },
+                                 StateId(IDLE_APP_ID));
+
     selection->addTransition(
     new StateTransition([selection]() { return selection->transitionToIdle(); }, symbolIdle));
 

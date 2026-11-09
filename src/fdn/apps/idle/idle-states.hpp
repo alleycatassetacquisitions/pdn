@@ -1,26 +1,20 @@
 #pragma once
 
-#include <functional>
 #include <string>
 #include "state/fdn-connect-state.hpp"
 #include "state/state.hpp"
 #include "device/fdn.hpp"
 #include "wireless/remote-player-manager.hpp"
-#include "wireless/fdn-connect-wireless-manager.hpp"
 #include "alleycat-server/fdn-match-spool.hpp"
 #include "alleycat-server/fdn-provisioning-manager.hpp"
-#include "apps/hacking/hacked-players-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "utils/simple-timer.hpp"
 
 enum IdleStateId {
     IDLE = 0,
     PLAYER_DETECTED = 1,
-    AUTHORIZED_PDN = 2,
-    UNAUTHORIZED_PDN = 3,
-    CONNECTION_DETECTED = 4,
-    UPLOAD_PENDING = 5,
-    REGISTRATION = 6,
+    UPLOAD_PENDING = 2,
+    REGISTRATION = 3,
 };
 
 // ---------------------------------------------------------------------------
@@ -28,9 +22,8 @@ enum IdleStateId {
 // ---------------------------------------------------------------------------
 class IdleState : public FDNConnectState {
 public:
-    /** FDN home screen; also schedules hack and match spool uploads. */
-    IdleState(RemotePlayerManager* remotePlayerManager, HackedPlayersManager* hackedPlayersManager,
-              FDNConnectWirelessManager* fdnConnectWirelessManager,
+    /** FDN home screen; also schedules match spool uploads. */
+    IdleState(RemotePlayerManager* remotePlayerManager,
               RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool);
     ~IdleState();
 
@@ -38,23 +31,17 @@ public:
     void onStateLoop(FDN* fdn) override;
     void onStateDismounted(FDN* fdn) override;
 
-    void setConnectionHandler(std::function<void(const std::string&, const uint8_t*)> handler);
-
     bool transitionToPlayerDetected();
-    bool transitionToConnectionDetected();
+    /** @return true once a PDN is Connected on either FDN jack. */
+    bool transitionToCabledPdn();
     bool transitionToUploadPending();
 
 private:
     RemotePlayerManager* remotePlayerManager;
-    HackedPlayersManager* hackedPlayersManager;
-    FDNConnectWirelessManager* fdnConnectWirelessManager;
     FdnMatchSpool* fdnMatchSpool;
 
-    std::function<void(const std::string&, const uint8_t*)> connectionHandler;
-
     SimpleTimer uploadTimer;
-    bool connectionResolved = false;
-    bool wasConnected       = false;
+    bool pdnCabled = false;
 
     static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 };
@@ -73,8 +60,6 @@ struct PlayerDetectionConfig {
 class PlayerDetectedState : public FDNConnectState {
 public:
     PlayerDetectedState(RemotePlayerManager* remotePlayerManager,
-                        HackedPlayersManager* hackedPlayersManager,
-                        FDNConnectWirelessManager* fdnConnectWirelessManager,
                         RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~PlayerDetectedState();
 
@@ -82,21 +67,15 @@ public:
     void onStateLoop(FDN* fdn) override;
     void onStateDismounted(FDN* fdn) override;
 
-    void setConnectionHandler(std::function<void(const std::string&, const uint8_t*)> handler);
-
     bool transitionToIdle();
-    bool transitionToConnectionDetected();
+    /** @return true once a PDN is Connected on either FDN jack. */
+    bool transitionToCabledPdn();
 
 private:
     RemotePlayerManager* remotePlayerManager;
-    HackedPlayersManager* hackedPlayersManager;
-    FDNConnectWirelessManager* fdnConnectWirelessManager;
-
-    std::function<void(const std::string&, const uint8_t*)> connectionHandler;
 
     SimpleTimer playerDetectedTimer;
-    bool connectionResolved = false;
-    bool wasConnected       = false;
+    bool pdnCabled = false;
     const PlayerDetectionConfig* activeConfig = nullptr;
 
     static constexpr int STRONG_RSSI_THRESHOLD = -50;
@@ -105,87 +84,6 @@ private:
     const PlayerDetectionConfig WEAK_CFG   = { PlayerDetectedStrength::WEAK,   2500,  80 };
     const PlayerDetectionConfig MEDIUM_CFG = { PlayerDetectedStrength::MEDIUM, 2500, 150 };
     const PlayerDetectionConfig STRONG_CFG = { PlayerDetectedStrength::STRONG, 5000, 255 };
-};
-
-// ---------------------------------------------------------------------------
-// ConnectionDetectedState
-// ---------------------------------------------------------------------------
-class ConnectionDetectedState : public FDNConnectState {
-public:
-    ConnectionDetectedState(HackedPlayersManager* hackedPlayersManager,
-                            FDNConnectWirelessManager* fdnConnectWirelessManager,
-                            RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~ConnectionDetectedState();
-
-    void onStateMounted(FDN* fdn) override;
-    void onStateLoop(FDN* fdn) override;
-    void onStateDismounted(FDN* fdn) override;
-
-    void receivePdnConnection(const std::string& playerId);
-
-    bool transitionToAuth();
-    bool transitionToUnauthorized();
-    bool transitionToIdle();
-
-private:
-    HackedPlayersManager* hackedPlayersManager;
-    FDNConnectWirelessManager* fdnConnectWirelessManager;
-
-    SimpleTimer glyphTimer;
-    bool contentReady = false;
-    bool wasHacked    = false;
-    std::string pendingPlayerId;
-};
-
-// ---------------------------------------------------------------------------
-// AuthDetectedState
-// ---------------------------------------------------------------------------
-class AuthDetectedState : public FDNConnectState {
-public:
-    AuthDetectedState(RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                      FDNConnectWirelessManager* fdnConnectWirelessManager);
-    ~AuthDetectedState();
-
-    void onStateMounted(FDN* fdn) override;
-    void onStateLoop(FDN* fdn) override;
-    void onStateDismounted(FDN* fdn) override;
-
-    bool transitionToIdle();
-    bool transitionToMainMenu();
-
-private:
-    FDNConnectWirelessManager* fdnConnectWirelessManager;
-
-    SimpleTimer glyphTimer;
-    SimpleTimer switchTimer;
-    bool contentReady = false;
-
-    static constexpr int SWITCH_DELAY_MS = 5000;
-    const char* AUTH_MESSAGE[2] = {"WELCOME", "ASSET #"};
-};
-
-// ---------------------------------------------------------------------------
-// UnauthorizedDetectedState
-// ---------------------------------------------------------------------------
-class UnauthorizedDetectedState : public FDNConnectState {
-public:
-    explicit UnauthorizedDetectedState(RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~UnauthorizedDetectedState();
-
-    void onStateMounted(FDN* fdn) override;
-    void onStateLoop(FDN* fdn) override;
-    void onStateDismounted(FDN* fdn) override;
-
-    bool transitionToIdle();
-    bool transitionToHacking();
-
-private:
-    SimpleTimer glyphTimer;
-    SimpleTimer switchTimer;
-    bool contentReady = false;
-
-    static constexpr int SWITCH_DELAY_MS = 5000;
-    const char* ACCESS_DENIED_MESSAGE[2] = {"ACCESS", "DENIED"};
 };
 
 // ---------------------------------------------------------------------------
@@ -224,14 +122,14 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// UploadPendingHacksState  (no connection required, so uses plain State)
+// UploadPendingState  (no connection required, so uses plain State)
 // ---------------------------------------------------------------------------
-class UploadPendingHacksState : public TypedState<FDN> {
+class UploadPendingState : public TypedState<FDN> {
 public:
-    /** Uploads pending hacks and every staged match spool record over Wi-Fi. */
-    UploadPendingHacksState(HackedPlayersManager* hackedPlayersManager,
-                            FdnMatchSpool* fdnMatchSpool);
-    ~UploadPendingHacksState();
+    /** Uploads the staged match spool records over Wi-Fi. */
+    explicit UploadPendingState(FdnMatchSpool* fdnMatchSpool);
+    /** @copydoc TypedState::~TypedState */
+    ~UploadPendingState();
 
     void onStateMounted(FDN* fdn) override;
     void onStateLoop(FDN* fdn) override;
@@ -240,7 +138,6 @@ public:
     bool transitionToIdle();
 
 private:
-    HackedPlayersManager* hackedPlayersManager;
     FdnMatchSpool* fdnMatchSpool;
 
     SimpleTimer glyphTimer;
@@ -248,9 +145,9 @@ private:
     SimpleTimer failureTimer;
     bool contentReady = false;
     bool showingFailure = false;
-    int pendingCount = 0;
-    int  completedCount = 0;
-    int failedCount = 0;
+    bool uploadQueued = false;
+    bool uploadDone = false;
+    bool uploadFailed = false;
 
     static constexpr int FALLBACK_TIMEOUT_MS = 15000;
     static constexpr int FAILURE_DISPLAY_MS = 2000;
