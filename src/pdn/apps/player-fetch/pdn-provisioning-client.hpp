@@ -43,7 +43,8 @@ public:
         requestAbandoned = false;
     }
 
-    /** @return true when the radio gave up on the last request; sendRequest clears it. */
+    /** @return true when the radio gave up on the last request; sendRequest and cancelRequest clear
+     * it. */
     bool isRequestAbandoned() const { return requestAbandoned; }
 
     /** Sets the reply listener; nullptr drops replies, so none land outside provisioning. */

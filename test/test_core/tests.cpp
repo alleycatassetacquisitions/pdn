@@ -1983,7 +1983,9 @@ TEST_F(PosseManagerTests, ackClearsPending) { posseAckClearsPending(this); }
 
 TEST_F(PosseManagerTests, ackFromWrongMacIgnored) { posseAckFromWrongMacIgnored(this); }
 
-TEST_F(PosseManagerTests, retryStatsRecordsLifecycle) { posseRetryStatsRecordsLifecycle(this); }
+TEST_F(PosseManagerTests, roleAnnounceTimesDeliveryAndRetransmits) {
+    posseRoleAnnounceTimesDeliveryAndRetransmits(this);
+}
 
 TEST_F(PosseManagerTests, retransmitAbandonsWhenSpanRunsOut) {
     posseRetransmitAbandonsWhenSpanRunsOut(this);

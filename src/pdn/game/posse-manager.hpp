@@ -26,8 +26,9 @@ enum class ChainGameEventType : uint8_t {
 // the frame's span runs out.
 //
 // challengerMac names the challenger the event came from. Game events go out as one
-// broadcast frame, so the sender's MAC says nothing about which chain the event
-// belongs to; this field is what each supporter filters on.
+// broadcast frame, so every chain in radio range hears it; a supporter takes a
+// frame only when this field and the frame's source MAC both name the
+// challenger it follows.
 struct ChainGameEventPayload {
     uint8_t event_type;
     uint8_t seqId;

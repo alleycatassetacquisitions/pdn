@@ -1039,7 +1039,7 @@ inline void posseRetransmitAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
 
 // A role announce is acked on SEND_SUCCESS and timed; one nobody confirms is
 // retried inside its span and then given up on.
-inline void posseRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
+inline void posseRoleAnnounceTimesDeliveryAndRetransmits(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
     PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -1081,9 +1081,8 @@ inline void posseRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
         suite->fakeClock->advance(100);
         suite->tick(posse);
     }
-    // One frame plus three retransmits inside the span, then the span runs out:
-    // the device-wide transport counters cannot be attributed to this manager,
-    // the frames on the air can.
+    // The acked announce, then the unconfirmed one and its three retransmits
+    // inside the span.
     EXPECT_EQ(announceFrames, 5);
 }
 

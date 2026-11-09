@@ -147,7 +147,8 @@ protected:
     // seqId == 0 is the unsequenced sentinel (see nextSeqId) and is never deduped here.
     bool isDuplicateReliableRx(const uint8_t* fromMac, uint8_t seqId);
 
-    // Null when constructed without a WirelessManager; every send then no-ops.
+    // Both null on a channel that has no radio (see the constructor); every
+    // send and ack then no-ops.
     Resender* resender;
     PktType packetType;
     WirelessManager* wirelessManager;
@@ -159,7 +160,6 @@ private:
         std::array<uint8_t, 6> mac;
         uint8_t lastSeqId;
     };
-    ReliableTransport* transport;
     // Seeded at construction so a rebooted peer does not systematically restart
     // on the same seqId a receiver's cursor is already holding.
     uint8_t lastSentSeqId;

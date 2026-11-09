@@ -29,26 +29,26 @@ ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager, PktTy
     , packetType(type)
     , wirelessManager(wirelessManager)
     , channelMode(mode)
-    , transport(wirelessManager != nullptr ? wirelessManager->getReliableTransport() : nullptr)
     , lastSentSeqId(seedInitialSeqId()) {
     // Owning the PktType is the whole registration. This channel already holds
     // both things the wiring needs, and a channel whose send results never
     // arrive retries to exhaustion in silence — so leaving the install to
     // whoever constructs it makes a second, undeclared step that every caller
     // has to imitate and any caller can forget.
-    if (transport == nullptr) return;
+    if (this->wirelessManager == nullptr) return;
+    ReliableTransport* transport = this->wirelessManager->getReliableTransport();
     if (!transport->attach(this)) {
-        transport = nullptr;
+        this->wirelessManager = nullptr;
         return;
     }
     resender = &transport->resender;
-    wirelessManager->setEspNowPacketHandler(
+    this->wirelessManager->setEspNowPacketHandler(
     type,
     [](const uint8_t* src, const uint8_t* data, const size_t len, void* ctx) {
         static_cast<ReliableChannelBase*>(ctx)->deliverBytes(src, data, len);
     },
     this);
-    wirelessManager->setEspNowSendStatusHandler(
+    this->wirelessManager->setEspNowSendStatusHandler(
     type,
     [](const uint8_t* dst, const uint8_t* data, const size_t len, bool success, void* ctx) {
         static_cast<ReliableChannelBase*>(ctx)->onSendResult(dst, data, len, success);
@@ -62,9 +62,9 @@ ReliableChannelBase::~ReliableChannelBase() {
     // makes that safe is not the ordering here: the driver queues receives and
     // records a send verdict, acting on both from the main loop, which
     // is also where channels are destroyed, so no dispatch can land mid-teardown.
-    if (transport == nullptr) return;
+    if (wirelessManager == nullptr) return;
     resender->cancelAll(packetType);
-    transport->detach(this);
+    wirelessManager->getReliableTransport()->detach(this);
     wirelessManager->clearEspNowPacketHandler(packetType);
     wirelessManager->clearEspNowSendStatusHandler(packetType);
 }

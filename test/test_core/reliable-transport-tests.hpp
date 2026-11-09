@@ -110,9 +110,8 @@ TEST(ReliableTransportTest, aDestroyedChannelLeavesItsTypeUnclaimed) {
 }
 
 TEST(ReliableTransportTest, aSecondClaimOfAPktTypeRunsWithoutARadio) {
-    // Two owners of one PktType on one device is a wiring bug. The first keeps
-    // the type; the second neither sends nor receives, and its destruction
-    // leaves the first's registration alone.
+    // Two owners of one PktType on one device is a wiring bug; the first keeps
+    // the type, and the second's destruction leaves that registration alone.
     ::testing::NiceMock<MockPeerComms> comms;
     WirelessManager wm{&comms, nullptr};
     RadioTap radio;
