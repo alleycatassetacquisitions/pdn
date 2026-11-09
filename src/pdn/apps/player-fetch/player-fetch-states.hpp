@@ -86,7 +86,6 @@ private:
     PdnProvisioningClient* provisioningClient = nullptr;
     PlayerProvider* playerProvider = nullptr;
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
-    bool requestSent = false;
     bool requestEverSent = false;
     SimpleTimer fetchTimer;
     SimpleTimer failurePageTimer;

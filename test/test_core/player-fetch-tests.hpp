@@ -372,6 +372,16 @@ inline void reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged(PlayerFetchTestS
     player->applyRegistrationProfile(secondId, "SecondAsset", team, {});
     EXPECT_EQ(roleNotifications, 2);
     EXPECT_STREQ(player->getServerPlayerName(), "SecondAsset");
+
+    // A demo Hunter keeps the default role but still tells peers it is registered.
+    Player demo{};
+    int demoNotifications = 0;
+    demo.setOnRoleChanged([&demoNotifications]() { demoNotifications++; });
+    Team hunter{};
+    strncpy(hunter.name, "Hunter", sizeof(hunter.name) - 1);
+    demo.applyRegistrationProfile(UUIDBytes(), "Demo", hunter, {});
+    EXPECT_EQ(demoNotifications, 1);
+    EXPECT_EQ(demo.toProfile().registered, 1);
 }
 
 inline void fdnSeesUnprovisionedPdnUntilItRegisters(PlayerFetchTestSuite* suite) {

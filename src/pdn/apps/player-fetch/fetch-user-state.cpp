@@ -27,7 +27,6 @@ void FetchUserState::onStateMounted(PDN* pdn) {
     failurePagePending = false;
     transitionToWelcomeState = false;
     transitionToPinEntryState = false;
-    requestSent = false;
     requestEverSent = false;
     remoteDeviceCoordinator = pdn->getRemoteDeviceCoordinator();
     provisioningClient->setOnReply(
@@ -55,10 +54,7 @@ void FetchUserState::onStateLoop(PDN* pdn) {
     }
 
     // The FDN may be cabled after the PIN was entered, or deaf on Wi-Fi when it was sent.
-    if (provisioningClient->takeRequestAbandoned()) {
-        requestSent = false;
-    }
-    if (!requestSent) {
+    if (!requestEverSent || provisioningClient->isRequestAbandoned()) {
         requestProvisionFromCabledFdn();
     }
 
@@ -80,7 +76,6 @@ void FetchUserState::onStateDismounted(PDN* pdn) {
     failurePagePending = false;
     transitionToWelcomeState = false;
     transitionToPinEntryState = false;
-    requestSent = false;
     requestEverSent = false;
     fetchTimer.invalidate();
     failurePageTimer.invalidate();
@@ -98,7 +93,6 @@ void FetchUserState::requestProvisionFromCabledFdn() {
     if (!requestEverSent) {
         fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
     }
-    requestSent = true;
     requestEverSent = true;
 }
 

@@ -293,9 +293,9 @@ void Player::syncLegacyFieldsFromRegistration() {
         }
         applyRole(false);
     }
-    // Applying a registration profile always updates wire identity even if the standing role
-    // happened to match `previousRole`; notify once when applyRole did not already fire.
-    if (hunter == previousRole && roleChangedCallback && !serverPlayerId.isZero()) {
+    // Applying a profile, demo included, always changes the wire identity even if the standing
+    // role matched `previousRole`; notify once when applyRole did not already fire.
+    if (hunter == previousRole && roleChangedCallback) {
         roleChangedCallback();
     }
 

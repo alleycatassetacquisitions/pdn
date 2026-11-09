@@ -17,8 +17,7 @@ class PdnProvisioningClient {
 public:
     using OnReply = std::function<void(const uint8_t* fromMac, const PlayerProvisionPacket&)>;
 
-    /** Claims kPlayerProvisionRequest (sent) and kPlayerProvision (received) on @p wirelessManager.
-     */
+    /** Claims the PIN request (sent) and provision reply (received) packet types. */
     explicit PdnProvisioningClient(WirelessManager* wirelessManager)
         : resender(wirelessManager)
         , requestChannel(wirelessManager, &resender, PktType::kPlayerProvisionRequest, nullptr)
@@ -37,17 +36,14 @@ public:
 
     /** Asks the FDN at @p fdnMac to look up @p pin for this PDN. */
     void sendRequest(const uint8_t* fdnMac, const char* pin) {
+        requestAbandoned = false;
         PlayerProvisionRequestPacket request{};
         strncpy(request.pin, pin, sizeof(request.pin) - 1);
         requestChannel.sendReliable(fdnMac, request);
     }
 
-    /** @return true once, after the radio gave up on a request; the caller sends it again. */
-    bool takeRequestAbandoned() {
-        const bool abandoned = requestAbandoned;
-        requestAbandoned = false;
-        return abandoned;
-    }
+    /** @return true when the radio gave up on the last request; sendRequest clears it. */
+    bool isRequestAbandoned() const { return requestAbandoned; }
 
     /** Sets the reply listener; nullptr drops replies, so none land outside provisioning. */
     void setOnReply(OnReply listener) { onReply = std::move(listener); }
