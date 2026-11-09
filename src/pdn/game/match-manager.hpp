@@ -62,7 +62,10 @@ struct ActiveMatchState {
 
 class MatchManager {
 public:
-    /** Claims the kMatchCommand channel on wirelessManager (may be nullptr in tests). */
+    /**
+     * Claims the kMatchCommand channel and the kMatchCollectionAck handler on
+     * wirelessManager (may be nullptr in tests).
+     */
     explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
 
@@ -85,8 +88,8 @@ public:
     /** True once the match handshake has completed and countdown may begin. */
     bool isMatchReady() const;
 
-    /** Finalizes the active match (persisting non-shootout matches to storage) and clears active
-     * match state. */
+    /** Finalizes the active match (persisting it unless a shootout or demo match) and clears
+     * active match state. */
     bool finalizeMatch();
 
     /** Sets the hunter draw time (ms) on the active match. */
@@ -123,7 +126,7 @@ public:
     /** Returns the 1-based monotonic match sequence number (0 when no matches finalized). */
     uint32_t getMatchSequenceNumber();
 
-    /** Returns the highest match sequence number a cabled FDN has acknowledged. */
+    /** Returns the highest match sequence number an FDN acked or the PDN skipped as unreadable. */
     uint32_t getCollectedHighWaterMark();
 
     /** Reads the match for 1-based sequence number `seq` if still in the 32-slot ring buffer. */
@@ -163,7 +166,7 @@ public:
     /** Binds the player and storage this manager records matches against. */
     void initialize(Player* player, StorageInterface* storage);
 
-    /** Drives the match channel's retries. */
+    /** Pumps match channel retries and the FDN match transfer. */
     void sync();
 
     /** Button callback that records a valid match draw press and sends DRAW_RESULT. */
@@ -200,8 +203,7 @@ private:
     WirelessManager* wirelessManager = nullptr;
     Resender resender;
     ReliableChannel<MatchPacket> matchChannel;
-    uint32_t inFlightTransferSeq = 0;
-    SimpleTimer transferRetryTimer;
+    SimpleTimer transferWindowTimer;
 
     void sendCommand(const uint8_t* mac, int command, const char* matchId,
                      long drawTime, bool isHunter);
@@ -228,6 +230,8 @@ private:
     // Emplace match with given id/opponent/draw slot. Common path for both the
     // cable-handshake init and the Shootout MATCH_START init.
     void primeMatch(const char* matchId, const uint8_t* opponentMac, bool localIsHunter);
+    void setOpponentIdentity(bool opponentIsHunter, const char* opponentId,
+                             const UUIDBytes& playerUuid, const UUIDBytes& teamUuid);
 };
 
 

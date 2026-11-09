@@ -934,6 +934,48 @@ TEST_F(MatchManagerTestSuite, unreadableStoredMatchIsSkippedNotRetriedForever) {
     matchManager->initialize(player, &mockStorage);
 }
 
+TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
+    NativePrefsDriver pdnPrefs("pdn-window-prefs", {MATCHES_PREFS_NAMESPACE});
+    matchManager->initialize(player, &pdnPrefs);
+    setupMatchAsBounty("55555555-2222-4000-8000-333333333333", "hunt");
+    matchManager->setHunterDrawTime(180);
+    matchManager->setBountyDrawTime(120);
+    matchManager->setReceivedButtonPush();
+    matchManager->setReceivedDrawResult();
+    ASSERT_TRUE(matchManager->finalizeMatch());
+
+    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x07};
+    fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
+    fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
+    ON_CALL(*device.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    int sends = 0;
+    ON_CALL(*device.mockPeerComms,
+            sendData(::testing::_, PktType::kMatchCollection, ::testing::_, ::testing::_))
+    .WillByDefault(
+    ::testing::Invoke([&sends](const uint8_t*, PktType, const uint8_t*, const size_t) {
+        sends++;
+        return 1;
+    }));
+
+    matchManager->sync();
+    matchManager->sync();
+    EXPECT_EQ(sends, 1) << "one send per window, not per tick";
+    fakeClock->advance(MATCH_TRANSFER_RETRY_MS + 1);
+    matchManager->sync();
+    EXPECT_EQ(sends, 2) << "an unacked record is resent once the window ends";
+
+    MatchRecordAckPacket ack{};
+    ack.matchSeq = 1;
+    device.mockPeerComms->triggerPacketCallback(
+    fdnMac, PktType::kMatchCollectionAck, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    fakeClock->advance(MATCH_TRANSFER_RETRY_MS + 1);
+    matchManager->sync();
+    EXPECT_EQ(sends, 2) << "an acked record is not resent";
+    matchManager->initialize(player, &mockStorage);
+}
+
 TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {
     NativePrefsDriver pdnPrefs("pdn-len-prefs", {MATCHES_PREFS_NAMESPACE});
     NativePrefsDriver fdnPrefs("fdn-len-prefs", {FDN_MATCH_SPOOL_NAMESPACE});

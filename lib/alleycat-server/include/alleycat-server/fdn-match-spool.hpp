@@ -79,16 +79,15 @@ public:
         Match incoming{};
         incoming.deserialize(pkt.matchData);
 
+        // Checked before the dedup scan, which a full spool's 10 Hz resends would repeat.
+        if (getStagedCount() >= FDN_MATCH_SPOOL_CAPACITY) {
+            LOG_W("FDN_SPOOL", "Spool full; withholding ack for seq %u",
+                  static_cast<unsigned>(pkt.matchSeq));
+            return;
+        }
         // A lost ack makes the PDN resend a record that is already staged.
-        if (!containsMatchUuid(incoming.getMatchUuid())) {
-            if (getStagedCount() >= FDN_MATCH_SPOOL_CAPACITY) {
-                LOG_W("FDN_SPOOL", "Spool full; withholding ack for seq %u",
-                      static_cast<unsigned>(pkt.matchSeq));
-                return;
-            }
-            if (!stageMatch(pkt.matchData)) {
-                return;
-            }
+        if (!containsMatchUuid(incoming.getMatchUuid()) && !stageMatch(pkt.matchData)) {
+            return;
         }
         sendAck(fromMac, pkt.matchSeq);
     }

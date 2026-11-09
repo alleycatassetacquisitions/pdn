@@ -46,11 +46,9 @@ void MatchManager::sendCommand(const uint8_t* mac, int command, const char* matc
     packet.playerDrawTime = drawTime;
     packet.isHunter = isHunter;
     IdGenerator::copyId(packet.matchId, matchId);
-    if (player) {
-        IdGenerator::copyId(packet.playerId, player->getUserID().c_str());
-        memcpy(packet.playerUuid, player->getServerPlayerId().bytes, UUIDBytes::SIZE);
-        memcpy(packet.teamUuid, player->getRegistrationTeam().id.bytes, UUIDBytes::SIZE);
-    }
+    IdGenerator::copyId(packet.playerId, player->getUserID().c_str());
+    memcpy(packet.playerUuid, player->getServerPlayerId().bytes, UUIDBytes::SIZE);
+    memcpy(packet.teamUuid, player->getRegistrationTeam().id.bytes, UUIDBytes::SIZE);
 
     LOG_I(MATCH_MANAGER_TAG, "Sending command %i to %s", command, MacToString(mac));
     matchChannel.sendReliable(mac, packet);
@@ -103,29 +101,37 @@ void MatchManager::clearCurrentMatch() {
 void MatchManager::primeMatch(const char* matchId, const uint8_t* opponentMac,
                               bool localIsHunter) {
     activeMatchState.localIsHunter = localIsHunter;
-    activeMatchState.match.emplace(matchId, player ? player->getUserID().c_str() : "",
-                                   localIsHunter);
+    activeMatchState.match.emplace(matchId, player->getUserID().c_str(), localIsHunter);
     memcpy(activeMatchState.opponentMac.data(), opponentMac, 6);
 
-    const UUIDBytes myPlayerUuid = player ? player->getServerPlayerId() : UUIDBytes{};
-    const UUIDBytes myTeamUuid = player ? player->getRegistrationTeam().id : UUIDBytes{};
-    const uint8_t* myMac = (wirelessManager && wirelessManager->getMacAddress())
-                           ? wirelessManager->getMacAddress()
-                           : nullptr;
+    Match& match = *activeMatchState.match;
+    const UUIDBytes& myPlayerUuid = player->getServerPlayerId();
+    const UUIDBytes& myTeamUuid = player->getRegistrationTeam().id;
+    const uint8_t* myMac = wirelessManager ? wirelessManager->getMacAddress() : nullptr;
     if (localIsHunter) {
-        if (!myPlayerUuid.isZero()) {
-            activeMatchState.match->setHunterPlayerId(myPlayerUuid);
-        }
-        activeMatchState.match->setHunterTeamId(myTeamUuid);
-        activeMatchState.match->setHunterMac(myMac);
-        activeMatchState.match->setBountyMac(opponentMac);
+        match.setHunterPlayerId(myPlayerUuid);
+        match.setHunterTeamId(myTeamUuid);
+        match.setHunterMac(myMac);
+        match.setBountyMac(opponentMac);
     } else {
-        if (!myPlayerUuid.isZero()) {
-            activeMatchState.match->setBountyPlayerId(myPlayerUuid);
-        }
-        activeMatchState.match->setBountyTeamId(myTeamUuid);
-        activeMatchState.match->setBountyMac(myMac);
-        activeMatchState.match->setHunterMac(opponentMac);
+        match.setBountyPlayerId(myPlayerUuid);
+        match.setBountyTeamId(myTeamUuid);
+        match.setBountyMac(myMac);
+        match.setHunterMac(opponentMac);
+    }
+}
+
+void MatchManager::setOpponentIdentity(bool opponentIsHunter, const char* opponentId,
+                                       const UUIDBytes& playerUuid, const UUIDBytes& teamUuid) {
+    Match& match = *activeMatchState.match;
+    if (opponentIsHunter) {
+        match.setHunterId(opponentId);
+        match.setHunterPlayerId(playerUuid);
+        match.setHunterTeamId(teamUuid);
+    } else {
+        match.setBountyId(opponentId);
+        match.setBountyPlayerId(playerUuid);
+        match.setBountyTeamId(teamUuid);
     }
 }
 
@@ -164,19 +170,7 @@ void MatchManager::receiveMatch(const char* matchId, const char* opponentId, boo
     }
 
     primeMatch(matchId, opponentMac, player->isHunter());
-    if (opponentIsHunter) {
-        activeMatchState.match->setHunterId(opponentId);
-        if (!opponentPlayerUuid.isZero()) {
-            activeMatchState.match->setHunterPlayerId(opponentPlayerUuid);
-        }
-        activeMatchState.match->setHunterTeamId(opponentTeamUuid);
-    } else {
-        activeMatchState.match->setBountyId(opponentId);
-        if (!opponentPlayerUuid.isZero()) {
-            activeMatchState.match->setBountyPlayerId(opponentPlayerUuid);
-        }
-        activeMatchState.match->setBountyTeamId(opponentTeamUuid);
-    }
+    setOpponentIdentity(opponentIsHunter, opponentId, opponentPlayerUuid, opponentTeamUuid);
 
     auto* clock = SimpleTimer::getPlatformClock();
     LOG_D(MATCH_MANAGER_TAG, "TIMING receiveMatch-ready T=%lu", clock ? clock->milliseconds() : 0UL);
@@ -363,19 +357,19 @@ void MatchManager::syncFdnMatchTransfer() {
     if (!storage || !wirelessManager) return;
 
     const uint8_t* fdnMac = rdc ? rdc->getConnectedPeerMac(DeviceType::FDN) : nullptr;
-    const uint32_t collected = getCollectedHighWaterMark();
-    if (!fdnMac || collected >= getMatchSequenceNumber()) {
-        inFlightTransferSeq = 0;
-        transferRetryTimer.invalidate();
+    if (!fdnMac) {
+        transferWindowTimer.invalidate();
         return;
     }
+    // NVS is polled and records sent at most once per window; an ack ends it early.
+    if (transferWindowTimer.isRunning() && !transferWindowTimer.expired()) return;
+    transferWindowTimer.setTimer(MATCH_TRANSFER_RETRY_MS);
+
+    const uint32_t collected = getCollectedHighWaterMark();
+    if (collected >= getMatchSequenceNumber()) return;
 
     // Matches the ring already overwrote are gone; resume from the oldest still held.
     const uint32_t nextToSend = std::max(collected + 1, getOldestStoredSequence());
-    if (inFlightTransferSeq == nextToSend && transferRetryTimer.isRunning() &&
-        !transferRetryTimer.expired()) {
-        return;
-    }
 
     MatchRecordPacket pkt{};
     pkt.matchSeq = nextToSend;
@@ -383,11 +377,9 @@ void MatchManager::syncFdnMatchTransfer() {
     if (!readMatchBySequence(nextToSend, match)) {
         // An unreadable record would hold back every record after it.
         LOG_E(MATCH_MANAGER_TAG, "Skipping unreadable stored match %u", nextToSend);
-        if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, nextToSend) !=
+        if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, nextToSend) ==
             sizeof(uint32_t)) {
-            // Retry on the resend cadence rather than every tick.
-            inFlightTransferSeq = nextToSend;
-            transferRetryTimer.setTimer(MATCH_TRANSFER_RETRY_MS);
+            transferWindowTimer.invalidate();
         }
         return;
     }
@@ -395,8 +387,6 @@ void MatchManager::syncFdnMatchTransfer() {
 
     wirelessManager->sendEspNowData(fdnMac, PktType::kMatchCollection,
                                     reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
-    inFlightTransferSeq = nextToSend;
-    transferRetryTimer.setTimer(MATCH_TRANSFER_RETRY_MS);
 }
 
 void MatchManager::onMatchRecordAck(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
@@ -415,10 +405,7 @@ void MatchManager::onMatchRecordAck(const uint8_t* fromMac, const uint8_t* data,
         return;
     }
     storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, ack.matchSeq);
-    if (inFlightTransferSeq <= ack.matchSeq) {
-        inFlightTransferSeq = 0;
-        transferRetryTimer.invalidate();
-    }
+    transferWindowTimer.invalidate();
 }
 
 parameterizedCallbackFunction MatchManager::getButtonMasher() {
@@ -525,7 +512,7 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
             return;
         }
-        if (player && !player->getServerPlayerId().isZero() &&
+        if (!player->getServerPlayerId().isZero() &&
             command.playerUuid == player->getServerPlayerId()) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: self playerUuid");
             return;
@@ -545,19 +532,8 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
         matchChannel.cancel(activeMatchState.opponentMac.data());
-        if (activeMatchState.localIsHunter) {
-            activeMatchState.match->setBountyId(command.playerId);
-            if (!command.playerUuid.isZero()) {
-                activeMatchState.match->setBountyPlayerId(command.playerUuid);
-            }
-            activeMatchState.match->setBountyTeamId(command.teamUuid);
-        } else {
-            activeMatchState.match->setHunterId(command.playerId);
-            if (!command.playerUuid.isZero()) {
-                activeMatchState.match->setHunterPlayerId(command.playerUuid);
-            }
-            activeMatchState.match->setHunterTeamId(command.teamUuid);
-        }
+        setOpponentIdentity(!activeMatchState.localIsHunter, command.playerId, command.playerUuid,
+                            command.teamUuid);
         auto* clock = SimpleTimer::getPlatformClock();
         LOG_D(MATCH_MANAGER_TAG, "TIMING matchAck-ready T=%lu", clock ? clock->milliseconds() : 0UL);
         activeMatchState.matchIsReady = true;
