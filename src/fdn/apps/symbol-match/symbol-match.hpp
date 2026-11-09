@@ -5,13 +5,15 @@
 #include "apps/symbol-match/symbol-manager.hpp"
 
 class SymbolWirelessManager;
+class FdnProvisioningManager;
 
 class SymbolMatchApp : public StateMachine {
 public:
     /** Symbol-match app: Selection → SymbolIdle → MatchSuccess → Selection; a refresh skips
      * MatchSuccess. */
     SymbolMatchApp(RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                   SymbolWirelessManager* symbolWirelessManager);
+                   SymbolWirelessManager* symbolWirelessManager,
+                   FdnProvisioningManager* fdnProvisioningManager);
     /** Deletes the owned SymbolManager. */
     ~SymbolMatchApp();
 
@@ -21,4 +23,5 @@ private:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     SymbolManager* symbolManager;
     SymbolWirelessManager* symbolWirelessManager;
+    FdnProvisioningManager* fdnProvisioningManager;
 };

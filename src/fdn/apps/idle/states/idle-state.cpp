@@ -19,9 +19,12 @@ void IdleState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted");
     fdn->getLightManager()->clear();
     remotePlayerManager->consumePacketReceived();
-    pdnCabled = false;
 
-    uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
+    // Armed once per cycle, not per mount: idle remounts after every proximity alert and
+    // cabled session, and restarting the 5 minutes each time would starve the upload.
+    if (!uploadTimer.isRunning() || uploadTimer.expired()) {
+        uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
+    }
 
     fdn->getDisplay()
         ->invalidateScreen()
@@ -29,23 +32,16 @@ void IdleState::onStateMounted(FDN* fdn) {
         ->render();
 }
 
-void IdleState::onStateLoop(FDN* fdn) {
-    remotePlayerManager->Update();
-    pdnCabled = isConnected();
-}
+void IdleState::onStateLoop(FDN* fdn) { remotePlayerManager->Update(); }
 
 void IdleState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
     (void)fdn;
-    uploadTimer.invalidate();
-    pdnCabled = false;
 }
 
 bool IdleState::transitionToPlayerDetected() {
     return remotePlayerManager->consumePacketReceived();
 }
-
-bool IdleState::transitionToCabledPdn() { return pdnCabled; }
 
 bool IdleState::transitionToUploadPending() {
     return uploadTimer.expired() && fdnMatchSpool->getStagedCount() > 0;

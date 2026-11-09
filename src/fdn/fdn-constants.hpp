@@ -30,10 +30,6 @@ constexpr uint8_t fdnDisplayCS          = 10;
 constexpr uint8_t fdnDisplayDC          = 9;
 constexpr uint8_t fdnDisplayRST         = 14;
 
-// --- RSSI thresholds for player proximity detection ---
-constexpr int FDN_STRONG_RSSI_THRESHOLD = -30;
-constexpr int FDN_MEDIUM_RSSI_THRESHOLD = -50;
-
 // --- FDN device identity ---
 // Player ID is 4 characters, zero-padded (e.g. FDN box 0 = "0000")
 constexpr uint8_t FDN_BOX_ID = 0;

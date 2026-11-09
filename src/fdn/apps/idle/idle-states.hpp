@@ -32,8 +32,6 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToPlayerDetected();
-    /** @return true once a PDN is Connected on either FDN jack. */
-    bool transitionToCabledPdn();
     bool transitionToUploadPending();
 
 private:
@@ -41,7 +39,6 @@ private:
     FdnMatchSpool* fdnMatchSpool;
 
     SimpleTimer uploadTimer;
-    bool pdnCabled = false;
 
     static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 };
@@ -68,14 +65,11 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToIdle();
-    /** @return true once a PDN is Connected on either FDN jack. */
-    bool transitionToCabledPdn();
 
 private:
     RemotePlayerManager* remotePlayerManager;
 
     SimpleTimer playerDetectedTimer;
-    bool pdnCabled = false;
     const PlayerDetectionConfig* activeConfig = nullptr;
 
     static constexpr int STRONG_RSSI_THRESHOLD = -50;
@@ -122,7 +116,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// UploadPendingState  (no connection required, so uses plain State)
+// UploadPendingState  (no connection required, so it derives TypedState<FDN>)
 // ---------------------------------------------------------------------------
 class UploadPendingState : public TypedState<FDN> {
 public:

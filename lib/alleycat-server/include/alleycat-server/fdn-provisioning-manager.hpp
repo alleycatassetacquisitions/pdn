@@ -64,7 +64,13 @@ public:
     void setOnLookupDone(OnLookupDone listener) { onLookupDone = std::move(listener); }
 
     /** @return true when a PDN with no applied profile is Connected on an FDN jack. */
-    bool hasUnprovisionedPdnCabled() {
+    bool hasUnprovisionedPdnCabled() { return hasCabledPdn(false); }
+
+    /** @return true when a PDN with an applied profile, demo included, is Connected. */
+    bool hasRegisteredPdnCabled() { return hasCabledPdn(true); }
+
+private:
+    bool hasCabledPdn(bool registered) {
         if (!rdc) return false;
         for (SerialIdentifier jack :
              {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
@@ -78,12 +84,11 @@ public:
             PlayerProfile profile{};
             memcpy(&profile, bytes, sizeof(profile));
             // A demo player has no server id either, but is done registering.
-            if (profile.registered == 0) return true;
+            if ((profile.registered != 0) == registered) return true;
         }
         return false;
     }
 
-private:
     // Shorter than the PDN's 10 s wait, so a request sent at mount is answered in time.
     static constexpr unsigned long PROVISION_LOOKUP_TIMEOUT_MS = 8000;
 

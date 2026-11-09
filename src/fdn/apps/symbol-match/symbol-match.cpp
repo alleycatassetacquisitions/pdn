@@ -1,12 +1,15 @@
 #include "apps/symbol-match/symbol-match.hpp"
 #include "apps/fdn-app-ids.hpp"
+#include "alleycat-server/fdn-provisioning-manager.hpp"
 
 SymbolMatchApp::SymbolMatchApp(RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                               SymbolWirelessManager* symbolWirelessManager)
+                               SymbolWirelessManager* symbolWirelessManager,
+                               FdnProvisioningManager* fdnProvisioningManager)
     : StateMachine(SYMBOL_MATCH_APP_ID)
     , remoteDeviceCoordinator(remoteDeviceCoordinator)
     , symbolManager(new SymbolManager())
-    , symbolWirelessManager(symbolWirelessManager) {}
+    , symbolWirelessManager(symbolWirelessManager)
+    , fdnProvisioningManager(fdnProvisioningManager) {}
 
 SymbolMatchApp::~SymbolMatchApp() {
     delete symbolManager;
@@ -17,10 +20,16 @@ void SymbolMatchApp::populateStateMap() {
     auto* symbolIdle = new SymbolIdle(symbolManager, remoteDeviceCoordinator, symbolWirelessManager);
     auto* matchSuccess = new MatchSuccess(remoteDeviceCoordinator, symbolWirelessManager);
 
-    // The game ends when the last PDN unplugs, except during the codeword hold.
-    selection->addAppTransition([selection]() { return !selection->isConnected(); },
+    // The game ends once no registered PDN remains, so an unregistered one left behind can
+    // register; MatchSuccess holds its codeword first. The debounce rides out a cable jiggle.
+    FdnProvisioningManager* provisioning = fdnProvisioningManager;
+    auto gameOver = [provisioning](FDNConnectState* state) {
+        return state->isPersistentlyDisconnected() ||
+               (state->isConnected() && !provisioning->hasRegisteredPdnCabled());
+    };
+    selection->addAppTransition([selection, gameOver]() { return gameOver(selection); },
                                 StateId(IDLE_APP_ID));
-    symbolIdle->addAppTransition([symbolIdle]() { return !symbolIdle->isConnected(); },
+    symbolIdle->addAppTransition([symbolIdle, gameOver]() { return gameOver(symbolIdle); },
                                  StateId(IDLE_APP_ID));
 
     selection->addTransition(

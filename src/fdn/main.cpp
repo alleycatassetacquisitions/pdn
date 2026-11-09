@@ -168,7 +168,7 @@ static void setup() {
     // Apps
     RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
     auto* idleApp = new IdleApp(remotePlayerManager, rdc, fdnMatchSpool, fdnProvisioningManager);
-    auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager);
+    auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager, fdnProvisioningManager);
 
     // Splash screen
     fdn->getDisplay()

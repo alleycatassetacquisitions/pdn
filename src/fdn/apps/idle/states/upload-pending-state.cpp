@@ -19,8 +19,7 @@ void UploadPendingState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted — %u staged match(es)",
           static_cast<unsigned>(fdnMatchSpool->getStagedCount()));
 
-    fdn->getWirelessManager()->enableWifiMode();
-    // The whole spool goes up as one request.
+    // The whole spool goes up as one request; queuing it switches the radio to Wi-Fi.
     uploadQueued = fdnMatchSpool->uploadPendingBatch([this](bool uploaded) {
         uploadDone = true;
         uploadFailed = !uploaded;

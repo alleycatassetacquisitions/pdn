@@ -20,8 +20,6 @@ void PlayerDetectedState::onStateMounted(FDN* fdn) {
 
     LOG_I(TAG, "Mounted — rssi %d, timeout %dms", rssi, activeConfig->timeout);
 
-    pdnCabled = false;
-
     fdn->getDisplay()
         ->invalidateScreen()
         ->drawText("PLAYER", centeredTextX("PLAYER"), 24)
@@ -51,19 +49,15 @@ void PlayerDetectedState::onStateMounted(FDN* fdn) {
 void PlayerDetectedState::onStateLoop(FDN* fdn) {
     (void)fdn;
     remotePlayerManager->Update();
-    pdnCabled = isConnected();
 }
 
 void PlayerDetectedState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
     fdn->getLightManager()->stopAnimation();
     playerDetectedTimer.invalidate();
-    pdnCabled = false;
     activeConfig       = nullptr;
 }
 
 bool PlayerDetectedState::transitionToIdle() {
     return playerDetectedTimer.expired();
 }
-
-bool PlayerDetectedState::transitionToCabledPdn() { return pdnCabled; }

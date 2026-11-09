@@ -390,6 +390,7 @@ inline void fdnSeesUnprovisionedPdnUntilItRegisters(PlayerFetchTestSuite* suite)
     unregistered.userId = 0xFFFF;
     suite->fdnRdc.setPeerProfile(SerialIdentifier::INPUT_JACK, unregistered);
     EXPECT_TRUE(fdnProv.hasUnprovisionedPdnCabled());
+    EXPECT_FALSE(fdnProv.hasRegisteredPdnCabled());
 
     Player registered{};
     UUIDBytes playerId{};
@@ -408,6 +409,7 @@ inline void fdnSeesUnprovisionedPdnUntilItRegisters(PlayerFetchTestSuite* suite)
     suite->fdnRdc.setPeerProfile(SerialIdentifier::INPUT_JACK, demo.toProfile());
     EXPECT_FALSE(fdnProv.hasUnprovisionedPdnCabled())
     << "a demo player has no server id but is not waiting to register";
+    EXPECT_TRUE(fdnProv.hasRegisteredPdnCabled()) << "and it keeps the symbol-match game open";
 
     suite->fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::DISCONNECTED);
     suite->fdnRdc.setPeerProfile(SerialIdentifier::INPUT_JACK, unregistered);

@@ -21,7 +21,7 @@ Normative behavior is in [spec.md](./spec.md). This document helps implementatio
      └─────────────┘
 ```
 
-**Separate from symbol-match app:** upload pending, connection detected, auth, unauthorized, and `HackedPlayersManager` / HTTP upload states live in `fdn-apps` rather than inside the symbol-match state machine itself.
+**Separate from symbol-match app:** the idle, player-detected, registration, and upload-pending states live in `fdn-apps` rather than inside the symbol-match state machine itself.
 
 **Rename / replace:** `MatchSuccess` → codeword success (30s hold, then Selection; no main menu).
 

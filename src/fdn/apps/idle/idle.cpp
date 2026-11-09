@@ -1,6 +1,7 @@
 #include "apps/idle/idle.hpp"
 #include "apps/idle/idle-states.hpp"
 #include "apps/fdn-app-ids.hpp"
+#include <functional>
 
 IdleApp::IdleApp(RemotePlayerManager* remotePlayerManager,
                  RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
@@ -19,31 +20,29 @@ void IdleApp::populateStateMap() {
     auto* registrationState =
     new RegistrationState(fdnProvisioningManager, remoteDeviceCoordinator);
 
-    // A cabled PDN is registered first if it has no server identity, and otherwise
-    // goes to the symbol-match game.
+    // A cabled PDN with no profile is registered; any other goes to the symbol-match game.
     FdnProvisioningManager* provisioning = fdnProvisioningManager;
-    auto unprovisioned = [provisioning]() { return provisioning->hasUnprovisionedPdnCabled(); };
+    auto toRegistration = [provisioning](FDNConnectState* state) {
+        return state->isConnected() && provisioning->hasUnprovisionedPdnCabled();
+    };
+    auto toSymbolMatch = [provisioning](FDNConnectState* state) {
+        return state->isConnected() && !provisioning->hasUnprovisionedPdnCabled();
+    };
 
     idleState->addTransition(new StateTransition(
-    [idleState, unprovisioned]() { return idleState->transitionToCabledPdn() && unprovisioned(); },
-    registrationState));
-    idleState->addAppTransition(
-    [idleState, unprovisioned]() { return idleState->transitionToCabledPdn() && !unprovisioned(); },
-    StateId(SYMBOL_MATCH_APP_ID));
+    [idleState, toRegistration]() { return toRegistration(idleState); }, registrationState));
+    idleState->addAppTransition([idleState, toSymbolMatch]() { return toSymbolMatch(idleState); },
+                                StateId(SYMBOL_MATCH_APP_ID));
     idleState->addTransition(new StateTransition(
     std::bind(&IdleState::transitionToPlayerDetected, idleState), playerDetectedState));
     idleState->addTransition(new StateTransition(
         std::bind(&IdleState::transitionToUploadPending, idleState), uploadPendingState));
 
     playerDetectedState->addTransition(new StateTransition(
-    [playerDetectedState, unprovisioned]() {
-        return playerDetectedState->transitionToCabledPdn() && unprovisioned();
-    },
+    [playerDetectedState, toRegistration]() { return toRegistration(playerDetectedState); },
     registrationState));
     playerDetectedState->addAppTransition(
-    [playerDetectedState, unprovisioned]() {
-        return playerDetectedState->transitionToCabledPdn() && !unprovisioned();
-    },
+    [playerDetectedState, toSymbolMatch]() { return toSymbolMatch(playerDetectedState); },
     StateId(SYMBOL_MATCH_APP_ID));
     playerDetectedState->addTransition(new StateTransition(
     std::bind(&PlayerDetectedState::transitionToIdle, playerDetectedState), idleState));
