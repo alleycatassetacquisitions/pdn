@@ -14,8 +14,10 @@ enum class PktType : uint8_t {
     kRoleAnnounce = 8,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kReliableAck = 10,
-    kShootoutCommand = 11,
-    kShootoutCommandAck = 12,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutRingClosed = 11,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutConfirm = 12,
     kSymbolMatchCommand = 13,
     kPdnConnectionContext = 15,
     kFdnConnectionContext = 16,
@@ -42,6 +44,16 @@ enum class PktType : uint8_t {
     kPlayerProvision = 25,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kPlayerProvisionRequest = 26,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutBracket = 27,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutMatchStart = 28,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutMatchResult = 29,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutTournamentEnd = 30,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutAbort = 31,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -120,31 +132,6 @@ struct RoleAnnouncePayload
 struct ReliableAckPayload {
     PktType ackedType;
     uint8_t seqId;
-} __attribute__((packed));
-
-enum class ShootoutCmd : uint8_t {
-    CONFIRM = 0,
-    BRACKET = 1,
-    MATCH_START = 2,
-    MATCH_RESULT = 3,
-    TOURNAMENT_END = 4,
-    ABORT = 5,
-    // Coordinator -> members on ring closure. Carries the ring roster because
-    // only the head's RDC serves one; every other member gets its copy here.
-    RING_CLOSED = 6,
-};
-
-struct ShootoutPacket
-{
-    ShootoutCmd cmd;
-    uint8_t     seqId;   // nonzero for reliable commands; 0 = no ack expected
-    uint8_t     payload[];
-} __attribute__((packed));
-
-struct ShootoutAckPayload
-{
-    ShootoutCmd cmd;
-    uint8_t     seqId;
 } __attribute__((packed));
 
 // ---- Head roster management ----

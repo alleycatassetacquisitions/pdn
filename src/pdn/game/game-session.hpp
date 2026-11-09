@@ -9,7 +9,6 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/player.hpp"
 #include "utils/simple-timer.hpp"
-#include <array>
 
 /**
  * Owns the managers the gameplay apps share, above every app so none is tied to
@@ -21,16 +20,15 @@
  * so that is ordering hygiene rather than a live use-after-free.
  *
  * sync() runs on each platform tick through Device::setTickCallback, not from a
- * state: only the mounted app receives an onStateLoop, so the shootout's retry
- * machine driven from a state would stall the moment the device swaps apps.
+ * state: only the mounted app receives an onStateLoop, and a tournament has to
+ * keep advancing while the device is in the match app for a bracket match.
  */
 class GameSession {
 public:
     /**
-     * Builds the shared managers, wires the session-level callbacks and the
-     * shootout packet routes, and installs its own per-tick pump. The device and
-     * its wireless manager outlive the session, so the destructor empties every
-     * slot holding `this`.
+     * Builds the shared managers, wires the session-level callbacks, and
+     * installs its own per-tick pump. The device outlives the session, so the
+     * destructor empties every slot holding `this`.
      */
     GameSession(Player* player,
                 Device* pdn,
@@ -45,31 +43,7 @@ public:
     GameContext getContext();
 
 private:
-    void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void logRetryStats();
-
-    /**
-     * One row per packet type this session answers for. The constructor
-     * registers every row and the destructor clears every row, so the two lists
-     * cannot drift apart the way two hand-written ones can.
-     */
-    struct PacketRoute {
-        PktType type;
-        PeerCommsInterface::PacketCallback handler;
-    };
-    static const std::array<PacketRoute, 2>& packetRoutes();
-
-    /**
-     * Wraps a member handler in the C-style callback the radio takes. The member
-     * is a template parameter, so the pointer-to-member call resolves at compile
-     * time; the row still stores a std::function, as the lambdas it replaced did.
-     */
-    template <void (GameSession::*Handler)(const uint8_t*, const uint8_t*, size_t)>
-    static void dispatchTo(const uint8_t* fromMac, const uint8_t* data,
-                           const size_t dataLen, void* ctx) {
-        (static_cast<GameSession*>(ctx)->*Handler)(fromMac, data, dataLen);
-    }
 
     Player* player = nullptr;
     Device* pdn = nullptr;

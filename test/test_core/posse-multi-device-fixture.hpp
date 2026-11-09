@@ -57,17 +57,15 @@ struct MultiDeviceNode {
         delete posse;
     }
 
-    // Per-device captured driver handlers, one slot per PktType, filled as the
-    // RDC, the managers and their channels register.
-    struct PacketSlot {
-        PeerCommsInterface::PacketCallback handler = nullptr;
-        void* ctx = nullptr;
-    };
+    // Per-device captured send-status handlers, one slot per PktType. Packet
+    // handlers are not mirrored here: MockPeerComms keeps its own registry, and
+    // that one already holds what the WirelessManager installed while the device
+    // was being built (the transport's kReliableAck), which no capture wired
+    // afterwards can see.
     struct SendStatusSlot {
         PeerCommsInterface::SendStatusCallback handler = nullptr;
         void* ctx = nullptr;
     };
-    std::array<PacketSlot, static_cast<size_t>(PktType::kNumPacketTypes)> packetSlots{};
     std::array<SendStatusSlot, static_cast<size_t>(PktType::kNumPacketTypes)> sendStatusSlots{};
     uint8_t mac[6] = {};
 };
@@ -137,7 +135,6 @@ public:
                 r->resendContext();
                 c->onChainStateChanged();
             });
-            wireShootoutHandlers(*node);
 
             nodes.push_back(std::move(node));
         }
@@ -365,8 +362,13 @@ protected:
             case PktType::kChainJoin:
             case PktType::kChainGameEvent:
             case PktType::kReliableAck:
-            case PktType::kShootoutCommand:
-            case PktType::kShootoutCommandAck: return true;
+            case PktType::kShootoutRingClosed:
+            case PktType::kShootoutConfirm:
+            case PktType::kShootoutBracket:
+            case PktType::kShootoutMatchStart:
+            case PktType::kShootoutMatchResult:
+            case PktType::kShootoutTournamentEnd:
+            case PktType::kShootoutAbort: return true;
             default: return false;
         }
     }
@@ -390,9 +392,10 @@ protected:
         MultiDeviceNode& target = *nodes[toIdx];
         MultiDeviceNode& source = *nodes[p.fromIndex];
 
-        const MultiDeviceNode::PacketSlot& slot = target.packetSlots[static_cast<size_t>(p.type)];
-        if (!slot.handler) return;
-        slot.handler(source.mac, p.data.data(), p.data.size(), slot.ctx);
+        if (!target.device->mockPeerComms->triggerPacketCallback(source.mac, p.type, p.data.data(),
+                                                                 p.data.size())) {
+            return;
+        }
 
         // Report delivery back to the sender: on channels with no reply packet
         // that report IS the delivery signal, and a fixture that routed the frame
@@ -434,14 +437,6 @@ protected:
             return 1;
         });
 
-        // Capture every driver handler as it is registered, one slot per PktType.
-        ON_CALL(*pc, setPacketHandler(_, _, _))
-        .WillByDefault([&n](PktType type, PeerCommsInterface::PacketCallback cb, void* ctx) {
-            n.packetSlots[static_cast<size_t>(type)] = {cb, ctx};
-        });
-        ON_CALL(*pc, clearPacketHandler(_)).WillByDefault([&n](PktType type) {
-            n.packetSlots[static_cast<size_t>(type)] = {};
-        });
         ON_CALL(*pc, setSendStatusHandler(_, _, _))
         .WillByDefault([&n](PktType type, PeerCommsInterface::SendStatusCallback cb, void* ctx) {
             n.sendStatusSlots[static_cast<size_t>(type)] = {cb, ctx};
@@ -449,78 +444,6 @@ protected:
         ON_CALL(*pc, clearSendStatusHandler(_)).WillByDefault([&n](PktType type) {
             n.sendStatusSlots[static_cast<size_t>(type)] = {};
         });
-    }
-
-    // Register Shootout command + ack handlers. Mirrors the dispatcher in
-    // the GameSession constructor so every packet path exercised on hardware is
-    // exercised in the fixture too.
-    void wireShootoutHandlers(MultiDeviceNode& n) {
-        ShootoutManager* mgr = n.shootout;
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-        PktType::kShootoutCommand,
-        [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-            auto* m = static_cast<ShootoutManager*>(ctx);
-            if (dataLen < 2) return;
-            ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
-            uint8_t seqId = data[1];
-            const uint8_t* payload = data + 2;
-            size_t payloadLen = dataLen - 2;
-            switch (cmd) {
-                case ShootoutCmd::CONFIRM: {
-                    if (payloadLen < 6) break;
-                    const char* name = (payloadLen >= 6 + ShootoutManager::kNameLength)
-                                       ? reinterpret_cast<const char*>(payload + 6)
-                                       : nullptr;
-                    m->onConfirmReceived(payload, name);
-                    break;
-                }
-                case ShootoutCmd::BRACKET:
-                case ShootoutCmd::RING_CLOSED: {
-                    if (payloadLen < 1) break;
-                    uint8_t count = payload[0];
-                    if (payloadLen < 1 + 6u * static_cast<size_t>(count)) break;
-                    std::vector<std::array<uint8_t, 6>> macs;
-                    for (uint8_t i = 0; i < count; i++) {
-                        std::array<uint8_t, 6> mac;
-                        memcpy(mac.data(), payload + 1 + 6 * i, 6);
-                        macs.push_back(mac);
-                    }
-                    if (cmd == ShootoutCmd::BRACKET) {
-                        m->onBracketReceived(fromMac, macs, seqId);
-                    } else {
-                        m->onRingClosedReceived(fromMac, macs);
-                    }
-                    break;
-                }
-                case ShootoutCmd::MATCH_START:
-                    if (payloadLen >= 13)
-                        m->onMatchStartReceived(fromMac, payload, payload + 6, payload[12], seqId);
-                    break;
-                case ShootoutCmd::MATCH_RESULT:
-                    if (payloadLen >= 13)
-                        m->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
-                    break;
-                case ShootoutCmd::TOURNAMENT_END:
-                    if (payloadLen >= 6) m->onTournamentEndReceived(fromMac, payload, seqId);
-                    break;
-                case ShootoutCmd::ABORT: m->onAbortReceived(fromMac, seqId); break;
-            }
-        },
-        mgr);
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-        PktType::kShootoutCommandAck,
-        [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-            // Same routing as GameSession::onShootoutCommandAckPacket: the
-            // seqId alone names the frame, so the command byte is only
-            // range-checked, never dispatched on.
-            auto* m = static_cast<ShootoutManager*>(ctx);
-            if (dataLen < 2) return;
-            if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
-            m->onCommandAckReceived(fromMac, data[1]);
-        },
-        mgr);
     }
 };
 

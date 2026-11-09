@@ -5,11 +5,12 @@
 #include <vector>
 #include "game/player.hpp"
 #include "device/remote-device-coordinator.hpp"
-#include "wireless/resender.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/wireless-manager.hpp"
 #include "utils/debounced-condition.hpp"
 #include "utils/simple-timer.hpp"
+#include "wireless/reliable-channel.hpp"
+#include "wireless/shootout-packets.hpp"
 
 class MatchManager;
 
@@ -29,7 +30,8 @@ public:
     };
 
     /**
-     * Subscribes to the coordinator's ring-closed edge when given one. That
+     * Claims the seven shootout PktTypes on wirelessManager's transport and
+     * subscribes to the coordinator's ring-closed edge when given one. That
      * callback is a single slot, so at most one ShootoutManager per coordinator:
      * a second built on the same one takes the slot over, and whichever is
      * destroyed first empties it for both.
@@ -71,9 +73,6 @@ public:
     void startProposal();
     void confirmLocal();
     void sync();
-    // Fixed on-wire name length for CONFIRM payloads. Local Player names are
-    // null-padded/truncated to this size.
-    static constexpr size_t kNameLength = 12;
     void onConfirmReceived(const uint8_t* fromMac, const char* name = nullptr);
     // Returns the display name for a MAC: the name announced during CONFIRM
     // if known, otherwise the last-two-byte MAC hex suffix.
@@ -87,16 +86,11 @@ public:
     bool hasBye() const;
 
     /**
-     * Cumulative retry counters for this manager's command channel. Sends and
-     * retries count frames, abandons count recipients; see Resender::Stats.
+     * Recipients of the fan-out sent on `type` under `seqId` that have not yet
+     * acked. Zero once every one of them has answered or been given up on, and
+     * zero for a PktType this manager does not send reliably.
      */
-    const Resender::Stats& getRetryStats() const { return resender.getStats(); }
-
-    /**
-     * Recipients of the fan-out sent under `seqId` that have not yet acked.
-     * Zero once every one of them has answered or been given up on.
-     */
-    size_t getPendingAckCount(uint8_t seqId) const;
+    size_t getPendingAckCount(PktType type, uint8_t seqId) const;
     uint8_t getLastBracketSeqId() const;
 
     int getCurrentMatchIndex() const;
@@ -122,8 +116,6 @@ public:
     std::array<uint8_t, 6> getOpponentMac() const;
 
     void reportLocalWin();
-    /** An ack for one of this manager's fan-outs, named by the seqId it answers. */
-    void onCommandAckReceived(const uint8_t* fromMac, uint8_t seqId);
 
     void onMatchResultReceived(const uint8_t* winner, const uint8_t* loser,
                                uint8_t matchIndex, uint8_t seqId,
@@ -159,7 +151,7 @@ public:
      * Tears down, lands in Phase::ABORTED, and only then fans ABORT out to the
      * ring (bracket, or confirmedSet before a bracket exists). Armed after the
      * teardown because the teardown cancels the fan-outs in flight, sparing only
-     * the seqId already recorded as terminal — which this one is not yet.
+     * the frame already recorded as terminal — which this one is not yet.
      * Idempotent, and refuses ENDED as well as ABORTED.
      */
     void abortTournament();
@@ -194,9 +186,9 @@ public:
     // holding the start, with no timeout of its own to resolve it.
     static_assert(kBracketRevealMs > Resender::RETRANSMIT_SPAN_MS,
                   "the bracket-ack gate would hold the tournament with no timeout");
-    // Packet-validation clamp on an inbound BRACKET's member count. A ring can
+    // Packet-validation clamp on an inbound roster's member count. A ring can
     // hold as many devices as the chain does, so it tracks MAX_CHAIN_MEMBERS;
-    // one ESP-NOW v2 frame carries that bracket several times over.
+    // the roster payload is sized to it.
     static constexpr uint8_t MAX_BRACKET_SIZE = MAX_CHAIN_MEMBERS;
 
 private:
@@ -214,7 +206,6 @@ private:
     void primeMatchManagerForMatch();
     void resetTournamentState();
 
-    uint8_t nextSeqId();
     static bool containsMac(const std::vector<std::array<uint8_t, 6>>& set,
                             const uint8_t* mac);
     /** True when `mac` is the coordinator this device is following. */
@@ -227,14 +218,9 @@ private:
     // physical ring before either exists. A follower's bracket is not a subset
     // of its confirmed set, so none of the three subsumes the others.
     bool isRingMember(const uint8_t* mac) const;
-    void broadcastCommand(const uint8_t* packet, size_t len);
-    void broadcastToRing(const std::vector<std::array<uint8_t, 6>>& peers,
-                         const uint8_t* packet, size_t len);
     /** The peers a ring fan-out is addressed to: `peers` without this device. */
-    std::vector<std::array<uint8_t, 6>> peersExcludingSelf(
-        const std::vector<std::array<uint8_t, 6>>& peers) const;
-    void sendReliablyToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
-                             uint8_t seqId, const uint8_t* packet, size_t len);
+    std::vector<std::array<uint8_t, 6>>
+    peersExcludingSelf(const std::vector<std::array<uint8_t, 6>>& peers) const;
     std::vector<std::array<uint8_t, 6>> testRingMembers;
     bool testRingMembersOverride = false;
     std::vector<std::array<uint8_t, 6>> confirmedSet;
@@ -274,29 +260,38 @@ private:
     SimpleTimer confirmRebroadcastTimer;
 
     uint8_t lastBracketSeqId = 0;
-    uint8_t nextShootoutSeqId = 1;
 
-    // Retransmits for every command family this manager sends. Owned here, not
-    // shared with the coordinator's: a fan-out armed by this manager must die
-    // with it rather than keep broadcasting for a tournament that is over.
-    // All five families ride one PktType, so the abandon callback reads which
-    // one gave up off the frame's own command byte.
-    Resender resender;
-    void onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac,
-                            const uint8_t* packet, size_t len);
+    // One FAN_OUT channel per command. Every frame is one broadcast to the
+    // ring, acked per recipient; the two rebroadcast-on-timer commands
+    // (RING_CLOSED, CONFIRM) ride theirs unsequenced.
+    ReliableChannel<ShootoutRosterPayload> ringClosedChannel;
+    ReliableChannel<ShootoutConfirmPayload> confirmChannel;
+    ReliableChannel<ShootoutRosterPayload> bracketChannel;
+    ReliableChannel<ShootoutMatchStartPayload> matchStartChannel;
+    ReliableChannel<ShootoutMatchResultPayload> matchResultChannel;
+    ReliableChannel<ShootoutTournamentEndPayload> tournamentEndChannel;
+    ReliableChannel<ShootoutAbortPayload> abortChannel;
+    /** The channel sending `type`, or null for a type this manager does not send. */
+    ReliableChannelBase* channelFor(PktType type);
+    const ReliableChannelBase* channelFor(PktType type) const;
+
+    // Packs `macs` into a roster frame, truncated to the cap: the roster is the
+    // RDC's 64 plus self, so it can land one over what the codec accepts, and an
+    // over-long frame would be dropped by every receiver rather than the members
+    // past the cap. Truncating keeps the ring running.
+    static ShootoutRosterPayload buildRoster(const std::vector<std::array<uint8_t, 6>>& macs);
+    static std::vector<std::array<uint8_t, 6>> unpackRoster(const ShootoutRosterPayload& roster);
+    /** Broadcasts an unsequenced frame only when `peers` names someone besides this device. */
+    template <class P>
+    void broadcastToRing(ReliableChannel<P>& channel,
+                         const std::vector<std::array<uint8_t, 6>>& peers, P& payload);
 
     void sendBracketToPeers();
-    // [cmd, seqId, count, count * 6-byte MAC] — the frame BRACKET and
-    // RING_CLOSED share.
-    std::vector<uint8_t> buildMacListPacket(
-        ShootoutCmd cmd, uint8_t seqId,
-        const std::vector<std::array<uint8_t, 6>>& macs) const;
 
     // Author of the current bracket; all-zero while no bracket is held.
     std::array<uint8_t, 6> coordinatorMac{};
 
     std::array<uint8_t, 6> opponentMac{};
-    void sendShootoutAck(ShootoutCmd cmd, uint8_t seqId, const uint8_t* toMac);
 
     int currentMatchIndex = -1;
     // bracket shrinks on round advancement (coordinator only), so cache the
@@ -311,7 +306,6 @@ private:
      */
     void maybeStartNextMatch();
     void sendMatchStartToPeers(int matchIndex);
-    std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
 
     std::vector<std::array<uint8_t, 6>> eliminated;
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
@@ -331,15 +325,13 @@ private:
      */
     void applyMatchResult(const uint8_t* winner, const uint8_t* loser,
                           bool endsCurrentMatch = true);
-    std::vector<uint8_t> buildMatchResultPacket(const uint8_t* winner,
-                                                const uint8_t* loser,
-                                                uint8_t matchIndex) const;
 
     std::array<uint8_t, 6> tournamentWinner{};
     uint8_t lastTournamentEndSeqId = 0;
     // The ABORT or TOURNAMENT_END this device sent to report the tournament
-    // ending, which a teardown spares — see resetTournamentState. Zero until one
-    // is armed, and zero on a device that only ever received the news.
+    // ending, which a teardown spares — see resetTournamentState. Null until one
+    // is armed, and null on a device that only ever received the news.
+    ReliableChannelBase* terminalFanOut = nullptr;
     uint8_t terminalFanOutSeqId = 0;
 
     void sendTournamentEndToPeers(const uint8_t* winner);

@@ -113,23 +113,21 @@ TEST(ResenderTest, distinctSeqIdsToSameTargetCoexist) {
     uint8_t payload[4] = {0};
     const Resender::SendMode kStream = Resender::SendMode::KEEP_DISTINCT;
     for (uint8_t seq = 1; seq <= 3; ++seq) {
-        resender.send(target, PktType::kShootoutCommand, seq,
-                      payload, sizeof(payload), kStream);
+        resender.send(target, PktType::kShootoutBracket, seq, payload, sizeof(payload), kStream);
     }
-    EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 3u);
+    EXPECT_EQ(resender.pendingCount(PktType::kShootoutBracket), 3u);
 
     // Acking the middle seqId clears only that slot.
-    EXPECT_TRUE(resender.onAck(PktType::kShootoutCommand, 2, target));
-    EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 2u);
+    EXPECT_TRUE(resender.onAck(PktType::kShootoutBracket, 2, target));
+    EXPECT_EQ(resender.pendingCount(PktType::kShootoutBracket), 2u);
 
     // A genuine re-send of an existing seqId replaces rather than duplicates.
-    resender.send(target, PktType::kShootoutCommand, 1,
-                  payload, sizeof(payload), kStream);
-    EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 2u);
+    resender.send(target, PktType::kShootoutBracket, 1, payload, sizeof(payload), kStream);
+    EXPECT_EQ(resender.pendingCount(PktType::kShootoutBracket), 2u);
 
     // cancel() drops every remaining slot to the target on that channel.
-    resender.cancel(PktType::kShootoutCommand, target);
-    EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 0u);
+    resender.cancel(PktType::kShootoutBracket, target);
+    EXPECT_EQ(resender.pendingCount(PktType::kShootoutBracket), 0u);
 }
 
 TEST(ResenderTest, supersedeDropsPriorAndStaleAckDoesNotResurrect) {
@@ -221,13 +219,13 @@ TEST(ResenderBroadcastTest, oneFramePerRoundNotOnePerMember) {
         f.mac(1), f.mac(2), f.mac(3), f.mac(4)};
     uint8_t payload[8] = {0};
 
-    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 7, payload, sizeof(payload));
+    f.resender.sendBroadcast(members, PktType::kShootoutBracket, 7, payload, sizeof(payload));
     EXPECT_EQ(f.frames, 1);
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 4u);
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutBracket), 4u);
 
     f.runLoopFor(Resender::INITIAL_TIMEOUT_MS + 40);
     EXPECT_EQ(f.frames, 2) << "a retransmit round must be one frame, not one per member";
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 4u);
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutBracket), 4u);
 }
 
 TEST(ResenderBroadcastTest, memberAckClearsOnlyItsOwnSlot) {
@@ -237,19 +235,19 @@ TEST(ResenderBroadcastTest, memberAckClearsOnlyItsOwnSlot) {
     std::vector<std::array<uint8_t, 6>> members = {f.mac(1), f.mac(2), f.mac(3)};
     uint8_t payload[4] = {0};
 
-    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 9, payload, sizeof(payload));
+    f.resender.sendBroadcast(members, PktType::kShootoutBracket, 9, payload, sizeof(payload));
     std::array<uint8_t, 6> second = f.mac(2);
 
-    EXPECT_TRUE(f.resender.onAck(PktType::kShootoutCommand, 9, second.data()));
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 2u);
-    EXPECT_FALSE(f.resender.isPending(PktType::kShootoutCommand, second.data()));
+    EXPECT_TRUE(f.resender.onAck(PktType::kShootoutBracket, 9, second.data()));
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutBracket), 2u);
+    EXPECT_FALSE(f.resender.isPending(PktType::kShootoutBracket, second.data()));
 
     std::array<uint8_t, 6> first = f.mac(1);
-    EXPECT_TRUE(f.resender.isPending(PktType::kShootoutCommand, first.data()));
+    EXPECT_TRUE(f.resender.isPending(PktType::kShootoutBracket, first.data()));
 
     // A second ack from the same member matches nothing and disturbs no one.
-    EXPECT_FALSE(f.resender.onAck(PktType::kShootoutCommand, 9, second.data()));
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 2u);
+    EXPECT_FALSE(f.resender.onAck(PktType::kShootoutBracket, 9, second.data()));
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutBracket), 2u);
 }
 
 TEST(ResenderBroadcastTest, silentMemberAbandonsAloneAndNamesItself) {
@@ -268,9 +266,9 @@ TEST(ResenderBroadcastTest, silentMemberAbandonsAloneAndNamesItself) {
             abandoned.push_back(mac);
         });
 
-    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 3, payload, sizeof(payload));
+    f.resender.sendBroadcast(members, PktType::kShootoutBracket, 3, payload, sizeof(payload));
     std::array<uint8_t, 6> acker = f.mac(1);
-    ASSERT_TRUE(f.resender.onAck(PktType::kShootoutCommand, 3, acker.data()));
+    ASSERT_TRUE(f.resender.onAck(PktType::kShootoutBracket, 3, acker.data()));
 
     // The silent member's frame runs out of span and it is given up on.
     f.runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
@@ -278,7 +276,7 @@ TEST(ResenderBroadcastTest, silentMemberAbandonsAloneAndNamesItself) {
     ASSERT_EQ(abandoned.size(), 1u);
     EXPECT_EQ(memcmp(abandoned[0].data(), f.mac(2).data(), 6), 0)
         << "abandon must name the member that went silent, not the group";
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutBracket), 0u);
 }
 
 TEST(ResenderBroadcastTest, theLadderStopsWellShortOfTheShiftBound) {
@@ -319,7 +317,7 @@ TEST(ResenderBroadcastTest, refusedFrameIsOneAttemptForTheGroup) {
         f.mac(1), f.mac(2), f.mac(3), f.mac(4), f.mac(5)};
     uint8_t payload[4] = {0};
 
-    f.resender.sendBroadcast(recipients, PktType::kShootoutCommand, 5, payload, sizeof(payload));
+    f.resender.sendBroadcast(recipients, PktType::kShootoutBracket, 5, payload, sizeof(payload));
     ASSERT_EQ(f.frames, 1);
 
     f.setRadioUp(false);
@@ -343,12 +341,11 @@ TEST(ResenderBroadcastTest, aFrameTheSendPathNeverTookIsStillGivenUpOn) {
     std::vector<std::array<uint8_t, 6>> recipients = {f.mac(1), f.mac(2)};
 
     f.setRadioUp(false);
-    f.resender.sendBroadcast(recipients, PktType::kShootoutCommand, 8,
-                             payload, sizeof(payload));
+    f.resender.sendBroadcast(recipients, PktType::kShootoutBracket, 8, payload, sizeof(payload));
     f.runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
 
     EXPECT_EQ(abandons, 2) << "a frame nothing ever accepted stayed pending forever";
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutBracket), 0u);
 }
 
 TEST(ResenderBroadcastTest, cancelDropsOneMemberAndResendReplacesTheGroup) {
@@ -359,20 +356,20 @@ TEST(ResenderBroadcastTest, cancelDropsOneMemberAndResendReplacesTheGroup) {
     std::vector<std::array<uint8_t, 6>> members = {f.mac(1), f.mac(2), f.mac(3)};
     uint8_t payload[4] = {0};
 
-    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 4, payload, sizeof(payload));
+    f.resender.sendBroadcast(members, PktType::kShootoutBracket, 4, payload, sizeof(payload));
     std::array<uint8_t, 6> gone = f.mac(3);
-    f.resender.cancel(PktType::kShootoutCommand, gone.data());
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 2u);
-    EXPECT_FALSE(f.resender.isPending(PktType::kShootoutCommand, gone.data()));
+    f.resender.cancel(PktType::kShootoutBracket, gone.data());
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutBracket), 2u);
+    EXPECT_FALSE(f.resender.isPending(PktType::kShootoutBracket, gone.data()));
 
     std::array<uint8_t, 6> acked = f.mac(1);
-    ASSERT_TRUE(f.resender.onAck(PktType::kShootoutCommand, 4, acked.data()));
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 1u);
+    ASSERT_TRUE(f.resender.onAck(PktType::kShootoutBracket, 4, acked.data()));
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutBracket), 1u);
 
     // Same seqId again: the group is replaced, rebuilt from whoever is named
     // now — including the member that already acked, since the caller named it.
-    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 4, payload, sizeof(payload));
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 3u);
+    f.resender.sendBroadcast(members, PktType::kShootoutBracket, 4, payload, sizeof(payload));
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutBracket), 3u);
 }
 
 TEST(ResenderBroadcastTest, sameSeqIdToADifferentPeerIsADifferentFrame) {
@@ -402,7 +399,7 @@ TEST(ResenderBroadcastTest, emptyMemberListSendsNothing) {
     // a frame on the air that nobody was asked to answer for.
     BroadcastFixture f;
     uint8_t payload[4] = {0};
-    f.resender.sendBroadcast({}, PktType::kShootoutCommand, 2, payload, sizeof(payload));
+    f.resender.sendBroadcast({}, PktType::kShootoutBracket, 2, payload, sizeof(payload));
     EXPECT_EQ(f.frames, 0);
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutBracket), 0u);
 }
