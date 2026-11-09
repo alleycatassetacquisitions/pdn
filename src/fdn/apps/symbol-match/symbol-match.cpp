@@ -21,8 +21,8 @@ void SymbolMatchApp::populateStateMap() {
     auto* matchSuccess = new MatchSuccess(remoteDeviceCoordinator, symbolWirelessManager);
 
     // The game ends once no registered PDN remains, so an unregistered one left behind can
-    // register; MatchSuccess holds its codeword first. One window spans both states, so a
-    // jiggled cable never ends a round.
+    // register. MatchSuccess holds its codeword first; one window spans Selection and
+    // SymbolIdle so their swap doesn't restart it.
     FdnProvisioningManager* provisioning = fdnProvisioningManager;
     DebouncedCondition* debounce = &gameOverDebounce;
     auto gameOver = [provisioning, debounce]() {

@@ -21,6 +21,5 @@ private:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     FdnMatchSpool* fdnMatchSpool;
     FdnProvisioningManager* fdnProvisioningManager;
-    // Shared by idle (which waits on it) and the upload state (which re-arms it).
     SimpleTimer uploadTimer;
 };
