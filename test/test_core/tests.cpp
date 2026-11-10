@@ -2116,6 +2116,12 @@ TEST_F(ShootoutManagerTests, bracketFanOutIsOneFrameBeyondPeerTable) { bracketFa
 TEST_F(ShootoutManagerTests, bracketRetryIsOneFramePerRound) { bracketRetryIsOneFramePerRound(this); }
 TEST_F(ShootoutManagerTests, foreignBracketIsNeitherAdoptedNorAcked) { foreignBracketIsNeitherAdoptedNorAcked(this); }
 TEST_F(ShootoutManagerTests, strayRingCommandsLeaveTournamentUntouched) { strayRingCommandsLeaveTournamentUntouched(this); }
+TEST_F(ShootoutManagerTests, matchIndexAdvancesMonotonicallyAcrossRounds) {
+    matchIndexAdvancesMonotonicallyAcrossRounds(this);
+}
+TEST_F(ShootoutManagerTests, resultRetryIsReturnedByTournamentReset) {
+    resultRetryIsReturnedByTournamentReset(this);
+}
 
 // ============================================
 // MAIN

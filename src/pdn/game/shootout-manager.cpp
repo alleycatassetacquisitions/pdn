@@ -257,8 +257,10 @@ void ShootoutManager::resetTournamentState() {
     // phase mid-window would carry a part-aged timer into the next one.
     shortRosterDebounce.reset();
     reportedLocalWin = false;
+    matchResultResentIndex = -1;
     names.clear();
     currentMatchIndex = -1;
+    roundPairIndex = -1;
     memset(tournamentWinner.data(), 0, 6);
     memset(opponentMac.data(), 0, 6);
     memset(currentPlayerA.data(), 0, 6);
@@ -620,43 +622,33 @@ ShootoutManager::getCurrentMatchPair() const {
     return {currentPlayerA, currentPlayerB};
 }
 
-std::vector<uint8_t> ShootoutManager::buildMatchStartPacket(int matchIndex) const {
+std::vector<uint8_t> ShootoutManager::buildMatchStartPacket() const {
     std::vector<uint8_t> packet;
     packet.push_back(static_cast<uint8_t>(ShootoutCmd::MATCH_START));
     packet.push_back(lastMatchStartSeqId);
-    const std::array<uint8_t, 6>& a = currentRound[matchIndex * 2];
-    const std::array<uint8_t, 6>& b = currentRound[matchIndex * 2 + 1];
-    packet.insert(packet.end(), a.begin(), a.end());
-    packet.insert(packet.end(), b.begin(), b.end());
-    packet.push_back(static_cast<uint8_t>(matchIndex));
+    packet.insert(packet.end(), currentPlayerA.begin(), currentPlayerA.end());
+    packet.insert(packet.end(), currentPlayerB.begin(), currentPlayerB.end());
+    packet.push_back(static_cast<uint8_t>(currentMatchIndex));
     return packet;
 }
 
-void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
+void ShootoutManager::sendMatchStartToPeers() {
     lastMatchStartSeqId = nextSeqId();
 
-    auto packet = buildMatchStartPacket(matchIndex);
     const uint8_t* selfMac = wirelessManager->getMacAddress();
-    const std::array<uint8_t, 6>& a = currentRound[matchIndex * 2];
-    const std::array<uint8_t, 6>& b = currentRound[matchIndex * 2 + 1];
-    bool sameMatch = isSameMatch(matchIndex, a.data(), b.data());
+    const std::array<uint8_t, 6>& a = currentRound[roundPairIndex * 2];
+    const std::array<uint8_t, 6>& b = currentRound[roundPairIndex * 2 + 1];
     currentPlayerA = a;
     currentPlayerB = b;
-    currentMatchIndex = matchIndex;
-    if (!sameMatch) {
-        reportedLocalWin = false;
-    }
-    if (!sameMatch && isInCurrentMatch() && selfMac != nullptr) {
+    currentMatchIndex++;
+    std::vector<uint8_t> packet = buildMatchStartPacket();
+    reportedLocalWin = false;
+    if (isInCurrentMatch() && selfMac != nullptr) {
         const uint8_t* opp = (memcmp(selfMac, a.data(), 6) == 0) ? b.data() : a.data();
         memcpy(opponentMac.data(), opp, 6);
         primeMatchManagerForMatch();
     }
     sendReliablyToPeers(bracket, lastMatchStartSeqId, packet.data(), packet.size());
-}
-
-bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const {
-    return matchIndex == currentMatchIndex && phase == Phase::MATCH_IN_PROGRESS &&
-           memcmp(currentPlayerA.data(), a, 6) == 0 && memcmp(currentPlayerB.data(), b, 6) == 0;
 }
 
 void ShootoutManager::maybeStartNextMatch() {
@@ -667,8 +659,8 @@ void ShootoutManager::maybeStartNextMatch() {
     if (getPendingAckCount(lastBracketSeqId) > 0) return;
     if (phase != Phase::BRACKET_REVEAL && phase != Phase::BETWEEN_MATCHES) return;
     if (phase == Phase::BRACKET_REVEAL && !bracketRevealTimer.expired()) return;
-    currentMatchIndex++;
-    int pairEnd = currentMatchIndex * 2 + 1;
+    roundPairIndex++;
+    int pairEnd = roundPairIndex * 2 + 1;
     if (pairEnd >= static_cast<int>(currentRound.size())) {
         std::vector<std::array<uint8_t, 6>> survivors;
         for (const auto& m : currentRound) {
@@ -689,9 +681,9 @@ void ShootoutManager::maybeStartNextMatch() {
         LOG_W(TAG, "advancing round: %zu survivors -> %zu",
               currentRound.size(), survivors.size());
         currentRound = survivors;
-        currentMatchIndex = 0;
+        roundPairIndex = 0;
     }
-    sendMatchStartToPeers(currentMatchIndex);
+    sendMatchStartToPeers();
     phase = Phase::MATCH_IN_PROGRESS;
 }
 
@@ -735,8 +727,8 @@ void ShootoutManager::onMatchStartReceived(const uint8_t* fromMac, const uint8_t
         return;
     }
     // maybeStartNextMatch does not wait on MATCH_START acks, so match N retries can arrive after match N+1 starts.
+    if (static_cast<int>(matchIndex) <= currentMatchIndex) return;
     if (isEliminated(playerA) || isEliminated(playerB)) return;
-    if (isSameMatch(matchIndex, playerA, playerB)) return;
     currentMatchIndex = matchIndex;
     memcpy(currentPlayerA.data(), playerA, 6);
     memcpy(currentPlayerB.data(), playerB, 6);

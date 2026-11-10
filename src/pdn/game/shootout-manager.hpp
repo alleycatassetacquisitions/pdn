@@ -298,8 +298,11 @@ private:
     std::array<uint8_t, 6> opponentMac{};
     void sendShootoutAck(ShootoutCmd cmd, uint8_t seqId, const uint8_t* toMac);
 
+    // Never repeats within a tournament, so a stale frame for an earlier match
+    // stays recognisable. roundPairIndex is the pair's slot in currentRound.
     int currentMatchIndex = -1;
-    // bracket shrinks on round advancement (coordinator only), so cache the
+    int roundPairIndex = -1;
+    // currentRound shrinks on round advancement (coordinator only), so cache the
     // player pair separately to stay valid on non-coordinators too.
     std::array<uint8_t, 6> currentPlayerA{};
     std::array<uint8_t, 6> currentPlayerB{};
@@ -310,16 +313,15 @@ private:
      * caller on the packet path would need its own guard against double-advance.
      */
     void maybeStartNextMatch();
-    void sendMatchStartToPeers(int matchIndex);
-    std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
+    void sendMatchStartToPeers();
+    std::vector<uint8_t> buildMatchStartPacket() const;
 
     std::vector<std::array<uint8_t, 6>> eliminated;
-    bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
     bool reportedLocalWin = false;
     // The match whose result this device has already re-sent once, or -1. Keyed
-    // on the match rather than a flag, so it needs no clearing: a later match
-    // names a different index and gets its own attempt. A device flag would have
-    // to be reset wherever a match turns over, which differs by role.
+    // on the match rather than a flag, so only a tournament reset clears it: a
+    // later match names a different index and gets its own attempt. A device flag
+    // would have to be reset wherever a match turns over, which differs by role.
     int matchResultResentIndex = -1;
     uint8_t lastMatchResultSeqId = 0;
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,
