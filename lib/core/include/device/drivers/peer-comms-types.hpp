@@ -46,6 +46,12 @@ enum class PktType : uint8_t {
     kShootoutRingClosed = 28,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kShootoutConfirm = 29,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutBracket = 30,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutMatchStart = 31,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutMatchResult = 32,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -138,9 +144,6 @@ struct ReliableAckPayload {
 } __attribute__((packed));
 
 enum class ShootoutCmd : uint8_t {
-    BRACKET = 1,
-    MATCH_START = 2,
-    MATCH_RESULT = 3,
     TOURNAMENT_END = 4,
     ABORT = 5,
 };
