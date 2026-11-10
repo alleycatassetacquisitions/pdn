@@ -35,6 +35,10 @@ enum class PktType : uint8_t {
     kFirmwareUpdate = 22,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kReliableAck = 23,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutRingClosed = 24,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutConfirm = 25,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -113,15 +117,11 @@ struct ReliableAckPayload {
 } __attribute__((packed));
 
 enum class ShootoutCmd : uint8_t {
-    CONFIRM = 0,
     BRACKET = 1,
     MATCH_START = 2,
     MATCH_RESULT = 3,
     TOURNAMENT_END = 4,
     ABORT = 5,
-    // Coordinator -> members on ring closure. Carries the ring roster because
-    // only the head's RDC serves one; every other member gets its copy here.
-    RING_CLOSED = 6,
 };
 
 struct ShootoutPacket

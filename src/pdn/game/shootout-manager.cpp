@@ -19,18 +19,25 @@ void deriveShootoutMatchId(int matchIndex, char* out, size_t outSize) {
 }
 }
 
-ShootoutManager::ShootoutManager(Player* player,
-                                 WirelessManager* wirelessManager,
+ShootoutManager::ShootoutManager(Player* player, WirelessManager* wirelessManager,
                                  RemoteDeviceCoordinator* rdc)
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
-    , resender(wirelessManager) {
+    , resender(wirelessManager)
+    , ringClosedChannel(wirelessManager, PktType::kShootoutRingClosed, ChannelMode::FAN_OUT)
+    , confirmChannel(wirelessManager, PktType::kShootoutConfirm, ChannelMode::FAN_OUT) {
     resender.setAbandonCallback(
         [this](PktType, uint8_t seqId, const uint8_t* targetMac,
                const uint8_t* packet, size_t len) {
             onCommandAbandoned(seqId, targetMac, packet, len);
         });
+    ringClosedChannel.onReceive([this](const uint8_t* fromMac, const ShootoutRosterPayload& p) {
+        onRingClosedReceived(fromMac, unpackRoster(p));
+    });
+    confirmChannel.onReceive([this](const uint8_t* fromMac, const ShootoutConfirmPayload& p) {
+        onConfirmReceived(fromMac, p.name);
+    });
     if (rdc == nullptr) return;
     // Subscribed here rather than by whoever builds this manager: see
     // PosseManager's constructor for the reasoning.
@@ -112,19 +119,16 @@ bool ShootoutManager::isRingMember(const uint8_t* mac) const {
     return containsMac(getRingMembers(), mac);
 }
 
-void ShootoutManager::broadcastCommand(const uint8_t* packet, size_t len) {
-    wirelessManager->sendEspNowData(wirelessManager->getBroadcastAddress(),
-                                    PktType::kShootoutCommand, packet, len);
-}
-
-void ShootoutManager::broadcastToRing(const std::vector<std::array<uint8_t, 6>>& peers,
-                                      const uint8_t* packet, size_t len) {
+template <class P>
+void ShootoutManager::broadcastToRing(ReliableChannel<P>& channel,
+                                      const std::vector<std::array<uint8_t, 6>>& peers,
+                                      P& payload) {
     // A ring fan-out is one broadcast frame, not one unicast per member: the
     // ESP-NOW peer table holds 20 entries, so unicast addressing cannot reach a
     // ring larger than that at all, whereas the broadcast slot is registered once
     // at radio init. Receivers must drop commands naming MACs outside their own ring.
     if (peersExcludingSelf(peers).empty()) return;
-    broadcastCommand(packet, len);
+    channel.sendUnsequenced(wirelessManager->getBroadcastAddress(), payload);
 }
 
 // Who a ring fan-out is addressed to. One spelling, asked by both send paths, so
@@ -312,8 +316,8 @@ bool ShootoutManager::shouldEnterProposal() const {
 void ShootoutManager::sendRingClosed() {
     ringMembers = getRingMembers();
     LOG_W(TAG, "ring closed; announcing members=%zu", ringMembers.size());
-    std::vector<uint8_t> packet = buildMacListPacket(ShootoutCmd::RING_CLOSED, 0, ringMembers);
-    broadcastToRing(ringMembers, packet.data(), packet.size());
+    ShootoutRosterPayload roster = buildRoster(ringMembers);
+    broadcastToRing(ringClosedChannel, ringMembers, roster);
     ringClosedRebroadcastTimer.setTimer(kConfirmRebroadcastMs);
 }
 
@@ -365,9 +369,9 @@ void ShootoutManager::onConfirmReceived(const uint8_t* fromMac, const char* name
 
 void ShootoutManager::recordName(const uint8_t* mac, const char* name) {
     if (name == nullptr) return;
-    char buf[kNameLength + 1];
-    strncpy(buf, name, kNameLength);
-    buf[kNameLength] = '\0';
+    char buf[SHOOTOUT_NAME_LENGTH + 1];
+    strncpy(buf, name, SHOOTOUT_NAME_LENGTH);
+    buf[SHOOTOUT_NAME_LENGTH] = '\0';
     if (buf[0] == '\0') return;
     for (auto& entry : names) {
         if (memcmp(entry.mac.data(), mac, 6) == 0) {
@@ -484,9 +488,6 @@ std::vector<uint8_t> ShootoutManager::buildMacListPacket(
     std::vector<uint8_t> packet;
     packet.push_back(static_cast<uint8_t>(cmd));
     packet.push_back(seqId);
-    // The roster is the RDC's 64 plus self, so it can land one over what the
-    // codec accepts — and an over-long frame is dropped by every receiver, not
-    // just the members past the cap. Truncating keeps the ring running.
     size_t count = macs.size();
     if (count > MAX_BRACKET_SIZE) {
         LOG_E(TAG, "mac list %zu over cap %u; truncating", count,
@@ -498,6 +499,36 @@ std::vector<uint8_t> ShootoutManager::buildMacListPacket(
         packet.insert(packet.end(), macs[i].begin(), macs[i].end());
     }
     return packet;
+}
+
+ShootoutRosterPayload
+ShootoutManager::buildRoster(const std::vector<std::array<uint8_t, 6>>& macs) {
+    ShootoutRosterPayload roster{};
+    size_t count = macs.size();
+    if (count > MAX_CHAIN_MEMBERS) {
+        LOG_E(TAG, "mac list %zu over cap %u; truncating", count,
+              static_cast<unsigned>(MAX_CHAIN_MEMBERS));
+        count = MAX_CHAIN_MEMBERS;
+    }
+    roster.count = static_cast<uint8_t>(count);
+    for (size_t i = 0; i < count; i++) {
+        memcpy(roster.macs[i], macs[i].data(), 6);
+    }
+    return roster;
+}
+
+std::vector<std::array<uint8_t, 6>>
+ShootoutManager::unpackRoster(const ShootoutRosterPayload& roster) {
+    // `count` is off the wire; the array is the bound.
+    const size_t count = std::min<size_t>(roster.count, MAX_CHAIN_MEMBERS);
+    std::vector<std::array<uint8_t, 6>> macs;
+    macs.reserve(count);
+    for (size_t i = 0; i < count; i++) {
+        std::array<uint8_t, 6> mac;
+        memcpy(mac.data(), roster.macs[i], 6);
+        macs.push_back(mac);
+    }
+    return macs;
 }
 
 void ShootoutManager::sendBracketToPeers() {
@@ -538,20 +569,13 @@ void ShootoutManager::abortTournament() {
 }
 
 void ShootoutManager::sendLocalConfirm() {
-    // [cmd, seq, 6-byte MAC, kNameLength-byte null-padded name]
-    uint8_t payload[2 + 6 + kNameLength];
-    payload[0] = static_cast<uint8_t>(ShootoutCmd::CONFIRM);
-    payload[1] = 0;
-    const uint8_t* selfMac = wirelessManager->getMacAddress();
-    memcpy(&payload[2], selfMac, 6);
-    memset(&payload[8], 0, kNameLength);
+    ShootoutConfirmPayload confirm{};
     if (player != nullptr) {
         const std::string& n = player->getName();
-        size_t copyLen = n.size() < kNameLength ? n.size() : kNameLength;
-        memcpy(&payload[8], n.data(), copyLen);
+        size_t copyLen = n.size() < SHOOTOUT_NAME_LENGTH ? n.size() : SHOOTOUT_NAME_LENGTH;
+        memcpy(confirm.name, n.data(), copyLen);
     }
-
-    broadcastToRing(getRingMembers(), payload, sizeof(payload));
+    broadcastToRing(confirmChannel, getRingMembers(), confirm);
     confirmRebroadcastTimer.setTimer(kConfirmRebroadcastMs);
 }
 

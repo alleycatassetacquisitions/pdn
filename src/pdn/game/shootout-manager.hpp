@@ -5,7 +5,9 @@
 #include <vector>
 #include "game/player.hpp"
 #include "device/remote-device-coordinator.hpp"
+#include "wireless/reliable-channel.hpp"
 #include "wireless/resender.hpp"
+#include "wireless/shootout-packets.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/wireless-manager.hpp"
 #include "utils/debounced-condition.hpp"
@@ -71,9 +73,6 @@ public:
     void startProposal();
     void confirmLocal();
     void sync();
-    // Fixed on-wire name length for CONFIRM payloads. Local Player names are
-    // null-padded/truncated to this size.
-    static constexpr size_t kNameLength = 12;
     void onConfirmReceived(const uint8_t* fromMac, const char* name = nullptr);
     // Returns the display name for a MAC: the name announced during CONFIRM
     // if known, otherwise the last-two-byte MAC hex suffix.
@@ -227,9 +226,11 @@ private:
     // physical ring before either exists. A follower's bracket is not a subset
     // of its confirmed set, so none of the three subsumes the others.
     bool isRingMember(const uint8_t* mac) const;
-    void broadcastCommand(const uint8_t* packet, size_t len);
-    void broadcastToRing(const std::vector<std::array<uint8_t, 6>>& peers,
-                         const uint8_t* packet, size_t len);
+    // One unsequenced broadcast of `payload` to the ring, on `channel`; nothing
+    // if this device is the only member.
+    template <class P>
+    void broadcastToRing(ReliableChannel<P>& channel,
+                         const std::vector<std::array<uint8_t, 6>>& peers, P& payload);
     /** The peers a ring fan-out is addressed to: `peers` without this device. */
     std::vector<std::array<uint8_t, 6>> peersExcludingSelf(
         const std::vector<std::array<uint8_t, 6>>& peers) const;
@@ -282,12 +283,18 @@ private:
     // All five families ride one PktType, so the abandon callback reads which
     // one gave up off the frame's own command byte.
     Resender resender;
+    // Timer-rebroadcast commands ride their own channels unsequenced.
+    ReliableChannel<ShootoutRosterPayload> ringClosedChannel;
+    ReliableChannel<ShootoutConfirmPayload> confirmChannel;
+    // The RDC's 64-member roster plus self can reach 65, one past
+    // ShootoutRosterPayload::macs; the last entry is dropped rather than overflowing.
+    static ShootoutRosterPayload buildRoster(const std::vector<std::array<uint8_t, 6>>& macs);
+    static std::vector<std::array<uint8_t, 6>> unpackRoster(const ShootoutRosterPayload& roster);
     void onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac,
                             const uint8_t* packet, size_t len);
 
     void sendBracketToPeers();
-    // [cmd, seqId, count, count * 6-byte MAC] — the frame BRACKET and
-    // RING_CLOSED share.
+    // [cmd, seqId, count, count * 6-byte MAC]
     std::vector<uint8_t> buildMacListPacket(
         ShootoutCmd cmd, uint8_t seqId,
         const std::vector<std::array<uint8_t, 6>>& macs) const;
