@@ -365,27 +365,6 @@ protected:
             const uint8_t* payload = data + 2;
             size_t payloadLen = dataLen - 2;
             switch (cmd) {
-                case ShootoutCmd::BRACKET: {
-                    if (payloadLen < 1) break;
-                    uint8_t count = payload[0];
-                    if (payloadLen < 1 + 6u * static_cast<size_t>(count)) break;
-                    std::vector<std::array<uint8_t, 6>> macs;
-                    for (uint8_t i = 0; i < count; i++) {
-                        std::array<uint8_t, 6> mac;
-                        memcpy(mac.data(), payload + 1 + 6 * i, 6);
-                        macs.push_back(mac);
-                    }
-                    m->onBracketReceived(fromMac, macs, seqId);
-                    break;
-                }
-                case ShootoutCmd::MATCH_START:
-                    if (payloadLen >= 13)
-                        m->onMatchStartReceived(fromMac, payload, payload + 6, payload[12], seqId);
-                    break;
-                case ShootoutCmd::MATCH_RESULT:
-                    if (payloadLen >= 13)
-                        m->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
-                    break;
                 case ShootoutCmd::TOURNAMENT_END:
                     if (payloadLen >= 6) m->onTournamentEndReceived(fromMac, payload, seqId);
                     break;
@@ -424,6 +403,9 @@ protected:
             case PktType::kReliableAck:
             case PktType::kShootoutRingClosed:
             case PktType::kShootoutConfirm:
+            case PktType::kShootoutBracket:
+            case PktType::kShootoutMatchStart:
+            case PktType::kShootoutMatchResult:
             case PktType::kShootoutCommand:
             case PktType::kShootoutCommandAck: return true;
             default: return false;

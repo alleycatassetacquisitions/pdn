@@ -193,10 +193,6 @@ public:
     // holding the start, with no timeout of its own to resolve it.
     static_assert(kBracketRevealMs > Resender::RETRANSMIT_SPAN_MS,
                   "the bracket-ack gate would hold the tournament with no timeout");
-    // Packet-validation clamp on an inbound BRACKET's member count. A ring can
-    // hold as many devices as the chain does, so it tracks MAX_CHAIN_MEMBERS;
-    // one ESP-NOW v2 frame carries that bracket several times over.
-    static constexpr uint8_t MAX_BRACKET_SIZE = MAX_CHAIN_MEMBERS;
 
 private:
     struct NameEntry {
@@ -286,6 +282,10 @@ private:
     // Timer-rebroadcast commands ride their own channels unsequenced.
     ReliableChannel<ShootoutRosterPayload> ringClosedChannel;
     ReliableChannel<ShootoutConfirmPayload> confirmChannel;
+    // The in-progress commands, one broadcast to the ring acked per recipient.
+    ReliableChannel<ShootoutRosterPayload> bracketChannel;
+    ReliableChannel<ShootoutMatchStartPayload> matchStartChannel;
+    ReliableChannel<ShootoutMatchResultPayload> matchResultChannel;
     // The RDC's 64-member roster plus self can reach 65, one past
     // ShootoutRosterPayload::macs; the last entry is dropped rather than overflowing.
     static ShootoutRosterPayload buildRoster(const std::vector<std::array<uint8_t, 6>>& macs);
@@ -294,10 +294,6 @@ private:
                             const uint8_t* packet, size_t len);
 
     void sendBracketToPeers();
-    // [cmd, seqId, count, count * 6-byte MAC]
-    std::vector<uint8_t> buildMacListPacket(
-        ShootoutCmd cmd, uint8_t seqId,
-        const std::vector<std::array<uint8_t, 6>>& macs) const;
 
     // Author of the current bracket; all-zero while no bracket is held.
     std::array<uint8_t, 6> coordinatorMac{};
@@ -318,7 +314,6 @@ private:
      */
     void maybeStartNextMatch();
     void sendMatchStartToPeers(int matchIndex);
-    std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
 
     std::vector<std::array<uint8_t, 6>> eliminated;
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
@@ -338,9 +333,6 @@ private:
      */
     void applyMatchResult(const uint8_t* winner, const uint8_t* loser,
                           bool endsCurrentMatch = true);
-    std::vector<uint8_t> buildMatchResultPacket(const uint8_t* winner,
-                                                const uint8_t* loser,
-                                                uint8_t matchIndex) const;
 
     std::array<uint8_t, 6> tournamentWinner{};
     uint8_t lastTournamentEndSeqId = 0;
