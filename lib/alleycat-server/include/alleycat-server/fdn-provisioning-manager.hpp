@@ -14,7 +14,6 @@
 #include "game/player-types.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/reliable-channel.hpp"
-#include "wireless/resender.hpp"
 
 /**
  * FDN side of player provisioning: answers a cabled PDN's PIN request with the
@@ -29,7 +28,6 @@ public:
     FdnProvisioningManager(WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
         : wirelessManager(wirelessManager)
         , rdc(rdc)
-        , resender(wirelessManager)
         , requestChannel(wirelessManager, PktType::kPlayerProvisionRequest)
         , replyChannel(wirelessManager, PktType::kPlayerProvision) {
         requestChannel.onReceive(
@@ -39,13 +37,11 @@ public:
     }
 
     /**
-     * Pumps reply retries, serves a parked request once its PDN is Connected,
-     * and past PROVISION_LOOKUP_TIMEOUT_MS leaves Wi-Fi, which makes the HTTP
-     * driver fail the queued request and so ends the lookup with LOOKUP_FAILED.
-     * Call every tick.
+     * Serves a parked request once its PDN is Connected, and past
+     * PROVISION_LOOKUP_TIMEOUT_MS leaves Wi-Fi, which makes the HTTP driver fail
+     * the queued request and so ends the lookup with LOOKUP_FAILED. Call every tick.
      */
     void sync() {
-        resender.sync();
         if (lookupInFlight && lookupTimer.expired()) {
             LOG_W("FDN_PROVISION", "Player lookup timed out");
             cancelLookup();
@@ -166,7 +162,6 @@ private:
 
     WirelessManager* wirelessManager = nullptr;
     RemoteDeviceCoordinator* rdc = nullptr;
-    Resender resender;
     ReliableChannel<PlayerProvisionRequestPacket> requestChannel;
     ReliableChannel<PlayerProvisionPacket> replyChannel;
     bool lookupInFlight = false;

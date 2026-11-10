@@ -146,16 +146,13 @@ static void setup() {
     // Managers — constructed after fdn->begin() so wireless is ready.
     remotePlayerManager = new RemotePlayerManager(peerCommsDriver);
 
-    symbolWirelessManager = new SymbolWirelessManager(fdn->getWirelessManager(),
-                                                      fdn->getRemoteDeviceCoordinator());
+    symbolWirelessManager =
+    new SymbolWirelessManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
     fdnMatchSpool = new FdnMatchSpool(fdn->getWirelessManager(), fdn->getStorage(),
                                       fdn->getRemoteDeviceCoordinator());
     fdnProvisioningManager =
     new FdnProvisioningManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
-    fdn->setTickCallback([]() {
-        symbolWirelessManager->sync();
-        fdnProvisioningManager->sync();
-    });
+    fdn->setTickCallback([]() { fdnProvisioningManager->sync(); });
 
     setupEspNow(peerCommsDriver);
 

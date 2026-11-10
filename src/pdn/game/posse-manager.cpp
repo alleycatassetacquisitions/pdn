@@ -254,7 +254,7 @@ void PosseManager::resendConfirm() {
 void PosseManager::onChainGameEventReceived(uint8_t eventType) {
     if (static_cast<ChainGameEventType>(eventType) != ChainGameEventType::COUNTDOWN) return;
     confirmSent = false;
-    resender.cancelAll(PktType::kChainConfirm);
+    chainConfirmChannel.cancelAll();
 }
 
 void PosseManager::onConfirmReceived(const uint8_t* originatorMac) {
@@ -334,8 +334,8 @@ void PosseManager::onChainStateChanged() {
     } else {
         // Clear confirmSent so patching into another chain mid-round cannot forward a prior press.
         confirmSent = false;
-        resender.cancelAll(PktType::kChainConfirm);
-        resender.cancelAll(PktType::kChainJoin);
+        chainConfirmChannel.cancelAll();
+        chainJoinChannel.cancelAll();
     }
 }
 
@@ -382,8 +382,8 @@ void PosseManager::onRoleAnnounceReceived(
     // the zero would cascade it onward as this device's challenger.
     if (MacToUInt64(announcedChallengerMac) == 0) {
         challengerMac.reset();
-        resender.cancelAll(PktType::kChainConfirm);
-        resender.cancelAll(PktType::kChainJoin);
+        chainConfirmChannel.cancelAll();
+        chainJoinChannel.cancelAll();
         if (isSupporter()) broadcastRoleAndChallenger();
         return;
     }
@@ -393,8 +393,8 @@ void PosseManager::onRoleAnnounceReceived(
     bool changed = !challengerMac.has_value() || *challengerMac != newMac;
     challengerMac = newMac;
     if (changed) {
-        resender.cancelAll(PktType::kChainConfirm);
-        resender.cancelAll(PktType::kChainJoin);
+        chainConfirmChannel.cancelAll();
+        chainJoinChannel.cancelAll();
     }
     if (!isSupporter()) return;
     const bool cascadeInFlight = supporterAnnounce.has_value() &&
@@ -457,8 +457,8 @@ void PosseManager::sync() {
         onChainStateChanged();
     }
 
-    // The role announce clears on SEND_SUCCESS; the WIN/LOSS fan-out clears one
-    // supporter at a time, since a broadcast carries no per-member evidence.
+    // The WIN/LOSS fan-out clears one supporter at a time, since a broadcast
+    // carries no per-member evidence; its retries still live here.
     resender.sync();
 
     if (roleAnnounceBackstopTimer.expired()) {

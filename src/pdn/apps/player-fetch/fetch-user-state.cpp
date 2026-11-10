@@ -34,7 +34,6 @@ void FetchUserState::onStateMounted(PDN* pdn) {
 }
 
 void FetchUserState::onStateLoop(PDN* pdn) {
-    provisioningClient->sync();
     if (failurePagePending) {
         beginFailurePage(pdn);
         failurePagePending = false;
