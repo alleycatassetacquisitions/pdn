@@ -10,10 +10,12 @@ Terms used throughout:
 
 - **Packet type**: a numeric discriminator identifying the protocol channel a wireless frame belongs to.
 - **Sequence ID**: an 8-bit unsigned identifier carried in a frame. `0` denotes an unsequenced fire-and-forget frame; `1..255` denote reliable frames requiring delivery confirmation and duplicate suppression.
-- **Unicast delivery**: a frame addressed to a single peer MAC address, whose delivery confirmation comes from the radio link layer or an application-level acknowledgement.
-- **Broadcast fan-out**: a single frame addressed to the broadcast MAC address (`FF:FF:FF:FF:FF:FF`) that is owed an application-level acknowledgement from a specified list of recipient MAC addresses.
+- **Unicast delivery**: a frame addressed to a single peer MAC address, whose delivery confirmation is the radio link layer's transmit-success verdict.
+- **Broadcast fan-out**: a single frame addressed to the broadcast MAC address (`FF:FF:FF:FF:FF:FF`) that is owed a fan-out acknowledgement from a specified list of recipient MAC addresses.
+- **Fan-out acknowledgement**: a unicast frame on the dedicated acknowledgement packet type carrying the packet type and sequence ID of the fan-out frame it answers.
 - **Superseding mode**: a retry policy in which a newer send on the same packet type to the same recipient replaces any prior unacknowledged send to that recipient on that packet type.
 - **Distinct mode**: a retry policy in which multiple sends on the same packet type retain independent retry slots.
+- **Fan-out mode**: a channel whose every reliable send is a broadcast fan-out and whose receive path dispatches every frame to the application, which decides admission and answers with the fan-out acknowledgement.
 
 ## Requirements
 
@@ -81,15 +83,21 @@ Unicast channels that rely on single-slot sequence-ID deduplication SHALL NOT us
 A reliable broadcast fan-out SHALL transmit one frame to the broadcast MAC address while tracking a list of expected recipient MAC addresses:
 
 - Queuing a broadcast fan-out with an empty recipient list SHALL send nothing and create no retry entry.
-- When an application acknowledgement arrives from a sender MAC naming a packet type and sequence ID, the transport SHALL remove that sender MAC from that frame's outstanding recipient list. Once the recipient list becomes empty, the frame's retry entry is retired.
-- Because a broadcast frame produces no per-recipient link-layer delivery evidence, an eligible recipient receiving a duplicate of an already-delivered sequenced broadcast fan-out frame SHALL still emit the application acknowledgement to the sender before suppressing duplicate application-state mutation, ensuring a lost acknowledgement does not cause the sender to retry to exhaustion.
+- A recipient answers a fan-out frame with a fan-out acknowledgement sent to the frame's source MAC, naming the frame's packet type and sequence ID. One acknowledgement packet type serves every fan-out channel; the transport routes each acknowledgement to the channel owning the packet type it names.
+- When a fan-out acknowledgement arrives from a sender MAC, the transport SHALL remove that sender MAC from the named frame's outstanding recipient list and report delivery to that channel's delivery observer. Once the recipient list becomes empty, the frame's retry entry is retired.
+- A fan-out acknowledgement SHALL be honoured only when the channel it names is a fan-out channel and the acknowledging MAC is still owed on the named frame. Frames are unauthenticated, so an acknowledgement naming a unicast channel, an unclaimed packet type, or a recipient not owed SHALL clear nothing and fire no observer.
+- A fan-out channel SHALL NOT apply sequence-cursor duplicate suppression on receive: distinct frames interleave on one packet type, and because a broadcast frame produces no per-recipient link-layer delivery evidence, a recipient receiving a duplicate of an already-applied fan-out frame SHALL still emit the fan-out acknowledgement so a lost acknowledgement does not cause the sender to retry to exhaustion. Idempotence against the duplicate belongs to the application, which acknowledges only frames it admits (an acknowledgement is a unicast and spends a hardware peer-table slot on its destination).
 - On each retry timer expiry while at least one recipient remains unacknowledged and the frame's deadline has not expired, the transport SHALL emit a single broadcast retransmission of the frame (counting as one retry regardless of how many recipients remain).
 - Cancelling a specific recipient MAC on a packet type SHALL remove that recipient MAC from any in-flight unicast or broadcast fan-out on that packet type without firing the abandonment callback.
 - Cancelling all sends on a packet type, or cancelling all sends except a single retained sequence ID, SHALL silently drop the selected in-flight entries without firing the abandonment callback.
 
 #### Scenario: Partial acknowledgement narrows remaining recipients without extra frames
-- **WHEN** a broadcast fan-out with sequence ID `9` is sent to `{B, C, D}` and $B$ and $C$ acknowledge sequence ID `9` before the first retry timer expires
+- **WHEN** a broadcast fan-out with sequence ID `9` is sent to `{B, C, D}` and $B$ and $C$ send fan-out acknowledgements naming sequence ID `9` before the first retry timer expires
 - **THEN** at the 100 ms retry mark one broadcast frame is transmitted for the remaining recipient $D$, and once $D$ acknowledges, retransmission stops
+
+#### Scenario: Forged acknowledgement on a unicast channel clears nothing
+- **WHEN** a device has a reliable unicast frame with sequence ID `4` pending to $B$ and receives a fan-out acknowledgement from $B$'s MAC naming that unicast channel and sequence ID `4`
+- **THEN** the frame remains pending until the radio's transmit-success verdict, and no delivery observer fires
 
 #### Scenario: Cancelling all except a retained fan-out preserves final delivery
 - **WHEN** a tournament or session resets and cancels all in-flight frames on a packet type except a non-zero retained sequence ID

@@ -29,8 +29,8 @@ class ReliableTransport;
 // destructor drops every pending send and both handlers. A channel therefore
 // lives exactly as long as the object that owns it, by value or by pointer.
 //
-// A unicast is cleared by the radio's own SEND_SUCCESS — the peer's MAC acked
-// it — so no reply packet exists and deliver() emits nothing.
+// Delivery evidence: a unicast is cleared by the radio's SEND_SUCCESS; a fan-out
+// by each recipient's kReliableAck, which only a FAN_OUT channel honours.
 enum class ChannelMode : uint8_t {
     // Unicast carrying current state: a newer send to a peer obsoletes the
     // prior unacked one, so an older retransmit can never reinstate stale state.
@@ -38,11 +38,14 @@ enum class ChannelMode : uint8_t {
     // Unicast carrying one item of a stream: every send keeps its own retry
     // slot, so a dropped earlier item still retransmits.
     KEEP_DISTINCT,
+    // Broadcast fan-out acked per recipient by packet. Nothing is deduped on
+    // receipt: distinct frames interleave on one PktType, and a duplicate still
+    // owes its ack or the sender retries it to abandonment.
+    FAN_OUT,
 };
 
 class ReliableChannelBase {
 public:
-    using OnAbandon = std::function<void(uint8_t seqId, const uint8_t* targetMac)>;
     using OnDelivered = std::function<void(uint8_t seqId, const uint8_t* toMac)>;
 
     /**
@@ -64,6 +67,12 @@ public:
     /** True when at least one send to this MAC is still awaiting its ack. */
     bool isPending(const uint8_t* mac) const;
 
+    /**
+     * Recipients of the frame sent under `seqId` that still owe an ack. Zero
+     * once every one of them has answered or been given up on.
+     */
+    size_t pendingCount(uint8_t seqId) const;
+
     /** Silently drops every pending send to this MAC (no abandon callback). */
     void cancel(const uint8_t* mac);
 
@@ -71,19 +80,19 @@ public:
     void cancelAll();
 
     /**
-     * Observes delivery to one peer: SEND_SUCCESS on the unicast. A late radio
-     * duplicate can re-fire it, so the observer must be idempotent.
+     * Answers a FAN_OUT frame received from `toMac`: sends the kReliableAck
+     * that clears this recipient's slot on the sender. The receiving handler
+     * calls it only for a frame it admitted, because an ack is a unicast and a
+     * unicast to a stranger spends one of the radio's 20 peer-table slots.
      */
-    void setOnDelivered(OnDelivered cb) { onDeliveredCallback = std::move(cb); }
+    void ack(const uint8_t* toMac, uint8_t seqId);
 
     /**
-     * Registers the per-recipient give-up handler. Abandonment is a game-level
-     * signal, not a log line; cancel() drops pending sends WITHOUT it.
+     * Observes delivery to one peer: SEND_SUCCESS on a unicast, the peer's
+     * kReliableAck on a fan-out. A late radio duplicate can re-fire it, so the
+     * observer must be idempotent.
      */
-    void setOnAbandon(OnAbandon cb) { onAbandonCallback = std::move(cb); }
-
-    /** The transport gave up on `targetMac` for the frame sent under `seqId`. */
-    void onResenderAbandon(uint8_t seqId, const uint8_t* targetMac);
+    void setOnDelivered(OnDelivered cb) { onDeliveredCallback = std::move(cb); }
 
     /**
      * Typed subclass deserializes bytes into its payload type and dispatches
@@ -99,21 +108,40 @@ public:
     virtual void onSendResult(const uint8_t* toMac, const uint8_t* data,
                               size_t len, bool success) = 0;
 
+    /**
+     * The transport gave up on `targetMac` for the frame sent under `seqId`;
+     * `payload` is that frame, so the typed subclass can hand the decoded
+     * struct to its abandon callback.
+     */
+    virtual void onAbandon(uint8_t seqId, const uint8_t* targetMac, const uint8_t* payload,
+                           size_t len) = 0;
+
+    /**
+     * A kReliableAck from `fromMac` for the frame sent under `seqId`. Honoured
+     * only on a FAN_OUT channel, and only when it clears an obligation this
+     * channel actually holds — anything else is noise off the air.
+     */
+    void onPacketAck(const uint8_t* fromMac, uint8_t seqId);
+
 protected:
     uint8_t nextSeqId();
+    // Sends the bytes as given with no retry slot; the typed caller stamps seqId 0.
+    void sendUnsequencedBytes(const uint8_t* mac, const uint8_t* data, size_t len);
+    // True, and logged, on a channel that cannot fan out: its acks are refused,
+    // so a broadcast sent on it could only ever be abandoned.
+    bool refusesFanOut() const;
     // Defined in the .cpp so the logger stays out of this template header.
     static void logLengthMismatch(PktType type, size_t got, size_t want);
     // seqId == 0 is the unsequenced sentinel (see nextSeqId) and is never deduped here.
     bool isDuplicateReliableRx(const uint8_t* fromMac, uint8_t seqId);
 
     // Both null on a channel that has no radio (see the constructor); every
-    // send then no-ops.
+    // send and ack then no-ops.
     Resender* resender;
     PktType packetType;
     WirelessManager* wirelessManager;
     ChannelMode channelMode;
     OnDelivered onDeliveredCallback;
-    OnAbandon onAbandonCallback;
 
 private:
     struct RxSeqRecord {
@@ -132,6 +160,7 @@ template <class P>
 class ReliableChannel : public ReliableChannelBase {
 public:
     using OnReceive = std::function<void(const uint8_t* fromMac, const P&)>;
+    using OnAbandon = std::function<void(uint8_t seqId, const uint8_t* targetMac, const P&)>;
 
     /** See ReliableChannelBase; the payload struct P is the wire format. */
     ReliableChannel(WirelessManager* wirelessManager, PktType type,
@@ -155,8 +184,35 @@ public:
     }
 
     /**
-     * Decode + dispatch one inbound packet, deduping on the sender's last
-     * seqId first: a sender that missed SEND_SUCCESS retransmits.
+     * Reliable fan-out: one broadcast frame, each named recipient cleared by
+     * its own ack(); see Resender::sendBroadcast. Returns 0 and sends nothing
+     * on a channel that is not FAN_OUT.
+     */
+    uint8_t sendBroadcast(const std::vector<std::array<uint8_t, 6>>& recipients, P& p) {
+        if (refusesFanOut()) return 0;
+        p.seqId = nextSeqId();
+        if (resender != nullptr) {
+            resender->sendBroadcast(recipients, packetType, p.seqId,
+                                    reinterpret_cast<const uint8_t*>(&p), sizeof(P));
+        }
+        return p.seqId;
+    }
+
+    /**
+     * Fire-and-forget: seqId 0 on the wire, no retry slot, no ack owed. For
+     * frames a receiver must not act on late, where a retransmit would be worse
+     * than a loss.
+     */
+    void sendUnsequenced(const uint8_t* mac, P& p) {
+        p.seqId = 0;
+        sendUnsequencedBytes(mac, reinterpret_cast<const uint8_t*>(&p), sizeof(P));
+    }
+
+    /**
+     * Decode + dispatch one inbound packet. A unicast channel dedups on the
+     * sender's last seqId first, because a sender that missed SEND_SUCCESS
+     * retransmits; a FAN_OUT channel dispatches everything and leaves
+     * idempotence to the handler, which has to see the duplicate to ack it.
      */
     bool deliver(const uint8_t* fromMac, const uint8_t* data, size_t len) {
         if (len != sizeof(P)) {
@@ -167,7 +223,9 @@ public:
         }
         P p;
         std::memcpy(&p, data, sizeof(P));
-        if (isDuplicateReliableRx(fromMac, p.seqId)) return true;
+        if (channelMode != ChannelMode::FAN_OUT && isDuplicateReliableRx(fromMac, p.seqId)) {
+            return true;
+        }
         if (onReceiveCallback) onReceiveCallback(fromMac, p);
         return true;
     }
@@ -180,11 +238,14 @@ public:
     /**
      * Radio send-result for one of this channel's outbound packets. `data` is
      * the exact payload handed to the radio, so the stamped seqId reads straight
-     * back out. SEND_SUCCESS clears the pending entry (the peer's MAC acked it);
-     * SEND_FAIL is left to the backoff timer.
+     * back out. On a unicast, SEND_SUCCESS clears the pending entry (the peer's
+     * MAC acked it) and SEND_FAIL is left to the backoff timer. A fan-out's
+     * result names the broadcast address and so clears nothing: its evidence
+     * arrives as kReliableAck packets.
      */
     void onSendResult(const uint8_t* toMac, const uint8_t* data, size_t len,
                       bool success) override {
+        if (channelMode == ChannelMode::FAN_OUT) return;
         if (!success || len != sizeof(P)) return;
         P p;
         std::memcpy(&p, data, sizeof(P));
@@ -193,6 +254,15 @@ public:
         // SEND_SUCCESS is the delivery signal whether or not a slot was still
         // armed: a late radio duplicate re-fires it, so observers are idempotent.
         if (onDeliveredCallback) onDeliveredCallback(p.seqId, toMac);
+    }
+
+    /** Decodes the abandoned frame and hands it to the abandon callback. */
+    void onAbandon(uint8_t seqId, const uint8_t* targetMac, const uint8_t* payload,
+                   size_t len) override {
+        if (!onAbandonCallback || len != sizeof(P)) return;
+        P p;
+        std::memcpy(&p, payload, sizeof(P));
+        onAbandonCallback(seqId, targetMac, p);
     }
 
     /** Registers the decoded-payload handler. */
@@ -209,6 +279,13 @@ public:
         });
     }
 
+    /**
+     * Registers the per-recipient give-up handler. Abandonment is a game-level
+     * signal (void a match, abort a tournament), not a log line; cancel() drops
+     * pending sends WITHOUT it.
+     */
+    void setOnAbandon(OnAbandon cb) { onAbandonCallback = std::move(cb); }
+
 private:
     Resender::SendMode sendMode() const {
         return channelMode == ChannelMode::KEEP_DISTINCT ? Resender::SendMode::KEEP_DISTINCT
@@ -216,4 +293,5 @@ private:
     }
 
     OnReceive onReceiveCallback;
+    OnAbandon onAbandonCallback;
 };

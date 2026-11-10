@@ -19,7 +19,10 @@ public:
     explicit PdnProvisioningClient(WirelessManager* wirelessManager)
         : requestChannel(wirelessManager, PktType::kPlayerProvisionRequest)
         , replyChannel(wirelessManager, PktType::kPlayerProvision) {
-        requestChannel.setOnAbandon([this](uint8_t, const uint8_t*) { requestAbandoned = true; });
+        requestChannel.setOnAbandon(
+        [this](uint8_t, const uint8_t*, const PlayerProvisionRequestPacket&) {
+            requestAbandoned = true;
+        });
     }
 
     /** Asks the FDN at @p fdnMac to look up @p pin for this PDN. */

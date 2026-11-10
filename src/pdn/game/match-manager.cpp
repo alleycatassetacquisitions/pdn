@@ -30,7 +30,7 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     });
     // No delivery report within the retransmit span: drop the match rather than
     // count down against a hunter that may never have heard the ack.
-    matchChannel.setOnAbandon([this](uint8_t seqId, const uint8_t*) {
+    matchChannel.setOnAbandon([this](uint8_t seqId, const uint8_t*, const MatchPacket&) {
         if (activeMatchState.pendingAckSeqId == 0 || seqId != activeMatchState.pendingAckSeqId) {
             return;
         }
