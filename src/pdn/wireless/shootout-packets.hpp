@@ -5,9 +5,9 @@
 
 #include "device/drivers/peer-comms-types.hpp"
 
-// Shootout wire payloads, one PktType per command, ridden on channels owned by
-// ShootoutManager. seqId is nonzero on a reliable fan-out and 0 on a frame that
-// is rebroadcast on a timer instead.
+// Shootout wire payloads, one PktType per command, every one ridden on a
+// FAN_OUT channel owned by ShootoutManager. seqId is nonzero on a reliable
+// fan-out and 0 on a frame that is rebroadcast on a timer instead.
 
 // Fixed on-wire name length for CONFIRM. Local Player names are null-padded or
 // truncated to this size.
@@ -43,4 +43,16 @@ struct ShootoutMatchResultPayload {
     uint8_t winner[6];
     uint8_t loser[6];
     uint8_t matchIndex;
+} __attribute__((packed));
+
+// Coordinator -> ring: the tournament is over and `winner` took it.
+struct ShootoutTournamentEndPayload {
+    uint8_t seqId;
+    uint8_t winner[6];
+} __attribute__((packed));
+
+// Any member -> ring: the tournament is torn down. Carries nothing but the
+// seqId; the sender's MAC is what says which ring it reports on.
+struct ShootoutAbortPayload {
+    uint8_t seqId;
 } __attribute__((packed));

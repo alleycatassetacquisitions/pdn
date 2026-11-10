@@ -89,7 +89,7 @@ A reliable broadcast fan-out SHALL transmit one frame to the broadcast MAC addre
 - A fan-out channel SHALL NOT apply sequence-cursor duplicate suppression on receive: distinct frames interleave on one packet type, and because a broadcast frame produces no per-recipient link-layer delivery evidence, a recipient receiving a duplicate of an already-applied fan-out frame SHALL still emit the fan-out acknowledgement so a lost acknowledgement does not cause the sender to retry to exhaustion. Idempotence against the duplicate belongs to the application, which acknowledges only frames it admits (an acknowledgement is a unicast and spends a hardware peer-table slot on its destination).
 - On each retry timer expiry while at least one recipient remains unacknowledged and the frame's deadline has not expired, the transport SHALL emit a single broadcast retransmission of the frame (counting as one retry regardless of how many recipients remain).
 - Cancelling a specific recipient MAC on a packet type SHALL remove that recipient MAC from any in-flight unicast or broadcast fan-out on that packet type without firing the abandonment callback.
-- Cancelling all sends on a packet type, or cancelling all sends except a single retained sequence ID, SHALL silently drop the selected in-flight entries without firing the abandonment callback.
+- Cancelling all sends on a packet type SHALL silently drop that packet type's in-flight entries without firing the abandonment callback. A frame that must outlive a teardown (the frame reporting that a conversation is over) is given a packet type of its own, which the teardown does not cancel.
 
 #### Scenario: Partial acknowledgement narrows remaining recipients without extra frames
 - **WHEN** a broadcast fan-out with sequence ID `9` is sent to `{B, C, D}` and $B$ and $C$ send fan-out acknowledgements naming sequence ID `9` before the first retry timer expires
@@ -99,9 +99,9 @@ A reliable broadcast fan-out SHALL transmit one frame to the broadcast MAC addre
 - **WHEN** a device has a reliable unicast frame with sequence ID `4` pending to $B$ and receives a fan-out acknowledgement from $B$'s MAC naming that unicast channel and sequence ID `4`
 - **THEN** the frame remains pending until the radio's transmit-success verdict, and no delivery observer fires
 
-#### Scenario: Cancelling all except a retained fan-out preserves final delivery
-- **WHEN** a tournament or session resets and cancels all in-flight frames on a packet type except a non-zero retained sequence ID
-- **THEN** all earlier in-flight frames on that packet type are dropped while the retained frame continues retransmitting to its remaining recipients
+#### Scenario: Cancelling a tournament's packet types leaves its terminal frame delivering
+- **WHEN** a tournament resets and cancels all in-flight frames on its in-progress command packet types while its ABORT or TOURNAMENT_END fan-out is still owed acknowledgements
+- **THEN** the in-progress frames are dropped while the terminal frame continues retransmitting to its remaining recipients until they acknowledge or its deadline expires
 
 ### Requirement: Exponential backoff and deadline-bounded abandonment
 

@@ -36,11 +36,11 @@ The protocol SHALL remain correct under the following conditions, and no require
 
 ### Requirement: Command delivery
 
-All tournament commands SHALL share one packet type, distinguished by a leading command byte, and SHALL be sent as a single broadcast frame per fan-out rather than one unicast per member. The per-device ESP-NOW peer table holds only 20 entries, so a unicast fan-out could not reach a larger ring.
+Each tournament command SHALL have its own packet type carrying a fixed-layout payload (`wireless-transport`), and every command SHALL be sent as a single broadcast frame per fan-out rather than one unicast per member. The per-device ESP-NOW peer table holds only 20 entries, so a unicast fan-out could not reach a larger ring. Roster-carrying commands (RING_CLOSED, BRACKET) carry up to 64 entries and a live count.
 
-The reliable commands are BRACKET, MATCH_START, MATCH_RESULT, TOURNAMENT_END, and ABORT. Each carries a non-zero sequence ID drawn from a single per-device counter that skips 0. Each recipient acknowledges with an ACK frame naming that sequence ID, sent to the sender. The sender tracks acknowledgements per recipient and retransmits the frame to the recipients still outstanding, with exponential backoff starting at 100 ms for up to three retransmissions. Once the retransmissions run out, the sender abandons the remaining recipients and applies the abandonment policy.
+The reliable commands are BRACKET, MATCH_START, MATCH_RESULT, TOURNAMENT_END, and ABORT. Each carries a non-zero sequence ID allocated by its own channel. Each recipient that admits a frame acknowledges it with the transport's fan-out acknowledgement naming that command's packet type and sequence ID, sent to the frame's source. The sender tracks acknowledgements per recipient and retransmits the frame to the recipients still outstanding, with exponential backoff starting at 100 ms for up to three retransmissions. Once the retransmissions run out, the sender abandons the remaining recipients and applies the abandonment policy.
 
-RING_CLOSED and CONFIRM carry sequence ID 0, are never acknowledged, and are rebroadcast once per second while needed.
+RING_CLOSED and CONFIRM carry sequence ID 0, are never acknowledged, and are rebroadcast once per second while needed. A CONFIRM names its sender by the frame's source MAC and carries only the confirming player's display name.
 
 #### Scenario: Acknowledgement stops retransmission for one recipient
 - **WHEN** a reliable fan-out is outstanding to members A and B and A acknowledges its sequence ID

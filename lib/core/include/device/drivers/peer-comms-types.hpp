@@ -12,8 +12,6 @@ enum class PktType : uint8_t {
     kChainGameEvent = 6,
     kChainConfirm = 7,
     kRoleAnnounce = 8,
-    kShootoutCommand = 11,
-    kShootoutCommandAck = 12,
     kSymbolMatchCommand = 13,
     kFdnConnect = 14,
     kPdnConnectionContext = 15,
@@ -45,6 +43,10 @@ enum class PktType : uint8_t {
     kShootoutMatchStart = 27,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kShootoutMatchResult = 28,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutTournamentEnd = 29,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kShootoutAbort = 30,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -120,24 +122,6 @@ struct RoleAnnouncePayload
 struct ReliableAckPayload {
     PktType ackedType;
     uint8_t seqId;
-} __attribute__((packed));
-
-enum class ShootoutCmd : uint8_t {
-    TOURNAMENT_END = 4,
-    ABORT = 5,
-};
-
-struct ShootoutPacket
-{
-    ShootoutCmd cmd;
-    uint8_t     seqId;   // nonzero for reliable commands; 0 = no ack expected
-    uint8_t     payload[];
-} __attribute__((packed));
-
-struct ShootoutAckPayload
-{
-    ShootoutCmd cmd;
-    uint8_t     seqId;
 } __attribute__((packed));
 
 // ---- Head roster management ----
