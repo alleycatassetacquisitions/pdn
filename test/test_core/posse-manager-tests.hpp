@@ -128,6 +128,12 @@ public:
                                success, roleAnnounceSendStatusCtx);
     }
 
+    /** One device tick as the posse sees it: the shared transport, then the manager. */
+    void tick(PosseManager& posse) {
+        device.wirelessManager->sync();
+        posse.sync();
+    }
+
     PeerCommsInterface::PacketCallback contextHandler = nullptr;
     void* contextCtx = nullptr;
     PeerCommsInterface::SendStatusCallback roleAnnounceSendStatus = nullptr;
@@ -978,7 +984,7 @@ inline void posseAckFromWrongMacIgnored(PosseManagerTests* suite) {
         return 1;
     });
     suite->fakeClock->advance(150);
-    posse.sync();
+    suite->tick(posse);
     EXPECT_EQ(retransmits, 1);
 }
 
@@ -1012,25 +1018,26 @@ inline void posseRetransmitAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
     // At 450 the third round has 150ms of room ahead of the deadline.
     for (int i = 0; i < 3; i++) {
         suite->fakeClock->advance(450);
-        posse.sync();
+        suite->tick(posse);
     }
     EXPECT_EQ(supporterSends, 4);  // 1 initial + 3 retransmits
 
     // 4th sync should not emit — pending abandoned.
     suite->fakeClock->advance(500);
-    posse.sync();
+    suite->tick(posse);
     EXPECT_EQ(supporterSends, 4);
 }
 
-// RetryStats counts sends, retries, acks, and abandons across a role-announce
-// lifecycle. Observability for hardware-validation tuning.
-inline void posseRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
+// A role announce is acked on SEND_SUCCESS and timed; one nobody confirms is
+// retried inside its span and then given up on.
+inline void posseRoleAnnounceTimesDeliveryAndRetransmits(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
     PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t challenger[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 
     uint8_t seqId = 0;
+    int announceFrames = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
     .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
@@ -1038,6 +1045,7 @@ inline void posseRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
             RoleAnnouncePayload p;
             memcpy(&p, data, sizeof(p));
             seqId = p.seqId;
+            announceFrames++;
         }
         return 1;
     });
@@ -1049,8 +1057,6 @@ inline void posseRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
     suite->deliverRoleAnnounceSendResult(suite->supporterMac, seqId, /*success=*/true);
 
     PosseManager::RetryStats s1 = posse.getRetryStats();
-    EXPECT_GE(s1.sends, 1u);
-    EXPECT_EQ(s1.abandons, 0u);
     EXPECT_GE(s1.ackCount, 1u);
     EXPECT_GT(s1.ackLatencyMsSum, 0u);
 
@@ -1064,11 +1070,11 @@ inline void posseRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
     // an artefact of the test's clock, not of the schedule.
     for (int i = 0; i < 19; i++) {
         suite->fakeClock->advance(100);
-        posse.sync();
+        suite->tick(posse);
     }
-    PosseManager::RetryStats s2 = posse.getRetryStats();
-    EXPECT_GE(s2.retries, 3u);
-    EXPECT_GE(s2.abandons, 1u);
+    // The acked announce, then the unconfirmed one and its three retransmits
+    // inside the span.
+    EXPECT_EQ(announceFrames, 5);
 }
 
 // Becoming challenger self-assigns challengerMac to own MAC.
@@ -1160,54 +1166,61 @@ inline void posseThreeDeviceConfirm(PosseManagerTests* suite) {
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
     uint8_t macA[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
 
-    // Leg 1: S1 (middle supporter) receives announce from A, updates challengerMac,
-    // and cascades to its supporter-jack child.
-    PosseManager s1(&suite->player, suite->device.wirelessManager, &suite->rdc);
-
+    // One manager at a time: the device has one transport, and a PktType is
+    // claimed by one channel on it. The mock actions outlive the blocks, so
+    // what they capture lives here.
     std::vector<std::array<uint8_t, 6>> s1Cascade;
     RoleAnnouncePayload s1CascadePayload{};
-    EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
-    .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
-        std::array<uint8_t, 6> m;
-        memcpy(m.data(), mac, 6);
-        s1Cascade.push_back(m);
-        memcpy(&s1CascadePayload, data, sizeof(s1CascadePayload));
-        return 1;
-    });
+    std::array<uint8_t, 6> confirmTarget{};
+    ChainConfirmPayload confirmPayload{};
 
-    s1.onRoleAnnounceReceived(suite->opponentMac, macA);
-    ASSERT_GE(s1Cascade.size(), 1u);
-    // S1's cascade target is its supporter-jack direct peer (supporterMac in fixture).
-    EXPECT_EQ(memcmp(s1Cascade[0].data(), suite->supporterMac, 6), 0);
-    EXPECT_EQ(memcmp(s1CascadePayload.challengerMac, macA, 6), 0);
+    // Leg 1: S1 (middle supporter) receives announce from A, updates challengerMac,
+    // and cascades to its supporter-jack child.
+    {
+        PosseManager s1(&suite->player, suite->device.wirelessManager, &suite->rdc);
+
+        EXPECT_CALL(*suite->device.mockPeerComms,
+                    sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
+            std::array<uint8_t, 6> m;
+            memcpy(m.data(), mac, 6);
+            s1Cascade.push_back(m);
+            memcpy(&s1CascadePayload, data, sizeof(s1CascadePayload));
+            return 1;
+        });
+
+        s1.onRoleAnnounceReceived(suite->opponentMac, macA);
+        ASSERT_GE(s1Cascade.size(), 1u);
+        // S1's cascade target is its supporter-jack direct peer (supporterMac in fixture).
+        EXPECT_EQ(memcmp(s1Cascade[0].data(), suite->supporterMac, 6), 0);
+        EXPECT_EQ(memcmp(s1CascadePayload.challengerMac, macA, 6), 0);
+    }
 
     // Leg 2: S2 (end of chain) receives the cascaded announce, caches challengerMac=A.
     // In hardware, S1's MAC would be S2's opponent-jack direct peer. In this shared
     // fixture, S2's opponent-jack (OUTPUT) direct peer is opponentMac, so the announce
     // arrives from opponentMac (standing in for S1 in this single-RDC test).
-    PosseManager s2(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    {
+        PosseManager s2(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
-    s2.onRoleAnnounceReceived(suite->opponentMac, macA);
-    ASSERT_NE(s2.getChallengerMac(), nullptr);
-    EXPECT_EQ(memcmp(s2.getChallengerMac(), macA, 6), 0);
+        s2.onRoleAnnounceReceived(suite->opponentMac, macA);
+        ASSERT_NE(s2.getChallengerMac(), nullptr);
+        EXPECT_EQ(memcmp(s2.getChallengerMac(), macA, 6), 0);
 
-    // Leg 3: S2 presses button → confirm targets A directly.
-    std::array<uint8_t, 6> confirmTarget{};
-    ChainConfirmPayload confirmPayload{};
-    EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kChainConfirm, _, sizeof(ChainConfirmPayload)))
-    .WillOnce([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
-        memcpy(confirmTarget.data(), mac, 6);
-        memcpy(&confirmPayload, data, sizeof(confirmPayload));
-        return 1;
-    });
+        // Leg 3: S2 presses button → confirm targets A directly.
+        EXPECT_CALL(*suite->device.mockPeerComms,
+                    sendData(_, PktType::kChainConfirm, _, sizeof(ChainConfirmPayload)))
+        .WillOnce([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
+            memcpy(confirmTarget.data(), mac, 6);
+            memcpy(&confirmPayload, data, sizeof(confirmPayload));
+            return 1;
+        });
 
-    s2.sendConfirm();
+        s2.sendConfirm();
 
-    EXPECT_EQ(memcmp(confirmTarget.data(), macA, 6), 0);  // direct to A
-    EXPECT_EQ(memcmp(confirmPayload.originatorMac, suite->localMac, 6), 0);
-
+        EXPECT_EQ(memcmp(confirmTarget.data(), macA, 6), 0);  // direct to A
+        EXPECT_EQ(memcmp(confirmPayload.originatorMac, suite->localMac, 6), 0);
+    }
     // Leg 4: Challenger A receives and records. The originator is two cables away,
     // so A places it from the join it sent, not from any jack of A's own.
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/false);

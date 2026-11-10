@@ -10,14 +10,15 @@
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
 
-// Probe subclass exposing protected nextSeqId for testing.
-// Provides a no-op deliverBytes so the (otherwise pure-virtual) base
-// becomes instantiable.
+// Probe subclass exposing protected nextSeqId and the dedup cursor. Built on a
+// null WirelessManager, so it exercises only the base's bookkeeping.
 class ProbeChannel : public ReliableChannelBase {
 public:
     using ReliableChannelBase::isDuplicateReliableRx;
     using ReliableChannelBase::nextSeqId;
-    using ReliableChannelBase::ReliableChannelBase;
+    /** Probe on a null WirelessManager: no transport, so nothing is ever sent. */
+    explicit ProbeChannel(PktType type)
+        : ReliableChannelBase(nullptr, type, ChannelMode::SUPERSEDE_PER_TARGET) {}
     /** No-op body so the otherwise pure-virtual base becomes instantiable. */
     bool deliverBytes(const uint8_t*, const uint8_t*, size_t) override { return false; }
     /** No-op: this probe exercises only the base's seqId/dedup helpers. */
@@ -25,9 +26,7 @@ public:
 };
 
 TEST(ReliableChannelBaseTest, nextSeqIdWrapsAfter255) {
-    Resender resender(nullptr);
-    ProbeChannel ch(nullptr, &resender, PktType::kChainGameEvent,
-                    [](uint8_t, const uint8_t*) {});
+    ProbeChannel ch(PktType::kChainGameEvent);
     const uint8_t first = ch.nextSeqId();
     ASSERT_NE(first, uint8_t{0});
     uint8_t expected = first;
@@ -42,16 +41,11 @@ TEST(ReliableChannelBaseTest, nextSeqIdWrapsAfter255) {
 TEST(ReliableChannelBaseTest, initialSeqIdIsSeededPerChannel) {
     // Seeding lastSentSeqId at construction prevents a rebooted peer from
     // always restarting at 1 and colliding with a receiver cursor sitting on 1.
-    Resender resender(nullptr);
-    const uint8_t first =
-    ProbeChannel(nullptr, &resender, PktType::kRoleAnnounce, [](uint8_t, const uint8_t*) {})
-    .nextSeqId();
+    const uint8_t first = ProbeChannel(PktType::kRoleAnnounce).nextSeqId();
     ASSERT_NE(first, uint8_t{0});
     bool sawDifferentSeed = false;
     for (int i = 0; i < 16; ++i) {
-        const uint8_t candidate =
-        ProbeChannel(nullptr, &resender, PktType::kRoleAnnounce, [](uint8_t, const uint8_t*) {})
-        .nextSeqId();
+        const uint8_t candidate = ProbeChannel(PktType::kRoleAnnounce).nextSeqId();
         ASSERT_NE(candidate, uint8_t{0});
         if (candidate != first) {
             sawDifferentSeed = true;
@@ -62,9 +56,7 @@ TEST(ReliableChannelBaseTest, initialSeqIdIsSeededPerChannel) {
 }
 
 TEST(ReliableChannelBaseTest, duplicateSeqIdRemainsSuppressedAndFreshSeedDelivers) {
-    Resender resender(nullptr);
-    ProbeChannel ch(nullptr, &resender, PktType::kRoleAnnounce,
-                    [](uint8_t, const uint8_t*) {});
+    ProbeChannel ch(PktType::kRoleAnnounce);
     std::array<uint8_t, 6> peer = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
 
     EXPECT_FALSE(ch.isDuplicateReliableRx(peer.data(), 1));
@@ -81,9 +73,7 @@ TEST(ReliableChannelBaseTest, rxDedupEvictsOldestSenderWhenFull) {
     // oldest cursor is evicted to keep the table bounded. A wrongly-evicted
     // still-active sender just re-seeds on its next packet (one tolerated
     // re-dispatch); a tracked sender keeps deduping.
-    Resender resender(nullptr);
-    ProbeChannel ch(nullptr, &resender, PktType::kChainGameEvent,
-                    [](uint8_t, const uint8_t*) {});
+    ProbeChannel ch(PktType::kChainGameEvent);
 
     auto sender = [](uint8_t i) {
         return std::array<uint8_t, 6>{0x10, 0x20, 0x30, 0x40, 0x50, i};

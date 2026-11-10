@@ -4,7 +4,8 @@
 
 #define TAG "POSSE"
 
-PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
+PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager,
+                           RemoteDeviceCoordinator* rdc)
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
@@ -12,9 +13,9 @@ PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, Rem
     , resender(wirelessManager)
     // No abandon handler: a role announce that ran out its span is repaired by the
     // backstop in sync(), not by a callback.
-    , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr)
-    , chainConfirmChannel(wirelessManager, &resender, PktType::kChainConfirm, nullptr)
-    , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr) {
+    , roleAnnounceChannel(wirelessManager, PktType::kRoleAnnounce)
+    , chainConfirmChannel(wirelessManager, PktType::kChainConfirm)
+    , chainJoinChannel(wirelessManager, PktType::kChainJoin) {
     chainConfirmChannel.onReceive([this](const uint8_t*, const ChainConfirmPayload& p) {
         onConfirmReceived(p.originatorMac);
     });

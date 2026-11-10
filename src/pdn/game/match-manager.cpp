@@ -17,7 +17,7 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     : player(nullptr)
     , storage(nullptr)
     , resender(wirelessManager)
-    , matchChannel(wirelessManager, &resender, PktType::kMatchCommand, nullptr) {
+    , matchChannel(wirelessManager, PktType::kMatchCommand) {
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
         MatchCommand command(fromMac, p.command, p.matchId, p.playerId, p.playerDrawTime,
                              p.isHunter);
