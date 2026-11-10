@@ -502,6 +502,12 @@ public:
     }
 
     ~MockDevice() {
+        // Managers first: the wireless manager's transport unregisters its
+        // handlers through the peer comms driver on the way out, as on hardware
+        // where the drivers outlive everything built on them.
+        delete lightManager;
+        delete serialManager;
+        delete wirelessManager;
         delete mockDisplay;
         delete mockPrimaryButton;
         delete mockSecondaryButton;
@@ -509,9 +515,6 @@ public:
         delete mockHttpClient;
         delete mockPeerComms;
         delete mockStorage;
-        delete lightManager;
-        delete serialManager;
-        delete wirelessManager;
     }
 
     // Device Methods
