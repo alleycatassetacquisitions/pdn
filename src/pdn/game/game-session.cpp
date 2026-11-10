@@ -2,6 +2,8 @@
 #include "state/state-machine.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/wireless-manager.hpp"
+#include "wireless/reliable-transport.hpp"
 #include <array>
 #include <cstring>
 
@@ -107,8 +109,6 @@ SupporterReady* GameSession::getMountedSupporterReady() {
 }
 
 void GameSession::sync() {
-    if (matchManager) matchManager->sync();
-
     if (posseManager) {
         posseManager->sync();
 
@@ -122,7 +122,6 @@ void GameSession::sync() {
     // retries keep running while the device is in the match app for a bracket
     // match.
     if (shootoutManager) shootoutManager->sync();
-    if (symbolWirelessManager) symbolWirelessManager->sync();
 
     logRetryStats();
 }
@@ -135,9 +134,12 @@ void GameSession::logRetryStats() {
     if (!statsLogTimer.expired()) return;
 
     // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2, which
-    // strips info-level calls. Both managers are reported: a venue reading one
+    // strips info-level calls. Every queue is reported: a venue reading one
     // line to judge radio health would otherwise be shown the posse's
     // retries and told nothing about the tournament's.
+    const Resender::Stats& t = wirelessManager->getReliableTransport()->getStats();
+    LOG_W("STATS", "RELIABLE s=%u r=%u ab=%u", (unsigned)t.sends, (unsigned)t.retries,
+          (unsigned)t.abandons);
     if (posseManager != nullptr) {
         PosseManager::RetryStats c = posseManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;

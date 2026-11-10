@@ -34,9 +34,6 @@ public:
     SymbolWirelessManager(WirelessManager* wirelessManager,
                           RemoteDeviceCoordinator* remoteDeviceCoordinator);
 
-    /** Drives the channel's retransmits. */
-    void sync();
-
     /** Sends command to macPeer (jack is used for logging only). */
     void sendPacket(int command, SymbolId symbolId, SerialIdentifier jack);
 
@@ -55,7 +52,6 @@ private:
 
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     uint8_t macPeer[6];
-    Resender resender;
     ReliableChannel<SymbolMatchPacket> channel;
 
     std::map<SerialIdentifier, std::function<void(const SymbolMatchCommand&)>> packetReceivedCallbacks;

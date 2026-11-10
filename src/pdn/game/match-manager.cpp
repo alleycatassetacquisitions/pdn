@@ -16,17 +16,12 @@ static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 MatchManager::MatchManager(WirelessManager* wirelessManager)
     : player(nullptr)
     , storage(nullptr)
-    , resender(wirelessManager)
     , matchChannel(wirelessManager, PktType::kMatchCommand) {
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
         MatchCommand command(fromMac, p.command, p.matchId, p.playerId, p.playerDrawTime,
                              p.isHunter);
         listenForMatchEvents(command);
     });
-}
-
-void MatchManager::sync() {
-    resender.sync();
 }
 
 void MatchManager::sendCommand(const uint8_t* mac, int command, const char* matchId,

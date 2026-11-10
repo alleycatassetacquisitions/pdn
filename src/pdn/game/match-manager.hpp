@@ -20,7 +20,6 @@
 #include "wireless/mac-functions.hpp"
 #include "wireless/match-packet.hpp"
 #include "wireless/reliable-channel.hpp"
-#include "wireless/resender.hpp"
 #include "device/drivers/storage-interface.hpp"
 
 class ShootoutManager;
@@ -155,9 +154,6 @@ public:
     /** Binds the player and storage this manager records matches against. */
     void initialize(Player* player, StorageInterface* storage);
 
-    /** Drives the match channel's retries. */
-    void sync();
-
     /** Button callback that records a valid match draw press and sends DRAW_RESULT. */
     parameterizedCallbackFunction getMatchButtonPush();
 
@@ -189,7 +185,6 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
-    Resender resender;
     ReliableChannel<MatchPacket> matchChannel;
     void sendCommand(const uint8_t* mac, int command, const char* matchId,
                      long drawTime, bool isHunter);

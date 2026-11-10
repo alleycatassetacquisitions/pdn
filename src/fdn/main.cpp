@@ -159,9 +159,8 @@ static void setup() {
 
     hackedPlayersManager  = new HackedPlayersManager(fdn->getStorage());
 
-    symbolWirelessManager = new SymbolWirelessManager(fdn->getWirelessManager(),
-                                                      fdn->getRemoteDeviceCoordinator());
-    fdn->setTickCallback([]() { symbolWirelessManager->sync(); });
+    symbolWirelessManager =
+    new SymbolWirelessManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
 
     setupEspNow(peerCommsDriver);
 
