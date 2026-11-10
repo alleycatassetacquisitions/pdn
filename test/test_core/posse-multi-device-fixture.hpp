@@ -127,7 +127,6 @@ public:
             new PosseManager(node->player.get(), node->device->wirelessManager, node->rdc.get());
             node->shootout =
             new ShootoutManager(node->player.get(), node->device->wirelessManager, node->rdc.get());
-            wireShootoutHandlers(*node);
             Player* p = node->player.get();
             RemoteDeviceCoordinator* r = node->rdc.get();
             PosseManager* c = node->posse;
@@ -349,44 +348,6 @@ protected:
         return SIZE_MAX;
     }
 
-    // Register Shootout command + ack handlers. Mirrors the dispatcher in
-    // the GameSession constructor so every packet path exercised on hardware is
-    // exercised in the fixture too.
-    void wireShootoutHandlers(MultiDeviceNode& n) {
-        ShootoutManager* mgr = n.shootout;
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-        PktType::kShootoutCommand,
-        [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-            auto* m = static_cast<ShootoutManager*>(ctx);
-            if (dataLen < 2) return;
-            ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
-            uint8_t seqId = data[1];
-            const uint8_t* payload = data + 2;
-            size_t payloadLen = dataLen - 2;
-            switch (cmd) {
-                case ShootoutCmd::TOURNAMENT_END:
-                    if (payloadLen >= 6) m->onTournamentEndReceived(fromMac, payload, seqId);
-                    break;
-                case ShootoutCmd::ABORT: m->onAbortReceived(fromMac, seqId); break;
-            }
-        },
-        mgr);
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-        PktType::kShootoutCommandAck,
-        [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-            // Same routing as GameSession::onShootoutCommandAckPacket: the
-            // seqId alone names the frame, so the command byte is only
-            // range-checked, never dispatched on.
-            auto* m = static_cast<ShootoutManager*>(ctx);
-            if (dataLen < 2) return;
-            if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
-            m->onCommandAckReceived(fromMac, data[1]);
-        },
-        mgr);
-    }
-
     /**
      * The PktTypes this fixture carries between nodes. Deliberately not every
      * type: kConnectionAnnounce is dropped so no roster ever reaches a head here
@@ -406,8 +367,8 @@ protected:
             case PktType::kShootoutBracket:
             case PktType::kShootoutMatchStart:
             case PktType::kShootoutMatchResult:
-            case PktType::kShootoutCommand:
-            case PktType::kShootoutCommandAck: return true;
+            case PktType::kShootoutTournamentEnd:
+            case PktType::kShootoutAbort: return true;
             default: return false;
         }
     }
