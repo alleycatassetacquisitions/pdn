@@ -53,8 +53,8 @@ public:
     }
 
     /**
-     * Feeds a peer's PdnConnectionContext in through the handler the reliable
-     * transport registered with the radio driver — the production receive path.
+     * Feeds a peer's PdnConnectionContext in through the handler the RDC's
+     * context channel registered with the radio driver — the production receive path.
      */
     void deliverPdnContext(const uint8_t* peerMac, bool isHunter = false) {
         if (contextHandler == nullptr) return;
@@ -134,6 +134,13 @@ public:
         posse.sync();
     }
 
+    /** A supporter's answer to a game-event fan-out, as the transport would route it. */
+    void deliverGameEventAck(const uint8_t* fromMac, uint8_t seqId) {
+        ReliableAckPayload ack{PktType::kChainGameEvent, seqId};
+        device.wirelessManager->getReliableTransport()->deliverIncoming(
+        PktType::kReliableAck, fromMac, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    }
+
     PeerCommsInterface::PacketCallback contextHandler = nullptr;
     void* contextCtx = nullptr;
     PeerCommsInterface::SendStatusCallback roleAnnounceSendStatus = nullptr;
@@ -145,13 +152,13 @@ public:
 };
 
 /**
- * Runs the main loop for `ms`, one sync() every 20ms — fine enough that no 100ms
+ * Runs the main loop for `ms`, one tick every 20ms — fine enough that no 100ms
  * backoff window is skipped, not a claim about the device's loop period.
  */
 inline void runLoopFor(PosseManagerTests* suite, PosseManager& posse, unsigned long ms) {
     for (unsigned long elapsed = 0; elapsed < ms; elapsed += 20) {
         suite->fakeClock->advance(20);
-        posse.sync();
+        suite->tick(posse);
     }
 }
 
@@ -159,21 +166,23 @@ inline void runLoopFor(PosseManagerTests* suite, PosseManager& posse, unsigned l
 // Without peers everything returns false/empty; with a full challenger setup everything flips.
 inline void posseRoleDerivationWithChallengerTopology(PosseManagerTests* suite) {
     suite->player.setIsHunter(true);
-    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    {
+        PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
-    // No peers: default-challenger (isSupporter is false, no opponent peer).
-    EXPECT_TRUE(posse.isChallenger());
-    EXPECT_FALSE(posse.isSupporter());
-    EXPECT_FALSE(posse.canInitiateMatch());
-    EXPECT_TRUE(posse.getSupporterChainPeers().empty());
+        // No peers: default-challenger (isSupporter is false, no opponent peer).
+        EXPECT_TRUE(posse.isChallenger());
+        EXPECT_FALSE(posse.isSupporter());
+        EXPECT_FALSE(posse.canInitiateMatch());
+        EXPECT_TRUE(posse.getSupporterChainPeers().empty());
+    }
 
     suite->setupHunterChallenger();
-    PosseManager posse2(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
-    EXPECT_TRUE(posse2.isChallenger());
-    EXPECT_FALSE(posse2.isSupporter());
-    EXPECT_TRUE(posse2.canInitiateMatch());
-    EXPECT_FALSE(posse2.getSupporterChainPeers().empty());
+    EXPECT_TRUE(posse.isChallenger());
+    EXPECT_FALSE(posse.isSupporter());
+    EXPECT_TRUE(posse.canInitiateMatch());
+    EXPECT_FALSE(posse.getSupporterChainPeers().empty());
 }
 
 // Half-open gate (#162): a jack that only reached CONNECTING knows its peer MAC
@@ -478,7 +487,7 @@ inline void posseCountdownVoidsStandingConfirm(PosseManagerTests* suite) {
 
     posse.onChainGameEventReceived(static_cast<uint8_t>(ChainGameEventType::COUNTDOWN));
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
-    posse.sync();
+    suite->tick(posse);
 
     uint8_t secondChallenger[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
     posse.onRoleAnnounceReceived(suite->opponentMac, secondChallenger);
@@ -525,7 +534,7 @@ inline void posseSupporterRoleLossVoidsStandingConfirm(PosseManagerTests* suite)
     ASSERT_FALSE(posse.isSupporter());
 
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
-    posse.sync();
+    suite->tick(posse);
     posse.resendConfirm();
     EXPECT_EQ(joinsSent, 1);
     EXPECT_EQ(confirmsSent, 1);
@@ -631,7 +640,7 @@ inline void posseRingClosureClearsTheChallenger(PosseManagerTests* suite) {
     deliverFrame(suite->inJack,
                  chainHelloFrame(suite->supporterMac, challengerMac, HELLO_FLAG_RING_CLOSED));
     suite->rdc.sync(&suite->device);
-    posse.sync();
+    suite->tick(posse);
 
     EXPECT_EQ(posse.getChallengerMac(), nullptr) << "a ring still names a challenger";
 
@@ -644,7 +653,7 @@ inline void posseRingClosureClearsTheChallenger(PosseManagerTests* suite) {
     const int announcesBeforeRingRx = supporterAnnounces;
     posse.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
     suite->fakeClock->advance(Resender::backoffMs(0) + 1);
-    posse.sync();
+    suite->tick(posse);
     EXPECT_EQ(posse.getChallengerMac(), nullptr);
     EXPECT_EQ(ringSends, 0);
     EXPECT_EQ(supporterAnnounces, announcesBeforeRingRx);
@@ -652,7 +661,7 @@ inline void posseRingClosureClearsTheChallenger(PosseManagerTests* suite) {
     deliverFrame(suite->outJack, chainHelloFrame(suite->opponentMac, nullptr));
     deliverFrame(suite->inJack, chainHelloFrame(suite->supporterMac, challengerMac, 0));
     suite->rdc.sync(&suite->device);
-    posse.sync();
+    suite->tick(posse);
     EXPECT_EQ(posse.getChallengerMac(), nullptr);
 
     posse.onRoleAnnounceReceived(suite->opponentMac, challengerMac);
@@ -763,7 +772,7 @@ inline void posseNewTerminalEventSupersedesThePrevious(PosseManagerTests* suite)
 
     // One round must put ONE frame on the air: only the newer event is live.
     suite->fakeClock->advance(Resender::backoffMs(0) + 1);
-    posse.sync();
+    suite->tick(posse);
     EXPECT_EQ(eventFrames, afterSends + 1)
     << "the superseded event is still retransmitting alongside the current one";
 }
@@ -866,7 +875,7 @@ inline void posseUndeliveredSupporterAnnounceIsRetriedByBackstop(PosseManagerTes
 
     // A full backstop interval later it is offered again.
     suite->fakeClock->advance(PosseManager::ROLE_ANNOUNCE_BACKSTOP_MS + 1);
-    posse.sync();
+    suite->tick(posse);
     EXPECT_GT(announcesToSupporter, afterAbandon)
     << "supporter announce was abandoned and never re-offered; that supporter "
        "contributes no boost for the rest of the round";
@@ -942,7 +951,7 @@ inline void posseAckClearsPending(PosseManagerTests* suite) {
     // Subsequent sync() after timeout must not emit any further role announces.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _)).Times(0);
     suite->fakeClock->advance(150);
-    posse.sync();
+    suite->tick(posse);
 }
 
 // Ack with matching seqId but wrong fromMac must not clear pending.
@@ -1056,9 +1065,9 @@ inline void posseRoleAnnounceTimesDeliveryAndRetransmits(PosseManagerTests* suit
     suite->fakeClock->advance(50);
     suite->deliverRoleAnnounceSendResult(suite->supporterMac, seqId, /*success=*/true);
 
-    PosseManager::RetryStats s1 = posse.getRetryStats();
-    EXPECT_GE(s1.ackCount, 1u);
-    EXPECT_GT(s1.ackLatencyMsSum, 0u);
+    PosseManager::AckLatency l1 = posse.getAckLatency();
+    EXPECT_GE(l1.count, 1u);
+    EXPECT_GT(l1.sumMs, 0u);
 
     // A NEW challenger is new content, so it goes out rather than being suppressed
     // as already-told. Nobody reports it delivered, so it exhausts its retries.
@@ -1354,7 +1363,7 @@ inline void posseGameEventCountdownIsFireAndForget(PosseManagerTests* suite) {
     // sync() after timeout must not retransmit a COUNTDOWN.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainGameEvent, _, _)).Times(0);
     suite->fakeClock->advance(1000);
-    posse.sync();
+    suite->tick(posse);
 }
 
 // WIN is tracked: seqId != 0, pending registered, retransmit fires on timer.
@@ -1389,7 +1398,7 @@ inline void posseGameEventWinIsTrackedAndRetried(PosseManagerTests* suite) {
 
     // Advance past first timeout (100ms), sync() should retransmit once.
     suite->fakeClock->advance(150);
-    posse.sync();
+    suite->tick(posse);
     EXPECT_EQ(winSends, 2);
 }
 
@@ -1413,12 +1422,12 @@ inline void posseGameEventAckClearsPending(PosseManagerTests* suite) {
     posse.sendGameEventToSupporters(ChainGameEventType::LOSS);
     ASSERT_NE(winSeqId, 0u);
 
-    posse.onChainGameEventAckReceived(suite->supporterMac, winSeqId);
+    suite->deliverGameEventAck(suite->supporterMac, winSeqId);
 
     // After ACK, sync past timeout must not retransmit.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainGameEvent, _, _)).Times(0);
     suite->fakeClock->advance(1000);
-    posse.sync();
+    suite->tick(posse);
 }
 
 // Once a frame's retransmit span runs out with no ACK it is abandoned — no further sends.
@@ -1445,8 +1454,6 @@ inline void posseGameEventAbandonsWhenSpanRunsOut(PosseManagerTests* suite) {
 
     // After abandon, further sync must not retransmit.
     suite->fakeClock->advance(1000);
-    posse.sync();
+    suite->tick(posse);
     EXPECT_EQ(supporterSends, 4);
-
-    EXPECT_EQ(posse.getRetryStats().abandons, 1u);
 }

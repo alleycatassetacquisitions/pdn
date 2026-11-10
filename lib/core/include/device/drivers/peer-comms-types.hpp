@@ -12,7 +12,6 @@ enum class PktType : uint8_t {
     kChainGameEvent = 6,
     kChainConfirm = 7,
     kRoleAnnounce = 8,
-    kChainGameEventAck = 10,
     kShootoutCommand = 11,
     kShootoutCommandAck = 12,
     kSymbolMatchCommand = 13,
@@ -102,11 +101,6 @@ struct ChainJoinPayload {
 struct RoleAnnouncePayload
 {
     uint8_t challengerMac[6];
-    uint8_t seqId;
-} __attribute__((packed));
-
-struct ChainGameEventAckPayload
-{
     uint8_t seqId;
 } __attribute__((packed));
 
