@@ -11,7 +11,7 @@
 #include "device/serial-frame-parser.hpp"
 #include "utils/simple-timer.hpp"
 #include "device/wireless-manager.hpp"
-#include "wireless/reliable-transport.hpp"
+#include "wireless/reliable-channel.hpp"
 #include "device/device-type.hpp"
 
 #ifndef NATIVE_BUILD
@@ -319,10 +319,9 @@ private:
     std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 
-    // The device's transport, and one context channel per device-type PktType
-    // claimed on it. Device-level, not per-jack: on receive the source MAC is
-    // matched back to a jack. Bound in initialize() once the WirelessManager is known.
-    ReliableTransport* transport = nullptr;
+    // Context channels are device-level, not per-jack: on receive the source MAC
+    // is matched back to a jack. Constructed in initialize() once the
+    // WirelessManager is known.
     ReliableChannel<PdnConnectionContext>* pdnContextChannel = nullptr;
     ReliableChannel<FdnConnectionContext>* fdnContextChannel = nullptr;
     ReliableChannel<ConnectionAnnouncePayload>* connectionAnnounceChannel = nullptr;

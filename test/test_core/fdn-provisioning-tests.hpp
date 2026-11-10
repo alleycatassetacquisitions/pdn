@@ -175,7 +175,7 @@ inline void fdnReportsLookupResultAndResendsUnconfirmedReply(FdnProvisioningTest
 
     // No SEND_SUCCESS came back, so the reply goes out again on the backoff.
     suite->fakeClock->advance(150);
-    fdnProv.sync();
+    suite->fdnDevice.wirelessManager->sync();
     EXPECT_EQ(replyFrames, 2) << "a reply the radio did not confirm is resent";
 
     suite->deliverRequest("0007", suite->pdnMac, 9);

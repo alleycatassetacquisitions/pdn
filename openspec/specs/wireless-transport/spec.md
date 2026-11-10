@@ -114,12 +114,18 @@ When the deadline timer expires for an in-flight frame, the transport SHALL remo
 - **WHEN** an in-flight frame's retry timer and 1500 ms deadline timer have both expired on the same tick
 - **THEN** the transport abandons the frame immediately and does not transmit another copy
 
-### Requirement: Channel registration and peer-to-peer radio enable/disable
+### Requirement: One transport per device, channel registration, and peer-to-peer radio enable/disable
 
-Each packet type SHALL be owned by at most one payload schema size. Re-claiming an existing packet type with the same payload size SHALL return the existing channel and rebind its abandonment callback; claiming an already-registered packet type with a different payload size SHALL be rejected as a type collision.
+Each device SHALL own exactly one reliable transport, holding the one retry queue every channel shares. The device loop SHALL pump it once per tick, after the radio driver has delivered that tick's inbound frames and send verdicts and before the application tick, so an abandonment the application reacts to has already fired. No protocol manager pumps retries of its own.
+
+A channel SHALL claim its packet type on the device transport when it is constructed, which also installs the radio's receive and send-verdict handlers for that packet type, and SHALL release the claim, drop its pending sends, and clear those handlers when it is destroyed. Each packet type SHALL be owned by at most one channel at a time: a second claim of a claimed packet type is a wiring defect, SHALL be logged, and SHALL leave the second channel without a radio (it neither sends nor receives) while the first keeps the type.
 
 When an FDN disables the peer-to-peer radio to use Wi-Fi station mode for HTTP server communication, peer-to-peer transmissions are unavailable on that FDN until the peer-to-peer radio is re-enabled. Any reliable frame still in flight while the peer-to-peer radio is disabled remains bounded by its 1500 ms deadline timer so retry queues cannot grow without bound while the peer-to-peer radio is disabled.
 
-#### Scenario: Payload size collision on the same packet type is rejected
-- **WHEN** a subsystem claims packet type $P$ with a 12-byte payload after $P$ was already claimed with an 8-byte payload
-- **THEN** the transport logs a channel type collision and rejects the claim without overwriting the existing channel
+#### Scenario: Second claim of a packet type is refused
+- **WHEN** a subsystem constructs a channel on packet type $P$ while another channel on this device already holds $P$
+- **THEN** the transport logs the collision, the existing channel keeps $P$, and the new channel's sends and acknowledgements go nowhere
+
+#### Scenario: Retries advance without the owning manager ticking
+- **WHEN** a channel has a reliable frame pending and its owning manager is never ticked by the mounted app
+- **THEN** the frame is still retransmitted on the backoff timer and abandoned at the deadline, because the device loop pumps the transport

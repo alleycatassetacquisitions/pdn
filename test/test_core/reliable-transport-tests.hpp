@@ -62,15 +62,13 @@ TEST(ReliableTransportTest, seqIdReachesTheBytesHandedToTheRadio) {
     // the receiver's dedup and the sender's ack recover identity from that byte.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
     RadioTap radio;
     radio.attach(mockComms);
-    ReliableChannel<TransportTestPayload>* ch =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
 
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload payload{};
-    const uint8_t seq = ch->sendReliable(target, payload);
+    const uint8_t seq = ch.sendReliable(target, payload);
 
     ASSERT_NE(seq, 0);
     ASSERT_EQ(radio.frames.size(), 1u);
@@ -78,73 +76,79 @@ TEST(ReliableTransportTest, seqIdReachesTheBytesHandedToTheRadio) {
     EXPECT_EQ(radio.frames[0].bytes[offsetof(TransportTestPayload, seqId)], seq)
     << "the seqId the channel returned is not in the bytes the radio was given";
     EXPECT_EQ(payload.seqId, seq) << "the id did not reach the caller's struct";
-    delete ch;
-}
-
-TEST(ReliableTransportTest, aSecondClaimOfAPktTypeIsRefused) {
-    // Two owners of one PktType on one device is a wiring bug; the first keeps
-    // the type and the second claim returns nothing.
-    ::testing::NiceMock<MockPeerComms> mockComms;
-    WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
-    ReliableChannel<TransportTestPayload>* first =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
-    ASSERT_NE(first, nullptr);
-    EXPECT_EQ(transport.channel<TransportTestPayload>(PktType::kChainGameEvent), nullptr);
-
-    uint8_t from[6] = {1, 2, 3, 4, 5, 6};
-    TransportTestPayload p{};
-    int deliveries = 0;
-    first->onReceive([&](const uint8_t*, const TransportTestPayload&) { deliveries++; });
-    EXPECT_TRUE(transport.deliverIncoming(PktType::kChainGameEvent, from,
-                                          reinterpret_cast<const uint8_t*>(&p), sizeof(p)));
-    EXPECT_EQ(deliveries, 1);
-    delete first;
-}
-
-TEST(ReliableTransportTest, aDestroyedChannelLeavesItsTypeUnclaimed) {
-    // The transport routes abandons by PktType to whatever channel holds the
-    // slot; a channel that has gone must not still be reachable.
-    ::testing::NiceMock<MockPeerComms> mockComms;
-    WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
-    uint8_t from[6] = {1, 2, 3, 4, 5, 6};
-    TransportTestPayload p{};
-    ReliableChannel<TransportTestPayload>* ch =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
-    EXPECT_TRUE(transport.deliverIncoming(PktType::kChainGameEvent, from,
-                                          reinterpret_cast<const uint8_t*>(&p), sizeof(p)));
-    delete ch;
-    EXPECT_FALSE(transport.deliverIncoming(PktType::kChainGameEvent, from,
-                                           reinterpret_cast<const uint8_t*>(&p), sizeof(p)));
-    ReliableChannel<TransportTestPayload>* again =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
-    EXPECT_NE(again, nullptr);
-    delete again;
 }
 
 TEST(ReliableTransportTest, deliverIncomingReturnsFalseWhenChannelMissing) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
     uint8_t from[6] = {1, 2, 3, 4, 5, 6};
     uint8_t data[4] = {0};
-    EXPECT_FALSE(transport.deliverIncoming(PktType::kChainGameEvent, from, data, sizeof(data)));
+    EXPECT_FALSE(
+    wm.getReliableTransport()->deliverIncoming(PktType::kChainGameEvent, from, data, sizeof(data)));
+}
+
+TEST(ReliableTransportTest, aDestroyedChannelLeavesItsTypeUnclaimed) {
+    // The transport routes acks and abandons by PktType to whatever channel
+    // holds the slot; a channel that has gone must not still be reachable.
+    ::testing::NiceMock<MockPeerComms> mockComms;
+    WirelessManager wm(&mockComms, nullptr);
+    uint8_t from[6] = {1, 2, 3, 4, 5, 6};
+    TransportTestPayload p{};
+    {
+        ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
+        EXPECT_TRUE(wm.getReliableTransport()->deliverIncoming(
+        PktType::kChainGameEvent, from, reinterpret_cast<const uint8_t*>(&p), sizeof(p)));
+    }
+    EXPECT_FALSE(wm.getReliableTransport()->deliverIncoming(
+    PktType::kChainGameEvent, from, reinterpret_cast<const uint8_t*>(&p), sizeof(p)));
+}
+
+TEST(ReliableTransportTest, aSecondClaimOfAPktTypeRunsWithoutARadio) {
+    // Two owners of one PktType on one device is a wiring bug; the first keeps
+    // the type, and the second's destruction leaves that registration alone.
+    ::testing::NiceMock<MockPeerComms> comms;
+    WirelessManager wm{&comms, nullptr};
+    RadioTap radio;
+    radio.attach(comms);
+    ON_CALL(comms, getPeerCommsState()).WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    const uint8_t peer[6] = {0x02, 0, 0, 0, 0, 0x0A};
+    TransportTestPayload p{};
+
+    ReliableChannel<TransportTestPayload> first(&wm, PktType::kChainGameEvent);
+    int firstDeliveries = 0;
+    first.onReceive([&](const uint8_t*, const TransportTestPayload&) { firstDeliveries++; });
+    {
+        ReliableChannel<TransportTestPayload> second(&wm, PktType::kChainGameEvent);
+        int secondDeliveries = 0;
+        second.onReceive([&](const uint8_t*, const TransportTestPayload&) { secondDeliveries++; });
+
+        second.sendReliable(peer, p);
+        EXPECT_TRUE(radio.frames.empty());
+        EXPECT_FALSE(second.isPending(peer));
+
+        wm.getReliableTransport()->deliverIncoming(PktType::kChainGameEvent, peer,
+                                                   reinterpret_cast<const uint8_t*>(&p), sizeof(p));
+        EXPECT_EQ(firstDeliveries, 1);
+        EXPECT_EQ(secondDeliveries, 0);
+    }
+
+    first.sendReliable(peer, p);
+    EXPECT_EQ(radio.frames.size(), 1u);
+    EXPECT_TRUE(first.isPending(peer));
 }
 
 TEST(ReliableTransportTest, sendReliableTriggersAck) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
+    ReliableTransport* transport = wm.getReliableTransport();
 
     bool abandoned = false;
-    ReliableChannel<TransportTestPayload>* ch =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
-    ch->setOnAbandon([&](uint8_t, const uint8_t*) { abandoned = true; });
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
+    ch.setOnAbandon([&](uint8_t, const uint8_t*) { abandoned = true; });
 
     bool received = false;
     TransportTestPayload deliveredP{};
-    ch->onReceive([&](const uint8_t* /*mac*/, const TransportTestPayload& p) {
+    ch.onReceive([&](const uint8_t* /*mac*/, const TransportTestPayload& p) {
         received = true;
         deliveredP = p;
     });
@@ -158,36 +162,33 @@ TEST(ReliableTransportTest, sendReliableTriggersAck) {
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload p{};
     p.cmd = 7;
-    uint8_t seq = ch->sendReliable(target, p);
+    uint8_t seq = ch.sendReliable(target, p);
     ASSERT_NE(seq, 0);
-    ASSERT_TRUE(ch->isPending(target));
+    ASSERT_TRUE(ch.isPending(target));
 
     // Radio SEND_SUCCESS for the packet we sent clears the pending entry. The
     // channel reads the stamped seqId back out of the echoed payload bytes.
     TransportTestPayload sentEcho{};
     sentEcho.seqId = seq;
-    transport.onSendResult(PktType::kChainGameEvent, target,
-                           reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), true);
-    ASSERT_FALSE(ch->isPending(target));
+    transport->onSendResult(PktType::kChainGameEvent, target,
+                            reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), true);
+    ASSERT_FALSE(ch.isPending(target));
     ASSERT_FALSE(abandoned);
 
-    // Inbound packet: deliverIncoming -> channel->deliver -> onReceive fires.
+    // Inbound packet: deliverIncoming -> channel.deliver -> onReceive fires.
     TransportTestPayload incoming{};
     incoming.cmd = 99;
     incoming.seqId = 42;
-    transport.deliverIncoming(PktType::kChainGameEvent, target,
-                              reinterpret_cast<const uint8_t*>(&incoming), sizeof(incoming));
+    transport->deliverIncoming(PktType::kChainGameEvent, target,
+                               reinterpret_cast<const uint8_t*>(&incoming), sizeof(incoming));
     ASSERT_TRUE(received);
     ASSERT_EQ(deliveredP.cmd, 99);
-    delete ch;
 }
 
 TEST(ReliableTransportTest, sendFailLeavesPendingForBackoffRetry) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
-    ReliableChannel<TransportTestPayload>* ch =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
 
     using ::testing::_;
     using ::testing::Return;
@@ -197,25 +198,23 @@ TEST(ReliableTransportTest, sendFailLeavesPendingForBackoffRetry) {
 
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload p{};
-    uint8_t seq = ch->sendReliable(target, p);
-    ASSERT_TRUE(ch->isPending(target));
+    uint8_t seq = ch.sendReliable(target, p);
+    ASSERT_TRUE(ch.isPending(target));
 
     // A SEND_FAIL must NOT clear the pending entry: loss is left to the backoff
     // timer, so the entry stays armed for retransmit.
     TransportTestPayload sentEcho{};
     sentEcho.seqId = seq;
-    transport.onSendResult(PktType::kChainGameEvent, target,
-                           reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), false);
-    EXPECT_TRUE(ch->isPending(target));
-    delete ch;
+    wm.getReliableTransport()->onSendResult(PktType::kChainGameEvent, target,
+                                            reinterpret_cast<const uint8_t*>(&sentEcho),
+                                            sizeof(sentEcho), false);
+    EXPECT_TRUE(ch.isPending(target));
 }
 
 TEST(ReliableTransportTest, sendResultSeqIdZeroDoesNotAck) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
-    ReliableChannel<TransportTestPayload>* ch =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
 
     using ::testing::_;
     using ::testing::Return;
@@ -225,31 +224,28 @@ TEST(ReliableTransportTest, sendResultSeqIdZeroDoesNotAck) {
 
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload p{};
-    ch->sendReliable(target, p);  // stamps a nonzero seqId
-    ASSERT_TRUE(ch->isPending(target));
+    ch.sendReliable(target, p);  // stamps a nonzero seqId
+    ASSERT_TRUE(ch.isPending(target));
 
     // A fire-and-forget send-result (seqId 0) has no sender-side pending entry
     // to match, so it must not clear the live reliable pending entry.
     TransportTestPayload fireAndForget{};
     fireAndForget.seqId = 0;
-    transport.onSendResult(PktType::kChainGameEvent, target,
-                           reinterpret_cast<const uint8_t*>(&fireAndForget), sizeof(fireAndForget),
-                           true);
-    EXPECT_TRUE(ch->isPending(target));
-    delete ch;
+    wm.getReliableTransport()->onSendResult(PktType::kChainGameEvent, target,
+                                            reinterpret_cast<const uint8_t*>(&fireAndForget),
+                                            sizeof(fireAndForget), true);
+    EXPECT_TRUE(ch.isPending(target));
 }
 
 TEST(ReliableTransportTest, abandonWhenSpanRunsOut) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
 
     int abandonCount = 0;
     uint8_t abandonedSeqId = 0;
     std::array<uint8_t, 6> abandonedMac{};
-    ReliableChannel<TransportTestPayload>* ch =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
-    ch->setOnAbandon([&](uint8_t seqId, const uint8_t* mac) {
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
+    ch.setOnAbandon([&](uint8_t seqId, const uint8_t* mac) {
         abandonCount++;
         abandonedSeqId = seqId;
         std::memcpy(abandonedMac.data(), mac, 6);
@@ -264,21 +260,20 @@ TEST(ReliableTransportTest, abandonWhenSpanRunsOut) {
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload p{};
     p.cmd = 7;
-    uint8_t seq = ch->sendReliable(target, p);
+    uint8_t seq = ch.sendReliable(target, p);
 
     FakePlatformClock clock;
     SimpleTimer::setPlatformClock(&clock);
     for (int i = 0; i < 8; ++i) {
         clock.advance(1000);
-        transport.sync();
+        wm.sync();
     }
     SimpleTimer::setPlatformClock(nullptr);
 
     ASSERT_EQ(abandonCount, 1);
     ASSERT_EQ(abandonedSeqId, seq);
     ASSERT_EQ(std::memcmp(abandonedMac.data(), target, 6), 0);
-    ASSERT_FALSE(ch->isPending(target));
-    delete ch;
+    ASSERT_FALSE(ch.isPending(target));
 }
 
 TEST(ReliableTransportTest, aSendTheRadioNeverTookIsAbandonedOnTime) {
@@ -289,12 +284,10 @@ TEST(ReliableTransportTest, aSendTheRadioNeverTookIsAbandonedOnTime) {
     // callers gate on isPending and would otherwise wait out the session.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
 
     int abandonCount = 0;
-    ReliableChannel<TransportTestPayload>* ch =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
-    ch->setOnAbandon([&](uint8_t, const uint8_t*) { abandonCount++; });
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
+    ch.setOnAbandon([&](uint8_t, const uint8_t*) { abandonCount++; });
 
     using ::testing::_;
     using ::testing::Return;
@@ -305,25 +298,24 @@ TEST(ReliableTransportTest, aSendTheRadioNeverTookIsAbandonedOnTime) {
 
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload p{};
-    ch->sendReliable(target, p);
+    ch.sendReliable(target, p);
 
     // Still inside the span: the frame keeps being offered to the path.
     for (unsigned long elapsed = 0; elapsed < Resender::RETRANSMIT_SPAN_MS - 100;
          elapsed += 20) {
         clock.advance(20);
-        transport.sync();
+        wm.sync();
     }
     EXPECT_EQ(abandonCount, 0);
-    EXPECT_TRUE(ch->isPending(target));
+    EXPECT_TRUE(ch.isPending(target));
 
     for (int i = 0; i < 10; ++i) {
         clock.advance(20);
-        transport.sync();
+        wm.sync();
     }
     EXPECT_EQ(abandonCount, 1);
-    EXPECT_FALSE(ch->isPending(target));
+    EXPECT_FALSE(ch.isPending(target));
     SimpleTimer::setPlatformClock(nullptr);
-    delete ch;
 }
 
 TEST(ReliableTransportTest, ackRoutesByPktType) {
@@ -334,12 +326,9 @@ TEST(ReliableTransportTest, ackRoutesByPktType) {
     // via its abandon callback.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
 
-    ReliableChannel<TransportTestPayload>* chA =
-    transport.channel<TransportTestPayload>(PktType::kShootoutCommand);
-    ReliableChannel<TransportTestPayload>* chB =
-    transport.channel<TransportTestPayload>(PktType::kMatchCommand);
+    ReliableChannel<TransportTestPayload> chA(&wm, PktType::kShootoutCommand);
+    ReliableChannel<TransportTestPayload> chB(&wm, PktType::kMatchCommand);
 
     using ::testing::_;
     using ::testing::Return;
@@ -350,24 +339,23 @@ TEST(ReliableTransportTest, ackRoutesByPktType) {
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload p{};
     // Send B first so its pending entry sits ahead of A's in the Resender vector.
-    uint8_t seqB = chB->sendReliable(target, p);
+    uint8_t seqB = chB.sendReliable(target, p);
     uint8_t seqA = 0;
     do {
-        seqA = chA->sendReliable(target, p);
+        seqA = chA.sendReliable(target, p);
     } while (seqA != seqB);
     ASSERT_EQ(seqA, seqB);
-    ASSERT_TRUE(chA->isPending(target));
-    ASSERT_TRUE(chB->isPending(target));
+    ASSERT_TRUE(chA.isPending(target));
+    ASSERT_TRUE(chB.isPending(target));
 
     TransportTestPayload sentEcho{};
     sentEcho.seqId = seqA;
-    transport.onSendResult(PktType::kShootoutCommand, target,
-                           reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), true);
+    wm.getReliableTransport()->onSendResult(PktType::kShootoutCommand, target,
+                                            reinterpret_cast<const uint8_t*>(&sentEcho),
+                                            sizeof(sentEcho), true);
 
-    ASSERT_FALSE(chA->isPending(target));
-    ASSERT_TRUE(chB->isPending(target));
-    delete chA;
-    delete chB;
+    ASSERT_FALSE(chA.isPending(target));
+    ASSERT_TRUE(chB.isPending(target));
 }
 
 TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
@@ -377,13 +365,12 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
     // dropped because two later sends share its (type, target).
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
 
     int abandonCount = 0;
     uint8_t abandonedSeqId = 0;
-    ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
-    PktType::kShootoutCommand, ReliableChannelBase::OnAbandon{}, Resender::SendMode::KEEP_DISTINCT);
-    ch->setOnAbandon([&](uint8_t seqId, const uint8_t*) {
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kShootoutCommand,
+                                             ChannelMode::KEEP_DISTINCT);
+    ch.setOnAbandon([&](uint8_t seqId, const uint8_t*) {
         abandonCount++;
         abandonedSeqId = seqId;
     });
@@ -396,9 +383,9 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
 
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload p{};
-    uint8_t s1 = ch->sendReliable(target, p);  // this one will be "lost"
-    uint8_t s2 = ch->sendReliable(target, p);
-    uint8_t s3 = ch->sendReliable(target, p);
+    uint8_t s1 = ch.sendReliable(target, p);  // this one will be "lost"
+    uint8_t s2 = ch.sendReliable(target, p);
+    uint8_t s3 = ch.sendReliable(target, p);
     ASSERT_NE(s1, s2);
     ASSERT_NE(s2, s3);
 
@@ -406,23 +393,23 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
     for (uint8_t seq : {s2, s3}) {
         TransportTestPayload sentEcho{};
         sentEcho.seqId = seq;
-        transport.onSendResult(PktType::kShootoutCommand, target,
-                               reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), true);
+        wm.getReliableTransport()->onSendResult(PktType::kShootoutCommand, target,
+                                                reinterpret_cast<const uint8_t*>(&sentEcho),
+                                                sizeof(sentEcho), true);
     }
-    ASSERT_TRUE(ch->isPending(target));  // s1 survived the later sends
+    ASSERT_TRUE(ch.isPending(target));  // s1 survived the later sends
 
     FakePlatformClock clock;
     SimpleTimer::setPlatformClock(&clock);
     for (int i = 0; i < 8; ++i) {
         clock.advance(1000);
-        transport.sync();
+        wm.sync();
     }
     SimpleTimer::setPlatformClock(nullptr);
 
     EXPECT_EQ(abandonCount, 1);
     EXPECT_EQ(abandonedSeqId, s1);
-    EXPECT_FALSE(ch->isPending(target));
-    delete ch;
+    EXPECT_FALSE(ch.isPending(target));
 }
 
 TEST(ReliableTransportTest, duplicateReliableDeliveryDispatchesOnce) {
@@ -430,32 +417,30 @@ TEST(ReliableTransportTest, duplicateReliableDeliveryDispatchesOnce) {
     // (sender, seqId) twice; a unicast channel dispatches onReceive only once.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
+    ReliableTransport* transport = wm.getReliableTransport();
 
     int deliveries = 0;
-    ReliableChannel<TransportTestPayload>* ch =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
-    ch->onReceive([&](const uint8_t*, const TransportTestPayload&) { deliveries++; });
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
+    ch.onReceive([&](const uint8_t*, const TransportTestPayload&) { deliveries++; });
 
     uint8_t from[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload p{};
     p.seqId = 7;
     const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&p);
-    transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
-    transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
+    transport->deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
+    transport->deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
     EXPECT_EQ(deliveries, 1);
 
     // A new seqId from the same sender is a fresh message and dispatches.
     p.seqId = 8;
-    transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
+    transport->deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
     EXPECT_EQ(deliveries, 2);
 
     // A different sender with a colliding seqId must not be suppressed.
     uint8_t from2[6] = {9, 9, 9, 9, 9, 9};
     p.seqId = 7;
-    transport.deliverIncoming(PktType::kChainGameEvent, from2, bytes, sizeof(p));
+    transport->deliverIncoming(PktType::kChainGameEvent, from2, bytes, sizeof(p));
     EXPECT_EQ(deliveries, 3);
-    delete ch;
 }
 
 TEST(ReliableTransportTest, unsequencedDeliveryNeverDeduped) {
@@ -464,21 +449,19 @@ TEST(ReliableTransportTest, unsequencedDeliveryNeverDeduped) {
     // must dispatch every one.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    ReliableTransport transport(&wm);
+    ReliableTransport* transport = wm.getReliableTransport();
 
     int deliveries = 0;
-    ReliableChannel<TransportTestPayload>* ch =
-    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
-    ch->onReceive([&](const uint8_t*, const TransportTestPayload&) { deliveries++; });
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
+    ch.onReceive([&](const uint8_t*, const TransportTestPayload&) { deliveries++; });
 
     uint8_t from[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload p{};
     p.seqId = 0;
     const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&p);
-    transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
-    transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
+    transport->deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
+    transport->deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
     EXPECT_EQ(deliveries, 2);
-    delete ch;
 }
 
 TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
@@ -486,30 +469,45 @@ TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
     WirelessManager wm{&comms, nullptr};
     FakePlatformClock clock;
     SimpleTimer::setPlatformClock(&clock);
-    Resender resender(&wm);
-
-    int frames = 0;
+    RadioTap radio;
+    radio.attach(comms);
     ON_CALL(comms, getPeerCommsState()).WillByDefault(::testing::Return(PeerCommsState::ENABLED));
-    ON_CALL(comms, sendData(::testing::_, ::testing::_, ::testing::_, ::testing::_))
-        .WillByDefault([&frames](const uint8_t*, PktType, const uint8_t*, const size_t) {
-            frames++;
-            return 1;
-        });
 
     const uint8_t peer[6] = {0x02, 0, 0, 0, 0, 0x09};
     {
-        ReliableChannel<TransportTestPayload> channel(
-            &wm, &resender, PktType::kShootoutCommand, nullptr);
+        ReliableChannel<TransportTestPayload> channel(&wm, PktType::kShootoutCommand);
         TransportTestPayload p{};
         channel.sendReliable(peer, p);
-        ASSERT_EQ(frames, 1);
-        ASSERT_EQ(resender.pendingCount(PktType::kShootoutCommand), 1u);
+        ASSERT_EQ(radio.frames.size(), 1u);
+        ASSERT_TRUE(channel.isPending(peer));
     }
 
-    EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 0u);
     clock.advance(Resender::INITIAL_TIMEOUT_MS + 1);
-    resender.sync();
-    EXPECT_EQ(frames, 1) << "a destroyed channel kept retransmitting";
+    wm.sync();
+    EXPECT_EQ(radio.frames.size(), 1u) << "a destroyed channel kept retransmitting";
+
+    SimpleTimer::setPlatformClock(nullptr);
+}
+
+TEST(ReliableTransportTest, theDeviceLoopPumpsEveryChannel) {
+    // A channel whose owner never ticks still retries: the device loop is the pump.
+    MockDevice device;
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    RadioTap radio;
+    radio.attach(*device.mockPeerComms);
+    ON_CALL(*device.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+
+    ReliableChannel<TransportTestPayload> ch(device.wirelessManager, PktType::kChainGameEvent);
+    const uint8_t peer[6] = {0x02, 0, 0, 0, 0, 0x09};
+    TransportTestPayload p{};
+    ch.sendReliable(peer, p);
+    ASSERT_EQ(radio.count(PktType::kChainGameEvent), 1u);
+
+    clock.advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    device.loop();
+    EXPECT_EQ(radio.count(PktType::kChainGameEvent), 2u);
 
     SimpleTimer::setPlatformClock(nullptr);
 }

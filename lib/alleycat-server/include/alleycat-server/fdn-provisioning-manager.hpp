@@ -30,8 +30,8 @@ public:
         : wirelessManager(wirelessManager)
         , rdc(rdc)
         , resender(wirelessManager)
-        , requestChannel(wirelessManager, &resender, PktType::kPlayerProvisionRequest, nullptr)
-        , replyChannel(wirelessManager, &resender, PktType::kPlayerProvision, nullptr) {
+        , requestChannel(wirelessManager, PktType::kPlayerProvisionRequest)
+        , replyChannel(wirelessManager, PktType::kPlayerProvision) {
         requestChannel.onReceive(
         [this](const uint8_t* fromMac, const PlayerProvisionRequestPacket& request) {
             onProvisionRequest(fromMac, request);

@@ -19,12 +19,9 @@ public:
     /** Claims the PIN request (sent) and provision reply (received) packet types. */
     explicit PdnProvisioningClient(WirelessManager* wirelessManager)
         : resender(wirelessManager)
-        , requestChannel(wirelessManager, &resender, PktType::kPlayerProvisionRequest, nullptr)
-        , replyChannel(wirelessManager, &resender, PktType::kPlayerProvision, nullptr) {
-        resender.setAbandonCallback(
-        [this](PktType type, uint8_t, const uint8_t*, const uint8_t*, size_t) {
-            if (type == PktType::kPlayerProvisionRequest) requestAbandoned = true;
-        });
+        , requestChannel(wirelessManager, PktType::kPlayerProvisionRequest)
+        , replyChannel(wirelessManager, PktType::kPlayerProvision) {
+        requestChannel.setOnAbandon([this](uint8_t, const uint8_t*) { requestAbandoned = true; });
     }
 
     /** Pumps request retries; call every tick while a request may be in flight. */

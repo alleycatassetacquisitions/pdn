@@ -52,7 +52,6 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
         delete helloByJack[jackIndex(jack)].machine;
         helloByJack[jackIndex(jack)].machine = nullptr;
     }
-    // Each channel releases its PktType and its driver handlers as it goes.
     delete pdnContextChannel;
     delete fdnContextChannel;
     delete connectionAnnounceChannel;
@@ -67,89 +66,72 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
         selfDeviceType = device->getDeviceType();
     }
 
-    // One device-level channel per device-type PktType. Claiming a channel makes
-    // its receive path live (the transport installs the driver rx handler). The
-    // abandon callback is a no-op: an unreachable peer's jack link self-heals to
-    // IDLE via the context-exchange timeout (HelloConnectingState, contextTimeoutMs).
-    // The packet's PktType alone picks which channel decodes a context; the
-    // HELLO deviceType is not consulted. RDC forwards the profile bytes opaquely.
-    transport = wirelessManager->getReliableTransport();
-    pdnContextChannel = transport->channel<PdnConnectionContext>(
-        PktType::kPdnConnectionContext);
-    if (pdnContextChannel != nullptr) {
-        pdnContextChannel->onReceive(
-            [this](const uint8_t* fromMac, const PdnConnectionContext& ctx) {
-                onContextReceived(fromMac, DeviceType::PDN, ctx.chainRole, ctx.player.userId,
-                                  reinterpret_cast<const uint8_t*>(&ctx.player),
-                                  sizeof(ctx.player));
-            });
-    }
-    fdnContextChannel = transport->channel<FdnConnectionContext>(
-        PktType::kFdnConnectionContext);
-    if (fdnContextChannel != nullptr) {
-        fdnContextChannel->onReceive(
-            [this](const uint8_t* fromMac, const FdnConnectionContext& ctx) {
-                // An FDN carries no player id, so its jack reports none.
-                onContextReceived(fromMac, DeviceType::FDN, ctx.chainRole, PEER_USER_ID_NONE,
-                                  reinterpret_cast<const uint8_t*>(&ctx.fdn),
-                                  sizeof(ctx.fdn));
-            });
-    }
+    // No abandon handler on any of these: an unreachable peer's jack link
+    // self-heals to IDLE via the context-exchange timeout (HelloConnectingState,
+    // contextTimeoutMs). The packet's PktType alone picks which channel decodes
+    // a context; the HELLO deviceType is not consulted, and the profile bytes
+    // are forwarded opaquely.
+    pdnContextChannel =
+    new ReliableChannel<PdnConnectionContext>(wirelessManager, PktType::kPdnConnectionContext);
+    pdnContextChannel->onReceive([this](const uint8_t* fromMac, const PdnConnectionContext& ctx) {
+        onContextReceived(fromMac, DeviceType::PDN, ctx.chainRole, ctx.player.userId,
+                          reinterpret_cast<const uint8_t*>(&ctx.player), sizeof(ctx.player));
+    });
+    fdnContextChannel =
+    new ReliableChannel<FdnConnectionContext>(wirelessManager, PktType::kFdnConnectionContext);
+    fdnContextChannel->onReceive([this](const uint8_t* fromMac, const FdnConnectionContext& ctx) {
+        // An FDN carries no player id, so its jack reports none.
+        onContextReceived(fromMac, DeviceType::FDN, ctx.chainRole, PEER_USER_ID_NONE,
+                          reinterpret_cast<const uint8_t*>(&ctx.fdn), sizeof(ctx.fdn));
+    });
 
     // Head-roster channels. Abandons are no-ops: an unreachable head means
     // the member simply stays unconfirmed (or the roster edit is lost) until the
     // chain state changes and re-triggers the send — the accepted residual of the
     // no-ack design.
-    connectionAnnounceChannel = transport->channel<ConnectionAnnouncePayload>(
-        PktType::kConnectionAnnounce);
-    if (connectionAnnounceChannel != nullptr) {
-        connectionAnnounceChannel->onReceive(
-            [this](const uint8_t* fromMac, const ConnectionAnnouncePayload& announce) {
-                onConnectionAnnounce(fromMac, announce);
-            });
-        // SEND_SUCCESS on the announce IS its delivery signal: only then
-        // may the HELLO confirmed bit rise. A head change mid-flight makes an
-        // older announce's delivery stale — the re-announce to the current head
-        // is what gates confirmed — so the seqId must match the latest announce
-        // sent AND the destination must still be the head currently held.
-        // confirmed therefore means "the head's radio took it", not "the head
-        // admitted me": a roster at MAX_CHAIN_MEMBERS drops the announce after
-        // the ack.
-        connectionAnnounceChannel->setOnDelivered([this](uint8_t seqId, const uint8_t* toMac) {
-            if (seqId != pendingAnnounceSeqId) return;
-            if (MacToUInt64(chainHeadMac.data()) == 0 ||
-                memcmp(chainHeadMac.data(), toMac, 6) != 0) {
-                return;
-            }
-            chainHeadConfirmed = true;
-            publishHelloState();
-        });
-    }
+    connectionAnnounceChannel =
+    new ReliableChannel<ConnectionAnnouncePayload>(wirelessManager, PktType::kConnectionAnnounce);
+    connectionAnnounceChannel->onReceive(
+    [this](const uint8_t* fromMac, const ConnectionAnnouncePayload& announce) {
+        onConnectionAnnounce(fromMac, announce);
+    });
+    // SEND_SUCCESS on the announce IS its delivery signal: only then
+    // may the HELLO confirmed bit rise. A head change mid-flight makes an
+    // older announce's delivery stale — the re-announce to the current head
+    // is what gates confirmed — so the seqId must match the latest announce
+    // sent AND the destination must still be the head currently held.
+    // confirmed therefore means "the head's radio took it", not "the head
+    // admitted me": a roster at MAX_CHAIN_MEMBERS drops the announce after
+    // the ack.
+    connectionAnnounceChannel->setOnDelivered([this](uint8_t seqId, const uint8_t* toMac) {
+        if (seqId != pendingAnnounceSeqId) return;
+        if (MacToUInt64(chainHeadMac.data()) == 0 || memcmp(chainHeadMac.data(), toMac, 6) != 0) {
+            return;
+        }
+        chainHeadConfirmed = true;
+        publishHelloState();
+    });
     // KEEP_DISTINCT: each report is a distinct event, not current state. A
     // demoted device routinely forwards two children's reports to the same head
     // in one tick; per-target supersede would erase the first one's retry slot.
-    disconnectReportChannel = transport->channel<DisconnectReportPayload>(
-        PktType::kDisconnectReport, {}, Resender::SendMode::KEEP_DISTINCT);
-    if (disconnectReportChannel != nullptr) {
-        disconnectReportChannel->onReceive(
-            [this](const uint8_t* fromMac, const DisconnectReportPayload& report) {
-                onDisconnectReport(fromMac, report);
-            });
-        // Only the newest report is tracked for the head-change re-send; an
-        // older report's late delivery must not clear the newer pending one.
-        disconnectReportChannel->setOnDelivered([this](uint8_t seqId, const uint8_t*) {
-            if (seqId != pendingReportSeqId) return;
-            clearPendingReport();
-        });
-    }
-    headTransferChannel = transport->channel<HeadTransferPayload>(
-        PktType::kHeadTransfer);
-    if (headTransferChannel != nullptr) {
-        headTransferChannel->onReceive(
-            [this](const uint8_t* fromMac, const HeadTransferPayload& transfer) {
-                onHeadTransfer(fromMac, transfer);
-            });
-    }
+    disconnectReportChannel = new ReliableChannel<DisconnectReportPayload>(
+    wirelessManager, PktType::kDisconnectReport, ChannelMode::KEEP_DISTINCT);
+    disconnectReportChannel->onReceive(
+    [this](const uint8_t* fromMac, const DisconnectReportPayload& report) {
+        onDisconnectReport(fromMac, report);
+    });
+    // Only the newest report is tracked for the head-change re-send; an
+    // older report's late delivery must not clear the newer pending one.
+    disconnectReportChannel->setOnDelivered([this](uint8_t seqId, const uint8_t*) {
+        if (seqId != pendingReportSeqId) return;
+        clearPendingReport();
+    });
+    headTransferChannel =
+    new ReliableChannel<HeadTransferPayload>(wirelessManager, PktType::kHeadTransfer);
+    headTransferChannel->onReceive(
+    [this](const uint8_t* fromMac, const HeadTransferPayload& transfer) {
+        onHeadTransfer(fromMac, transfer);
+    });
 
     // Last: the jacks start carrying HELLO only once every channel a link event
     // can reach is claimed.
@@ -412,7 +394,6 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
     // has to carry the position this device holds now, not the one it held at plug-in.
     const ChainRole role = getChainRole();
     if (selfDeviceType == DeviceType::FDN) {
-        if (fdnContextChannel == nullptr) return;
         FdnConnectionContext ctx{};
         ctx.chainRole = role;
         PlatformClock* clock = SimpleTimer::getPlatformClock();
@@ -421,7 +402,6 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
         fdnContextChannel->sendReliable(mac, ctx);
         return;
     }
-    if (pdnContextChannel == nullptr) return;
     PdnConnectionContext ctx{};
     ctx.chainRole = role;
     if (selfProfileProvider) ctx.player = selfProfileProvider();
@@ -455,9 +435,7 @@ void RemoteDeviceCoordinator::resendContext() {
 }
 
 bool RemoteDeviceCoordinator::isContextSendPending(const uint8_t* mac) const {
-    if (pdnContextChannel != nullptr && pdnContextChannel->isPending(mac)) return true;
-    if (fdnContextChannel != nullptr && fdnContextChannel->isPending(mac)) return true;
-    return false;
+    return pdnContextChannel->isPending(mac) || fdnContextChannel->isPending(mac);
 }
 
 void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceType peerType,
@@ -626,8 +604,8 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     // Keep context retries if another jack still faces this peer (2-node ring);
     // this jack is already Idle so isDirectPeer skips it.
     if (!isDirectPeer(mac)) {
-        if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
-        if (fdnContextChannel != nullptr) fdnContextChannel->cancel(mac);
+        pdnContextChannel->cancel(mac);
+        fdnContextChannel->cancel(mac);
     }
 }
 
@@ -837,9 +815,9 @@ void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier jack) {
 
 void RemoteDeviceCoordinator::cancelHeadRosterTraffic(const uint8_t* headMac) {
     if (MacToUInt64(headMac) == 0) return;
-    if (connectionAnnounceChannel != nullptr) connectionAnnounceChannel->cancel(headMac);
-    if (disconnectReportChannel != nullptr) disconnectReportChannel->cancel(headMac);
-    if (headTransferChannel != nullptr) headTransferChannel->cancel(headMac);
+    connectionAnnounceChannel->cancel(headMac);
+    disconnectReportChannel->cancel(headMac);
+    headTransferChannel->cancel(headMac);
 }
 
 void RemoteDeviceCoordinator::maybeFireChainRoleChange() {
@@ -874,7 +852,6 @@ std::vector<std::array<uint8_t, 6>> RemoteDeviceCoordinator::getChainMembers() c
 }
 
 void RemoteDeviceCoordinator::maybeAnnounceToHead() {
-    if (connectionAnnounceChannel == nullptr) return;
     // No upstream head held: this device IS its chain's head (or standalone, or a
     // latched ring, which stores no head). Nothing to announce, no self-sends.
     if (MacToUInt64(chainHeadMac.data()) == 0) return;
@@ -910,7 +887,6 @@ void RemoteDeviceCoordinator::reportDownstreamLoss(const uint8_t* lostMac) {
 
 void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
                                                    const uint8_t* lostMac) {
-    if (disconnectReportChannel == nullptr) return;
     DisconnectReportPayload report{};
     memcpy(report.disconnectedMac, lostMac, 6);
     pendingReportSeqId = disconnectReportChannel->sendReliable(headMac, report);
@@ -920,7 +896,6 @@ void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
 }
 
 void RemoteDeviceCoordinator::retractReportFor(const uint8_t* returnedMac) {
-    if (disconnectReportChannel == nullptr) return;
     // By what each frame names, not by the newest-report slot: a later report
     // overwrites that slot while this peer's own report is still retrying.
     disconnectReportChannel->cancelMatching([returnedMac](const DisconnectReportPayload& report) {
@@ -960,7 +935,7 @@ void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {
 }
 
 void RemoteDeviceCoordinator::transferRosterTo(const uint8_t* newHeadMac) {
-    if (chainRoster.empty() || headTransferChannel == nullptr) return;
+    if (chainRoster.empty()) return;
     HeadTransferPayload transfer{};
     for (const auto& entry : chainRoster) {
         // Both insert paths cap at MAX_CHAIN_MEMBERS; this bounds the payload
