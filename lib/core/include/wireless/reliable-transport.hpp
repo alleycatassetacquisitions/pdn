@@ -1,9 +1,9 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
-#include <map>
 #include <utility>
-#include <vector>
 
 #include "device/drivers/peer-comms-types.hpp"
 #include "wireless/reliable-channel.hpp"
@@ -11,7 +11,9 @@
 
 class WirelessManager;
 
-// Owns one Resender. Vends typed channels, one per PktType, all sharing it.
+// Owns one Resender and the PktType -> channel registry. Vends typed channels,
+// one per PktType, all sharing the Resender; the caller owns each channel, and a
+// channel detaches itself from the registry when destroyed.
 //
 // Lifecycle of a reliable packet:
 //   send: manager -> channel->sendReliable (serialize, allocate seqId) ->
@@ -35,34 +37,23 @@ public:
      */
     explicit ReliableTransport(WirelessManager* wm);
 
-    /** Deletes every vended channel; each drops its own driver handlers as it goes. */
-    ~ReliableTransport();
-
     /**
-     * Get-or-create the channel owning a PktType. A first claim creates and
-     * registers it. A re-claim of the same PktType with the same payload type
-     * (e.g. a re-created owner re-initializing) returns the existing channel
-     * with its abandon callback rebound, so the caller just re-sets onReceive.
-     * A re-claim with a DIFFERENT payload type is a wiring collision — two
-     * subsystems fighting over one PktType — and returns nullptr after logging.
-     * The returned pointer stays owned by the transport.
+     * Creates and registers the channel owning a PktType; the caller owns it.
+     * A second claim of a claimed PktType is a wiring collision — two
+     * subsystems fighting over one type — and returns nullptr after logging,
+     * leaving the first channel in place.
      */
     template <class P>
     ReliableChannel<P>* channel(PktType type,
                                 ReliableChannelBase::OnAbandon onAbandon = {},
                                 Resender::SendMode sendMode = Resender::SendMode::SUPERSEDE_PER_TARGET) {
-        std::map<PktType, ReliableChannelBase*>::iterator it = registry.find(type);
-        if (it != registry.end()) {
-            if (it->second->payloadSize() != sizeof(P)) {
-                logChannelTypeCollision(type, sizeof(P), it->second->payloadSize());
-                return nullptr;
-            }
-            it->second->setOnAbandon(std::move(onAbandon));
-            return static_cast<ReliableChannel<P>*>(it->second);
+        if (channelFor(type) != nullptr) {
+            logClaimRefused(type);
+            return nullptr;
         }
         ReliableChannel<P>* raw = new ReliableChannel<P>(
             wirelessManager, &resender, type, std::move(onAbandon), sendMode);
-        registry.insert({type, raw});
+        attach(raw);
         return raw;
     }
 
@@ -90,13 +81,17 @@ public:
     void sync();
 
 private:
-    // Logs a PktType claimed by two different payload types (a wiring bug).
-    static void logChannelTypeCollision(PktType type, size_t got, size_t have);
+    friend class ReliableChannelBase;
+
+    static void logClaimRefused(PktType type);
+    void attach(ReliableChannelBase* channel);
+    void detach(ReliableChannelBase* channel);
+    ReliableChannelBase* channelFor(PktType type) const;
 
     void onResenderAbandon(PktType type, uint8_t seqId,
                            const uint8_t* targetMac);
 
     WirelessManager* wirelessManager;
     Resender resender;
-    std::map<PktType, ReliableChannelBase*> registry;
+    std::array<ReliableChannelBase*, static_cast<size_t>(PktType::kNumPacketTypes)> channels{};
 };

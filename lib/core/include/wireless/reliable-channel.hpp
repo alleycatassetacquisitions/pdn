@@ -11,6 +11,9 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "wireless/resender.hpp"
 
+class WirelessManager;
+class ReliableTransport;
+
 // A ReliableChannel is a typed, reliable pipe for exactly one PktType: game
 // code sends a packed payload struct and receives decoded structs back, and
 // the channel supplies everything reliability needs underneath — seqId
@@ -76,19 +79,13 @@ public:
                               size_t len, bool success) = 0;
 
     /**
-     * sizeof the payload struct this channel is typed on. The transport uses
-     * it to tell a same-type re-claim from a different-payload collision on
-     * the same PktType.
-     */
-    virtual size_t payloadSize() const = 0;
-
-    /**
-     * Rebinds the abandon callback; used when a re-created owner re-claims an
-     * already-registered channel so the callback points at the live instance.
+     * Registers the per-recipient give-up handler. Abandonment is a game-level
+     * signal, not a log line; cancel() drops pending sends WITHOUT it.
      */
     void setOnAbandon(OnAbandon cb) { onAbandon = std::move(cb); }
 
 protected:
+    friend class ReliableTransport;
     uint8_t nextSeqId();
     // nullptr in probe-style unit tests; every use is null-tolerant.
     WirelessManager* getWirelessManager() const { return wirelessManager; }
@@ -98,6 +95,8 @@ protected:
     bool isDuplicateReliableRx(const uint8_t* fromMac, uint8_t seqId);
 
     Resender* resender;
+    // Set by the transport that registered this channel; detached on destruction.
+    ReliableTransport* transport = nullptr;
     PktType packetType;
     WirelessManager* wirelessManager;
     Resender::SendMode sendMode;
@@ -192,7 +191,6 @@ public:
     }
 
     /** This channel's payload struct size, for the transport's claim guard. */
-    size_t payloadSize() const override { return sizeof(P); }
 
     /** Registers the decoded-payload handler. */
     void onReceive(OnReceive cb) { onReceiveCallback = std::move(cb); }

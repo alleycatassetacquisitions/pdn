@@ -20,8 +20,6 @@ public:
     using ReliableChannelBase::ReliableChannelBase;
     /** No-op body so the otherwise pure-virtual base becomes instantiable. */
     bool deliverBytes(const uint8_t*, const uint8_t*, size_t) override { return false; }
-    /** Untyped probe: no payload struct, so report 0. */
-    size_t payloadSize() const override { return 0; }
     /** No-op: this probe exercises only the base's seqId/dedup helpers. */
     void onSendResult(const uint8_t*, const uint8_t*, size_t, bool) override {}
 };
