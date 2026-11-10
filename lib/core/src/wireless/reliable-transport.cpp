@@ -1,6 +1,9 @@
 #include "wireless/reliable-transport.hpp"
 
+#include <cstring>
+
 #include "device/drivers/logger.hpp"
+#include "device/wireless-manager.hpp"
 #include "wireless/reliable-channel.hpp"
 
 namespace {
@@ -8,10 +11,21 @@ constexpr const char* RELIABLE_TRANSPORT_TAG = "ReliableTransport";
 }
 
 ReliableTransport::ReliableTransport(WirelessManager* wm)
-    : resender(wm) {
-    resender.setAbandonCallback([this](PktType type, uint8_t seqId, const uint8_t* targetMac,
-                                       const uint8_t*,
-                                       size_t) { onResenderAbandon(type, seqId, targetMac); });
+    : wirelessManager(wm)
+    , resender(wm) {
+    resender.setAbandonCallback(
+    [this](PktType type, uint8_t seqId, const uint8_t* targetMac, const uint8_t* payload,
+           size_t len) { onResenderAbandon(type, seqId, targetMac, payload, len); });
+    wirelessManager->setEspNowPacketHandler(
+    PktType::kReliableAck,
+    [](const uint8_t* src, const uint8_t* data, const size_t len, void* ctx) {
+        static_cast<ReliableTransport*>(ctx)->onAckPacket(src, data, len);
+    },
+    this);
+}
+
+ReliableTransport::~ReliableTransport() {
+    wirelessManager->clearEspNowPacketHandler(PktType::kReliableAck);
 }
 
 void ReliableTransport::sync() { resender.sync(); }
@@ -48,12 +62,24 @@ void ReliableTransport::onSendResult(PktType type, const uint8_t* toMac,
 
 bool ReliableTransport::deliverIncoming(PktType type, const uint8_t* fromMac,
                                         const uint8_t* data, size_t len) {
+    if (type == PktType::kReliableAck) {
+        onAckPacket(fromMac, data, len);
+        return true;
+    }
     ReliableChannelBase* channel = channelFor(type);
     return channel != nullptr && channel->deliverBytes(fromMac, data, len);
 }
 
-void ReliableTransport::onResenderAbandon(PktType type, uint8_t seqId,
-                                          const uint8_t* targetMac) {
+void ReliableTransport::onAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t len) {
+    if (len != sizeof(ReliableAckPayload)) return;
+    ReliableAckPayload ack;
+    memcpy(&ack, data, sizeof(ack));
+    ReliableChannelBase* channel = channelFor(ack.ackedType);
+    if (channel != nullptr) channel->onPacketAck(fromMac, ack.seqId);
+}
+
+void ReliableTransport::onResenderAbandon(PktType type, uint8_t seqId, const uint8_t* targetMac,
+                                          const uint8_t* payload, size_t len) {
     ReliableChannelBase* channel = channelFor(type);
-    if (channel != nullptr) channel->onResenderAbandon(seqId, targetMac);
+    if (channel != nullptr) channel->onAbandon(seqId, targetMac, payload, len);
 }

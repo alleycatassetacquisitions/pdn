@@ -12,24 +12,27 @@ class WirelessManager;
 
 // The device's one reliable transport: owns the one Resender every channel
 // shares and the PktType -> channel registry that routes what the Resender
-// cannot address by itself — abandonment. The WirelessManager owns one and
-// pumps it from the device loop; channels attach to it when constructed and
-// detach when destroyed.
+// cannot address by itself — abandonment, and the kReliableAck a fan-out
+// recipient answers with. The WirelessManager owns one and pumps it from the
+// device loop; channels attach to it when constructed and detach when destroyed.
 //
 // Lifecycle of a reliable packet:
-//   send: manager -> channel->sendReliable (serialize, allocate seqId) ->
-//     Resender pending entry -> WirelessManager::sendEspNowData -> driver
-//     (which itself retries a failed MAC-layer send). The device loop's sync()
-//     retransmits on the Resender's backoff until the frame is cleared or its
-//     span runs out -> the channel's abandon callback.
-//   clear: the radio's SEND_SUCCESS, routed to the channel by the driver's
-//     send-status handler. No reply packet exists.
+//   send: manager -> channel->sendReliable / sendBroadcast (serialize, allocate
+//     seqId) -> Resender pending entry -> WirelessManager::sendEspNowData ->
+//     driver (which itself retries a failed MAC-layer send). The device loop's
+//     sync() retransmits on the Resender's backoff until the frame is cleared or
+//     its span runs out -> the channel's abandon callback.
+//   clear: a unicast is cleared by the radio's SEND_SUCCESS, routed to the
+//     channel by the driver's send-status handler. A fan-out is cleared one
+//     recipient at a time by kReliableAck packets, routed here by PktType.
 //   receive: driver rx -> the owning channel's own handler, installed by its
 //     constructor, straight into deliver. The transport is not on that path.
 class ReliableTransport {
 public:
-    /** Built by the WirelessManager that owns it; the Resender sends through wm. */
+    /** Built by the WirelessManager that owns it; registers the kReliableAck handler through wm. */
     explicit ReliableTransport(WirelessManager* wm);
+    /** Drops the kReliableAck handler; every channel has already detached by then. */
+    ~ReliableTransport();
 
     /**
      * Drives Resender retransmits and abandon dispatch. Called every loop
@@ -51,7 +54,8 @@ public:
 
     /**
      * Test seam, paired with onSendResult: dispatches an inbound packet to the
-     * channel claiming this PktType. Returns false if no channel is registered.
+     * channel claiming this PktType, or a kReliableAck to the channel it
+     * answers. Returns false if no channel is registered.
      */
     bool deliverIncoming(PktType type, const uint8_t* fromMac,
                          const uint8_t* data, size_t len);
@@ -66,8 +70,11 @@ private:
     void detach(ReliableChannelBase* channel);
     ReliableChannelBase* channelFor(PktType type) const;
 
-    void onResenderAbandon(PktType type, uint8_t seqId, const uint8_t* targetMac);
+    void onAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t len);
+    void onResenderAbandon(PktType type, uint8_t seqId, const uint8_t* targetMac,
+                           const uint8_t* payload, size_t len);
 
+    WirelessManager* wirelessManager;
     Resender resender;
     std::array<ReliableChannelBase*, static_cast<size_t>(PktType::kNumPacketTypes)> channels{};
 };

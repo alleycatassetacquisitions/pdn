@@ -23,6 +23,8 @@ public:
     bool deliverBytes(const uint8_t*, const uint8_t*, size_t) override { return false; }
     /** No-op: this probe exercises only the base's seqId/dedup helpers. */
     void onSendResult(const uint8_t*, const uint8_t*, size_t, bool) override {}
+    /** No-op: nothing is ever sent through this probe. */
+    void onAbandon(uint8_t, const uint8_t*, const uint8_t*, size_t) override {}
 };
 
 TEST(ReliableChannelBaseTest, nextSeqIdWrapsAfter255) {
@@ -102,17 +104,12 @@ TEST(ReliableChannelBaseTest, rxDedupEvictsOldestSenderWhenFull) {
 }
 
 TEST(ResenderTest, distinctSeqIdsToSameTargetCoexist) {
-    // A batch of distinct reliable packets to one peer on one channel (e.g. one
-    // BRACKET_ENTRY per bracket slot) must each retain an independent retry
-    // slot keyed by seqId; sharing (type, target) must not collapse them into
-    // one, or a dropped non-final slot would never retransmit.
     Resender resender(nullptr);  // null wm: transmit() no-ops, retry bookkeeping intact
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     uint8_t payload[4] = {0};
     const Resender::SendMode kStream = Resender::SendMode::KEEP_DISTINCT;
     for (uint8_t seq = 1; seq <= 3; ++seq) {
-        resender.send(target, PktType::kShootoutCommand, seq,
-                      payload, sizeof(payload), kStream);
+        resender.send(target, PktType::kShootoutCommand, seq, payload, sizeof(payload), kStream);
     }
     EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 3u);
 
@@ -121,8 +118,7 @@ TEST(ResenderTest, distinctSeqIdsToSameTargetCoexist) {
     EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 2u);
 
     // A genuine re-send of an existing seqId replaces rather than duplicates.
-    resender.send(target, PktType::kShootoutCommand, 1,
-                  payload, sizeof(payload), kStream);
+    resender.send(target, PktType::kShootoutCommand, 1, payload, sizeof(payload), kStream);
     EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 2u);
 
     // cancel() drops every remaining slot to the target on that channel.
@@ -341,8 +337,7 @@ TEST(ResenderBroadcastTest, aFrameTheSendPathNeverTookIsStillGivenUpOn) {
     std::vector<std::array<uint8_t, 6>> recipients = {f.mac(1), f.mac(2)};
 
     f.setRadioUp(false);
-    f.resender.sendBroadcast(recipients, PktType::kShootoutCommand, 8,
-                             payload, sizeof(payload));
+    f.resender.sendBroadcast(recipients, PktType::kShootoutCommand, 8, payload, sizeof(payload));
     f.runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
 
     EXPECT_EQ(abandons, 2) << "a frame nothing ever accepted stayed pending forever";
