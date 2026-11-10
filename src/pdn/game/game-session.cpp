@@ -54,15 +54,6 @@ GameSession::GameSession(Player* player,
         posseManager->onChainStateChanged();
     });
 
-    // The posse admits and acks a game event itself; only the mounted
-    // SupporterReady, if any, has a screen to update for it.
-    posseManager->setOnGameEvent([this](uint8_t eventType, const uint8_t* senderMac) {
-        SupporterReady* supporterReady = getMountedSupporterReady();
-        if (supporterReady != nullptr) {
-            supporterReady->onChainGameEventReceived(eventType, senderMac);
-        }
-    });
-
     // Installed here rather than by the caller so the slot holding `this` is
     // dropped by the same destructor that drops the rest of them.
     pdn->setTickCallback([this]() { sync(); });
@@ -75,7 +66,6 @@ GameSession::~GameSession() {
     if (pdn) pdn->setTickCallback(nullptr);
     pdn = nullptr;
     if (player) player->setOnRoleChanged(nullptr);
-    if (posseManager) posseManager->setOnGameEvent(nullptr);
     if (remoteDeviceCoordinator) remoteDeviceCoordinator->setSelfProfileProvider(nullptr);
     player = nullptr;
     // setBoostProvider is the one install with no clear: matchManager owns that slot
@@ -104,15 +94,6 @@ GameContext GameSession::getContext() {
     context.shootoutManager = shootoutManager;
     context.symbolWirelessManager = symbolWirelessManager;
     return context;
-}
-
-SupporterReady* GameSession::getMountedSupporterReady() {
-    if (pdn == nullptr) return nullptr;
-    StateMachine* activeApp = pdn->getActiveApp();
-    if (activeApp == nullptr) return nullptr;
-    State* current = activeApp->getCurrentState();
-    if (current == nullptr || current->getStateId() != SUPPORTER_READY) return nullptr;
-    return static_cast<SupporterReady*>(current);
 }
 
 void GameSession::sync() {
