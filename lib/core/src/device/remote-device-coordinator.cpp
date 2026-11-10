@@ -51,8 +51,6 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
         delete helloByJack[jackIndex(jack)].machine;
         helloByJack[jackIndex(jack)].machine = nullptr;
     }
-    // Owns the channels; deletes them and their driver rx bindings.
-    delete transport;
 }
 
 void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* serial, Device* device) {
@@ -68,7 +66,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
     // IDLE via the context-exchange timeout (HelloConnectingState, contextTimeoutMs).
     // The packet's PktType alone picks which channel decodes a context; the
     // HELLO deviceType is not consulted. RDC forwards the profile bytes opaquely.
-    transport = new ReliableTransport(wirelessManager);
+    transport = wirelessManager->getReliableTransport();
     pdnContextChannel = transport->channel<PdnConnectionContext>(
         PktType::kPdnConnectionContext);
     if (pdnContextChannel != nullptr) {
@@ -150,10 +148,6 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
 }
 
 void RemoteDeviceCoordinator::sync(Device* PDN) {
-    // Platform-loop-owns-the-pump: drive reliable-transport retransmits/abandon
-    // here every tick. Game managers must not pump it.
-    if (transport != nullptr) transport->sync();
-
     for (SerialIdentifier jack : HELLO_JACKS) {
         HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
         if (machine) machine->onStateLoop(PDN);
