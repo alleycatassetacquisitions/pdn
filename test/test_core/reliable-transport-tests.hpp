@@ -78,41 +78,49 @@ TEST(ReliableTransportTest, seqIdReachesTheBytesHandedToTheRadio) {
     EXPECT_EQ(radio.frames[0].bytes[offsetof(TransportTestPayload, seqId)], seq)
     << "the seqId the channel returned is not in the bytes the radio was given";
     EXPECT_EQ(payload.seqId, seq) << "the id did not reach the caller's struct";
+    delete ch;
 }
 
-TEST(ReliableTransportTest, reclaimSamePayloadReturnsSameChannel) {
-    // A re-claim of a PktType with the same payload type (e.g. a re-created
-    // owner re-initializing) hands back the existing channel rather than
-    // duplicating or crashing.
+TEST(ReliableTransportTest, aSecondClaimOfAPktTypeIsRefused) {
+    // Two owners of one PktType on one device is a wiring bug; the first keeps
+    // the type and the second claim returns nothing.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
     ReliableTransport transport(&wm);
-    ReliableChannel<TransportTestPayload>* first = transport.channel<TransportTestPayload>(
-        PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
+    ReliableChannel<TransportTestPayload>* first =
+    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
     ASSERT_NE(first, nullptr);
-    ReliableChannel<TransportTestPayload>* again = transport.channel<TransportTestPayload>(
-        PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
-    EXPECT_EQ(again, first);
+    EXPECT_EQ(transport.channel<TransportTestPayload>(PktType::kChainGameEvent), nullptr);
+
+    uint8_t from[6] = {1, 2, 3, 4, 5, 6};
+    TransportTestPayload p{};
+    int deliveries = 0;
+    first->onReceive([&](const uint8_t*, const TransportTestPayload&) { deliveries++; });
+    EXPECT_TRUE(transport.deliverIncoming(PktType::kChainGameEvent, from,
+                                          reinterpret_cast<const uint8_t*>(&p), sizeof(p)));
+    EXPECT_EQ(deliveries, 1);
+    delete first;
 }
 
-TEST(ReliableTransportTest, reclaimDifferentPayloadOnSameTypeRejected) {
-    // Two subsystems claiming one PktType with different payloads is a wiring
-    // bug; the second claim is rejected (nullptr) rather than clobbering.
-    struct WiderPayload {
-        uint8_t cmd;
-        uint8_t seqId;
-        uint8_t data[40];
-    } __attribute__((packed));
-
+TEST(ReliableTransportTest, aDestroyedChannelLeavesItsTypeUnclaimed) {
+    // The transport routes abandons by PktType to whatever channel holds the
+    // slot; a channel that has gone must not still be reachable.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
     ReliableTransport transport(&wm);
-    ReliableChannel<TransportTestPayload>* first = transport.channel<TransportTestPayload>(
-        PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
-    ASSERT_NE(first, nullptr);
-    ReliableChannel<WiderPayload>* collision = transport.channel<WiderPayload>(
-        PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
-    EXPECT_EQ(collision, nullptr);
+    uint8_t from[6] = {1, 2, 3, 4, 5, 6};
+    TransportTestPayload p{};
+    ReliableChannel<TransportTestPayload>* ch =
+    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
+    EXPECT_TRUE(transport.deliverIncoming(PktType::kChainGameEvent, from,
+                                          reinterpret_cast<const uint8_t*>(&p), sizeof(p)));
+    delete ch;
+    EXPECT_FALSE(transport.deliverIncoming(PktType::kChainGameEvent, from,
+                                           reinterpret_cast<const uint8_t*>(&p), sizeof(p)));
+    ReliableChannel<TransportTestPayload>* again =
+    transport.channel<TransportTestPayload>(PktType::kChainGameEvent);
+    EXPECT_NE(again, nullptr);
+    delete again;
 }
 
 TEST(ReliableTransportTest, deliverIncomingReturnsFalseWhenChannelMissing) {
@@ -171,6 +179,7 @@ TEST(ReliableTransportTest, sendReliableTriggersAck) {
                               reinterpret_cast<const uint8_t*>(&incoming), sizeof(incoming));
     ASSERT_TRUE(received);
     ASSERT_EQ(deliveredP.cmd, 99);
+    delete ch;
 }
 
 TEST(ReliableTransportTest, sendFailLeavesPendingForBackoffRetry) {
@@ -198,6 +207,7 @@ TEST(ReliableTransportTest, sendFailLeavesPendingForBackoffRetry) {
     transport.onSendResult(PktType::kChainGameEvent, target,
                            reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), false);
     EXPECT_TRUE(ch->isPending(target));
+    delete ch;
 }
 
 TEST(ReliableTransportTest, sendResultSeqIdZeroDoesNotAck) {
@@ -226,6 +236,7 @@ TEST(ReliableTransportTest, sendResultSeqIdZeroDoesNotAck) {
                            reinterpret_cast<const uint8_t*>(&fireAndForget), sizeof(fireAndForget),
                            true);
     EXPECT_TRUE(ch->isPending(target));
+    delete ch;
 }
 
 TEST(ReliableTransportTest, abandonWhenSpanRunsOut) {
@@ -267,6 +278,7 @@ TEST(ReliableTransportTest, abandonWhenSpanRunsOut) {
     ASSERT_EQ(abandonedSeqId, seq);
     ASSERT_EQ(std::memcmp(abandonedMac.data(), target, 6), 0);
     ASSERT_FALSE(ch->isPending(target));
+    delete ch;
 }
 
 TEST(ReliableTransportTest, aSendTheRadioNeverTookIsAbandonedOnTime) {
@@ -311,6 +323,7 @@ TEST(ReliableTransportTest, aSendTheRadioNeverTookIsAbandonedOnTime) {
     EXPECT_EQ(abandonCount, 1);
     EXPECT_FALSE(ch->isPending(target));
     SimpleTimer::setPlatformClock(nullptr);
+    delete ch;
 }
 
 TEST(ReliableTransportTest, ackRoutesByPktType) {
@@ -353,6 +366,8 @@ TEST(ReliableTransportTest, ackRoutesByPktType) {
 
     ASSERT_FALSE(chA->isPending(target));
     ASSERT_TRUE(chB->isPending(target));
+    delete chA;
+    delete chB;
 }
 
 TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
@@ -407,6 +422,7 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
     EXPECT_EQ(abandonCount, 1);
     EXPECT_EQ(abandonedSeqId, s1);
     EXPECT_FALSE(ch->isPending(target));
+    delete ch;
 }
 
 TEST(ReliableTransportTest, duplicateReliableDeliveryDispatchesOnce) {
@@ -439,6 +455,7 @@ TEST(ReliableTransportTest, duplicateReliableDeliveryDispatchesOnce) {
     p.seqId = 7;
     transport.deliverIncoming(PktType::kChainGameEvent, from2, bytes, sizeof(p));
     EXPECT_EQ(deliveries, 3);
+    delete ch;
 }
 
 TEST(ReliableTransportTest, unsequencedDeliveryNeverDeduped) {
@@ -461,6 +478,7 @@ TEST(ReliableTransportTest, unsequencedDeliveryNeverDeduped) {
     transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
     transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
     EXPECT_EQ(deliveries, 2);
+    delete ch;
 }
 
 TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {

@@ -1,4 +1,5 @@
 #include "wireless/reliable-channel.hpp"
+#include "wireless/reliable-transport.hpp"
 #include "device/wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
 
@@ -59,6 +60,7 @@ ReliableChannelBase::~ReliableChannelBase() {
     // records a send verdict, acting on both from the main loop, which
     // is also where channels are destroyed, so no dispatch can land mid-teardown.
     if (resender != nullptr) resender->cancelAll(packetType);
+    if (transport != nullptr) transport->detach(this);
     if (wirelessManager == nullptr) return;
     wirelessManager->clearEspNowPacketHandler(packetType);
     wirelessManager->clearEspNowSendStatusHandler(packetType);

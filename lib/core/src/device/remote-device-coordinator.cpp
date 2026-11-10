@@ -52,6 +52,12 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
         delete helloByJack[jackIndex(jack)].machine;
         helloByJack[jackIndex(jack)].machine = nullptr;
     }
+    // Each channel releases its PktType and its driver handlers as it goes.
+    delete pdnContextChannel;
+    delete fdnContextChannel;
+    delete connectionAnnounceChannel;
+    delete disconnectReportChannel;
+    delete headTransferChannel;
 }
 
 void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* serial, Device* device) {
