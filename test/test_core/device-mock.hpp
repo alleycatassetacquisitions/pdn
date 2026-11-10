@@ -17,6 +17,8 @@
 #include "wireless/match-packet.hpp"
 #include "game/posse-manager.hpp"
 #include <queue>
+#include <map>
+#include <utility>
 #include <vector>
 
 using namespace std;
@@ -146,6 +148,29 @@ public:
 
 class MockPeerComms : public PeerCommsInterface {
 public:
+    /** Installs default packet-handler capture so triggerPacketCallback works without boilerplate.
+     */
+    MockPeerComms() {
+        ON_CALL(*this, setPacketHandler(::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault([this](PktType type, PacketCallback cb, void* ctx) {
+            registeredHandlers[type] = {cb, ctx};
+        });
+        ON_CALL(*this, clearPacketHandler(::testing::_)).WillByDefault([this](PktType type) {
+            registeredHandlers.erase(type);
+        });
+    }
+
+    /**
+     * Invokes the registered packet handler for @p type as if a frame arrived from @p srcMac.
+     * Returns false when nothing is registered for @p type.
+     */
+    bool triggerPacketCallback(const uint8_t* srcMac, PktType type, const uint8_t* data,
+                               size_t len) {
+        auto it = registeredHandlers.find(type);
+        if (it == registeredHandlers.end() || it->second.first == nullptr) return false;
+        it->second.first(srcMac, data, len, it->second.second);
+        return true;
+    }
     MOCK_METHOD(int, sendData, (const uint8_t*, PktType, const uint8_t*, const size_t), (override));
     MOCK_METHOD(void, setPacketHandler, (PktType, PacketCallback, void*), (override));
     MOCK_METHOD(void, clearPacketHandler, (PktType), (override));
@@ -160,6 +185,9 @@ public:
     MOCK_METHOD(void, setSendStatusHandler, (PktType, SendStatusCallback, void*), (override));
     /** Paired with setSendStatusHandler; dropped when an owner goes away. */
     MOCK_METHOD(void, clearSendStatusHandler, (PktType), (override));
+
+private:
+    std::map<PktType, std::pair<PacketCallback, void*>> registeredHandlers;
 };
 
 class MockStorage : public StorageInterface {
