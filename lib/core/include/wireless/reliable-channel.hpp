@@ -200,6 +200,16 @@ public:
     /** Registers the SEND_SUCCESS observer (see onSendResult). */
     void setOnDelivered(OnDelivered cb) { onDeliveredCallback = std::move(cb); }
 
+    /** Silently drops every pending send whose payload `matches` (no abandon callback). */
+    void cancelMatching(const std::function<bool(const P&)>& matches) {
+        resender->cancelMatching(packetType, [&matches](const uint8_t* payload, size_t len) {
+            if (len != sizeof(P)) return false;
+            P typed{};
+            memcpy(&typed, payload, sizeof(P));
+            return matches(typed);
+        });
+    }
+
 private:
     OnReceive onReceiveCallback;
     OnDelivered onDeliveredCallback;

@@ -2063,6 +2063,105 @@ inline void rdcBackToBackReportsBothRetryToHead(RDCHelloTests* suite) {
     EXPECT_EQ(forwarded.count, 4);
 }
 
+// The same downstream back on the cable makes its departure report stale: a copy
+// landing after the member's re-announce would erase it from the head's roster.
+inline void rdcReturningDownstreamRetractsItsReport(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t nextHead[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
+
+    RosterSendCapture report;
+    captureSends(suite, PktType::kDisconnectReport, report);
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xD1));
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(report.count, 1);
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xD1));
+    for (int i = 0; i < 10; ++i) {
+        suite->fakeClock->advance(50);
+        suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+        suite->deliverHello(suite->outJack, suite->helloFrame(0xD1));
+        suite->rdc.sync(&suite->device);
+        suite->transport()->sync();
+    }
+    EXPECT_EQ(report.count, 1) << "the stale report kept retrying";
+
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, nextHead));
+    EXPECT_EQ(report.count, 1) << "the stale report was re-sent to the successor head";
+}
+
+// A later loss takes the newest-report slot while the first report is still retrying;
+// the returning peer's report is found by the MAC it names.
+inline void rdcReturningDownstreamRetractsADisplacedReport(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    std::vector<uint8_t> namedFirstBytes;
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kDisconnectReport, _, _))
+    .WillByDefault([&namedFirstBytes](const uint8_t*, PktType, const uint8_t* data, size_t) {
+        DisconnectReportPayload report{};
+        memcpy(&report, data, sizeof(report));
+        namedFirstBytes.push_back(report.disconnectedMac[0]);
+        return 1;
+    });
+    const auto loseDownstream = [&]() {
+        suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+        suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+        suite->rdc.sync(&suite->device);
+    };
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xD1));
+    loseDownstream();
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xD2));
+    loseDownstream();
+    ASSERT_EQ(namedFirstBytes.front(), 0xD1);
+    ASSERT_EQ(namedFirstBytes.back(), 0xD2);
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xD1));
+    namedFirstBytes.clear();
+    for (int i = 0; i < 10; ++i) {
+        suite->fakeClock->advance(50);
+        suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+        suite->deliverHello(suite->outJack, suite->helloFrame(0xD1));
+        suite->rdc.sync(&suite->device);
+        suite->transport()->sync();
+    }
+    ASSERT_FALSE(namedFirstBytes.empty()) << "the report for the device still gone stopped";
+    for (uint8_t named : namedFirstBytes) {
+        EXPECT_EQ(named, 0xD2) << "a report naming the returned downstream kept retrying";
+    }
+}
+
+// A different device on the cable says nothing about the one that left.
+inline void rdcNewDownstreamLeavesReportPending(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+
+    RosterSendCapture report;
+    captureSends(suite, PktType::kDisconnectReport, report);
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xD1));
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(report.count, 1);
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xD2));
+    for (int i = 0; i < 10; ++i) {
+        suite->fakeClock->advance(50);
+        suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+        suite->deliverHello(suite->outJack, suite->helloFrame(0xD2));
+        suite->rdc.sync(&suite->device);
+        suite->transport()->sync();
+    }
+    EXPECT_GT(report.count, 1) << "a report for the departed device stopped retrying";
+}
+
 // A head change cancels the in-flight report to the old head (cancelHeadRosterTraffic),
 // and nothing else re-sends it — unlike the announce path, which re-announces.
 // The pending report must follow the head: re-sent to the successor, and, once
