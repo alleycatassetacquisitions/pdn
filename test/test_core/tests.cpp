@@ -719,6 +719,10 @@ TEST_F(MatchTestSuite, binarySizeIsCorrect) {
     matchBinarySizeIsCorrect();
 }
 
+TEST_F(MatchTestSuite, binaryRoundTripPreservesUuidsWithEmbeddedZeroBytes) {
+    matchBinaryRoundTripPreservesUuidsWithEmbeddedZeroBytes();
+}
+
 TEST_F(MatchTestSuite, setupClearsDrawTimes) {
     matchSetupClearsDrawTimes();
 }

@@ -52,7 +52,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             std::strcmp(binMatch.getHunterId(), secondBinMatch.getHunterId()) != 0 ||
             std::strcmp(binMatch.getBountyId(), secondBinMatch.getBountyId()) != 0 ||
             binMatch.getHunterDrawTime() != secondBinMatch.getHunterDrawTime() ||
-            binMatch.getBountyDrawTime() != secondBinMatch.getBountyDrawTime()) {
+            binMatch.getBountyDrawTime() != secondBinMatch.getBountyDrawTime() ||
+            !(binMatch.getWinnerPlayerId() == secondBinMatch.getWinnerPlayerId()) ||
+            binMatch.getOccurredAtUnixMs() != secondBinMatch.getOccurredAtUnixMs()) {
             __builtin_trap();
         }
     }

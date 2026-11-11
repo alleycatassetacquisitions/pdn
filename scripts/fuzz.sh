@@ -65,6 +65,7 @@ MATCH_SRCS=(
     test/fuzz/fuzz-match-serialization.cpp
     lib/core/src/game/match.cpp
     lib/core/src/utils/UUID.cpp
+    lib/core/src/utils/uuid-bytes.cpp
     lib/core/src/utils/logger.cpp
 )
 

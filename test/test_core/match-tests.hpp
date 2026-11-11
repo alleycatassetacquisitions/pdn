@@ -119,10 +119,66 @@ inline void matchBinaryRoundTripPreservesAllFields() {
 }
 
 inline void matchBinarySizeIsCorrect() {
-    // Verify the binary size constant matches expected
-    // 1 UUID match_id (16 bytes) + 2 player IDs (4 bytes each) + 2 unsigned longs
-    size_t expectedSize = 16 + (2 * PLAYER_ID_BINARY_SIZE) + (2 * sizeof(unsigned long));
-    EXPECT_EQ(Match::binarySize(), expectedSize);
+    // Fixed so a 64-bit native build and the ESP32 read each other's records.
+    EXPECT_EQ(Match::binarySize(), 132u);
+}
+
+inline void matchBinaryRoundTripPreservesUuidsWithEmbeddedZeroBytes() {
+    UUIDBytes matchUuid{};
+    UUIDBytes hunterPlayerId{};
+    UUIDBytes bountyPlayerId{};
+    UUIDBytes hunterTeamId{};
+    UUIDBytes bountyTeamId{};
+    UUIDBytes winnerPlayerId{};
+
+    const uint8_t matchRaw[16] = {0x00, 0x11, 0x00, 0x22, 0x33, 0x00, 0x44, 0x55,
+                                  0x66, 0x00, 0x77, 0x88, 0x99, 0x00, 0xAA, 0xBB};
+    const uint8_t hunterRaw[16] = {0xAA, 0x00, 0xBB, 0x00, 0xCC, 0xDD, 0x00, 0xEE,
+                                   0xFF, 0x00, 0x12, 0x34, 0x56, 0x00, 0x78, 0x9A};
+    const uint8_t bountyRaw[16] = {0x11, 0x22, 0x00, 0x33, 0x44, 0x00, 0x55, 0x66,
+                                   0x00, 0x77, 0x88, 0x00, 0x99, 0xAA, 0xBB, 0x00};
+    const uint8_t hTeamRaw[16] = {0x01, 0x00, 0x02, 0x03, 0x04, 0x00, 0x05, 0x06,
+                                  0x07, 0x08, 0x00, 0x09, 0x0A, 0x0B, 0x0C, 0x0D};
+    memcpy(matchUuid.bytes, matchRaw, 16);
+    memcpy(hunterPlayerId.bytes, hunterRaw, 16);
+    memcpy(bountyPlayerId.bytes, bountyRaw, 16);
+    memcpy(hunterTeamId.bytes, hTeamRaw, 16);
+    winnerPlayerId = hunterPlayerId;
+
+    const uint8_t hMac[6] = {0xAA, 0x00, 0xBB, 0xCC, 0x00, 0xDD};
+    const uint8_t bMac[6] = {0x11, 0x22, 0x00, 0x33, 0x44, 0x55};
+
+    char matchIdText[UUIDBytes::TEXT_BUFFER_SIZE] = {};
+    matchUuid.format(matchIdText);
+    Match original(matchIdText, "hunt", true);
+    original.setHunterPlayerId(hunterPlayerId);
+    original.setBountyPlayerId(bountyPlayerId);
+    original.setHunterTeamId(hunterTeamId);
+    original.setBountyTeamId(bountyTeamId);  // nil team (unassigned)
+    original.setWinnerPlayerId(winnerPlayerId);
+    original.setHunterMac(hMac);
+    original.setBountyMac(bMac);
+    original.setHunterDrawTime(150);
+    original.setBountyDrawTime(0);
+    original.setOccurredAtUnixMs(1775500000123LL);
+
+    uint8_t buffer[MATCH_BINARY_SIZE] = {};
+    ASSERT_EQ(original.serialize(buffer), MATCH_BINARY_SIZE);
+
+    Match restored;
+    ASSERT_EQ(restored.deserialize(buffer), MATCH_BINARY_SIZE);
+
+    EXPECT_EQ(restored.getMatchUuid(), matchUuid);
+    EXPECT_EQ(restored.getHunterPlayerId(), hunterPlayerId);
+    EXPECT_EQ(restored.getBountyPlayerId(), bountyPlayerId);
+    EXPECT_EQ(restored.getHunterTeamId(), hunterTeamId);
+    EXPECT_TRUE(restored.getBountyTeamId().isZero());
+    EXPECT_EQ(restored.getWinnerPlayerId(), winnerPlayerId);
+    EXPECT_EQ(memcmp(restored.getHunterMac(), hMac, 6), 0);
+    EXPECT_EQ(memcmp(restored.getBountyMac(), bMac, 6), 0);
+    EXPECT_EQ(restored.getHunterDrawTime(), 150u);
+    EXPECT_EQ(restored.getBountyDrawTime(), 0u);
+    EXPECT_EQ(restored.getOccurredAtUnixMs(), 1775500000123LL);
 }
 
 // ============================================
