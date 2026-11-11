@@ -65,8 +65,8 @@ TEST_F(MockHttpServerTestSuite, GetPlayerReturnsDefaults) {
     httpServerGetDevicePlayerByPinReturns404(this);
 }
 
-TEST_F(MockHttpServerTestSuite, PutMatchesAccepts) {
-    httpServerPutMatchesAccepts(this);
+TEST_F(MockHttpServerTestSuite, PostQuickdrawMatchesAccepts) {
+    httpServerPostQuickdrawMatchesAccepts(this);
 }
 
 TEST_F(MockHttpServerTestSuite, UnknownEndpointReturns404) {

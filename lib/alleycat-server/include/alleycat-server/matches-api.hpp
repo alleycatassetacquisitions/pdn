@@ -10,26 +10,7 @@
 
 namespace MatchesApi {
 
-constexpr const char PUT_MATCHES_ENDPOINT[] = "/api/matches";
 constexpr const char POST_QUICKDRAW_MATCHES_ENDPOINT[] = "/quickdraw-matches";
-
-/**
- * PUT /api/matches — @p matchesJson is the request body (application/json).
- */
-inline void updateMatches(
-    WirelessManager* wirelessManager,
-    const std::string& matchesJson,
-    const std::function<void(const std::string&)>& onSuccess,
-    const std::function<void(const WirelessErrorInfo&)>& onError) {
-    HttpRequest request(
-        PUT_MATCHES_ENDPOINT,
-        "PUT",
-        "application/json",
-        matchesJson,
-        onSuccess,
-        onError);
-    wirelessManager->queueHttpRequest(std::move(request));
-}
 
 /**
  * POST /quickdraw-matches — uploads @p matchCount matches pulled from @p source as

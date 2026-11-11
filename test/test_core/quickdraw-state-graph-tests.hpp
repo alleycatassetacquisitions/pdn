@@ -32,10 +32,9 @@ namespace quickdraw_state_graph_expectations {
 // dropped — that app is now mounted by the device rather than nested as a state.
 // The hub, match, shootout and symbol maps concatenate to this.
 //
-// One deliberate divergence from the pre-split order: Sleep sat between
-// UploadMatches and the shootout states, and now sits in the hub with the other
-// three between-match states. Every edge is unchanged; only the flat position
-// moved.
+// One deliberate divergence from the pre-split order: Sleep sat between the
+// match result states and the shootout states, and now sits in the hub with the
+// other three between-match states. Only the flat position moved.
 inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
 AWAKEN_SEQUENCE,
 IDLE,
@@ -48,7 +47,6 @@ MATCH_RECEIVED_RESULT,
 MATCH_RESULT,
 WIN,
 LOSE,
-UPLOAD_MATCHES,
 SHOOTOUT_PROPOSAL,
 SHOOTOUT_BRACKET_REVEAL,
 SHOOTOUT_SPECTATOR,
@@ -59,10 +57,11 @@ SYMBOL,
 SYMBOL_MATCHED,
 };
 
-// Per-state transition targets, in the order they were added. 47 edges — the
+// Per-state transition targets, in the order they were added. 46 edges: the
 // pre-split graph's 48 less PlayerRegistration -> AwakenSequence, which moved off
 // the app object onto the state that triggered it (see
-// registrationHandsOffFromWelcomeMessage below).
+// registrationHandsOffFromWelcomeMessage below), and less the UploadMatches hop
+// that Win and Lose now skip on their way to Sleep.
 inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_EDGES = {
 {AWAKEN_SEQUENCE, {IDLE}},
 {IDLE, {SHOOTOUT_PROPOSAL, MATCH_COUNTDOWN, SUPPORTER_READY, SHOOTOUT_ABORTED, SYMBOL}},
@@ -74,9 +73,8 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 {MATCH_PUSHED, {SHOOTOUT_ABORTED, IDLE, MATCH_RESULT}},
 {MATCH_RECEIVED_RESULT, {SHOOTOUT_ABORTED, IDLE, MATCH_RESULT}},
 {MATCH_RESULT, {SHOOTOUT_ABORTED, WIN, LOSE, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED}},
-{WIN, {UPLOAD_MATCHES}},
-{LOSE, {UPLOAD_MATCHES}},
-{UPLOAD_MATCHES, {SLEEP}},
+{WIN, {SLEEP}},
+{LOSE, {SLEEP}},
 {SLEEP, {AWAKEN_SEQUENCE}},
 {SHOOTOUT_PROPOSAL, {SHOOTOUT_BRACKET_REVEAL, SHOOTOUT_ABORTED}},
 {SHOOTOUT_BRACKET_REVEAL, {MATCH_COUNTDOWN, SHOOTOUT_SPECTATOR, SHOOTOUT_ABORTED}},
@@ -112,7 +110,8 @@ inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>>
 {{MATCH_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
 {{MATCH_RESULT, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
 {{MATCH_RESULT, 4}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
-{{UPLOAD_MATCHES, 0}, {HUB_APP_ID, SLEEP}},
+{{WIN, 0}, {HUB_APP_ID, SLEEP}},
+{{LOSE, 0}, {HUB_APP_ID, SLEEP}},
 {{SHOOTOUT_BRACKET_REVEAL, 0}, {MATCH_APP_ID, MATCH_COUNTDOWN}},
 {{SHOOTOUT_SPECTATOR, 0}, {MATCH_APP_ID, MATCH_COUNTDOWN}},
 {{SHOOTOUT_FINAL_STANDINGS, 0}, {HUB_APP_ID, SLEEP}},
@@ -250,7 +249,7 @@ inline void quickdrawAppEdgesMatchPreSplitGraph() {
         }
         totalEdges += expected.second.size();
     }
-    EXPECT_EQ(totalEdges, 47u);
+    EXPECT_EQ(totalEdges, 46u);
 }
 
 // Which of those edges became hand-offs, and the app plus entry state each names.
