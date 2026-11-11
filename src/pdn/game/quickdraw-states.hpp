@@ -13,6 +13,7 @@
 #include "game/quickdraw-resources.hpp"
 #include <array>
 #include <atomic>
+#include <cstdio>
 #include <cstddef>
 #include <cstdlib>
 #include <queue>
@@ -126,7 +127,11 @@ private:
     bool isAuxRequired() override;
 
     SimpleTimer matchInitializationTimer;
-    const int MATCH_INITIALIZATION_TIMEOUT = 1000;
+    // The hunter must outlast the whole handshake: its SEND_MATCH_ID and the bounty's
+    // MATCH_ID_ACK can each take a full retransmit span to land, and a bounty whose
+    // ack lands after the hunter gave up would count down alone.
+    static constexpr int MATCH_INITIALIZATION_TIMEOUT =
+    2 * static_cast<int>(Resender::RETRANSMIT_SPAN_MS) + 250;
 
     // void serialEventCallbacks(const std::string& message);
 };
@@ -179,6 +184,30 @@ inline bool matchReturnsToIdle(ConnectState<PDN>& matchState, ShootoutManager* s
         return false;
     }
     return matchState.isPersistentlyDisconnected();
+}
+
+/** Draws the stats card over a Win or Lose screen: own time, boost and penalty if any, opponent
+ * time. */
+inline void renderLastMatchStats(Display* display, const LastMatchDisplay& stats) {
+    if (!stats.hasData) return;
+    const bool hasBoost = stats.boostMs > 0;
+    const bool hasPenalty = stats.penaltyMs > 0;
+    // One buffer serves every line: drawText copies into the frame buffer at once.
+    char line[28];
+    display->drawImage(Image(image_stats_card, 60, 64, 0, 0));
+    snprintf(line, sizeof(line), "You:%4lu", stats.myTimeMs);
+    display->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText(line, 2, 12);
+    if (hasBoost) {
+        snprintf(line, sizeof(line), "Boost: %lu",
+                 stats.boostMs / PosseManager::BOOST_PER_SUPPORTER_MS);
+        display->drawText(line, 2, hasPenalty ? 24 : 28);
+    }
+    if (hasPenalty) {
+        snprintf(line, sizeof(line), "Pen:+%lu", stats.penaltyMs);
+        display->drawText(line, 2, hasBoost ? 36 : 28);
+    }
+    snprintf(line, sizeof(line), "Opp:%4lu", stats.opponentTimeMs);
+    display->drawText(line, 2, (hasBoost && hasPenalty) ? 48 : 44);
 }
 
 class MatchCountdown : public ConnectState<PDN> {
