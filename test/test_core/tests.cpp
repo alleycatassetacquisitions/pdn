@@ -1109,6 +1109,10 @@ TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
     chooseTeamConfirmReachesDemoStub(this);
 }
 
+TEST_F(PlayerFetchTestSuite, reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged) {
+    reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged(this);
+}
+
 // ============================================
 // QUICKDRAW MATCH UPLOAD (PROTOBUF) TESTS
 // ============================================

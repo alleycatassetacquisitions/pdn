@@ -33,6 +33,10 @@ enum class PktType : uint8_t {
     kCrashLog = 21,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kFirmwareUpdate = 22,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kPlayerProvision = 25,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kPlayerProvisionRequest = 26,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -46,6 +50,7 @@ struct PlayerProfile {
     uint8_t allegiance;
     char faction[8];
     char name[16];
+    uint8_t registered;  // 1 once a profile is applied, demo included
 } __attribute__((packed));
 
 // PDN-to-neighbour connection context. seqId is stamped by the ReliableChannel.

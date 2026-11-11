@@ -146,6 +146,27 @@ public:
 
 class MockPeerComms : public PeerCommsInterface {
 public:
+    /** Installs default packet-handler capture so triggerPacketCallback works without boilerplate.
+     */
+    MockPeerComms() {
+        ON_CALL(*this, setPacketHandler(::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault([this](PktType type, PacketCallback cb, void* ctx) {
+            registeredHandlers[type] = {cb, ctx};
+        });
+        ON_CALL(*this, clearPacketHandler(::testing::_)).WillByDefault([this](PktType type) {
+            registeredHandlers.erase(type);
+        });
+    }
+
+    /** Invokes the registered packet handler for @p type as if a frame arrived from @p srcMac. */
+    void triggerPacketCallback(const uint8_t* srcMac, PktType type, const uint8_t* data,
+                               size_t len) {
+        auto it = registeredHandlers.find(type);
+        if (it != registeredHandlers.end() && it->second.first != nullptr) {
+            it->second.first(srcMac, data, len, it->second.second);
+        }
+    }
+
     MOCK_METHOD(int, sendData, (const uint8_t*, PktType, const uint8_t*, const size_t), (override));
     MOCK_METHOD(void, setPacketHandler, (PktType, PacketCallback, void*), (override));
     MOCK_METHOD(void, clearPacketHandler, (PktType), (override));
@@ -160,6 +181,9 @@ public:
     MOCK_METHOD(void, setSendStatusHandler, (PktType, SendStatusCallback, void*), (override));
     /** Paired with setSendStatusHandler; dropped when an owner goes away. */
     MOCK_METHOD(void, clearSendStatusHandler, (PktType), (override));
+
+private:
+    std::map<PktType, std::pair<PacketCallback, void*>> registeredHandlers;
 };
 
 class MockStorage : public StorageInterface {
@@ -214,6 +238,15 @@ public:
         profile.gameRole = isHunter ? 1 : 0;
         if (id == SerialIdentifier::OUTPUT_JACK) outputProfile = profile;
         else if (id == SerialIdentifier::INPUT_JACK) inputProfile = profile;
+    }
+
+    /** Seeds a full PDN peer profile on `id`. */
+    void setPeerProfile(SerialIdentifier id, const PlayerProfile& profile) {
+        setPeerDeviceType(id, DeviceType::PDN);
+        if (id == SerialIdentifier::OUTPUT_JACK)
+            outputProfile = profile;
+        else if (id == SerialIdentifier::INPUT_JACK)
+            inputProfile = profile;
     }
 
     /** Returns the seeded peer profile on `id`, or nullptr if unset. */

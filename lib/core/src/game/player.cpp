@@ -62,7 +62,8 @@ Allegiance allegianceFromAffiliationName(const char* affiliationName) {
     if (containsIgnoreCase(affiliationName, "Helix")) {
         return Allegiance::HELIX;
     }
-    if (containsIgnoreCase(affiliationName, "Resistance")) {
+    if (containsIgnoreCase(affiliationName, "Resistance") ||
+        containsIgnoreCase(affiliationName, "Reboot")) {
         return Allegiance::RESISTANCE;
     }
     return Allegiance::ALLEYCAT;
@@ -93,11 +94,12 @@ PlayerProfile Player::toProfile() const {
     PlayerProfile profile{};
     char* end = nullptr;
     const unsigned long parsed = std::strtoul(id.c_str(), &end, 10);
-    // A non-numeric id ("default", or a name) means registration has not
-    // completed; 0xFFFF is the unregistered player-id sentinel peers expect.
-    profile.userId = (!id.empty() && end != nullptr && *end == '\0')
-                         ? static_cast<uint16_t>(parsed)
-                         : 0xFFFF;
+    // Only a numeric id fits the wire field; 0xFFFF stands for everything else,
+    // and `registered` below is what tells peers a profile has been applied.
+    profile.userId = (!id.empty() && end != nullptr && *end == '\0' && parsed < 0xFFFF)
+                     ? static_cast<uint16_t>(parsed)
+                     : 0xFFFF;
+    profile.registered = registrationProfileStored ? 1 : 0;
     profile.gameRole = hunter ? 1 : 0;
     profile.allegiance = static_cast<uint8_t>(allegiance);
     // snprintf both truncates to the fixed wire width and NUL-terminates.
@@ -269,18 +271,36 @@ void Player::syncLegacyFieldsFromRegistration() {
         symbol.updateFromUserIdString(id);
     }
 
+    const bool previousRole = hunter;
     if (teamNameIsHunter(registrationTeam.name)) {
         applyRole(true);
     } else if (teamNameIsBounty(registrationTeam.name)) {
         applyRole(false);
-    } else if (hasTeam()) {
-        applyRole(true);
-        LOG_W(TAG, "Unknown team name '%s'; defaulting to hunter", registrationTeam.name);
+    } else {
+        if (hasTeam()) {
+            LOG_W(TAG, "Unknown team name '%s'; defaulting to bounty", registrationTeam.name);
+        }
+        applyRole(false);
+    }
+    // Applying a profile, demo included, always changes the wire identity even if the standing
+    // role matched `previousRole`; notify once when applyRole did not already fire.
+    if (hunter == previousRole && roleChangedCallback) {
+        roleChangedCallback();
     }
 
     if (!registrationAffiliations.empty()) {
-        const Affiliation& primary = registrationAffiliations.front();
-        setAllegiance(allegianceFromAffiliationName(primary.affiliationName));
-        faction = primary.affiliationName;
+        Allegiance resolvedAllegiance = Allegiance::ALLEYCAT;
+        for (const Affiliation& affiliation : registrationAffiliations) {
+            const Allegiance candidate = allegianceFromAffiliationName(affiliation.affiliationName);
+            if (candidate != Allegiance::ALLEYCAT) {
+                resolvedAllegiance = candidate;
+                break;
+            }
+        }
+        setAllegiance(resolvedAllegiance);
+        faction = registrationAffiliations.front().affiliationName;
+    } else {
+        setAllegiance(Allegiance::ALLEYCAT);
+        faction = "";
     }
 }
