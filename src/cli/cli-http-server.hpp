@@ -85,8 +85,6 @@ public:
         
         if (method == "GET" && path.find("/device/players/by-pin/") == 0) {
             statusCode = handleGetDevicePlayerByPin(path, responseBody);
-        } else if (method == "PUT" && path == "/api/matches") {
-            statusCode = handlePutMatches(body, responseBody);
         } else if (method == "POST" && path == "/device-logs") {
             statusCode = handlePostDeviceLogs(body, responseBody);
         } else {
@@ -180,16 +178,6 @@ private:
             responseBody = R"({"errors":["Encode failed"]})";
             return 500;
         }
-        return 200;
-    }
-
-    /**
-     * Handle PUT /api/matches
-     */
-    int handlePutMatches(const std::string& body, std::string& responseBody) {
-        // Just acknowledge the match upload
-        // In a real server, we'd parse and store the matches
-        responseBody = R"({"success":true,"message":"Matches uploaded"})";
         return 200;
     }
 
