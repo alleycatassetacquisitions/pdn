@@ -1838,6 +1838,19 @@ TEST_F(RDCHelloTests, unprovenUpstreamIsNeverAdopted) {
 TEST_F(RDCHelloTests, emitHelloReadsPublishedSnapshotOnly) {
     rdcEmitHelloReadsPublishedSnapshotOnly(this);
 }
+TEST_F(RDCHelloTests, pdnCabledOnlyToAnFdnStaysStandalone) {
+    rdcPdnCabledOnlyToAnFdnStaysStandalone(this);
+}
+TEST_F(RDCHelloTests, fdnLeavingTheOutputJackIsNotReportedToTheHead) {
+    rdcFdnLeavingTheOutputJackIsNotReportedToTheHead(this);
+}
+TEST_F(RDCHelloTests, contextOfAnotherKindDoesNotRetypeAConnectedPeer) {
+    rdcContextOfAnotherKindDoesNotRetypeAConnectedPeer(this);
+}
+TEST_F(RDCHelloTests, fdnOnTheOutputJackEndsRelayedRingMembership) {
+    rdcFdnOnTheOutputJackEndsRelayedRingMembership(this);
+}
+TEST(RDCHelloStandalone, fdnNeverAdoptsItsPdnsChainHead) { rdcFdnNeverAdoptsItsPdnsChainHead(); }
 
 // ============================================
 // POSSE MANAGER TESTS

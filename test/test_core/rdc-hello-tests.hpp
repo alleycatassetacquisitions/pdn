@@ -872,8 +872,8 @@ inline HelloPayload parseEmittedHello(const std::string& out) {
     return got;
 }
 
-// Chain role is a local read of jack presence: OUTPUT connected = HEAD, INPUT
-// connected = CHILD (dominates), neither = STANDALONE.
+// Chain role is a local read of PDN-facing jack presence: OUTPUT connected = HEAD,
+// INPUT connected = CHILD (dominates), neither = STANDALONE.
 inline void rdcChainRoleReadsJackPresence(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::STANDALONE);
 
@@ -2520,6 +2520,116 @@ inline void rdcUnprovenUpstreamIsNeverAdopted(RDCHelloTests* suite) {
     suite->rdc.emitHello();
     const uint8_t zero[6] = {0, 0, 0, 0, 0, 0};
     EXPECT_EQ(0, memcmp(parseEmittedHello(suite->outJack.getOutput()).headMac, zero, 6));
+}
+
+inline void connectFdnOnOutput(RDCHelloTests* suite, const uint8_t* fdn) {
+    HelloPayload hello{};
+    memcpy(hello.source, fdn, 6);
+    hello.deviceType = static_cast<uint8_t>(DeviceType::FDN);
+    suite->deliverHello(suite->outJack, encodeFramed(hello));
+    suite->rdc.sync(&suite->device);
+    FdnConnectionContext context{};
+    context.seqId = 1;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, fdn,
+                                        reinterpret_cast<const uint8_t*>(&context),
+                                        sizeof(context));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+}
+
+inline void rdcPdnCabledOnlyToAnFdnStaysStandalone(RDCHelloTests* suite) {
+    const uint8_t fdn[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    connectFdnOnOutput(suite, fdn);
+
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::STANDALONE)
+    << "an FDN downstream made this PDN a chain head and roster authority";
+}
+
+inline void rdcFdnLeavingTheOutputJackIsNotReportedToTheHead(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t fdn[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    RosterSendCapture report;
+    captureSends(suite, PktType::kDisconnectReport, report);
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
+    connectFdnOnOutput(suite, fdn);
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+
+    EXPECT_EQ(report.count, 0) << "the head was told a member left that was never one";
+}
+
+inline void rdcContextOfAnotherKindDoesNotRetypeAConnectedPeer(RDCHelloTests* suite) {
+    const uint8_t pdn[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);
+    PdnConnectionContext real{};
+    real.seqId = 1;
+    suite->transport()->deliverIncoming(PktType::kPdnConnectionContext, pdn,
+                                        reinterpret_cast<const uint8_t*>(&real), sizeof(real));
+    FdnConnectionContext forged{};
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, pdn,
+                                        reinterpret_cast<const uint8_t*>(&forged), sizeof(forged));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, pdn,
+                                        reinterpret_cast<const uint8_t*>(&forged), sizeof(forged));
+
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD)
+    << "one frame under a neighbour's MAC took this head's roster authority away";
+}
+
+inline void rdcFdnOnTheOutputJackEndsRelayedRingMembership(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t fdn[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head, HELLO_FLAG_RING_CLOSED));
+    connectFdnOnOutput(suite, fdn);
+
+    EXPECT_FALSE(suite->rdc.isInRing())
+    << "a ring cannot run through an FDN, yet this PDN still relays the upstream's closure";
+}
+
+inline void rdcFdnNeverAdoptsItsPdnsChainHead() {
+    class MockFdnDevice : public MockDevice {
+    public:
+        /** @return DeviceType::FDN, so the coordinator under test runs as an FDN. */
+        DeviceType getDeviceType() override { return DeviceType::FDN; }
+    };
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    clock.setTime(1000);
+    MockFdnDevice fdnDevice;
+    uint8_t fdnMac[6] = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60};
+    wireRadioDefaults(fdnDevice, fdnMac);
+    NativeSerialDriver inJack{"fdn-in"};
+    fdnDevice.serialManager->setInputJack(&inJack);
+    RemoteDeviceCoordinator fdnRdc;
+    fdnRdc.setExternalConnectivityTask(true);
+    fdnRdc.initialize(fdnDevice.wirelessManager, fdnDevice.serialManager, &fdnDevice);
+
+    const uint8_t pdn[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t head[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    deliverFrame(inJack, chainHelloFrame(pdn, head));
+    fdnRdc.sync(&fdnDevice);
+    fdnRdc.onContextExchangeComplete(SerialIdentifier::INPUT_JACK);
+    fdnRdc.sync(&fdnDevice);
+    EXPECT_EQ(fdnRdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+
+    EXPECT_EQ(fdnRdc.getHeadMac(), nullptr)
+    << "the FDN adopted a chain head, so it announces itself into that head's roster";
+    EXPECT_EQ(fdnRdc.getChainRole(), ChainRole::STANDALONE);
+
+    SimpleTimer::setPlatformClock(nullptr);
 }
 
 // Reads the PlayerProfile back out of a captured PdnConnectionContext frame.
