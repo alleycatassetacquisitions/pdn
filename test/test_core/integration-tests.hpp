@@ -68,6 +68,7 @@ public:
         hunterMatchManager->initializeMatch(bountyMac);
         bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
         hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
+        bountyWirelessManager->confirmLastSend();
     }
 
     FakePlatformClock* fakeClock = nullptr;

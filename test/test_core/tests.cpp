@@ -870,6 +870,10 @@ TEST_F(MatchManagerTestSuite, boostSubtractedFromHunterReactionTime) {
     matchManagerBoostSubtractedFromHunterReactionTime(this);
 }
 
+TEST_F(MatchManagerTestSuite, resultSnapshotCarriesOnlyThisMatchsPenalty) {
+    matchManagerResultSnapshotCarriesOnlyThisMatchsPenalty(this);
+}
+
 TEST_F(MatchManagerTestSuite, clearCurrentMatchResetsBoost) {
     matchManagerClearCurrentMatchResetsBoost(matchManager, player);
 }
@@ -967,12 +971,20 @@ TEST_F(MatchManagerTestSuite, hunterMatchIsReadyAfterAck) {
     matchManagerHunterMatchIsReadyAfterAck(matchManager, player);
 }
 
-TEST_F(MatchManagerTestSuite, bountyMatchIsReadyAfterReceivingMatch) {
-    matchManagerBountyMatchIsReadyAfterReceivingMatch(matchManager, player);
+TEST_F(MatchManagerTestSuite, bountyReadiesWhenItsAckIsDelivered) {
+    matchManagerBountyReadiesWhenItsAckIsDelivered(this);
+}
+
+TEST_F(MatchManagerTestSuite, bountyIgnoresDeliveryOfAnotherFrame) {
+    matchManagerBountyIgnoresDeliveryOfAnotherFrame(this);
+}
+
+TEST_F(MatchManagerTestSuite, bountyDropsTheMatchWhenItsAckIsAbandoned) {
+    matchManagerBountyDropsTheMatchWhenItsAckIsAbandoned(this);
 }
 
 TEST_F(MatchManagerTestSuite, clearMatchResetsMatchIsReadyFlag) {
-    matchManagerClearMatchResetsMatchIsReadyFlag(matchManager, player);
+    matchManagerClearMatchResetsMatchIsReadyFlag(this);
 }
 
 TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {

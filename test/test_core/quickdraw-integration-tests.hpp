@@ -267,6 +267,7 @@ private:
         hunterMatchManager->initializeMatch(bountyMac);
         bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
         hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
+        bountyWirelessManager->confirmLastSend();
 
         hunterMatchManager->setMatchLocalStartTime(DEFAULT_START_TIME);
         bountyMatchManager->setMatchLocalStartTime(DEFAULT_START_TIME);
