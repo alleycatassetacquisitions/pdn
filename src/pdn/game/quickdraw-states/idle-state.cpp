@@ -152,7 +152,5 @@ bool Idle::isAuxRequired() {
 bool Idle::transitionToSymbol() {
     // An in-flight match init owns the device until its timeout clears, so an
     // FDN cabled during that window routes to symbol match once it does.
-    return !matchInitialized &&
-           (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN ||
-            getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN);
+    return !matchInitialized && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN;
 }
