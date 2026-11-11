@@ -703,18 +703,6 @@ TEST_F(MatchTestSuite, shootoutIdConversionStaysInBounds) {
     matchShootoutIdConversionStaysInBounds();
 }
 
-TEST_F(MatchTestSuite, deserializeClearsPlayerIdTail) {
-    matchDeserializeClearsPlayerIdTail();
-}
-
-TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) {
-    matchShorterIdOverwriteClearsTheTail();
-}
-
-TEST_F(MatchTestSuite, binaryRoundTripPreservesAllFields) {
-    matchBinaryRoundTripPreservesAllFields();
-}
-
 TEST_F(MatchTestSuite, binarySizeIsCorrect) {
     matchBinarySizeIsCorrect();
 }

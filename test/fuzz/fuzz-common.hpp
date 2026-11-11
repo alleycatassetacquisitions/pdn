@@ -51,16 +51,10 @@ private:
     size_t bufSize;
 };
 
-/** Traps if any Match ID string lacks null termination within its fixed wire bound. */
+/** Traps if the match id text is not null-terminated within its buffer. */
 inline void assertMatchStringBounds(const Match& match) {
     if (strnlen(match.getMatchId(), IdGenerator::UUID_BUFFER_SIZE) >=
         IdGenerator::UUID_BUFFER_SIZE) {
-        __builtin_trap();
-    }
-    if (strnlen(match.getHunterId(), PLAYER_ID_BINARY_SIZE + 1) > PLAYER_ID_BINARY_SIZE) {
-        __builtin_trap();
-    }
-    if (strnlen(match.getBountyId(), PLAYER_ID_BINARY_SIZE + 1) > PLAYER_ID_BINARY_SIZE) {
         __builtin_trap();
     }
 }

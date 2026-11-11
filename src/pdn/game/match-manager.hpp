@@ -2,9 +2,7 @@
     This class is responsible for managing the matches.
     It will be responsible for creating, updating and deleting matches.
     In addition to creating and updating matches, this class is responsible for
-    saving and loading matches from EEPROM. In addition to saving/loading from
-    EEPROM, this class will be responsible for serializing and deserializing
-    matches to and from a JSON array.
+    saving and loading matches from NVS.
 */
 #pragma once
 
@@ -25,7 +23,6 @@
 
 class ShootoutManager;
 
-// Preferences namespace and keys
 inline constexpr const char MATCHES_PREFS_NAMESPACE[] = "matches";
 inline constexpr const char PREF_SEQ_KEY[] = "seq";
 inline constexpr const char PREF_MATCH_KEY_PREFIX[] = "match_";
@@ -74,8 +71,7 @@ public:
     void initializeMatch(uint8_t* opponentMac);
 
     /** Primes a match from an incoming SEND_MATCH_ID and replies with MATCH_ID_ACK. */
-    void receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter,
-                      uint8_t* opponentMac);
+    void receiveMatch(const char* matchId, uint8_t* opponentMac);
 
     /**
      * Shootout mode: primes a match without the SEND_MATCH_ID handshake. Both
@@ -123,7 +119,7 @@ public:
     /** Returns the active match, or std::nullopt if none. */
     std::optional<Match>& getCurrentMatch() { return activeMatchState.match; }
 
-    /** Returns the 1-based monotonic match sequence number (0 when no matches finalized). */
+    /** Returns the sequence number of the newest stored match (0 when none stored). */
     uint32_t getMatchSequenceNumber();
 
     /** Reads the match for 1-based sequence number `seq` if still in the 32-slot ring buffer. */
@@ -201,11 +197,7 @@ private:
     /** @return the seqId the frame went out under. */
     uint8_t sendCommand(const uint8_t* mac, int command, const char* matchId, long drawTime,
                         bool isHunter);
-    /**
-     * Appends a match to the 32-slot binary ring buffer and increments the sequence number.
-     * @param match Match to save
-     * @return true if save was successful
-     */
+    /** Appends a match to the binary ring buffer and increments the sequence number. */
     bool appendMatchToStorage(const Match* match);
 
     uint32_t getOldestStoredSequence();

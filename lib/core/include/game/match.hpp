@@ -6,21 +6,25 @@
 #include "../../include/id-generator.hpp"
 #include "utils/uuid-bytes.hpp"
 
-// Player ID is stored as 4 raw bytes in the legacy short-ID slot
-constexpr size_t PLAYER_ID_BINARY_SIZE = 4;
-constexpr size_t MAC_BINARY_SIZE = 6;
+/**
+ * A Match as NVS stores it and kMatchCollection frames carry it. Field order is
+ * the layout; packed so PDN and FDN builds agree on it.
+ */
+struct MatchRecord {
+    UUIDBytes matchUuid;
+    uint32_t hunterDrawTimeMs;
+    uint32_t bountyDrawTimeMs;
+    UUIDBytes hunterPlayerId;
+    UUIDBytes bountyPlayerId;
+    UUIDBytes hunterTeamId;
+    UUIDBytes bountyTeamId;
+    UUIDBytes winnerPlayerId;
+    int64_t occurredAtUnixMs;
+} __attribute__((packed));
 
-// Binary layout, identical on every platform because NVS records and
-// kMatchCollection frames cross between PDN and FDN builds:
-// - matchUuid (16B)
-// - legacy hunter/bounty short IDs (2 * 4B)
-// - hunter/bounty draw times (2 * uint32_t)
-// - hunterPlayerId, bountyPlayerId, hunterTeamId, bountyTeamId, winnerPlayerId (5 * 16B)
-// - hunterMac, bountyMac (2 * 6B)
-// - occurredAtUnixMs (int64_t)
-constexpr size_t MATCH_BINARY_SIZE = IdGenerator::UUID_BINARY_SIZE + 2 * PLAYER_ID_BINARY_SIZE +
-                                     2 * sizeof(uint32_t) + 5 * UUIDBytes::SIZE +
-                                     2 * MAC_BINARY_SIZE + sizeof(int64_t);
+constexpr size_t MATCH_BINARY_SIZE = sizeof(MatchRecord);
+static_assert(MATCH_BINARY_SIZE == 112,
+              "stored records and kMatchCollection frames share this layout");
 
 /** PDN-to-FDN stored match over PktType::kMatchCollection. matchSeq is the PDN's ring sequence. */
 struct MatchRecordPacket {
@@ -44,16 +48,8 @@ public:
      */
     Match() = default;
 
-    /**
-     * Creates a new match from raw C-strings — no heap allocation in the hot path.
-     */
-    Match(const char* matchId, const char* playerId, bool isHunter);
-
-    /**
-     * Deleted: three strings would otherwise bind to the overload above, converting
-     * the bounty id to `true` and leaving the bounty unset.
-     */
-    Match(const char* matchId, const char* hunterId, const char* bountyId) = delete;
+    /** Creates a match identified by @p matchId. */
+    explicit Match(const char* matchId);
 
     /**
      * Sets the hunter's draw time
@@ -67,18 +63,6 @@ public:
      */
     void setBountyDrawTime(unsigned long timeMs) { bountyDrawTimeMs = timeMs; }
 
-    /**
-     * Sets the hunter's ID
-     * @param hunterId Hunter player's ID
-     */
-    void setHunterId(const char* hunterId);
-
-    /**
-     * Sets the bounty's ID
-     * @param bountyId Bounty player's ID
-     */
-    void setBountyId(const char* bountyId);
-
     /** Sets the 16-byte hunter player UUID. */
     void setHunterPlayerId(const UUIDBytes& id) { hunterPlayerId = id; }
     /** Sets the 16-byte bounty player UUID. */
@@ -89,24 +73,6 @@ public:
     void setBountyTeamId(const UUIDBytes& id) { bountyTeamId = id; }
     /** Sets the 16-byte winning player UUID. */
     void setWinnerPlayerId(const UUIDBytes& id) { winnerPlayerId = id; }
-
-    /** Sets the 6-byte hunter device MAC address. */
-    void setHunterMac(const uint8_t* mac) {
-        if (mac) {
-            memcpy(hunterMac, mac, MAC_BINARY_SIZE);
-        } else {
-            memset(hunterMac, 0, MAC_BINARY_SIZE);
-        }
-    }
-
-    /** Sets the 6-byte bounty device MAC address. */
-    void setBountyMac(const uint8_t* mac) {
-        if (mac) {
-            memcpy(bountyMac, mac, MAC_BINARY_SIZE);
-        } else {
-            memset(bountyMac, 0, MAC_BINARY_SIZE);
-        }
-    }
 
     /** Sets the timestamp at which the match finalized (milliseconds). */
     void setOccurredAtUnixMs(int64_t unixMs) { occurredAtUnixMs = unixMs; }
@@ -130,12 +96,8 @@ public:
      */
     static size_t binarySize() { return MATCH_BINARY_SIZE; }
 
-    /** @return Null-terminated match UUID string. */
+    /** @return Null-terminated match ID string. */
     const char* getMatchId() const { return matchId; }
-    /** @return Null-terminated legacy 4-char hunter ID. */
-    const char* getHunterId() const { return hunter; }
-    /** @return Null-terminated legacy 4-char bounty ID. */
-    const char* getBountyId() const { return bounty; }
     /** @return Hunter draw time in milliseconds. */
     unsigned long getHunterDrawTime() const { return hunterDrawTimeMs; }
     /** @return Bounty draw time in milliseconds. */
@@ -153,17 +115,11 @@ public:
     const UUIDBytes& getBountyTeamId() const { return bountyTeamId; }
     /** @return 16-byte winning player UUID. */
     const UUIDBytes& getWinnerPlayerId() const { return winnerPlayerId; }
-    /** @return 6-byte hunter device MAC address. */
-    const uint8_t* getHunterMac() const { return hunterMac; }
-    /** @return 6-byte bounty device MAC address. */
-    const uint8_t* getBountyMac() const { return bountyMac; }
     /** @return Timestamp at which the match finalized (milliseconds). */
     int64_t getOccurredAtUnixMs() const { return occurredAtUnixMs; }
 
 private:
     char matchId[IdGenerator::UUID_BUFFER_SIZE] = {};
-    char hunter[5] = {};
-    char bounty[5] = {};
     unsigned long hunterDrawTimeMs = 0;
     unsigned long bountyDrawTimeMs = 0;
     UUIDBytes matchUuid = {};
@@ -172,7 +128,5 @@ private:
     UUIDBytes hunterTeamId = {};
     UUIDBytes bountyTeamId = {};
     UUIDBytes winnerPlayerId = {};
-    uint8_t hunterMac[MAC_BINARY_SIZE] = {};
-    uint8_t bountyMac[MAC_BINARY_SIZE] = {};
     int64_t occurredAtUnixMs = 0;
 };

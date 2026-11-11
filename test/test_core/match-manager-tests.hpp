@@ -45,6 +45,9 @@ public:
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
+        // Tests point the manager at a NativePrefsDriver local to their body;
+        // its destructor must not reach for one that is already gone.
+        matchManager->initialize(player, &mockStorage);
         delete matchManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
@@ -153,7 +156,6 @@ inline void matchManagerInitializeCreatesMatch(MatchManager* mm, Player* player)
     mm->initializeMatch(dummyMac);
 
     ASSERT_TRUE(mm->getCurrentMatch().has_value());
-    EXPECT_STREQ(mm->getCurrentMatch()->getHunterId(), player->getUserID().c_str());
     EXPECT_EQ(mm->getCurrentMatch()->getHunterDrawTime(), 0);
     EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 0);
 }
@@ -178,8 +180,6 @@ inline void matchManagerBountyReceivesMatchViaHandshake(MatchManager* mm, Player
 
     ASSERT_TRUE(mm->getCurrentMatch().has_value());
     EXPECT_STREQ(mm->getCurrentMatch()->getMatchId(), "received-match");
-    EXPECT_STREQ(mm->getCurrentMatch()->getHunterId(), "hunt");
-    EXPECT_STREQ(mm->getCurrentMatch()->getBountyId(), player->getUserID().c_str());
 }
 
 // ============================================
@@ -678,5 +678,15 @@ TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
     Match slot0Match{};
     slot0Match.deserialize(slot0);
     EXPECT_STREQ(slot0Match.getMatchId(), "00000033-1234-4000-8000-000000000000");
-    matchManager->initialize(player, &mockStorage);
+}
+
+TEST_F(MatchManagerTestSuite, initializeDropsRecordsFromBeforeTheRing) {
+    NativePrefsDriver prefs("legacy-prefs", {MATCHES_PREFS_NAMESPACE});
+    prefs.write(MATCHES_PREFS_NAMESPACE, "match_40", R"({"match_id":"old"})");
+    prefs.writeUChar(MATCHES_PREFS_NAMESPACE, "count", 41);
+
+    matchManager->initialize(player, &prefs);
+
+    EXPECT_EQ(prefs.read(MATCHES_PREFS_NAMESPACE, "match_40", ""), "");
+    EXPECT_EQ(prefs.readUChar(MATCHES_PREFS_NAMESPACE, "count", 0), 0);
 }

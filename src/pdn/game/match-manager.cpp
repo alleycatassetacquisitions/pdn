@@ -99,7 +99,7 @@ void MatchManager::clearCurrentMatch() {
 void MatchManager::primeMatch(const char* matchId, const uint8_t* opponentMac,
                               bool localIsHunter) {
     activeMatchState.localIsHunter = localIsHunter;
-    activeMatchState.match.emplace(matchId, player->getUserID().c_str(), localIsHunter);
+    activeMatchState.match.emplace(matchId);
     memcpy(activeMatchState.opponentMac.data(), opponentMac, 6);
 }
 
@@ -130,18 +130,12 @@ void MatchManager::initializeShootoutMatch(const char* matchId, uint8_t* opponen
     activeMatchState.matchIsReady = true;
 }
 
-void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter,
-                                uint8_t* opponentMac) {
+void MatchManager::receiveMatch(const char* matchId, uint8_t* opponentMac) {
     if (activeMatchState.match.has_value()) {
         return;
     }
 
     primeMatch(matchId, opponentMac, player->isHunter());
-    if (opponentIsHunter) {
-        activeMatchState.match->setHunterId(opponentId);
-    } else {
-        activeMatchState.match->setBountyId(opponentId);
-    }
 
     auto* clock = SimpleTimer::getPlatformClock();
     LOG_D(MATCH_MANAGER_TAG, "TIMING receiveMatch-ackSent T=%lu",
@@ -318,6 +312,12 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
     this->player = player;
     this->storage = storage;
 
+    // Firmware before the ring kept JSON strings under these keys. Nothing reads
+    // them now, and left in place they take the room the ring needs.
+    if (getMatchSequenceNumber() == 0) {
+        storage->clear(MATCHES_PREFS_NAMESPACE);
+    }
+
     matchButtonPush = [](void* ctx) {
         if (!ctx) {
             LOG_E(MATCH_MANAGER_TAG, "Button press handler received null context");
@@ -416,18 +416,13 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
                         player->isHunter());
             return;
         } else {
-            receiveMatch(command.matchId, command.playerId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr));
+            receiveMatch(command.matchId, const_cast<uint8_t*>(command.wifiMacAddr));
         }
     } else if (command.command == MatchCmd::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
         if (activeMatchState.matchIsReady || activeMatchState.pendingAckSeqId != 0) return;
         matchChannel.cancel(activeMatchState.opponentMac.data());
-        if (activeMatchState.localIsHunter) {
-            activeMatchState.match->setBountyId(command.playerId);
-        } else {
-            activeMatchState.match->setHunterId(command.playerId);
-        }
         auto* clock = SimpleTimer::getPlatformClock();
         LOG_D(MATCH_MANAGER_TAG, "TIMING matchAck-ready T=%lu", clock ? clock->milliseconds() : 0UL);
         activeMatchState.matchIsReady = true;

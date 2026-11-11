@@ -173,11 +173,7 @@ inline void completeMatchFlowBountyWins(MatchIntegrationTestSuite* suite) {
 // ============================================
 
 inline void matchSerializationRoundTrip() {
-    Match originalMatch(
-        "abcdef12-3456-7890-abcd-ef1234567890",
-        "a0b1c2d3-0000-0000-0000-000000000001",
-        true
-    );
+    Match originalMatch("abcdef12-3456-7890-abcd-ef1234567890");
     originalMatch.setHunterDrawTime(225);
     originalMatch.setBountyDrawTime(310);
 
