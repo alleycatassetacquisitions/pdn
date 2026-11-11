@@ -38,6 +38,13 @@ enum class ProvisionStatus : uint8_t {
     LOOKUP_FAILED = 1,
 };
 
+// The FDN gives up on the server before the PDN gives up on the FDN, so a
+// request sent as the PDN starts waiting is answered before it stops.
+constexpr unsigned long PROVISION_LOOKUP_TIMEOUT_MS = 8000;
+constexpr unsigned long PROVISION_REPLY_WAIT_MS = 10000;
+static_assert(PROVISION_LOOKUP_TIMEOUT_MS < PROVISION_REPLY_WAIT_MS,
+              "the PDN would stop waiting before the FDN could answer");
+
 struct WireAffiliation {
     uint8_t categoryId[UUIDBytes::SIZE];
     char categoryName[PlayerLimits::NAME_BUFFER_SIZE];

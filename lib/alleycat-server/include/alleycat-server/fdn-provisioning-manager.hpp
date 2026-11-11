@@ -17,16 +17,12 @@
 #include "wireless/resender.hpp"
 
 /**
- * FDN-side player provisioning coordinator.
- *
- * On a PlayerProvisionRequestPacket from a PDN Connected on an FDN jack, looks the
- * PIN up (`GET /device/players/by-pin/{pin}`) over Wi-Fi, restores peer comms mode,
- * and, if that PDN is still Connected, sends it a PlayerProvisionPacket
- * (PROFILE_DELIVERED or LOOKUP_FAILED). Request and reply ride reliable channels.
+ * FDN side of player provisioning: answers a cabled PDN's PIN request with the
+ * server's profile or LOOKUP_FAILED. Request and reply ride reliable channels.
  */
 class FdnProvisioningManager {
 public:
-    /** Reports a finished lookup: the delivered player's name, or nullptr on failure. */
+    /** Reports a finished lookup: the looked-up player's name, or nullptr on failure. */
     using OnLookupDone = std::function<void(const char* playerName)>;
 
     /** Constructs the FDN provisioning manager wired to wireless and RDC. */
@@ -43,24 +39,27 @@ public:
     }
 
     /**
-     * Pumps reply retries and ends a lookup that has run past
-     * PROVISION_LOOKUP_TIMEOUT_MS. Leaving Wi-Fi fails the queued request, which
-     * clears the lookup and replies LOOKUP_FAILED; without it an unreachable AP
-     * keeps the FDN deaf to ESP-NOW. Call every tick.
+     * Pumps reply retries, serves a parked request once its PDN is Connected,
+     * and past PROVISION_LOOKUP_TIMEOUT_MS leaves Wi-Fi, which makes the HTTP
+     * driver fail the queued request and so ends the lookup with LOOKUP_FAILED.
+     * Call every tick.
      */
     void sync() {
         resender.sync();
         if (lookupInFlight && lookupTimer.expired()) {
             LOG_W("FDN_PROVISION", "Player lookup timed out");
-            lookupTimer.invalidate();
-            wirelessManager->enablePeerCommsMode();
+            cancelLookup();
+        }
+        if (!parkedTimer.isRunning()) return;
+        if (parkedTimer.expired()) {
+            parkedTimer.invalidate();
+        } else if (rdc->isConnectedPeer(DeviceType::PDN, parkedMac.data())) {
+            parkedTimer.invalidate();
+            provisionPdn(parkedMac.data(), parkedPin);
         }
     }
 
-    /**
-     * Abandons the lookup in flight, if any, and returns to ESP-NOW now rather
-     * than at the deadline. For when the PDN that asked has been unplugged.
-     */
+    /** Ends the lookup in flight, if any, by leaving Wi-Fi without waiting for the deadline. */
     void cancelLookup() {
         if (!lookupInFlight) return;
         lookupTimer.invalidate();
@@ -70,12 +69,14 @@ public:
     /** @return true while a PIN lookup is waiting on the server. */
     bool isLookupInFlight() const { return lookupInFlight; }
 
-    /**
-     * Sets the lookup-finished listener; nullptr clears it. Without one, a request
-     * is dropped while a registered PDN is cabled, so a lookup's Wi-Fi excursion
-     * never cuts into that PDN's symbol-match game.
-     */
+    /** Sets the lookup-finished listener; nullptr clears it. */
     void setOnLookupDone(OnLookupDone listener) { onLookupDone = std::move(listener); }
+
+    /**
+     * While not allowed, a request is dropped if a registered PDN is cabled, so a
+     * lookup's Wi-Fi excursion never cuts into that PDN's symbol-match game.
+     */
+    void setLookupDuringPlayAllowed(bool allowed) { lookupDuringPlayAllowed = allowed; }
 
     /** @return true when a PDN with no applied profile is Connected on an FDN jack. */
     bool hasUnprovisionedPdnCabled() { return hasCabledPdn(false); }
@@ -84,8 +85,11 @@ public:
     bool hasRegisteredPdnCabled() { return hasCabledPdn(true); }
 
 private:
+    // The PDN can read its jack Connected, and send, a tick before this side's
+    // jack commits. The radio acks the request, so the PDN never sends it again.
+    static constexpr unsigned long PARK_REQUEST_MS = 1000;
+
     bool hasCabledPdn(bool registered) {
-        if (!rdc) return false;
         for (SerialIdentifier jack :
              {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
             if (rdc->getJackStatus(jack) != JackStatus::CONNECTED ||
@@ -103,14 +107,8 @@ private:
         return false;
     }
 
-    // Shorter than the PDN's 10 s wait, so a request sent at mount is answered in time.
-    static constexpr unsigned long PROVISION_LOOKUP_TIMEOUT_MS = 8000;
-
     void provisionPdn(const uint8_t* pdnMac, const std::string& pin) {
-        if (!wirelessManager || !rdc || lookupInFlight ||
-            !rdc->isConnectedPeer(DeviceType::PDN, pdnMac)) {
-            return;
-        }
+        if (lookupInFlight) return;
 
         std::array<uint8_t, 6> targetMac{};
         memcpy(targetMac.data(), pdnMac, 6);
@@ -145,7 +143,7 @@ private:
     }
 
     void onProvisionRequest(const uint8_t* fromMac, const PlayerProvisionRequestPacket& request) {
-        if (!onLookupDone && hasRegisteredPdnCabled()) {
+        if (!lookupDuringPlayAllowed && hasRegisteredPdnCabled()) {
             LOG_W("FDN_PROVISION", "Dropping provision request during a registered PDN's game");
             return;
         }
@@ -156,7 +154,14 @@ private:
                 return;
             }
         }
-        provisionPdn(fromMac, std::string(request.pin, 4));
+        const std::string pin(request.pin, 4);
+        if (!rdc->isConnectedPeer(DeviceType::PDN, fromMac)) {
+            memcpy(parkedMac.data(), fromMac, parkedMac.size());
+            parkedPin = pin;
+            parkedTimer.setTimer(PARK_REQUEST_MS);
+            return;
+        }
+        provisionPdn(fromMac, pin);
     }
 
     WirelessManager* wirelessManager = nullptr;
@@ -165,7 +170,11 @@ private:
     ReliableChannel<PlayerProvisionRequestPacket> requestChannel;
     ReliableChannel<PlayerProvisionPacket> replyChannel;
     bool lookupInFlight = false;
+    bool lookupDuringPlayAllowed = false;
     SimpleTimer lookupTimer;
+    SimpleTimer parkedTimer;
+    std::array<uint8_t, 6> parkedMac{};
+    std::string parkedPin;
     Player decodedPlayer{};
     OnLookupDone onLookupDone;
 };

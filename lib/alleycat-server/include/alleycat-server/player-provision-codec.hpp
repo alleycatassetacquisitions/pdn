@@ -8,9 +8,8 @@
 #include "game/player-types.hpp"
 
 /**
- * Encodes and decodes the PlayerProvisionPacket an FDN sends a cabled PDN.
- *
- * Pure functions with no platform dependencies, shared by both sides.
+ * Encodes and decodes the PlayerProvisionPacket an FDN sends a cabled PDN. No
+ * platform dependencies; decode applies the profile to the Player it is given.
  */
 namespace PlayerProvisionCodec {
 

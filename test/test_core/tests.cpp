@@ -663,8 +663,8 @@ TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
 // PLAYER TESTS
 // ============================================
 
-TEST_F(PlayerTestSuite, roleChangeFiresOnlyOnFlip) {
-    playerRoleChangeFiresOnlyOnFlip(player);
+TEST_F(PlayerTestSuite, observerFiresOnFlipAndAppliedProfile) {
+    playerObserverFiresOnFlipAndAppliedProfile(player);
 }
 
 TEST_F(PlayerTestSuite, profileCarriesRoleAndIdentity) {
@@ -1118,6 +1118,14 @@ TEST_F(FdnProvisioningTests, dropsMalformedOrUncabledProvisionRequest) {
     fdnDropsMalformedOrUncabledProvisionRequest(this);
 }
 
+TEST_F(FdnProvisioningTests, servesRequestThatBeatItsJackToConnected) {
+    fdnServesRequestThatBeatItsJackToConnected(this);
+}
+
+TEST_F(FdnProvisioningTests, forgetsParkedRequestAfterItsWindow) {
+    fdnForgetsParkedRequestAfterItsWindow(this);
+}
+
 TEST_F(FdnProvisioningTests, cancelledLookupLeavesWifiAtOnce) {
     fdnCancelledLookupLeavesWifiAtOnce(this);
 }
@@ -1126,8 +1134,8 @@ TEST_F(FdnProvisioningTests, seesUnprovisionedPdnUntilItRegisters) {
     fdnSeesUnprovisionedPdnUntilItRegisters(this);
 }
 
-TEST_F(FdnProvisioningTests, holdsLookupsWhileRegisteredPdnPlays) {
-    fdnHoldsLookupsWhileRegisteredPdnPlays(this);
+TEST_F(FdnProvisioningTests, dropsLookupsWhileRegisteredPdnPlays) {
+    fdnDropsLookupsWhileRegisteredPdnPlays(this);
 }
 
 TEST_F(FdnProvisioningTests, reportsLookupResultAndResendsUnconfirmedReply) {

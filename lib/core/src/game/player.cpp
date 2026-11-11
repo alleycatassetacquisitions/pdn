@@ -271,36 +271,22 @@ void Player::syncLegacyFieldsFromRegistration() {
         symbol.updateFromUserIdString(id);
     }
 
-    const bool previousRole = hunter;
-    if (teamNameIsHunter(registrationTeam.name)) {
-        applyRole(true);
-    } else if (teamNameIsBounty(registrationTeam.name)) {
-        applyRole(false);
-    } else {
-        if (hasTeam()) {
-            LOG_W(TAG, "Unknown team name '%s'; defaulting to bounty", registrationTeam.name);
-        }
-        applyRole(false);
+    const bool hunterTeam = teamNameIsHunter(registrationTeam.name);
+    if (!hunterTeam && !teamNameIsBounty(registrationTeam.name) && hasTeam()) {
+        LOG_W(TAG, "Unknown team name '%s'; defaulting to bounty", registrationTeam.name);
     }
-    // Applying a profile, demo included, always changes the wire identity even if the standing
-    // role matched `previousRole`; notify once when applyRole did not already fire.
-    if (hunter == previousRole && roleChangedCallback) {
-        roleChangedCallback();
-    }
+    hunter = hunterTeam;
 
-    if (!registrationAffiliations.empty()) {
-        Allegiance resolvedAllegiance = Allegiance::ALLEYCAT;
-        for (const Affiliation& affiliation : registrationAffiliations) {
-            const Allegiance candidate = allegianceFromAffiliationName(affiliation.affiliationName);
-            if (candidate != Allegiance::ALLEYCAT) {
-                resolvedAllegiance = candidate;
-                break;
-            }
-        }
-        setAllegiance(resolvedAllegiance);
-        faction = registrationAffiliations.front().affiliationName;
-    } else {
-        setAllegiance(Allegiance::ALLEYCAT);
-        faction = "";
+    Allegiance resolvedAllegiance = Allegiance::ALLEYCAT;
+    for (const Affiliation& affiliation : registrationAffiliations) {
+        resolvedAllegiance = allegianceFromAffiliationName(affiliation.affiliationName);
+        if (resolvedAllegiance != Allegiance::ALLEYCAT) break;
     }
+    setAllegiance(resolvedAllegiance);
+    faction =
+    registrationAffiliations.empty() ? "" : registrationAffiliations.front().affiliationName;
+
+    // A profile changes what peers are told even when the role stands, and the
+    // observer sends the profile as it finds it, so it fires once and last.
+    if (roleChangedCallback) roleChangedCallback();
 }

@@ -31,7 +31,7 @@ public:
         fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
     }
 
-    /** Drops the queued requests before the clock they captured goes away. */
+    /** Releases the captured requests and the fake clock. */
     void TearDown() override {
         queuedRequests.clear();
         SimpleTimer::setPlatformClock(nullptr);
@@ -63,7 +63,34 @@ inline void fdnDropsMalformedOrUncabledProvisionRequest(FdnProvisioningTests* su
 
     const uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
     suite->deliverRequest("1234", strangerMac);
+    fdnProv.sync();
     EXPECT_TRUE(suite->queuedRequests.empty());
+}
+
+// The PDN sends on the tick its own jack reads Connected, which can be a tick
+// before the FDN's does; the radio acks the request, so it is never sent twice.
+inline void fdnServesRequestThatBeatItsJackToConnected(FdnProvisioningTests* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    suite->fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::DISCONNECTED);
+    suite->deliverRequest("1234", suite->pdnMac);
+    fdnProv.sync();
+    ASSERT_TRUE(suite->queuedRequests.empty());
+
+    suite->fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fdnProv.sync();
+    EXPECT_EQ(suite->queuedRequests.size(), 1u) << "the request was dropped while the jack settled";
+}
+
+inline void fdnForgetsParkedRequestAfterItsWindow(FdnProvisioningTests* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    suite->fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::DISCONNECTED);
+    suite->deliverRequest("1234", suite->pdnMac);
+    suite->fakeClock->advance(2000);
+    fdnProv.sync();
+
+    suite->fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fdnProv.sync();
+    EXPECT_TRUE(suite->queuedRequests.empty()) << "a request was served long after it was sent";
 }
 
 inline void fdnCancelledLookupLeavesWifiAtOnce(FdnProvisioningTests* suite) {
@@ -71,7 +98,6 @@ inline void fdnCancelledLookupLeavesWifiAtOnce(FdnProvisioningTests* suite) {
     suite->deliverRequest("1234", suite->pdnMac);
     ASSERT_EQ(suite->fdnDevice.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
 
-    // What RegistrationState does when the PDN that asked is unplugged mid-lookup.
     fdnProv.cancelLookup();
     EXPECT_EQ(suite->fdnDevice.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW)
     << "the FDN stayed deaf to ESP-NOW for a PDN that is no longer there";
@@ -111,7 +137,7 @@ inline void fdnSeesUnprovisionedPdnUntilItRegisters(FdnProvisioningTests* suite)
     EXPECT_FALSE(fdnProv.hasUnprovisionedPdnCabled()) << "only a Connected jack counts";
 }
 
-inline void fdnHoldsLookupsWhileRegisteredPdnPlays(FdnProvisioningTests* suite) {
+inline void fdnDropsLookupsWhileRegisteredPdnPlays(FdnProvisioningTests* suite) {
     FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
     Player demo{};
     demo.applyRegistrationProfile(UUIDBytes(), "Demo", Team{}, {});
@@ -120,7 +146,7 @@ inline void fdnHoldsLookupsWhileRegisteredPdnPlays(FdnProvisioningTests* suite) 
     suite->deliverRequest("1234", suite->pdnMac);
     EXPECT_TRUE(suite->queuedRequests.empty()) << "no Wi-Fi excursion during symbol-match";
 
-    fdnProv.setOnLookupDone([](const char*) {});
+    fdnProv.setLookupDuringPlayAllowed(true);
     suite->deliverRequest("1234", suite->pdnMac);
     EXPECT_EQ(suite->queuedRequests.size(), 1u) << "the registration screen takes it";
 }

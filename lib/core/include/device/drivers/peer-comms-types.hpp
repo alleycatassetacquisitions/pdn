@@ -45,7 +45,7 @@ enum class PktType : uint8_t {
 // wire format (both ends run the same firmware). RDC never reads these fields —
 // it forwards the profile to the game layer opaquely.
 struct PlayerProfile {
-    uint16_t userId;   // 0xFFFF while unregistered
+    uint16_t userId;   // 0xFFFF unless the player id is numeric
     uint8_t gameRole;  // 1 = hunter, 0 = bounty
     uint8_t allegiance;
     char faction[8];

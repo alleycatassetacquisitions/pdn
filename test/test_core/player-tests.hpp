@@ -129,11 +129,10 @@ inline void playerReactionTimeAverageCalculatesCorrectly(Player* player) {
 // Role Change + Outgoing Profile Tests
 // ============================================
 
-// The role-flip observer is what drives the connection-context re-broadcast, so
-// it must fire on every real flip and stay silent on a set that reasserts the
-// current role — an idle re-registration would otherwise put a redundant frame
-// on the air for every peer.
-inline void playerRoleChangeFiresOnlyOnFlip(Player* player) {
+// The observer is what drives the connection-context re-broadcast, so it must
+// fire on every real flip and stay silent on a set that reasserts the current
+// role.
+inline void playerObserverFiresOnFlipAndAppliedProfile(Player* player) {
     int flips = 0;
     player->setIsHunter(true);
     player->setOnRoleChanged([&flips]() { flips++; });
@@ -149,12 +148,24 @@ inline void playerRoleChangeFiresOnlyOnFlip(Player* player) {
     EXPECT_EQ(flips, 2);
     EXPECT_TRUE(player->isHunter());
 
-    // A fetched profile is the other role write path and must notify too.
-    Team bountyTeam;
-    std::snprintf(bountyTeam.name, sizeof(bountyTeam.name), "%s", "Bounty");
-    player->applyRegistrationProfile(UUIDBytes{}, "Ada", bountyTeam, {});
+    // An applied profile notifies once, role flip or not, and only when the
+    // whole profile is in place: the observer sends it as found.
+    PlayerProfile seen{};
+    player->setOnRoleChanged([&flips, &seen, player]() {
+        flips++;
+        seen = player->toProfile();
+    });
+    Team hunterTeam;
+    std::snprintf(hunterTeam.name, sizeof(hunterTeam.name), "%s", "Hunter");
+    Affiliation helix;
+    std::snprintf(helix.affiliationName, sizeof(helix.affiliationName), "%s", "Helix");
+    player->applyRegistrationProfile(UUIDBytes{}, "Ada", hunterTeam, {helix});
     EXPECT_EQ(flips, 3);
-    EXPECT_FALSE(player->isHunter());
+    EXPECT_EQ(seen.allegiance, static_cast<uint8_t>(Allegiance::HELIX));
+    EXPECT_EQ(seen.registered, 1);
+
+    player->applyRegistrationProfile(UUIDBytes{}, "Ada", hunterTeam, {helix});
+    EXPECT_EQ(flips, 4);
 }
 
 // toProfile is what a peer decodes out of the connection context, so gameRole
