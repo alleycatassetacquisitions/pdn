@@ -23,14 +23,32 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
                              p.isHunter);
         listenForMatchEvents(command);
     });
+    // The bounty readies on the radio's SEND_SUCCESS for its MATCH_ID_ACK, not on
+    // sending it, so a lost ack no longer starts its countdown ahead of the hunter's.
+    matchChannel.setOnDelivered([this](uint8_t seqId, const uint8_t*) {
+        if (activeMatchState.pendingAckSeqId == 0 || seqId != activeMatchState.pendingAckSeqId) {
+            return;
+        }
+        activeMatchState.pendingAckSeqId = 0;
+        activeMatchState.matchIsReady = true;
+    });
+    // No delivery report within the retransmit span: drop the match rather than
+    // count down against a hunter that may never have heard the ack.
+    resender.setAbandonCallback(
+    [this](PktType, uint8_t seqId, const uint8_t*, const uint8_t*, size_t) {
+        if (activeMatchState.pendingAckSeqId == 0 || seqId != activeMatchState.pendingAckSeqId) {
+            return;
+        }
+        clearCurrentMatch();
+    });
 }
 
 void MatchManager::sync() {
     resender.sync();
 }
 
-void MatchManager::sendCommand(const uint8_t* mac, int command, const char* matchId,
-                               long drawTime, bool isHunter) {
+uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* matchId,
+                                  long drawTime, bool isHunter) {
     MatchPacket packet{};
     packet.command = command;
     packet.playerDrawTime = drawTime;
@@ -39,7 +57,7 @@ void MatchManager::sendCommand(const uint8_t* mac, int command, const char* matc
     IdGenerator::copyId(packet.playerId, player->getUserID().c_str());
 
     LOG_I(MATCH_MANAGER_TAG, "Sending command %i to %s", command, MacToString(mac));
-    matchChannel.sendReliable(mac, packet);
+    return matchChannel.sendReliable(mac, packet);
 }
 
 MatchManager::~MatchManager() {
@@ -133,10 +151,10 @@ void MatchManager::receiveMatch(const char* matchId, const char* opponentId, boo
     }
 
     auto* clock = SimpleTimer::getPlatformClock();
-    LOG_D(MATCH_MANAGER_TAG, "TIMING receiveMatch-ready T=%lu", clock ? clock->milliseconds() : 0UL);
+    LOG_D(MATCH_MANAGER_TAG, "TIMING receiveMatch-ackSent T=%lu",
+          clock ? clock->milliseconds() : 0UL);
 
-    activeMatchState.matchIsReady = true;
-
+    activeMatchState.pendingAckSeqId =
     sendCommand(activeMatchState.opponentMac.data(), MatchCmd::MATCH_ID_ACK,
                 activeMatchState.match->getMatchId(), 0, activeMatchState.localIsHunter);
 }
@@ -188,13 +206,15 @@ bool MatchManager::finalizeMatch() {
         return false;
     }
 
-    // Snapshot times for the result screen (before clearCurrentMatch wipes the match).
+    // The whole result-screen snapshot is taken here, before clearCurrentMatch wipes the match.
     lastMatchDisplay.myTimeMs = activeMatchState.localIsHunter
                                 ? activeMatchState.match->getHunterDrawTime()
                                 : activeMatchState.match->getBountyDrawTime();
     lastMatchDisplay.opponentTimeMs = activeMatchState.localIsHunter
                                       ? activeMatchState.match->getBountyDrawTime()
                                       : activeMatchState.match->getHunterDrawTime();
+    lastMatchDisplay.boostMs = activeMatchState.boostMs;
+    lastMatchDisplay.penaltyMs = activeMatchState.penaltyMs;
     lastMatchDisplay.hasData = true;
 
     std::string matchId = activeMatchState.match->getMatchId();
@@ -387,16 +407,16 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
 
         unsigned long reactionTimeMs = now - matchManager->getMatchLocalStartTime();
 
-        if (activeMatchState->buttonMasherCount > 0) {
-            reactionTimeMs = reactionTimeMs + activeMatchState->calculateButtonMasherPenalty();
-        }
+        const unsigned long penaltyMs = activeMatchState->calculateButtonMasherPenalty();
+        reactionTimeMs += penaltyMs;
 
         unsigned long boost = matchManager->boostProvider_ ? matchManager->boostProvider_() : 0;
         unsigned long boostedTimeMs = (boost >= reactionTimeMs) ? 0 : (reactionTimeMs - boost);
 
         // Snapshot boost at press time so the result screen can display it
         // even if supporters unplug before the match finalizes.
-        matchManager->lastMatchDisplay.boostMs = boost;
+        activeMatchState->boostMs = boost;
+        activeMatchState->penaltyMs = penaltyMs;
 
         LOG_I(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms (boost %lu) for %s",
               boostedTimeMs, boost, activeMatchState->localIsHunter ? "Hunter" : "Bounty");
@@ -461,6 +481,7 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
     } else if (command.command == MatchCmd::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
+        if (activeMatchState.matchIsReady || activeMatchState.pendingAckSeqId != 0) return;
         matchChannel.cancel(activeMatchState.opponentMac.data());
         if (activeMatchState.localIsHunter) {
             activeMatchState.match->setBountyId(command.playerId);
@@ -473,6 +494,7 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
     } else if (command.command == MatchCmd::MATCH_ROLE_MISMATCH) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ROLE_MISMATCH command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
+        if (activeMatchState.matchIsReady || activeMatchState.pendingAckSeqId != 0) return;
         clearCurrentMatch();
         return;
     } else if (command.command == MatchCmd::DRAW_RESULT ||

@@ -4,7 +4,6 @@
 #include "game/posse-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/device.hpp"
-#include <cstdio>
 
 Lose::Lose(const GameContext& ctx)
     : TypedState<PDN>(LOSE)
@@ -25,26 +24,7 @@ void Lose::onStateMounted(PDN* pdn) {
         ->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOSE));
 
     if (matchManager != nullptr) {
-        const LastMatchDisplay& d = matchManager->getLastMatchDisplay();
-        if (d.hasData) {
-            pdn->getDisplay()->drawImage(Image(image_stats_card, 60, 64, 0, 0));
-            char myLine[16];
-            // "Boost: " plus any 32-bit %lu, so the size does not depend on the divisor.
-            char boostLine[18];
-            char oppLine[16];
-            snprintf(myLine, sizeof(myLine), "You:%4lu", d.myTimeMs);
-            snprintf(oppLine, sizeof(oppLine), "Opp:%4lu", d.opponentTimeMs);
-            pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
-                ->drawText(myLine, 2, 12);
-            if (d.boostMs > 0) {
-                unsigned long boosts = d.boostMs / PosseManager::BOOST_PER_SUPPORTER_MS;
-                snprintf(boostLine, sizeof(boostLine), "Boost: %lu", boosts);
-                pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
-                    ->drawText(boostLine, 2, 28);
-            }
-            pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
-                ->drawText(oppLine, 2, 44);
-        }
+        renderLastMatchStats(pdn->getDisplay(), matchManager->getLastMatchDisplay());
     }
 
     pdn->getDisplay()->render();
