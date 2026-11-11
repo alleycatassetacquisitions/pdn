@@ -540,8 +540,6 @@ private:
     SymbolWirelessManager* symbolWirelessManager;
     PDN* mountedPdn = nullptr;
     uint8_t* fdnMac = nullptr;
-    /** PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN). */
-    SerialIdentifier pdnJackToFdn = SerialIdentifier::OUTPUT_JACK;
     SymbolId fdnSymbol;
 
     SimpleTimer renderTimer;

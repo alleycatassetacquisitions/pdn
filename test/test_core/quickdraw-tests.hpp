@@ -1652,6 +1652,62 @@ inline void receivedResultLeavesTheMatchAloneWhenDisconnected(StateCleanupTests*
         << "the state cleared a match the app had not finished with";
 }
 
+inline void idleEntersSymbolOnlyFromTheOutputJack(StateCleanupTests* suite) {
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    Idle idleState(suite->ctx);
+
+    rdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
+    EXPECT_FALSE(idleState.transitionToSymbol())
+    << "SymbolState only talks to an FDN on the output jack; entering from the input jack "
+       "bounces straight back to Idle";
+
+    rdc.setPeerDeviceType(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN);
+    EXPECT_TRUE(idleState.transitionToSymbol());
+}
+
+// A dismount that waits on the platform clock never returns under the fake clock, so in this
+// test and the next, returning is the assertion.
+inline void symbolStateLeavesForIdleWithoutBlocking(StateCleanupTests* suite) {
+    SymbolWirelessManager symbolWireless(suite->device.wirelessManager,
+                                         &suite->device.fakeRemoteDeviceCoordinator);
+    suite->ctx.symbolWirelessManager = &symbolWireless;
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    uint8_t fdnMac[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    rdc.setPeerDeviceType(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN);
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, fdnMac);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
+    .Times(testing::AnyNumber());
+
+    SymbolState symbolState(suite->ctx);
+    symbolState.onStateMounted(&suite->device);
+    rdc.setPeerDeviceType(SerialIdentifier::OUTPUT_JACK, DeviceType::UNKNOWN);
+    suite->fakeClock->advance(501);
+    symbolState.onStateLoop(&suite->device);
+    ASSERT_TRUE(symbolState.transitionToIdle());
+
+    symbolState.onStateDismounted(&suite->device);
+}
+
+inline void symbolMatchedLeavesForIdleWithoutBlocking(StateCleanupTests* suite) {
+    SymbolWirelessManager symbolWireless(suite->device.wirelessManager,
+                                         &suite->device.fakeRemoteDeviceCoordinator);
+    suite->ctx.symbolWirelessManager = &symbolWireless;
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    rdc.setPeerDeviceType(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN);
+    EXPECT_CALL(*suite->device.mockDisplay, whiteScreen())
+    .WillRepeatedly(Return(suite->device.mockDisplay));
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockHaptics, off()).Times(testing::AnyNumber());
+
+    SymbolMatched symbolMatched(suite->ctx);
+    symbolMatched.onStateMounted(&suite->device);
+    rdc.setPeerDeviceType(SerialIdentifier::OUTPUT_JACK, DeviceType::UNKNOWN);
+    symbolMatched.onStateLoop(&suite->device);
+    ASSERT_TRUE(symbolMatched.transitionToIdle());
+
+    symbolMatched.onStateDismounted(&suite->device);
+}
+
 // ============================================
 // GameSession lifecycle — exercises ctor + dtor so the native_asan env
 // catches leaks in the managers the session owns (matchManager,
