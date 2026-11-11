@@ -29,6 +29,7 @@
 #include "symbol-wireless-tests.hpp"
 #include "crash-codec-tests.hpp"
 #include "device-player-codec-tests.hpp"
+#include "fdn-provisioning-tests.hpp"
 #include "player-fetch-tests.hpp"
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
@@ -1111,6 +1112,26 @@ TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
 
 TEST_F(PlayerFetchTestSuite, reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged) {
     reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged(this);
+}
+
+TEST_F(FdnProvisioningTests, dropsMalformedOrUncabledProvisionRequest) {
+    fdnDropsMalformedOrUncabledProvisionRequest(this);
+}
+
+TEST_F(FdnProvisioningTests, cancelledLookupLeavesWifiAtOnce) {
+    fdnCancelledLookupLeavesWifiAtOnce(this);
+}
+
+TEST_F(FdnProvisioningTests, seesUnprovisionedPdnUntilItRegisters) {
+    fdnSeesUnprovisionedPdnUntilItRegisters(this);
+}
+
+TEST_F(FdnProvisioningTests, holdsLookupsWhileRegisteredPdnPlays) {
+    fdnHoldsLookupsWhileRegisteredPdnPlays(this);
+}
+
+TEST_F(FdnProvisioningTests, reportsLookupResultAndResendsUnconfirmedReply) {
+    fdnReportsLookupResultAndResendsUnconfirmedReply(this);
 }
 
 // ============================================
