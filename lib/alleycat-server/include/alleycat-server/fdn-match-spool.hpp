@@ -22,12 +22,8 @@ static_assert(FDN_MATCH_SPOOL_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_B
               "one upload must be able to drain the whole spool");
 
 /**
- * FDN persistent 64-slot match spool and batch uploader.
- *
- * Accepts MatchRecordPackets over PktType::kMatchCollection only from a PDN that is
- * Connected on an FDN jack, persists up to 64 records in NVS, acknowledges each
- * persisted record over PktType::kMatchCollectionAck (withholding the ack when full),
- * and uploads staged records through POST /quickdraw-matches when asked.
+ * FDN's NVS-backed spool of collected matches: acks a cabled PDN's record only once
+ * it is persisted, and uploads the spool as one batch.
  */
 class FdnMatchSpool {
 public:
@@ -38,35 +34,23 @@ public:
         , storage(storage)
         , rdc(rdc) {
         loadStagedUuids();
-        if (this->wirelessManager) {
-            this->wirelessManager->setEspNowPacketHandler(
-            PktType::kMatchCollection,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                static_cast<FdnMatchSpool*>(ctx)->onMatchRecord(fromMac, data, dataLen);
-            },
-            this);
-        }
+        wirelessManager->setEspNowPacketHandler(
+        PktType::kMatchCollection,
+        [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
+            static_cast<FdnMatchSpool*>(ctx)->onMatchRecord(fromMac, data, dataLen);
+        },
+        this);
     }
 
     /** Clears the kMatchCollection packet handler on destruction. */
-    ~FdnMatchSpool() {
-        if (wirelessManager) {
-            wirelessManager->clearEspNowPacketHandler(PktType::kMatchCollection);
-        }
-    }
+    ~FdnMatchSpool() { wirelessManager->clearEspNowPacketHandler(PktType::kMatchCollection); }
 
-    /** @return Number of staged matches awaiting upload (0..64). */
+    /** @return Number of staged matches awaiting upload. */
     size_t getStagedCount() const { return getTail() - getHead(); }
-
-    /** Reads the staged match at @p offset from the oldest staged record. */
-    bool readStagedMatch(size_t offset, Match& out) const {
-        if (offset >= getStagedCount()) return false;
-        return readSlot(getHead() + static_cast<uint32_t>(offset), out);
-    }
 
     /** Handles an inbound MatchRecordPacket from a Connected PDN. */
     void onMatchRecord(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-        if (!storage || !rdc || !rdc->isConnectedPeer(DeviceType::PDN, fromMac)) {
+        if (!rdc->isConnectedPeer(DeviceType::PDN, fromMac)) {
             return;
         }
         if (!data || dataLen != sizeof(MatchRecordPacket)) {
@@ -95,31 +79,27 @@ public:
     }
 
     /**
-     * Uploads the staged matches as one POST /quickdraw-matches batch. The server
-     * keeps the first report of a match ID, so a batch is retired on any decodable
-     * response, rejections included, and kept for retry on any error, an
-     * undecodable response included.
+     * Uploads the staged matches as one POST /quickdraw-matches batch. Any decodable
+     * response retires the batch: its matches are stored, already stored, or
+     * rejected for good. Any error, an undecodable response included, keeps the
+     * batch; the server never overwrites a stored match, so the retry is safe.
      *
-     * @return false when nothing was queued; @p onComplete then never fires.
+     * @return false when no upload was attempted because nothing readable is staged;
+     * @p onComplete then never fires. Otherwise it may fire before this returns.
      */
     bool uploadPendingBatch(const std::function<void(bool uploaded)>& onComplete) {
-        if (!wirelessManager || !storage || uploadInFlight) {
-            return false;
-        }
         dropUnreadableHead();
         // Stop short of an unreadable record so it fails no batch; once the records
         // ahead of it are retired it is the head, and dropUnreadableHead discards it.
-        size_t batchCount = 0;
+        const uint32_t batchHead = getHead();
+        uint32_t batchCount = 0;
         Match probe{};
-        while (batchCount < getStagedCount() && readStagedMatch(batchCount, probe)) {
+        while (batchCount < getStagedCount() && readSlot(batchHead + batchCount, probe)) {
             ++batchCount;
         }
         if (batchCount == 0) {
             return false;
         }
-
-        const uint32_t batchHead = getHead();
-        uploadInFlight = true;
 
         MatchesApi::uploadQuickdrawMatches(
         wirelessManager, batchCount,
@@ -139,14 +119,16 @@ public:
                   static_cast<int>(rejection.rawCode));
         },
         [this, batchHead, batchCount, onComplete](const QuickdrawUploadResult&) {
-            storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY,
-                               batchHead + static_cast<uint32_t>(batchCount));
-            uploadInFlight = false;
+            if (storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY,
+                                   batchHead + batchCount) == sizeof(uint32_t)) {
+                for (uint32_t index = batchHead; index < batchHead + batchCount; ++index) {
+                    eraseSlot(index);
+                }
+            }
             if (onComplete) onComplete(true);
         },
-        [this, onComplete](const WirelessErrorInfo& error) {
+        [onComplete](const WirelessErrorInfo& error) {
             LOG_W("FDN_SPOOL", "Match upload failed: %s", error.message.c_str());
-            uploadInFlight = false;
             if (onComplete) onComplete(false);
         });
         return true;
@@ -154,12 +136,11 @@ public:
 
 private:
     uint32_t getTail() const {
-        return storage ? storage->readUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_TAIL_KEY, 0) : 0;
+        return storage->readUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_TAIL_KEY, 0);
     }
 
     // Clamped so a torn head/tail pair from NVS corruption reads as at most a full spool.
     uint32_t getHead() const {
-        if (!storage) return 0;
         const uint32_t tail = getTail();
         const uint32_t head = storage->readUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, 0);
         if (head > tail) return tail;
@@ -186,23 +167,32 @@ private:
         return true;
     }
 
+    // A retired record's blob still takes NVS entries until its key is erased, and
+    // a full spool of them is most of the partition.
+    void eraseSlot(uint32_t index) {
+        char key[16];
+        slotKey(index, key);
+        storage->remove(FDN_MATCH_SPOOL_NAMESPACE, key);
+    }
+
     // An unreadable record would fail every batch it heads, so it is dropped instead.
     void dropUnreadableHead() {
         Match probe{};
         while (getStagedCount() > 0 && !readSlot(getHead(), probe)) {
+            const uint32_t head = getHead();
             LOG_E("FDN_SPOOL", "Dropping unreadable spool slot %u",
-                  static_cast<unsigned>(getHead() % FDN_MATCH_SPOOL_CAPACITY));
-            if (storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, getHead() + 1) !=
+                  static_cast<unsigned>(head % FDN_MATCH_SPOOL_CAPACITY));
+            if (storage->writeUInt(FDN_MATCH_SPOOL_NAMESPACE, SPOOL_HEAD_KEY, head + 1) !=
                 sizeof(uint32_t)) {
                 return;
             }
+            eraseSlot(head);
         }
     }
 
     // NVS stays the record of truth; this copy only spares the per-resend dedup a
     // slot-by-slot NVS scan. Retired slots fall outside [head, tail) and need no upkeep.
     void loadStagedUuids() {
-        if (!storage) return;
         const uint32_t tail = getTail();
         for (uint32_t index = getHead(); index < tail; ++index) {
             Match staged{};
@@ -243,6 +233,5 @@ private:
     WirelessManager* wirelessManager = nullptr;
     StorageInterface* storage = nullptr;
     RemoteDeviceCoordinator* rdc = nullptr;
-    bool uploadInFlight = false;
     UUIDBytes stagedUuids[FDN_MATCH_SPOOL_CAPACITY] = {};
 };

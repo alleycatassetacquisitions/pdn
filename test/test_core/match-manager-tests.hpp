@@ -937,7 +937,6 @@ TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
     const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
     const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x02};
 
-    // Route records PDN-to-FDN and acks FDN-to-PDN
     ON_CALL(*device.mockPeerComms, sendData(_, PktType::kMatchCollection, _, _))
     .WillByDefault(::testing::Invoke(
     [&fdnDevice, &pdnMac](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
@@ -953,7 +952,6 @@ TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
         return 1;
     }));
 
-    // Finalize one match on the PDN
     setupMatchAsBounty("11111111-2222-4000-8000-333333333333");
     matchManager->setHunterDrawTime(180);
     matchManager->setBountyDrawTime(120);
@@ -971,7 +969,6 @@ TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
                                                 sizeof(forgedAck));
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
 
-    // Connect PDN and FDN on their serial jacks
     fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
     fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
     fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
@@ -980,12 +977,10 @@ TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
     fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
     fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
 
-    // Sync transfers the match to the FDN spool and its ack advances getCollectedHighWaterMark()
     matchManager->sync();
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 1u);
     EXPECT_EQ(fdnSpool.getStagedCount(), 1u);
 
-    // Batch upload from FDN spool: server error retains spool; 204 retires spool
     std::vector<HttpRequest> httpRequests;
     ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
     .WillByDefault(::testing::Invoke([&httpRequests](HttpRequest&& req) {
@@ -1004,10 +999,13 @@ TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
     httpRequests.clear();
     ASSERT_TRUE(fdnSpool.uploadPendingBatch(onComplete));
     ASSERT_EQ(httpRequests.size(), 1u);
-    httpRequests[0].onSuccess("");  // HTTP 204 empty body
+    httpRequests[0].onSuccess("");
     EXPECT_EQ(fdnSpool.getStagedCount(), 0u) << "HTTP 204 must retire uploaded batch";
     EXPECT_EQ(outcomes, (std::vector<bool>{false, true}));
-    matchManager->initialize(player, &mockStorage);
+    uint8_t retired[MATCH_BINARY_SIZE] = {};
+    EXPECT_EQ(fdnPrefs.readBytes(FDN_MATCH_SPOOL_NAMESPACE, "spool_0", retired, sizeof(retired)),
+              0u)
+    << "a retired record still holds its NVS entries";
 }
 
 TEST_F(MatchManagerTestSuite, fdnSpoolWithholdsAckWhenFullAt64Records) {
@@ -1091,7 +1089,6 @@ TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {
     device.mockPeerComms->triggerPacketCallback(fdnMac, PktType::kMatchCollectionAck, longAck,
                                                 sizeof(longAck));
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
-    matchManager->initialize(player, &mockStorage);
 }
 
 TEST_F(MatchManagerTestSuite, fdnSpoolDropsUnreadableHeadInsteadOfFailingEveryBatch) {

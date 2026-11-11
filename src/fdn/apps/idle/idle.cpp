@@ -13,11 +13,10 @@ IdleApp::IdleApp(RemotePlayerManager* remotePlayerManager,
     , fdnProvisioningManager(fdnProvisioningManager) {}
 
 void IdleApp::populateStateMap() {
-    auto* idleState =
-    new IdleState(remotePlayerManager, remoteDeviceCoordinator, fdnMatchSpool, &uploadTimer);
+    auto* idleState = new IdleState(remotePlayerManager, remoteDeviceCoordinator, fdnMatchSpool);
     auto* playerDetectedState =
     new PlayerDetectedState(remotePlayerManager, remoteDeviceCoordinator);
-    auto* uploadPendingState = new UploadPendingState(fdnMatchSpool, &uploadTimer);
+    auto* uploadPendingState = new UploadPendingState(fdnMatchSpool);
     auto* registrationState =
     new RegistrationState(fdnProvisioningManager, remoteDeviceCoordinator);
 

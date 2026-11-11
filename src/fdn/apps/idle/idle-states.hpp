@@ -27,8 +27,7 @@ class IdleState : public FDNConnectState {
 public:
     /** FDN home screen; also schedules match spool uploads. */
     IdleState(RemotePlayerManager* remotePlayerManager,
-              RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
-              SimpleTimer* uploadTimer);
+              RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool);
     ~IdleState();
 
     void onStateMounted(FDN* fdn) override;
@@ -42,7 +41,7 @@ public:
 private:
     RemotePlayerManager* remotePlayerManager;
     FdnMatchSpool* fdnMatchSpool;
-    SimpleTimer* uploadTimer;
+    SimpleTimer uploadTimer;
 };
 
 // ---------------------------------------------------------------------------
@@ -124,8 +123,8 @@ private:
 class UploadPendingState : public TypedState<FDN> {
 public:
     /** Uploads the staged match spool records over Wi-Fi. */
-    UploadPendingState(FdnMatchSpool* fdnMatchSpool, SimpleTimer* uploadTimer);
-    /** @copydoc TypedState::~TypedState */
+    explicit UploadPendingState(FdnMatchSpool* fdnMatchSpool);
+    /** Non-owning; nothing to release. */
     ~UploadPendingState();
 
     /** Queues one upload batch and shows the loading screen. */
@@ -135,18 +134,17 @@ public:
     /** Returns the radio to ESP-NOW and resets the upload phase. */
     void onStateDismounted(FDN* fdn) override;
 
-    /** @return true when nothing was queued, the upload succeeded, or the failure screen ended. */
+    /** @return true when no upload was attempted, it succeeded, or the failure screen ended. */
     bool transitionToIdle();
 
 private:
     FdnMatchSpool* fdnMatchSpool;
-    SimpleTimer* uploadTimer;
 
     SimpleTimer glyphTimer;
     SimpleTimer fallbackTimer;
     SimpleTimer failureTimer;
-    enum class Phase : uint8_t { NOT_QUEUED, UPLOADING, UPLOADED, FAILED, SHOWING_FAILURE };
-    Phase phase = Phase::NOT_QUEUED;
+    enum class Phase : uint8_t { NOT_STARTED, UPLOADING, UPLOADED, FAILED, SHOWING_FAILURE };
+    Phase phase = Phase::NOT_STARTED;
     bool contentReady = false;
 
     static constexpr int FALLBACK_TIMEOUT_MS = 15000;

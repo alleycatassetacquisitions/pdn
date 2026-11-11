@@ -5,17 +5,14 @@
 #define TAG "IDLE_STATE"
 
 IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
-                     RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
-                     SimpleTimer* uploadTimer)
+                     RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::IDLE)
     , remotePlayerManager(remotePlayerManager)
-    , fdnMatchSpool(fdnMatchSpool)
-    , uploadTimer(uploadTimer) {}
+    , fdnMatchSpool(fdnMatchSpool) {}
 
 IdleState::~IdleState() {
     remotePlayerManager = nullptr;
     fdnMatchSpool = nullptr;
-    uploadTimer = nullptr;
 }
 
 void IdleState::onStateMounted(FDN* fdn) {
@@ -24,8 +21,8 @@ void IdleState::onStateMounted(FDN* fdn) {
     remotePlayerManager->consumePacketReceived();
 
     // Not restarted per mount: idle remounts after every alert and cabled session.
-    if (!uploadTimer->isRunning()) {
-        uploadTimer->setTimer(UPLOAD_CHECK_INTERVAL_MS);
+    if (!uploadTimer.isRunning()) {
+        uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
     }
 
     fdn->getDisplay()
@@ -37,14 +34,18 @@ void IdleState::onStateMounted(FDN* fdn) {
 void IdleState::onStateLoop(FDN* fdn) {
     (void)fdn;
     remotePlayerManager->Update();
-    if (uploadTimer->expired() && fdnMatchSpool->getStagedCount() == 0) {
-        uploadTimer->setTimer(UPLOAD_CHECK_INTERVAL_MS);
+    if (uploadTimer.expired() && fdnMatchSpool->getStagedCount() == 0) {
+        uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
     }
 }
 
 void IdleState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
     (void)fdn;
+    // One upload attempt per cycle, whatever its outcome.
+    if (uploadTimer.expired()) {
+        uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
+    }
 }
 
 bool IdleState::transitionToPlayerDetected() {
@@ -52,5 +53,5 @@ bool IdleState::transitionToPlayerDetected() {
 }
 
 bool IdleState::transitionToUploadPending() {
-    return uploadTimer->expired() && fdnMatchSpool->getStagedCount() > 0;
+    return uploadTimer.expired() && fdnMatchSpool->getStagedCount() > 0;
 }

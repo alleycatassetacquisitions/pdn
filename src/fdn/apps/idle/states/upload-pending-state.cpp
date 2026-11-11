@@ -4,15 +4,11 @@
 
 #define TAG "UPLOAD_PENDING"
 
-UploadPendingState::UploadPendingState(FdnMatchSpool* fdnMatchSpool, SimpleTimer* uploadTimer)
+UploadPendingState::UploadPendingState(FdnMatchSpool* fdnMatchSpool)
     : TypedState<FDN>(IdleStateId::UPLOAD_PENDING)
-    , fdnMatchSpool(fdnMatchSpool)
-    , uploadTimer(uploadTimer) {}
+    , fdnMatchSpool(fdnMatchSpool) {}
 
-UploadPendingState::~UploadPendingState() {
-    fdnMatchSpool = nullptr;
-    uploadTimer = nullptr;
-}
+UploadPendingState::~UploadPendingState() { fdnMatchSpool = nullptr; }
 
 void UploadPendingState::onStateMounted(FDN* fdn) {
     contentReady = false;
@@ -20,21 +16,19 @@ void UploadPendingState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted — %u staged match(es)",
           static_cast<unsigned>(fdnMatchSpool->getStagedCount()));
 
-    // One attempt per cycle, whatever its outcome.
-    uploadTimer->setTimer(UPLOAD_CHECK_INTERVAL_MS);
-    // One request carries the batch; queuing it switches the radio to Wi-Fi.
-    // Set first: a request that fails to queue completes inside uploadPendingBatch. A
-    // completion after the fallback timeout or dismount is ignored.
+    // Drawn first: queuing the request switches the radio to Wi-Fi and blocks while it joins.
+    fallbackTimer.setTimer(FALLBACK_TIMEOUT_MS);
+    glyphTimer.setTimer(GLYPH_LOADING_DURATION_MS);
+    showLoadingGlyphs(fdn->getDisplay());
+
+    // UPLOADING is set first because a request that fails to queue completes inside
+    // uploadPendingBatch; a completion after the fallback timeout or dismount is ignored.
     phase = Phase::UPLOADING;
     if (!fdnMatchSpool->uploadPendingBatch([this](bool uploaded) {
             if (phase == Phase::UPLOADING) phase = uploaded ? Phase::UPLOADED : Phase::FAILED;
         })) {
-        phase = Phase::NOT_QUEUED;
+        phase = Phase::NOT_STARTED;
     }
-
-    fallbackTimer.setTimer(FALLBACK_TIMEOUT_MS);
-    glyphTimer.setTimer(GLYPH_LOADING_DURATION_MS);
-    showLoadingGlyphs(fdn->getDisplay());
 }
 
 void UploadPendingState::onStateLoop(FDN* fdn) {
@@ -67,14 +61,16 @@ void UploadPendingState::onStateLoop(FDN* fdn) {
 void UploadPendingState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted — upload %s", phase == Phase::UPLOADED ? "done" : "not done");
     fdn->getWirelessManager()->enablePeerCommsMode();
+    // A fast upload leaves before the loading glyphs hand the display back to text.
+    fdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     glyphTimer.invalidate();
     fallbackTimer.invalidate();
     failureTimer.invalidate();
     contentReady = false;
-    phase = Phase::NOT_QUEUED;
+    phase = Phase::NOT_STARTED;
 }
 
 bool UploadPendingState::transitionToIdle() {
     if (phase == Phase::SHOWING_FAILURE) return failureTimer.expired();
-    return phase == Phase::NOT_QUEUED || phase == Phase::UPLOADED;
+    return phase == Phase::NOT_STARTED || phase == Phase::UPLOADED;
 }
