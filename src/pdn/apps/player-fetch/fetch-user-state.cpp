@@ -23,11 +23,6 @@ FetchUserState::~FetchUserState() {
 void FetchUserState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - requesting provisioning for PIN %s",
           playerProvider->getRegistrationPin());
-    showingFailurePage = false;
-    failurePagePending = false;
-    transitionToWelcomeState = false;
-    transitionToPinEntryState = false;
-    requestEverSent = false;
     remoteDeviceCoordinator = pdn->getRemoteDeviceCoordinator();
     provisioningClient->setOnReply(
     [this](const uint8_t* fromMac, const PlayerProvisionPacket& pkt) {
@@ -82,9 +77,7 @@ void FetchUserState::onStateDismounted(PDN* pdn) {
 }
 
 void FetchUserState::requestProvisionFromCabledFdn() {
-    const uint8_t* fdnMac = remoteDeviceCoordinator != nullptr
-                            ? remoteDeviceCoordinator->getConnectedPeerMac(DeviceType::FDN)
-                            : nullptr;
+    const uint8_t* fdnMac = remoteDeviceCoordinator->getConnectedPeerMac(DeviceType::FDN);
     if (fdnMac == nullptr) {
         return;
     }
@@ -97,8 +90,8 @@ void FetchUserState::requestProvisionFromCabledFdn() {
 }
 
 void FetchUserState::onProvisionPacket(const uint8_t* fromMac, const PlayerProvisionPacket& pkt) {
-    if (remoteDeviceCoordinator == nullptr ||
-        !remoteDeviceCoordinator->isConnectedPeer(DeviceType::FDN, fromMac)) {
+    if (showingFailurePage || failurePagePending) return;
+    if (!remoteDeviceCoordinator->isConnectedPeer(DeviceType::FDN, fromMac)) {
         LOG_W(TAG, "Ignoring PlayerProvisionPacket from non-cabled sender");
         return;
     }

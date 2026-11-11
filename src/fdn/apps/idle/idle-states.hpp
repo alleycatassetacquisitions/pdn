@@ -80,7 +80,7 @@ public:
     /** Status screen while an unprovisioned PDN is cabled: waiting, lookup, result. */
     RegistrationState(FdnProvisioningManager* fdnProvisioningManager,
                       RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    /** @copydoc TypedState::~TypedState */
+    /** Clears the lookup listener and drops the manager pointer. */
     ~RegistrationState();
 
     /** Shows the waiting screen and listens for the lookup result. */
@@ -90,7 +90,8 @@ public:
     /** Drops the lookup listener. */
     void onStateDismounted(FDN* fdn) override;
 
-    /** @return true on unplug, once a result has been shown, or once the PDN is provisioned. */
+    /** @return true when no jack is connected, once a result has been shown, or once no
+     * unprovisioned PDN is cabled. */
     bool transitionToIdle();
 
 private:

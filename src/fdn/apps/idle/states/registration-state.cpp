@@ -9,12 +9,15 @@ RegistrationState::RegistrationState(FdnProvisioningManager* fdnProvisioningMana
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::REGISTRATION)
     , fdnProvisioningManager(fdnProvisioningManager) {}
 
-RegistrationState::~RegistrationState() { fdnProvisioningManager = nullptr; }
+RegistrationState::~RegistrationState() {
+    fdnProvisioningManager->setOnLookupDone(nullptr);
+    fdnProvisioningManager->setLookupDuringPlayAllowed(false);
+    fdnProvisioningManager = nullptr;
+}
 
 void RegistrationState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted — unprovisioned PDN cabled");
-    screen = Screen::WAITING;
-    playerName.clear();
+    fdnProvisioningManager->setLookupDuringPlayAllowed(true);
     fdnProvisioningManager->setOnLookupDone([this](const char* name) {
         screen = name != nullptr ? Screen::WELCOME : Screen::FAILED;
         playerName = name != nullptr ? name : "";
@@ -25,8 +28,11 @@ void RegistrationState::onStateMounted(FDN* fdn) {
 }
 
 void RegistrationState::onStateLoop(FDN* fdn) {
-    if (screen == Screen::WAITING && fdnProvisioningManager->isLookupInFlight()) {
+    // A second PDN's lookup can start while the first PDN's result is still up;
+    // moving to LOOKING_UP stops the result timer from dismounting on top of it.
+    if (screen != Screen::LOOKING_UP && fdnProvisioningManager->isLookupInFlight()) {
         screen = Screen::LOOKING_UP;
+        resultTimer.invalidate();
         displayIsDirty = true;
     }
     if (displayIsDirty) {
@@ -38,8 +44,9 @@ void RegistrationState::onStateLoop(FDN* fdn) {
 void RegistrationState::onStateDismounted(FDN* fdn) {
     (void)fdn;
     fdnProvisioningManager->setOnLookupDone(nullptr);
-    // Nobody is left to answer: a lookup still running would hold the radio on
-    // Wi-Fi, and its late return to ESP-NOW would cut off whatever idle started next.
+    fdnProvisioningManager->setLookupDuringPlayAllowed(false);
+    // On the unplug exit a lookup can still be in flight; ending it here returns
+    // the radio to ESP-NOW instead of waiting out the deadline.
     fdnProvisioningManager->cancelLookup();
     resultTimer.invalidate();
     displayIsDirty = false;
@@ -49,8 +56,9 @@ void RegistrationState::onStateDismounted(FDN* fdn) {
 
 bool RegistrationState::transitionToIdle() {
     if (!isConnected()) return true;
+    if (fdnProvisioningManager->isLookupInFlight()) return false;
     if (screen == Screen::WELCOME || screen == Screen::FAILED) return resultTimer.expired();
-    return screen == Screen::WAITING && !fdnProvisioningManager->hasUnprovisionedPdnCabled();
+    return !fdnProvisioningManager->hasUnprovisionedPdnCabled();
 }
 
 void RegistrationState::render(FDN* fdn) {

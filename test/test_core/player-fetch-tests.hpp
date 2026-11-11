@@ -166,7 +166,8 @@ inline void fetchUserRequestsOnceFdnIsCabled(PlayerFetchTestSuite* suite) {
     suite->cableFdn(true);
     fetch.onStateLoop(&suite->device);
     fetch.onStateLoop(&suite->device);
-    EXPECT_EQ(suite->queuedRequests.size(), 1u) << "one request per mount";
+    EXPECT_EQ(suite->queuedRequests.size(), 1u)
+    << "a second loop does not re-send while the first request is in flight";
     fetch.onStateDismounted(&suite->device);
 }
 
@@ -240,6 +241,14 @@ inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* s
 
     fetch.onStateLoop(&suite->device);
     EXPECT_FALSE(fetch.transitionToPinEntry());
+
+    PlayerProvisionPacket late = makeProvisionPacket("Late");
+    strncpy(late.pin, "9999", sizeof(late.pin) - 1);
+    suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
+                                                       reinterpret_cast<const uint8_t*>(&late),
+                                                       sizeof(late));
+    EXPECT_FALSE(fetch.transitionToWelcome())
+    << "a late packet after the failure page started must not flip to welcome";
 
     suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
     fetch.onStateLoop(&suite->device);

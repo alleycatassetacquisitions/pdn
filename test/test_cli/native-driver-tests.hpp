@@ -972,7 +972,7 @@ public:
 };
 
 // Test: Cabled FDN provision transitions device from FetchUserData to WelcomeMessage
-void cliDeviceMockHttpFetchTransitions(CliCommandTestSuite* suite) {
+void cliDeviceCabledProvisionTransitions(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
     State* state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
@@ -1035,7 +1035,6 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
     ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::FETCH_USER);
 
-    // Deliver provision and run loops again — should transition to WelcomeMessage again
     cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
         suite->device.pdn->loop();

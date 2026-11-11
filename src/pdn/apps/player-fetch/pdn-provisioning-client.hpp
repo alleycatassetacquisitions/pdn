@@ -9,9 +9,8 @@
 #include "wireless/resender.hpp"
 
 /**
- * The PDN end of player provisioning: sends the entered PIN to the cabled FDN
- * and hands each PlayerProvisionPacket it answers with to the current listener.
- * Both directions ride reliable channels, so a frame the radio drops is resent.
+ * PDN end of player provisioning: sends the PIN over a reliable channel and
+ * forwards kPlayerProvision replies to the current listener.
  */
 class PdnProvisioningClient {
 public:
@@ -22,9 +21,6 @@ public:
         : resender(wirelessManager)
         , requestChannel(wirelessManager, &resender, PktType::kPlayerProvisionRequest, nullptr)
         , replyChannel(wirelessManager, &resender, PktType::kPlayerProvision, nullptr) {
-        replyChannel.onReceive([this](const uint8_t* fromMac, const PlayerProvisionPacket& pkt) {
-            if (onReply) onReply(fromMac, pkt);
-        });
         resender.setAbandonCallback(
         [this](PktType type, uint8_t, const uint8_t*, const uint8_t*, size_t) {
             if (type == PktType::kPlayerProvisionRequest) requestAbandoned = true;
@@ -42,16 +38,15 @@ public:
         requestChannel.sendReliable(fdnMac, request);
     }
 
-    /** @return true when the radio gave up on the last request; sendRequest clears it. */
+    /** @return true when the Resender gave up on the last request; sendRequest clears it. */
     bool isRequestAbandoned() const { return requestAbandoned; }
 
     /** Sets the reply listener; nullptr drops replies, so none land outside provisioning. */
-    void setOnReply(OnReply listener) { onReply = std::move(listener); }
+    void setOnReply(OnReply listener) { replyChannel.onReceive(std::move(listener)); }
 
 private:
     Resender resender;
     ReliableChannel<PlayerProvisionRequestPacket> requestChannel;
     ReliableChannel<PlayerProvisionPacket> replyChannel;
-    OnReply onReply;
     bool requestAbandoned = false;
 };

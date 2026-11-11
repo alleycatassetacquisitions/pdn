@@ -19,27 +19,20 @@ void IdleApp::populateStateMap() {
     new RegistrationState(fdnProvisioningManager, remoteDeviceCoordinator);
 
     FdnProvisioningManager* provisioning = fdnProvisioningManager;
-    auto toRegistration = [provisioning](FDNConnectState* state) {
-        return state->isConnected() && provisioning->hasUnprovisionedPdnCabled();
+    std::function<bool()> toRegistration = [provisioning]() {
+        return provisioning->hasUnprovisionedPdnCabled();
     };
-    auto toSymbolMatch = [provisioning](FDNConnectState* state) {
-        return state->isConnected() && provisioning->hasRegisteredPdnCabled() &&
-               !provisioning->hasUnprovisionedPdnCabled();
+    std::function<bool()> toSymbolMatch = [provisioning]() {
+        return provisioning->hasRegisteredPdnCabled() && !provisioning->hasUnprovisionedPdnCabled();
     };
 
-    idleState->addTransition(new StateTransition(
-    [idleState, toRegistration]() { return toRegistration(idleState); }, registrationState));
-    idleState->addAppTransition([idleState, toSymbolMatch]() { return toSymbolMatch(idleState); },
-                                StateId(SYMBOL_MATCH_APP_ID));
+    idleState->addTransition(new StateTransition(toRegistration, registrationState));
+    idleState->addAppTransition(toSymbolMatch, StateId(SYMBOL_MATCH_APP_ID));
     idleState->addTransition(new StateTransition(
     std::bind(&IdleState::transitionToPlayerDetected, idleState), playerDetectedState));
 
-    playerDetectedState->addTransition(new StateTransition(
-    [playerDetectedState, toRegistration]() { return toRegistration(playerDetectedState); },
-    registrationState));
-    playerDetectedState->addAppTransition(
-    [playerDetectedState, toSymbolMatch]() { return toSymbolMatch(playerDetectedState); },
-    StateId(SYMBOL_MATCH_APP_ID));
+    playerDetectedState->addTransition(new StateTransition(toRegistration, registrationState));
+    playerDetectedState->addAppTransition(toSymbolMatch, StateId(SYMBOL_MATCH_APP_ID));
     playerDetectedState->addTransition(new StateTransition(
     std::bind(&PlayerDetectedState::transitionToIdle, playerDetectedState), idleState));
 

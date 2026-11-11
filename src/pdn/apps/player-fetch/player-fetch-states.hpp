@@ -20,7 +20,7 @@ constexpr int FIRMWARE_UPDATE = 31;
 
 constexpr const char DEMO_PIN[] = "0000";
 constexpr unsigned long PLAYER_FETCH_FIRMWARE_HOLD_MS = 5000;
-constexpr int USER_DATA_FETCH_TIMEOUT_MS = 10000;
+constexpr int USER_DATA_FETCH_TIMEOUT_MS = PROVISION_REPLY_WAIT_MS;
 constexpr int FETCH_FAILURE_PAGE_TIMEOUT_MS = 3000;
 constexpr int WELCOME_MESSAGE_TIMEOUT_MS = 5000;
 
