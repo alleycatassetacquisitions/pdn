@@ -5,12 +5,14 @@
 #include "state/state.hpp"
 #include "device/fdn.hpp"
 #include "wireless/remote-player-manager.hpp"
+#include "alleycat-server/fdn-provisioning-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "utils/simple-timer.hpp"
 
 enum IdleStateId {
     IDLE = 0,
     PLAYER_DETECTED = 1,
+    REGISTRATION = 3,
 };
 
 // ---------------------------------------------------------------------------
@@ -68,4 +70,39 @@ private:
     const PlayerDetectionConfig WEAK_CFG   = { PlayerDetectedStrength::WEAK,   2500,  80 };
     const PlayerDetectionConfig MEDIUM_CFG = { PlayerDetectedStrength::MEDIUM, 2500, 150 };
     const PlayerDetectionConfig STRONG_CFG = { PlayerDetectedStrength::STRONG, 5000, 255 };
+};
+
+// ---------------------------------------------------------------------------
+// RegistrationState
+// ---------------------------------------------------------------------------
+class RegistrationState : public FDNConnectState {
+public:
+    /** Status screen while an unprovisioned PDN is cabled: waiting, lookup, result. */
+    RegistrationState(FdnProvisioningManager* fdnProvisioningManager,
+                      RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    /** @copydoc TypedState::~TypedState */
+    ~RegistrationState();
+
+    /** Shows the waiting screen and listens for the lookup result. */
+    void onStateMounted(FDN* fdn) override;
+    /** Redraws when the lookup starts or finishes. */
+    void onStateLoop(FDN* fdn) override;
+    /** Drops the lookup listener. */
+    void onStateDismounted(FDN* fdn) override;
+
+    /** @return true on unplug, once a result has been shown, or once the PDN is provisioned. */
+    bool transitionToIdle();
+
+private:
+    enum class Screen { WAITING, LOOKING_UP, WELCOME, FAILED };
+
+    void render(FDN* fdn);
+
+    FdnProvisioningManager* fdnProvisioningManager;
+    Screen screen = Screen::WAITING;
+    bool displayIsDirty = false;
+    std::string playerName;
+    SimpleTimer resultTimer;
+
+    static constexpr int RESULT_DISPLAY_MS = 3000;
 };
