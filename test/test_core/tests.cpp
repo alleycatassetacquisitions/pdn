@@ -1098,13 +1098,29 @@ TEST_F(PlayerFetchTestSuite, fetchUserRequestsLookupFromCabledFdn) {
     fetchUserRequestsLookupFromCabledFdn(this);
 }
 
+TEST_F(PlayerFetchTestSuite, fetchUserRequestsOnceFdnIsCabled) {
+    fetchUserRequestsOnceFdnIsCabled(this);
+}
+
 TEST_F(PlayerFetchTestSuite, fetchUserStoresProvisionedPlayerOnSuccess) {
     fetchUserStoresProvisionedPlayerOnSuccess(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserIgnoresUncabledOrMalformedProvision) {
+    fetchUserIgnoresUncabledOrMalformedProvision(this);
 }
 
 TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
     fetchUserFailureReturnsToPinAfterPageTimeout(this);
 }
+
+TEST_F(PlayerFetchTestSuite, fetchUserTimesOutWithoutFdn) { fetchUserTimesOutWithoutFdn(this); }
+
+TEST_F(PlayerFetchTestSuite, fetchUserResendsAbandonedRequestWithinOneReplyWindow) {
+    fetchUserResendsAbandonedRequestWithinOneReplyWindow(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fdnLookupDeadlineLeavesWifi) { fdnLookupDeadlineLeavesWifi(this); }
 
 TEST_F(PlayerFetchTestSuite, chooseTeamConfirmEntersHub) { chooseTeamConfirmEntersHub(this); }
 
