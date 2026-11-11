@@ -5,16 +5,28 @@
 #define TAG "IDLE_STATE"
 
 IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
-                     RemoteDeviceCoordinator* remoteDeviceCoordinator)
+                     RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
+                     SimpleTimer* uploadTimer)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::IDLE)
-    , remotePlayerManager(remotePlayerManager) {}
+    , remotePlayerManager(remotePlayerManager)
+    , fdnMatchSpool(fdnMatchSpool)
+    , uploadTimer(uploadTimer) {}
 
-IdleState::~IdleState() { remotePlayerManager = nullptr; }
+IdleState::~IdleState() {
+    remotePlayerManager = nullptr;
+    fdnMatchSpool = nullptr;
+    uploadTimer = nullptr;
+}
 
 void IdleState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted");
     fdn->getLightManager()->clear();
     remotePlayerManager->consumePacketReceived();
+
+    // Not restarted per mount: idle remounts after every alert and cabled session.
+    if (!uploadTimer->isRunning()) {
+        uploadTimer->setTimer(UPLOAD_CHECK_INTERVAL_MS);
+    }
 
     fdn->getDisplay()
         ->invalidateScreen()
@@ -25,6 +37,9 @@ void IdleState::onStateMounted(FDN* fdn) {
 void IdleState::onStateLoop(FDN* fdn) {
     (void)fdn;
     remotePlayerManager->Update();
+    if (uploadTimer->expired() && fdnMatchSpool->getStagedCount() == 0) {
+        uploadTimer->setTimer(UPLOAD_CHECK_INTERVAL_MS);
+    }
 }
 
 void IdleState::onStateDismounted(FDN* fdn) {
@@ -34,4 +49,8 @@ void IdleState::onStateDismounted(FDN* fdn) {
 
 bool IdleState::transitionToPlayerDetected() {
     return remotePlayerManager->consumePacketReceived();
+}
+
+bool IdleState::transitionToUploadPending() {
+    return uploadTimer->expired() && fdnMatchSpool->getStagedCount() > 0;
 }

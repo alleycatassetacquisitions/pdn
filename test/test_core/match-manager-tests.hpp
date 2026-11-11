@@ -1093,3 +1093,17 @@ TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
     matchManager->initialize(player, &mockStorage);
 }
+
+TEST(MatchesApiUpload, unqueuedRequestFailsClosed) {
+    ::testing::NiceMock<MockPeerComms> peerComms;
+    ::testing::NiceMock<MockHttpClient> httpClient;
+    ON_CALL(httpClient, queueRequest(::testing::_)).WillByDefault(::testing::Return(false));
+    WirelessManager wirelessManager(&peerComms, &httpClient);
+
+    bool errored = false;
+    MatchesApi::uploadQuickdrawMatches(
+    &wirelessManager, 1, [](size_t, QuickdrawMatchRecord&) { return true; },
+    [](const QuickdrawMatchRejection&) {}, [](const QuickdrawUploadResult&) {},
+    [&errored](const WirelessErrorInfo&) { errored = true; });
+    EXPECT_TRUE(errored) << "an unqueued upload must not leave its caller waiting";
+}

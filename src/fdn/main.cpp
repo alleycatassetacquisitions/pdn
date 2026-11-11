@@ -29,6 +29,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "apps/idle/idle.hpp"
 #include "apps/symbol-match/symbol-match.hpp"
 #include "apps/fdn-app-ids.hpp"
+#include "alleycat-server/fdn-match-spool.hpp"
 #include "alleycat-server/fdn-provisioning-manager.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
@@ -70,6 +71,7 @@ Player fdnPlayer = FDN_PLAYER;
 // Managers
 RemotePlayerManager* remotePlayerManager = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
+FdnMatchSpool* fdnMatchSpool = nullptr;
 FdnProvisioningManager* fdnProvisioningManager = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
@@ -119,7 +121,8 @@ static void setup() {
     wifiConfig    = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
-    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {CRASH_LOG_NAMESPACE});
+    storageDriver =
+    new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_MATCH_SPOOL_NAMESPACE, CRASH_LOG_NAMESPACE});
 
     DriverConfig fdnConfig = {
         {DISPLAY_DRIVER_NAME,              displayDriver},
@@ -145,6 +148,8 @@ static void setup() {
 
     symbolWirelessManager = new SymbolWirelessManager(fdn->getWirelessManager(),
                                                       fdn->getRemoteDeviceCoordinator());
+    fdnMatchSpool = new FdnMatchSpool(fdn->getWirelessManager(), fdn->getStorage(),
+                                      fdn->getRemoteDeviceCoordinator());
     fdnProvisioningManager =
     new FdnProvisioningManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
     fdn->setTickCallback([]() {
@@ -162,7 +167,7 @@ static void setup() {
 
     // Apps
     RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
-    auto* idleApp = new IdleApp(remotePlayerManager, rdc, fdnProvisioningManager);
+    auto* idleApp = new IdleApp(remotePlayerManager, rdc, fdnMatchSpool, fdnProvisioningManager);
     auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager, fdnProvisioningManager);
 
     // Splash screen

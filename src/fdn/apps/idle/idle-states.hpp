@@ -6,13 +6,18 @@
 #include "device/fdn.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "alleycat-server/fdn-provisioning-manager.hpp"
+#include "alleycat-server/fdn-match-spool.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "utils/simple-timer.hpp"
+
+/** How often idle checks the match spool for an upload. */
+constexpr unsigned long UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 enum IdleStateId {
     IDLE = 0,
     PLAYER_DETECTED = 1,
     REGISTRATION = 3,
+    UPLOAD_PENDING = 2,
 };
 
 // ---------------------------------------------------------------------------
@@ -20,9 +25,10 @@ enum IdleStateId {
 // ---------------------------------------------------------------------------
 class IdleState : public FDNConnectState {
 public:
-    /** FDN home screen. */
+    /** FDN home screen; also schedules match spool uploads. */
     IdleState(RemotePlayerManager* remotePlayerManager,
-              RemoteDeviceCoordinator* remoteDeviceCoordinator);
+              RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
+              SimpleTimer* uploadTimer);
     ~IdleState();
 
     void onStateMounted(FDN* fdn) override;
@@ -30,9 +36,13 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToPlayerDetected();
+    /** @return true once the upload timer has expired with matches staged. */
+    bool transitionToUploadPending();
 
 private:
     RemotePlayerManager* remotePlayerManager;
+    FdnMatchSpool* fdnMatchSpool;
+    SimpleTimer* uploadTimer;
 };
 
 // ---------------------------------------------------------------------------
@@ -106,4 +116,39 @@ private:
     SimpleTimer resultTimer;
 
     static constexpr int RESULT_DISPLAY_MS = 3000;
+};
+
+// ---------------------------------------------------------------------------
+// UploadPendingState  (no connection required, so it derives TypedState<FDN>)
+// ---------------------------------------------------------------------------
+class UploadPendingState : public TypedState<FDN> {
+public:
+    /** Uploads the staged match spool records over Wi-Fi. */
+    UploadPendingState(FdnMatchSpool* fdnMatchSpool, SimpleTimer* uploadTimer);
+    /** @copydoc TypedState::~TypedState */
+    ~UploadPendingState();
+
+    /** Queues one upload batch and shows the loading screen. */
+    void onStateMounted(FDN* fdn) override;
+    /** Shows the failure screen on an error or the fallback timeout. */
+    void onStateLoop(FDN* fdn) override;
+    /** Returns the radio to ESP-NOW and resets the upload phase. */
+    void onStateDismounted(FDN* fdn) override;
+
+    /** @return true when nothing was queued, the upload succeeded, or the failure screen ended. */
+    bool transitionToIdle();
+
+private:
+    FdnMatchSpool* fdnMatchSpool;
+    SimpleTimer* uploadTimer;
+
+    SimpleTimer glyphTimer;
+    SimpleTimer fallbackTimer;
+    SimpleTimer failureTimer;
+    enum class Phase : uint8_t { NOT_QUEUED, UPLOADING, UPLOADED, FAILED, SHOWING_FAILURE };
+    Phase phase = Phase::NOT_QUEUED;
+    bool contentReady = false;
+
+    static constexpr int FALLBACK_TIMEOUT_MS = 15000;
+    static constexpr int FAILURE_DISPLAY_MS = 2000;
 };
