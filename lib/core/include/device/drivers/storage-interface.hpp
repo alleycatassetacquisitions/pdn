@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 class StorageInterface {
@@ -20,4 +22,16 @@ public:
     virtual uint8_t readUChar(const std::string& ns, const std::string& key, uint8_t defaultValue) = 0;
     /** Stores one byte under `ns`. */
     virtual size_t writeUChar(const std::string& ns, const std::string& key, uint8_t value) = 0;
+    /** Reads a 32-bit unsigned integer back, or `defaultValue` when the key is unset. */
+    virtual uint32_t readUInt(const std::string& ns, const std::string& key,
+                              uint32_t defaultValue) = 0;
+    /** Stores a 32-bit unsigned integer under `ns`. */
+    virtual size_t writeUInt(const std::string& ns, const std::string& key, uint32_t value) = 0;
+    /** Stores `length` raw bytes under `ns`; returns `length` on success or 0 on failure. */
+    virtual size_t writeBytes(const std::string& ns, const std::string& key, const uint8_t* data,
+                              size_t length) = 0;
+    /** Reads up to `maxLength` raw bytes into `buffer`; returns bytes read or 0 when unset or
+     * larger than `maxLength`. */
+    virtual size_t readBytes(const std::string& ns, const std::string& key, uint8_t* buffer,
+                             size_t maxLength) = 0;
 };
