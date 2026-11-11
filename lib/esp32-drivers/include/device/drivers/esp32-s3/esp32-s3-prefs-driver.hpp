@@ -126,6 +126,63 @@ public:
         return sizeof(value);
     }
 
+    /** Reads a 32-bit unsigned integer back, or `defaultValue` when the key is unset. */
+    uint32_t readUInt(const std::string& ns, const std::string& key,
+                      uint32_t defaultValue) override {
+        nvs_handle_t handle = requireHandle(ns);
+        uint32_t value = 0;
+        if (nvs_get_u32(handle, key.c_str(), &value) != ESP_OK) {
+            return defaultValue;
+        }
+        return value;
+    }
+
+    /** Stores a 32-bit unsigned integer under `ns`. */
+    size_t writeUInt(const std::string& ns, const std::string& key, uint32_t value) override {
+        nvs_handle_t handle = requireHandle(ns);
+        if (nvs_set_u32(handle, key.c_str(), value) != ESP_OK) {
+            return 0;
+        }
+        if (nvs_commit(handle) != ESP_OK) {
+            return 0;
+        }
+        return sizeof(value);
+    }
+
+    /** Stores `length` raw bytes under `ns`; returns `length` on success or 0 on failure. */
+    size_t writeBytes(const std::string& ns, const std::string& key, const uint8_t* data,
+                      size_t length) override {
+        nvs_handle_t handle = requireHandle(ns);
+        if (data == nullptr || length == 0) {
+            return 0;
+        }
+        if (nvs_set_blob(handle, key.c_str(), data, length) != ESP_OK) {
+            return 0;
+        }
+        if (nvs_commit(handle) != ESP_OK) {
+            return 0;
+        }
+        return length;
+    }
+
+    /** Reads up to `maxLength` raw bytes into `buffer`; returns bytes read or 0. */
+    size_t readBytes(const std::string& ns, const std::string& key, uint8_t* buffer,
+                     size_t maxLength) override {
+        nvs_handle_t handle = requireHandle(ns);
+        if (buffer == nullptr || maxLength == 0) {
+            return 0;
+        }
+        size_t length = 0;
+        if (nvs_get_blob(handle, key.c_str(), nullptr, &length) != ESP_OK || length == 0 ||
+            length > maxLength) {
+            return 0;
+        }
+        if (nvs_get_blob(handle, key.c_str(), buffer, &length) != ESP_OK) {
+            return 0;
+        }
+        return length;
+    }
+
 private:
     nvs_handle_t requireHandle(const std::string& ns) {
         auto it = namespaceHandles.find(ns);

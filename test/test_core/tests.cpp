@@ -1013,6 +1013,10 @@ TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
     storageUCharRoundTripInRegisteredNamespace();
 }
 
+TEST(StorageDriver, uintAndBytesRoundTripInRegisteredNamespace) {
+    storageUIntAndBytesRoundTripInRegisteredNamespace();
+}
+
 // ============================================
 // CRASH CODEC TESTS
 // ============================================
