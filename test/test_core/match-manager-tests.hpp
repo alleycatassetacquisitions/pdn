@@ -63,11 +63,18 @@ public:
 
     // Creates a match from the bounty's perspective by synthesizing a
     // SEND_MATCH_ID command from a fake hunter, then reporting the MATCH_ID_ACK delivered.
+    // Both sides carry non-nil server player UUIDs, so the match is stored.
     void setupMatchAsBounty(const char* matchId = "test-match-id",
                             const char* hunterId = "hunt") {
-        player->setIsHunter(false);
+        UUIDBytes selfId{};
+        UUIDBytes::parse("0b0b0b0b-0000-4000-8000-000000000001", selfId);
+        Team bounty{};
+        strncpy(bounty.name, "Bounty", sizeof(bounty.name) - 1);
+        player->applyRegistrationProfile(selfId, "LocalBounty", bounty, {});
+        UUIDBytes hunterUuid{};
+        UUIDBytes::parse("0a0a0a0a-0000-4000-8000-000000000002", hunterUuid);
         static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-        MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, matchId, hunterId, 0, true);
+        MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, matchId, hunterId, 0, true, hunterUuid);
         matchManager->listenForMatchEvents(cmd);
         radioTap.confirmLastSend();
     }
@@ -689,4 +696,101 @@ TEST_F(MatchManagerTestSuite, initializeDropsRecordsFromBeforeTheRing) {
 
     EXPECT_EQ(prefs.read(MATCHES_PREFS_NAMESPACE, "match_40", ""), "");
     EXPECT_EQ(prefs.readUChar(MATCHES_PREFS_NAMESPACE, "count", 0), 0);
+}
+
+TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOpponent) {
+    NativePrefsDriver prefs("demo-prefs", {MATCHES_PREFS_NAMESPACE});
+    matchManager->initialize(player, &prefs);
+    UUIDBytes selfId{};
+    UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", selfId);
+    Team team{};
+    strncpy(team.name, "Bounty", sizeof(team.name) - 1);
+    player->applyRegistrationProfile(selfId, "LocalBounty", team, {});
+
+    static const uint8_t peerMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    // A demo opponent has no server id; the match runs but is never stored.
+    MatchCommand demoCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000001",
+                         "hunt", 0, true, UUIDBytes{}, UUIDBytes{});
+    matchManager->listenForMatchEvents(demoCmd);
+    ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
+    matchManager->setHunterDrawTime(300);
+    matchManager->setBountyDrawTime(200);
+    matchManager->setReceivedButtonPush();
+    matchManager->setReceivedDrawResult();
+    EXPECT_TRUE(matchManager->finalizeMatch());
+    EXPECT_FALSE(matchManager->getCurrentMatch().has_value());
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u) << "a demo match is never stored";
+
+    // Self playerUuid must be rejected
+    MatchCommand selfIdCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000002",
+                           "hunt", 0, true, selfId, UUIDBytes{});
+    matchManager->listenForMatchEvents(selfIdCmd);
+    EXPECT_FALSE(matchManager->getCurrentMatch().has_value());
+
+    // Distinct non-zero playerUuid is accepted
+    UUIDBytes distinctId{};
+    UUIDBytes::parse("aaaaaaaa-bbbb-4000-8000-cccccccccccc", distinctId);
+    MatchCommand validCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000003",
+                          "hunt", 0, true, distinctId, UUIDBytes{});
+    matchManager->listenForMatchEvents(validCmd);
+    ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterPlayerId(), distinctId);
+    EXPECT_EQ(matchManager->getCurrentMatch()->getBountyPlayerId(), selfId);
+    matchManager->initialize(player, &mockStorage);
+}
+
+// The record's winner must not depend on which device wrote it. didWin() cannot supply it:
+// on a tie it is false on both devices, and each would name the other.
+TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
+    NativePrefsDriver prefs("winner-prefs", {MATCHES_PREFS_NAMESPACE});
+    matchManager->initialize(player, &prefs);
+    UUIDBytes hunterUuid{};
+    UUIDBytes::parse("0a0a0a0a-0000-4000-8000-000000000002", hunterUuid);
+    UUIDBytes bountyUuid{};
+    UUIDBytes::parse("0b0b0b0b-0000-4000-8000-000000000001", bountyUuid);
+    static const uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    const auto finishOnBountyDevice = [&](unsigned long hunterMs, unsigned long bountyMs) {
+        setupMatchAsBounty("51111111-2222-4000-8000-333333333333", "hunt");
+        matchManager->setHunterDrawTime(hunterMs);
+        matchManager->setBountyDrawTime(bountyMs);
+        matchManager->setReceivedButtonPush();
+        matchManager->setReceivedDrawResult();
+        ASSERT_TRUE(matchManager->finalizeMatch());
+    };
+    const auto finishOnHunterDevice = [&](unsigned long hunterMs, unsigned long bountyMs) {
+        Team hunters{};
+        strncpy(hunters.name, "Hunter", sizeof(hunters.name) - 1);
+        player->applyRegistrationProfile(hunterUuid, "LocalHunter", hunters, {});
+        uint8_t mac[6];
+        memcpy(mac, opponentMac, 6);
+        matchManager->initializeMatch(mac);
+        MatchCommand ack(opponentMac, MatchCmd::MATCH_ID_ACK,
+                         matchManager->getCurrentMatch()->getMatchId(), "boun", 0, false,
+                         bountyUuid);
+        matchManager->listenForMatchEvents(ack);
+        matchManager->setHunterDrawTime(hunterMs);
+        matchManager->setBountyDrawTime(bountyMs);
+        matchManager->setReceivedButtonPush();
+        matchManager->setReceivedDrawResult();
+        ASSERT_TRUE(matchManager->finalizeMatch());
+    };
+
+    finishOnBountyDevice(180, 120);
+    finishOnHunterDevice(180, 120);
+    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 2u);
+    Match onBountyDevice{};
+    Match onHunterDevice{};
+    ASSERT_TRUE(matchManager->readMatchBySequence(1, onBountyDevice));
+    ASSERT_TRUE(matchManager->readMatchBySequence(2, onHunterDevice));
+    EXPECT_EQ(onBountyDevice.getWinnerPlayerId(), bountyUuid);
+    EXPECT_EQ(onHunterDevice.getWinnerPlayerId(), bountyUuid);
+
+    // Both players lose a tie, and the server takes no record without a winner.
+    finishOnBountyDevice(150, 150);
+    finishOnHunterDevice(150, 150);
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 2u)
+    << "a tie was stored, so each device named a different winner";
+    matchManager->initialize(player, &mockStorage);
 }

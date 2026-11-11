@@ -1,12 +1,16 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 
 #include "id-generator.hpp"
+#include "utils/uuid-bytes.hpp"
 
 struct MatchPacket {
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
     char playerId[5];
+    uint8_t playerUuid[UUIDBytes::SIZE];
+    uint8_t teamUuid[UUIDBytes::SIZE];
     uint8_t isHunter;
     long playerDrawTime;
     int command;
@@ -26,14 +30,19 @@ struct MatchCommand {
     int command;
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
     char playerId[5];
+    UUIDBytes playerUuid;
+    UUIDBytes teamUuid;
     bool isHunter;
     long playerDrawTime;
 
     /** Decoded match frame received from macAddress. */
     MatchCommand(const uint8_t* macAddress, int command, const char* matchId, const char* playerId,
-                 long playerDrawTime, bool isHunter)
+                 long playerDrawTime, bool isHunter, const UUIDBytes& playerUuid = UUIDBytes{},
+                 const UUIDBytes& teamUuid = UUIDBytes{})
         : wifiMacAddr(macAddress)
         , command(command)
+        , playerUuid(playerUuid)
+        , teamUuid(teamUuid)
         , isHunter(isHunter)
         , playerDrawTime(playerDrawTime) {
         IdGenerator::copyId(this->matchId, matchId);

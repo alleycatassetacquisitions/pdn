@@ -71,7 +71,9 @@ public:
     void initializeMatch(uint8_t* opponentMac);
 
     /** Primes a match from an incoming SEND_MATCH_ID and replies with MATCH_ID_ACK. */
-    void receiveMatch(const char* matchId, uint8_t* opponentMac);
+    void receiveMatch(const char* matchId, bool opponentIsHunter, uint8_t* opponentMac,
+                      const UUIDBytes& opponentPlayerUuid = UUIDBytes{},
+                      const UUIDBytes& opponentTeamUuid = UUIDBytes{});
 
     /**
      * Shootout mode: primes a match without the SEND_MATCH_ID handshake. Both
@@ -84,8 +86,8 @@ public:
     /** True once the match handshake has completed and countdown may begin. */
     bool isMatchReady() const;
 
-    /** Finalizes the active match (persisting non-shootout matches to storage) and clears active
-     * match state. */
+    /** Finalizes the active match and clears active match state. Shootout, demo, tied and
+     * half-reported matches are not stored. */
     bool finalizeMatch();
 
     /** Sets the hunter draw time (ms) on the active match. */
@@ -192,6 +194,7 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
+    WirelessManager* wirelessManager = nullptr;
     Resender resender;
     ReliableChannel<MatchPacket> matchChannel;
     /** @return the seqId the frame went out under. */
@@ -214,6 +217,8 @@ private:
     // Emplace match with given id/opponent/draw slot. Common path for both the
     // cable-handshake init and the Shootout MATCH_START init.
     void primeMatch(const char* matchId, const uint8_t* opponentMac, bool localIsHunter);
+    void setOpponentIdentity(bool opponentIsHunter, const UUIDBytes& playerUuid,
+                             const UUIDBytes& teamUuid);
 };
 
 

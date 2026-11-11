@@ -1114,7 +1114,11 @@ inline void resultPlayerStatsUpdatedOnLoss(MatchResultTests* suite) {
 
 // Test: Match finalized on result
 inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
-    suite->player->setIsHunter(true);
+    UUIDBytes hunterId{};
+    UUIDBytes::parse("0a0a0a0a-0000-4000-8000-000000000003", hunterId);
+    Team hunterTeam{};
+    strncpy(hunterTeam.name, "Hunter", sizeof(hunterTeam.name) - 1);
+    suite->player->applyRegistrationProfile(hunterId, "LocalHunter", hunterTeam, {});
 
     EXPECT_CALL(suite->storage, writeBytes(MATCHES_PREFS_NAMESPACE, _, _, MATCH_BINARY_SIZE))
     .Times(testing::AtLeast(1))
@@ -1124,6 +1128,9 @@ inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
     .WillRepeatedly(Return(sizeof(uint32_t)));
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
+    UUIDBytes bountyId{};
+    UUIDBytes::parse("0b0b0b0b-0000-4000-8000-000000000004", bountyId);
+    suite->matchManager->getCurrentMatch()->setBountyPlayerId(bountyId);
     suite->matchManager->setHunterDrawTime(200);
     suite->matchManager->setBountyDrawTime(300);
     suite->matchManager->setReceivedButtonPush();
