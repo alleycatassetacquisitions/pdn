@@ -3,6 +3,7 @@
 #include "wireless/match-packet.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
+#include <algorithm>
 #include <optional>
 #include <cstring>
 
@@ -41,10 +42,19 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
         }
         clearCurrentMatch();
     });
+    if (this->wirelessManager) {
+        this->wirelessManager->setEspNowPacketHandler(
+        PktType::kMatchCollectionAck,
+        [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
+            static_cast<MatchManager*>(ctx)->onMatchRecordAck(fromMac, data, dataLen);
+        },
+        this);
+    }
 }
 
 void MatchManager::sync() {
     resender.sync();
+    syncFdnMatchTransfer();
 }
 
 uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* matchId,
@@ -63,6 +73,9 @@ uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* m
 }
 
 MatchManager::~MatchManager() {
+    if (wirelessManager) {
+        wirelessManager->clearEspNowPacketHandler(PktType::kMatchCollectionAck);
+    }
     if (storage) {
         storage->end();
     }
@@ -301,6 +314,11 @@ uint32_t MatchManager::getMatchSequenceNumber() {
     return storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, 0);
 }
 
+uint32_t MatchManager::getCollectedHighWaterMark() {
+    if (!storage) return 0;
+    return storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
+}
+
 uint32_t MatchManager::getOldestStoredSequence() {
     const uint32_t seq = getMatchSequenceNumber();
     return (seq > MATCH_RING_CAPACITY) ? (seq - MATCH_RING_CAPACITY + 1) : 1;
@@ -350,6 +368,61 @@ bool MatchManager::readMatchBySequence(uint32_t seq, Match& out) {
     return true;
 }
 
+void MatchManager::syncFdnMatchTransfer() {
+    if (!storage || !wirelessManager) return;
+
+    const uint8_t* fdnMac = rdc ? rdc->getConnectedPeerMac(DeviceType::FDN) : nullptr;
+    if (!fdnMac) {
+        transferWindowTimer.invalidate();
+        return;
+    }
+    // NVS is polled and records sent at most once per window; an ack ends it early.
+    if (transferWindowTimer.isRunning() && !transferWindowTimer.expired()) return;
+    transferWindowTimer.setTimer(MATCH_TRANSFER_WINDOW_MS);
+
+    const uint32_t collected = getCollectedHighWaterMark();
+    if (collected >= getMatchSequenceNumber()) return;
+
+    // Matches the ring already overwrote are gone; resume from the oldest still held.
+    const uint32_t nextToSend = std::max(collected + 1, getOldestStoredSequence());
+
+    MatchRecordPacket pkt{};
+    pkt.matchSeq = nextToSend;
+    Match match{};
+    if (!readMatchBySequence(nextToSend, match)) {
+        // An unreadable record would hold back every record after it.
+        LOG_E(MATCH_MANAGER_TAG, "Skipping unreadable stored match %u", nextToSend);
+        if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, nextToSend) ==
+            sizeof(uint32_t)) {
+            transferWindowTimer.invalidate();
+        }
+        return;
+    }
+    match.serialize(pkt.matchData);
+
+    wirelessManager->sendEspNowData(fdnMac, PktType::kMatchCollection,
+                                    reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+}
+
+void MatchManager::onMatchRecordAck(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+    if (!storage || !rdc || !rdc->isConnectedPeer(DeviceType::FDN, fromMac)) {
+        return;
+    }
+    if (!data || dataLen != sizeof(MatchRecordAckPacket)) {
+        LOG_W(MATCH_MANAGER_TAG, "Dropping match ack of %zu bytes", dataLen);
+        return;
+    }
+
+    MatchRecordAckPacket ack{};
+    memcpy(&ack, data, sizeof(ack));
+
+    if (ack.matchSeq <= getCollectedHighWaterMark() || ack.matchSeq > getMatchSequenceNumber()) {
+        return;
+    }
+    storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, ack.matchSeq);
+    transferWindowTimer.invalidate();
+}
+
 parameterizedCallbackFunction MatchManager::getButtonMasher() {
     return buttonMasher;
 }
@@ -357,6 +430,11 @@ parameterizedCallbackFunction MatchManager::getButtonMasher() {
 void MatchManager::initialize(Player* player, StorageInterface* storage) {
     this->player = player;
     this->storage = storage;
+    // An NVS wipe of "seq" alone would otherwise leave every new match marked collected.
+    if (storage && getCollectedHighWaterMark() > getMatchSequenceNumber()) {
+        storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY,
+                           getMatchSequenceNumber());
+    }
 
     // Firmware before the ring kept JSON strings under these keys. Nothing reads
     // them now, and left in place they take the room the ring needs.

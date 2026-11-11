@@ -794,3 +794,97 @@ TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
     << "a tie was stored, so each device named a different winner";
     matchManager->initialize(player, &mockStorage);
 }
+
+TEST_F(MatchManagerTestSuite, collectedHighWaterMarkClampsWhenCorruptedAboveSeq) {
+    NativePrefsDriver prefs("clamp-prefs", {MATCHES_PREFS_NAMESPACE});
+    prefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, 5u);
+    prefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 99u);
+    matchManager->initialize(player, &prefs);
+
+    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 5u);
+    EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 5u)
+    << "the clamp must persist, or matches 6..99 would read as collected once stored";
+    matchManager->initialize(player, &mockStorage);
+}
+
+TEST_F(MatchManagerTestSuite, unreadableStoredMatchIsSkippedNotRetriedForever) {
+    NativePrefsDriver pdnPrefs("pdn-torn-prefs", {MATCHES_PREFS_NAMESPACE});
+    matchManager->initialize(player, &pdnPrefs);
+    for (int i = 0; i < 2; ++i) {
+        setupMatchAsBounty(i == 0 ? "33333333-2222-4000-8000-333333333333"
+                                  : "44444444-2222-4000-8000-333333333333",
+                           "hunt");
+        matchManager->setHunterDrawTime(180);
+        matchManager->setBountyDrawTime(120);
+        matchManager->setReceivedButtonPush();
+        matchManager->setReceivedDrawResult();
+        EXPECT_TRUE(matchManager->finalizeMatch());
+    }
+    const uint8_t torn[3] = {1, 2, 3};
+    pdnPrefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_0", torn, sizeof(torn));
+
+    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x06};
+    fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
+    fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
+    ON_CALL(*device.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+
+    std::vector<uint32_t> sentSeqs;
+    ON_CALL(*device.mockPeerComms,
+            sendData(::testing::_, PktType::kMatchCollection, ::testing::_, ::testing::_))
+    .WillByDefault(
+    ::testing::Invoke([&sentSeqs](const uint8_t*, PktType, const uint8_t* data, const size_t) {
+        MatchRecordPacket pkt{};
+        memcpy(&pkt, data, sizeof(pkt));
+        sentSeqs.push_back(pkt.matchSeq);
+        return 1;
+    }));
+
+    matchManager->sync();
+    matchManager->sync();
+    EXPECT_EQ(sentSeqs, (std::vector<uint32_t>{2u})) << "record 1 is unreadable and skipped";
+    matchManager->initialize(player, &mockStorage);
+}
+
+TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
+    NativePrefsDriver pdnPrefs("pdn-window-prefs", {MATCHES_PREFS_NAMESPACE});
+    matchManager->initialize(player, &pdnPrefs);
+    setupMatchAsBounty("55555555-2222-4000-8000-333333333333", "hunt");
+    matchManager->setHunterDrawTime(180);
+    matchManager->setBountyDrawTime(120);
+    matchManager->setReceivedButtonPush();
+    matchManager->setReceivedDrawResult();
+    ASSERT_TRUE(matchManager->finalizeMatch());
+
+    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x07};
+    fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
+    fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
+    ON_CALL(*device.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    int sends = 0;
+    ON_CALL(*device.mockPeerComms,
+            sendData(::testing::_, PktType::kMatchCollection, ::testing::_, ::testing::_))
+    .WillByDefault(
+    ::testing::Invoke([&sends](const uint8_t*, PktType, const uint8_t*, const size_t) {
+        sends++;
+        return 1;
+    }));
+
+    matchManager->sync();
+    matchManager->sync();
+    EXPECT_EQ(sends, 1) << "one send per window, not per tick";
+    fakeClock->advance(MATCH_TRANSFER_WINDOW_MS + 1);
+    matchManager->sync();
+    EXPECT_EQ(sends, 2) << "an unacked record is resent once the window ends";
+
+    MatchRecordAckPacket ack{};
+    ack.matchSeq = 1;
+    device.mockPeerComms->triggerPacketCallback(
+    fdnMac, PktType::kMatchCollectionAck, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    fakeClock->advance(MATCH_TRANSFER_WINDOW_MS + 1);
+    matchManager->sync();
+    EXPECT_EQ(sends, 2) << "an acked record is not resent";
+    matchManager->initialize(player, &mockStorage);
+}

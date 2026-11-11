@@ -25,8 +25,10 @@ class ShootoutManager;
 
 inline constexpr const char MATCHES_PREFS_NAMESPACE[] = "matches";
 inline constexpr const char PREF_SEQ_KEY[] = "seq";
+inline constexpr const char PREF_COLLECTED_SEQ_KEY[] = "collectedSeq";
 inline constexpr const char PREF_MATCH_KEY_PREFIX[] = "match_";
 inline constexpr uint8_t MATCH_RING_CAPACITY = 32;
+inline constexpr unsigned long MATCH_TRANSFER_WINDOW_MS = 100;
 
 struct LastMatchDisplay {
     unsigned long myTimeMs = 0;       // boosted draw time, as used for winner calc
@@ -63,7 +65,10 @@ struct ActiveMatchState {
 
 class MatchManager {
 public:
-    /** Claims the kMatchCommand channel on wirelessManager (may be nullptr in tests). */
+    /**
+     * Claims the kMatchCommand channel and the kMatchCollectionAck handler on
+     * wirelessManager (may be nullptr in tests).
+     */
     explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
 
@@ -124,6 +129,9 @@ public:
     /** Returns the sequence number of the newest stored match (0 when none stored). */
     uint32_t getMatchSequenceNumber();
 
+    /** Returns the highest match sequence number an FDN acked or the PDN skipped as unreadable. */
+    uint32_t getCollectedHighWaterMark();
+
     /** Reads the match for 1-based sequence number `seq` if still in the 32-slot ring buffer. */
     bool readMatchBySequence(uint32_t seq, Match& out);
 
@@ -160,7 +168,7 @@ public:
     /** Binds the player and storage this manager records matches against. */
     void initialize(Player* player, StorageInterface* storage);
 
-    /** Drives the match channel's retries. */
+    /** Pumps match channel retries and the FDN match transfer. */
     void sync();
 
     /** Button callback that records a valid match draw press and sends DRAW_RESULT. */
@@ -197,6 +205,8 @@ private:
     WirelessManager* wirelessManager = nullptr;
     Resender resender;
     ReliableChannel<MatchPacket> matchChannel;
+    SimpleTimer transferWindowTimer;
+
     /** @return the seqId the frame went out under. */
     uint8_t sendCommand(const uint8_t* mac, int command, const char* matchId, long drawTime,
                         bool isHunter);
@@ -204,6 +214,8 @@ private:
     bool appendMatchToStorage(const Match* match);
 
     uint32_t getOldestStoredSequence();
+    void syncFdnMatchTransfer();
+    void onMatchRecordAck(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake match commands
