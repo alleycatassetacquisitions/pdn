@@ -8,7 +8,7 @@
 
 class FirmwareUpdateManager;
 
-/** Standalone registration app using the protobuf device player API. */
+/** Registration app: PIN entry, cabled-FDN lookup, welcome, and the demo role picker. */
 class PlayerFetchApp : public StateMachine {
 public:
     /** @p firmwareUpdateManager may be null to skip the hold-to-update state. */
@@ -21,7 +21,7 @@ public:
     void populateStateMap() override;
 
 private:
-    WirelessManager* wirelessManager = nullptr;
+    PdnProvisioningClient provisioningClient;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
     PlayerProvider* playerProvider = nullptr;
 };

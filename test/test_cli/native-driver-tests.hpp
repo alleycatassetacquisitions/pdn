@@ -900,11 +900,46 @@ void cliCommandDisplayAlias(CliDisplayCommandTestSuite* suite) {
 // CLI COMMAND / REBOOT TEST SUITE
 // ============================================
 
-/** Pin entry clears the provider on mount; set PIN after PlayerFetch mounts. */
+/** Mounts the registration app at its cabled provisioning state (FETCH_USER). */
 inline void cliSkipQuickdrawToFetchUser(cli::DeviceInstance& device) {
     device.playerProvider->setRegistrationPin(device.deviceId.c_str());
     device.pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID),
                              StateId(PlayerFetchStateId::FETCH_USER));
+}
+
+/** Simulates a cabled FDN delivering a PlayerProvisionPacket to a PDN in FetchUserState. */
+inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
+    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x01};
+    HelloPayload hello{};
+    memcpy(hello.source, fdnMac, 6);
+    hello.deviceType = static_cast<uint8_t>(DeviceType::FDN);
+    const std::vector<uint8_t> frame = encodeFramed(hello);
+    device.serialInDriver->injectBytes(frame);
+
+    FdnConnectionContext fdnCtx{};
+    fdnCtx.seqId = 1;
+    fdnCtx.chainRole = static_cast<uint8_t>(ChainRole::HEAD);
+    device.peerCommsDriver->receivePacket(fdnMac, PktType::kFdnConnectionContext,
+                                          reinterpret_cast<const uint8_t*>(&fdnCtx),
+                                          sizeof(fdnCtx));
+
+    for (int i = 0; i < 4; ++i) {
+        device.serialInDriver->exec();
+        device.peerCommsDriver->exec();
+        device.pdn->loop();
+    }
+
+    PlayerProvisionPacket prov{};
+    prov.status = static_cast<uint8_t>(ProvisionStatus::PROFILE_DELIVERED);
+    strncpy(prov.pin, device.playerProvider->getRegistrationPin(), sizeof(prov.pin) - 1);
+    UUIDBytes playerId{};
+    UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", playerId);
+    memcpy(prov.playerId, playerId.bytes, UUIDBytes::SIZE);
+    strncpy(prov.playerName, "Hunter0010", sizeof(prov.playerName) - 1);
+    strncpy(prov.teamName, "Hunter", sizeof(prov.teamName) - 1);
+    device.peerCommsDriver->receivePacket(fdnMac, PktType::kPlayerProvision,
+                                          reinterpret_cast<const uint8_t*>(&prov), sizeof(prov));
+    device.peerCommsDriver->exec();
 }
 
 class CliCommandTestSuite : public testing::Test {
@@ -936,14 +971,14 @@ public:
     NativeLoggerDriver* globalLogger_;
 };
 
-// Test: Mock HTTP fetch transitions device from FetchUserData to WelcomeMessage
+// Test: Cabled FDN provision transitions device from FetchUserData to WelcomeMessage
 void cliDeviceMockHttpFetchTransitions(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
     State* state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
     ASSERT_EQ(state->getStateId(), PlayerFetchStateId::FETCH_USER);
 
-    // Run a few loop cycles — mock HTTP responds immediately
+    cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
         suite->device.pdn->loop();
     }
@@ -958,6 +993,7 @@ void cliDeviceMockHttpFetchTransitions(CliCommandTestSuite* suite) {
 // Test: Reboot resets device back to FetchUserData
 void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
     // Advance past FetchUserData
+    cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
         suite->device.pdn->loop();
     }
@@ -982,6 +1018,7 @@ void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
 // Test: Reboot from a later state returns to FetchUserData and can re-transition
 void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     // Advance device further (past FetchUserData into WelcomeMessage or beyond)
+    cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
         suite->device.pdn->loop();
     }
@@ -998,7 +1035,8 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
     ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::FETCH_USER);
 
-    // Run loops again — should transition to WelcomeMessage again
+    // Deliver provision and run loops again — should transition to WelcomeMessage again
+    cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
         suite->device.pdn->loop();
     }

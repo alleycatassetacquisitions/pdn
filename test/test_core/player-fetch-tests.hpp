@@ -2,10 +2,12 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <set>
 
 #include "alleycat-protobuf-test-helpers.hpp"
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "device-player-codec-tests.hpp"
+#include "fdn-provisioning-tests.hpp"
 #include "utility-tests.hpp"
 #include "game/player-provider.hpp"
 
@@ -13,19 +15,11 @@ using ::testing::_;
 using ::testing::Invoke;
 using ::testing::Return;
 
-class PlayerFetchTestSuite : public testing::Test {
+class PlayerFetchTestSuite : public FdnProvisioningTests {
 public:
-    /** Wires mocks and a fake platform clock for PlayerFetch state tests. */
+    /** Adds a PDN to the cabled FDN; provision frames route between the two. */
     void SetUp() override {
-        fakeClock = new FakePlatformClock();
-        SimpleTimer::setPlatformClock(fakeClock);
-        fakeClock->setTime(0);
-
-        ON_CALL(*device.mockHttpClient, queueRequest(testing::_))
-        .WillByDefault(Invoke([this](HttpRequest&& request) {
-            queuedRequests.push_back(std::move(request));
-            return true;
-        }));
+        FdnProvisioningTests::SetUp();
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
@@ -34,20 +28,54 @@ public:
         .WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, render()).WillByDefault(Return());
+
+        ON_CALL(*device.mockPeerComms, getPeerCommsState())
+        .WillByDefault(Return(PeerCommsState::ENABLED));
+
+        cableFdn(true);
+
+        ON_CALL(*device.mockPeerComms, sendData(_, PktType::kPlayerProvisionRequest, _, _))
+        .WillByDefault(
+        Invoke([this](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+            fdnDevice.mockPeerComms->triggerPacketCallback(pdnMac, PktType::kPlayerProvisionRequest,
+                                                           data, len);
+            return 1;
+        }));
+        ON_CALL(*fdnDevice.mockPeerComms, sendData(_, PktType::kPlayerProvision, _, _))
+        .WillByDefault(
+        Invoke([this](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+            device.mockPeerComms->triggerPacketCallback(fdnMac, PktType::kPlayerProvision, data,
+                                                        len);
+            return 1;
+        }));
     }
 
-    /** Tears down heap fixtures and clears queued HTTP requests. */
-    void TearDown() override {
-        queuedRequests.clear();
-        SimpleTimer::setPlatformClock(nullptr);
-        delete fakeClock;
+    /** Plugs or unplugs the FDN on the PDN's input jack. */
+    void cableFdn(bool connected) {
+        device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::INPUT_JACK, connected ? JackStatus::CONNECTED : JackStatus::DISCONNECTED);
+        device.fakeRemoteDeviceCoordinator.setPeerDeviceType(SerialIdentifier::INPUT_JACK,
+                                                             DeviceType::FDN);
+        device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
     }
 
-    FakePlatformClock* fakeClock = nullptr;
     PlayerProvider playerProvider;
     MockDevice device;
-    std::vector<HttpRequest> queuedRequests;
+    PdnProvisioningClient provisioningClient{device.wirelessManager};
 };
+
+/** A PROFILE_DELIVERED packet for TEST_PLAYER_ID named @p name, answering PIN 0007. */
+inline PlayerProvisionPacket makeProvisionPacket(const char* name) {
+    Player player{};
+    UUIDBytes playerId{};
+    UUIDBytes::parse(TEST_PLAYER_ID, playerId);
+    Team team{};
+    strncpy(team.name, "Hunter", sizeof(team.name) - 1);
+    player.applyRegistrationProfile(playerId, name, team, {});
+    PlayerProvisionPacket pkt = PlayerProvisionCodec::encode(player);
+    strncpy(pkt.pin, "0007", sizeof(pkt.pin) - 1);
+    return pkt;
+}
 
 inline void completePinOnEntry(PDN* pdn, PinEntryState* pinEntry,
                                parameterizedCallbackFunction& primaryPress,
@@ -116,38 +144,51 @@ inline void pinEntryRoutesDemoPinToChooseTeam(PlayerFetchTestSuite* suite) {
     pinEntry.onStateDismounted(&suite->device);
 }
 
-inline void fetchUserQueuesDevicePlayerLookup(PlayerFetchTestSuite* suite) {
+inline void fetchUserRequestsLookupFromCabledFdn(PlayerFetchTestSuite* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
     suite->playerProvider.setRegistrationPin("1234");
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
     EXPECT_EQ(suite->queuedRequests[0].path, "/device/players/by-pin/1234");
     EXPECT_TRUE(suite->queuedRequests[0].payload.empty());
-    suite->queuedRequests.clear();
     fetch.onStateDismounted(&suite->device);
 }
 
-inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
+inline void fetchUserStoresProvisionedPlayerOnSuccess(PlayerFetchTestSuite* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    Player* player = suite->playerProvider.getPlayer();
+    bool roleCallbackFired = false;
+    player->setOnRoleChanged([&roleCallbackFired]() { roleCallbackFired = true; });
+
     suite->playerProvider.setRegistrationPin("0007");
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
 
-    suite->queuedRequests[0].onSuccess(
-        encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada"));
+    std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada");
+    appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Bounty");
+    appendTestAffiliationNamed(body, "Reboot Syndicate");
+    suite->queuedRequests[0].onSuccess(body);
 
     fetch.onStateLoop(&suite->device);
     EXPECT_TRUE(suite->playerProvider.hasPlayer());
-    EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
+    EXPECT_STREQ(player->getServerPlayerName(), "Ada");
+    EXPECT_FALSE(player->isHunter());
+    EXPECT_EQ(player->getAllegiance(), Allegiance::RESISTANCE);
+    EXPECT_TRUE(roleCallbackFired) << "applying registration profile must notify connected peers";
+    EXPECT_STREQ(player->getUserID().c_str(), "7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11");
+    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "0007");
     EXPECT_TRUE(fetch.transitionToWelcome());
-    suite->queuedRequests.clear();
     fetch.onStateDismounted(&suite->device);
 }
 
 inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
     suite->playerProvider.setRegistrationPin("9999");
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
+    ASSERT_EQ(suite->queuedRequests.size(), 1u);
     suite->queuedRequests[0].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404"});
 
     fetch.onStateLoop(&suite->device);
@@ -156,11 +197,10 @@ inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* s
     suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
     fetch.onStateLoop(&suite->device);
     EXPECT_TRUE(fetch.transitionToPinEntry());
-    suite->queuedRequests.clear();
     fetch.onStateDismounted(&suite->device);
 }
 
-inline void chooseTeamConfirmReachesDemoStub(PlayerFetchTestSuite* suite) {
+inline void chooseTeamConfirmEntersHub(PlayerFetchTestSuite* suite) {
     ChooseTeamState chooseTeam(&suite->playerProvider);
     parameterizedCallbackFunction secondaryPress = nullptr;
     void* secondaryCtx = nullptr;
@@ -172,7 +212,7 @@ inline void chooseTeamConfirmReachesDemoStub(PlayerFetchTestSuite* suite) {
     chooseTeam.onStateMounted(&suite->device);
     ASSERT_NE(secondaryPress, nullptr);
     secondaryPress(secondaryCtx);
-    EXPECT_TRUE(chooseTeam.transitionToDemoStub());
+    EXPECT_TRUE(chooseTeam.transitionToHub());
     chooseTeam.onStateDismounted(&suite->device);
 }
 
