@@ -50,20 +50,9 @@ public:
     bool remove(const std::string& ns, const std::string& key) override {
         requireRegisteredNamespace(ns);
         const std::string composite = compositeKey(ns, key);
-        bool removed = false;
-        if (stringStorage.erase(composite) > 0) {
-            removed = true;
-        }
-        if (ucharStorage.erase(composite) > 0) {
-            removed = true;
-        }
-        if (uintStorage.erase(composite) > 0) {
-            removed = true;
-        }
-        if (blobStorage.erase(composite) > 0) {
-            removed = true;
-        }
-        return removed;
+        return stringStorage.erase(composite) + ucharStorage.erase(composite) +
+               uintStorage.erase(composite) + blobStorage.erase(composite) >
+               0;
     }
 
     /** Drops every entry in one namespace. */

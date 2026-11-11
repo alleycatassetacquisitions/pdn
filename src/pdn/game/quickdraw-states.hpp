@@ -35,7 +35,6 @@ struct GameContext {
     PosseManager* posseManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
-    WirelessManager* wirelessManager = nullptr;
 };
 
 enum QuickdrawStateId {

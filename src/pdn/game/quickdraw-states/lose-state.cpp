@@ -50,6 +50,8 @@ void Lose::onStateLoop(PDN* pdn) {
 void Lose::onStateDismounted(PDN* pdn) {
     loseTimer.invalidate();
     reset = false;
+    // Sleep comes next and draws nothing on the LEDs; the looping lose animation would run on.
+    pdn->getLightManager()->stopAnimation();
 }
 
 bool Lose::resetGame() {

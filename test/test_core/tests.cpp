@@ -1443,6 +1443,10 @@ TEST_F(StateCleanupTests, matchResultResetsStateOnDismount) {
     cleanupMatchResultResetsStateOnDismount(this);
 }
 
+TEST_F(StateCleanupTests, resultStatesStopTheirAnimationOnDismount) {
+    resultStatesStopTheirAnimationOnDismount(this);
+}
+
 TEST_F(StateCleanupTests, matchManagerClearsCurrentMatch) {
     cleanupMatchManagerClearsCurrentMatch(this);
 }

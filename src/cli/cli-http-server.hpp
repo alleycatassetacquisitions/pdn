@@ -85,8 +85,6 @@ public:
         
         if (method == "GET" && path.find("/device/players/by-pin/") == 0) {
             statusCode = handleGetDevicePlayerByPin(path, responseBody);
-        } else if (method == "POST" && path == "/quickdraw-matches") {
-            statusCode = handlePostQuickdrawMatches(body, responseBody);
         } else if (method == "POST" && path == "/device-logs") {
             statusCode = handlePostDeviceLogs(body, responseBody);
         } else {
@@ -181,18 +179,6 @@ private:
             return 500;
         }
         return 200;
-    }
-
-    /**
-     * Handle POST /quickdraw-matches — acknowledges any non-empty protobuf body with 204.
-     */
-    int handlePostQuickdrawMatches(const std::string& body, std::string& responseBody) {
-        responseBody = "";
-        if (body.empty()) {
-            responseBody = R"({"errors":["Empty body"]})";
-            return 400;
-        }
-        return 204;
     }
 
     /**

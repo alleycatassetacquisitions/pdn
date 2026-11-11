@@ -1409,6 +1409,22 @@ inline void cleanupMatchResultResetsStateOnDismount(StateCleanupTests* suite) {
     EXPECT_FALSE(resultState.transitionToLose());
 }
 
+// Sleep follows Win and Lose and never touches the LEDs, so a looping result
+// animation left running would play through the whole sleep.
+inline void resultStatesStopTheirAnimationOnDismount(StateCleanupTests* suite) {
+    Win win(suite->ctx);
+    win.onStateMounted(&suite->device);
+    ASSERT_TRUE(suite->device.getLightManager()->isAnimating());
+    win.onStateDismounted(&suite->device);
+    EXPECT_FALSE(suite->device.getLightManager()->isAnimating());
+
+    Lose lose(suite->ctx);
+    lose.onStateMounted(&suite->device);
+    ASSERT_TRUE(suite->device.getLightManager()->isAnimating());
+    lose.onStateDismounted(&suite->device);
+    EXPECT_FALSE(suite->device.getLightManager()->isAnimating());
+}
+
 // Test: Match manager clears current match properly
 inline void cleanupMatchManagerClearsCurrentMatch(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};

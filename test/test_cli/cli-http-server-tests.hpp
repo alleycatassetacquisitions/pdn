@@ -66,19 +66,6 @@ void httpServerGetDevicePlayerByPinReturns404(MockHttpServerTestSuite* suite) {
     ASSERT_EQ(status, 404);
 }
 
-// Test: POST /quickdraw-matches accepts a non-empty body with 204; PUT /api/matches is a 404
-void httpServerPostQuickdrawMatchesAccepts(MockHttpServerTestSuite* suite) {
-    std::string response;
-    int status =
-    suite->server->handleRequest("POST", "/quickdraw-matches", "protobuf-payload", response);
-
-    ASSERT_EQ(status, 204);
-    ASSERT_TRUE(response.empty());
-
-    int retiredStatus = suite->server->handleRequest("PUT", "/api/matches", "{}", response);
-    ASSERT_EQ(retiredStatus, 404);
-}
-
 // Test: Unknown endpoint returns 404
 void httpServerUnknownEndpointReturns404(MockHttpServerTestSuite* suite) {
     std::string response;

@@ -188,7 +188,7 @@ private:
 
 class MockStorage : public StorageInterface {
 public:
-    /** Installs default success return values for binary and uint32 NVS helpers. */
+    /** Writes succeed; reads report the key unset. */
     MockStorage() {
         ON_CALL(*this, writeBytes(::testing::_, ::testing::_, ::testing::_, ::testing::_))
         .WillByDefault(

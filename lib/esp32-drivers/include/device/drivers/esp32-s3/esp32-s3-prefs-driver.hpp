@@ -172,15 +172,10 @@ public:
         if (buffer == nullptr || maxLength == 0) {
             return 0;
         }
-        size_t length = 0;
-        if (nvs_get_blob(handle, key.c_str(), nullptr, &length) != ESP_OK || length == 0 ||
-            length > maxLength) {
-            return 0;
-        }
-        if (nvs_get_blob(handle, key.c_str(), buffer, &length) != ESP_OK) {
-            return 0;
-        }
-        return length;
+        // nvs_get_blob fails with ESP_ERR_NVS_INVALID_LENGTH when the stored blob
+        // is longer than the buffer, so one call both bounds and reads.
+        size_t length = maxLength;
+        return nvs_get_blob(handle, key.c_str(), buffer, &length) == ESP_OK ? length : 0;
     }
 
 private:
