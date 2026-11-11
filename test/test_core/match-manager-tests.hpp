@@ -63,7 +63,7 @@ public:
 
     // Creates a match from the bounty's perspective by synthesizing a
     // SEND_MATCH_ID command from a fake hunter, then reporting the MATCH_ID_ACK delivered.
-    // Both sides carry non-nil server player UUIDs, so the match is stored.
+    // Both sides carry non-nil server player UUIDs, so finalizeMatch can store the match.
     void setupMatchAsBounty(const char* matchId = "test-match-id",
                             const char* hunterId = "hunt") {
         UUIDBytes selfId{};
@@ -709,7 +709,6 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOppo
 
     static const uint8_t peerMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    // A demo opponent has no server id; the match runs but is never stored.
     MatchCommand demoCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000001",
                          "hunt", 0, true, UUIDBytes{}, UUIDBytes{});
     matchManager->listenForMatchEvents(demoCmd);
@@ -722,13 +721,11 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOppo
     EXPECT_FALSE(matchManager->getCurrentMatch().has_value());
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u) << "a demo match is never stored";
 
-    // Self playerUuid must be rejected
     MatchCommand selfIdCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000002",
                            "hunt", 0, true, selfId, UUIDBytes{});
     matchManager->listenForMatchEvents(selfIdCmd);
     EXPECT_FALSE(matchManager->getCurrentMatch().has_value());
 
-    // Distinct non-zero playerUuid is accepted
     UUIDBytes distinctId{};
     UUIDBytes::parse("aaaaaaaa-bbbb-4000-8000-cccccccccccc", distinctId);
     MatchCommand validCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000003",
@@ -737,11 +734,9 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOppo
     ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
     EXPECT_EQ(matchManager->getCurrentMatch()->getHunterPlayerId(), distinctId);
     EXPECT_EQ(matchManager->getCurrentMatch()->getBountyPlayerId(), selfId);
-    matchManager->initialize(player, &mockStorage);
 }
 
-// The record's winner must not depend on which device wrote it. didWin() cannot supply it:
-// on a tie it is false on both devices, and each would name the other.
+// didWin() cannot supply the record's winner: on a tie it is false on both devices.
 TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
     NativePrefsDriver prefs("winner-prefs", {MATCHES_PREFS_NAMESPACE});
     matchManager->initialize(player, &prefs);
@@ -790,9 +785,46 @@ TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
     // Both players lose a tie, and the server takes no record without a winner.
     finishOnBountyDevice(150, 150);
     finishOnHunterDevice(150, 150);
-    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 2u)
-    << "a tie was stored, so each device named a different winner";
-    matchManager->initialize(player, &mockStorage);
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 2u) << "a tie was stored";
+}
+
+// A presser slowed past the pity time still beat an opponent who never drew, and
+// both result screens said so; the record must name the same winner.
+TEST_F(MatchManagerTestSuite, recordedWinnerRanksNeverPressedAboveTimes) {
+    NativePrefsDriver prefs("never-prefs", {MATCHES_PREFS_NAMESPACE});
+    matchManager->initialize(player, &prefs);
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    Match stored{};
+
+    setupMatchAsBounty("61111111-2222-4000-8000-333333333333", "hunt");
+    matchManager->setHunterDrawTime(5000);
+    matchManager->setBountyDrawTime(1000);
+    matchManager->setReceivedDrawResult();
+    matchManager->setNeverPressed();
+    ASSERT_FALSE(matchManager->didWin());
+    ASSERT_TRUE(matchManager->finalizeMatch());
+    ASSERT_TRUE(matchManager->readMatchBySequence(1, stored));
+    EXPECT_EQ(stored.getWinnerPlayerId(), stored.getHunterPlayerId());
+
+    setupMatchAsBounty("62222222-2222-4000-8000-333333333333", "hunt");
+    matchManager->setBountyDrawTime(5000);
+    matchManager->setReceivedButtonPush();
+    MatchCommand neverPressed(hunterMac, MatchCmd::NEVER_PRESSED,
+                              "62222222-2222-4000-8000-333333333333", "hunt", 1000, true);
+    matchManager->listenForMatchEvents(neverPressed);
+    ASSERT_TRUE(matchManager->didWin());
+    ASSERT_TRUE(matchManager->finalizeMatch());
+    ASSERT_TRUE(matchManager->readMatchBySequence(2, stored));
+    EXPECT_EQ(stored.getWinnerPlayerId(), stored.getBountyPlayerId());
+
+    // Neither side drew: each screen shows its own outcome, so there is no shared winner.
+    setupMatchAsBounty("63333333-2222-4000-8000-333333333333", "hunt");
+    MatchCommand bothNever(hunterMac, MatchCmd::NEVER_PRESSED,
+                           "63333333-2222-4000-8000-333333333333", "hunt", 1000, true);
+    matchManager->listenForMatchEvents(bothNever);
+    matchManager->setNeverPressed();
+    ASSERT_TRUE(matchManager->finalizeMatch());
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 2u);
 }
 
 TEST_F(MatchManagerTestSuite, collectedHighWaterMarkClampsWhenCorruptedAboveSeq) {
@@ -804,7 +836,6 @@ TEST_F(MatchManagerTestSuite, collectedHighWaterMarkClampsWhenCorruptedAboveSeq)
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 5u);
     EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 5u)
     << "the clamp must persist, or matches 6..99 would read as collected once stored";
-    matchManager->initialize(player, &mockStorage);
 }
 
 TEST_F(MatchManagerTestSuite, unreadableStoredMatchIsSkippedNotRetriedForever) {
@@ -844,7 +875,6 @@ TEST_F(MatchManagerTestSuite, unreadableStoredMatchIsSkippedNotRetriedForever) {
     matchManager->sync();
     matchManager->sync();
     EXPECT_EQ(sentSeqs, (std::vector<uint32_t>{2u})) << "record 1 is unreadable and skipped";
-    matchManager->initialize(player, &mockStorage);
 }
 
 TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
@@ -872,19 +902,21 @@ TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
         return 1;
     }));
 
+    MatchRecordAckPacket ack{};
+    ack.matchSeq = 1;
+    device.mockPeerComms->triggerPacketCallback(
+    fdnMac, PktType::kMatchCollectionAck, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
     matchManager->sync();
+    ASSERT_EQ(sends, 1) << "an ack for a record not yet sent marked it collected";
     matchManager->sync();
     EXPECT_EQ(sends, 1) << "one send per window, not per tick";
     fakeClock->advance(MATCH_TRANSFER_WINDOW_MS + 1);
     matchManager->sync();
     EXPECT_EQ(sends, 2) << "an unacked record is resent once the window ends";
 
-    MatchRecordAckPacket ack{};
-    ack.matchSeq = 1;
     device.mockPeerComms->triggerPacketCallback(
     fdnMac, PktType::kMatchCollectionAck, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
     fakeClock->advance(MATCH_TRANSFER_WINDOW_MS + 1);
     matchManager->sync();
     EXPECT_EQ(sends, 2) << "an acked record is not resent";
-    matchManager->initialize(player, &mockStorage);
 }

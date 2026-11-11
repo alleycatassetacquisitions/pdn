@@ -16,12 +16,8 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     , resender(wirelessManager)
     , matchChannel(wirelessManager, &resender, PktType::kMatchCommand, nullptr) {
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
-        UUIDBytes playerUuid{};
-        UUIDBytes teamUuid{};
-        memcpy(playerUuid.bytes, p.playerUuid, UUIDBytes::SIZE);
-        memcpy(teamUuid.bytes, p.teamUuid, UUIDBytes::SIZE);
         MatchCommand command(fromMac, p.command, p.matchId, p.playerId, p.playerDrawTime,
-                             p.isHunter, playerUuid, teamUuid);
+                             p.isHunter, p.playerUuid, p.teamUuid);
         listenForMatchEvents(command);
     });
     // The bounty readies on the radio's SEND_SUCCESS for its MATCH_ID_ACK, not on
@@ -65,8 +61,8 @@ uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* m
     packet.isHunter = isHunter;
     IdGenerator::copyId(packet.matchId, matchId);
     IdGenerator::copyId(packet.playerId, player->getUserID().c_str());
-    memcpy(packet.playerUuid, player->getServerPlayerId().bytes, UUIDBytes::SIZE);
-    memcpy(packet.teamUuid, player->getRegistrationTeam().id.bytes, UUIDBytes::SIZE);
+    packet.playerUuid = player->getServerPlayerId();
+    packet.teamUuid = player->getRegistrationTeam().id;
 
     LOG_I(MATCH_MANAGER_TAG, "Sending command %i to %s", command, MacToString(mac));
     return matchChannel.sendReliable(mac, packet);
@@ -250,13 +246,22 @@ bool MatchManager::finalizeMatch() {
     lastMatchDisplay.penaltyMs = activeMatchState.penaltyMs;
     lastMatchDisplay.hasData = true;
 
-    // The recorded winner comes from the two draw times, which both devices hold,
-    // never from this device's own didWin(): on a tie that is false on both, and
-    // each would name the other. The server requires a winner, so a tie, or an
-    // opponent result that never arrived, leaves nothing both devices can report.
-    const bool winnerIsShared = activeMatchState.hasReceivedDrawResult && hunterTime != bountyTime;
-    match.setWinnerPlayerId(hunterTime < bountyTime ? match.getHunterPlayerId()
-                                                    : match.getBountyPlayerId());
+    // The recorded winner must be one both devices arrive at, so it cannot come
+    // from this device's own didWin(). Each knows which side never pressed, and
+    // that outranks the times as it does on the result screen; otherwise the
+    // faster draw wins. A tie, neither side pressing, or an opponent result that
+    // never arrived leaves nothing both can report, and the server requires a winner.
+    const bool localNeverPressed = activeMatchState.gracePeriodExpiredNoResult;
+    const bool opponentNeverPressed = activeMatchState.opponentNeverPressed;
+    bool hunterWon = hunterTime < bountyTime;
+    bool winnerIsShared = activeMatchState.hasReceivedDrawResult && hunterTime != bountyTime;
+    if (localNeverPressed != opponentNeverPressed) {
+        hunterWon = opponentNeverPressed == activeMatchState.localIsHunter;
+        winnerIsShared = true;
+    } else if (localNeverPressed) {
+        winnerIsShared = false;
+    }
+    match.setWinnerPlayerId(hunterWon ? match.getHunterPlayerId() : match.getBountyPlayerId());
     if (PlatformClock* clock = SimpleTimer::getPlatformClock()) {
         match.setOccurredAtUnixMs(clock->unixMilliseconds());
     }
@@ -374,6 +379,7 @@ void MatchManager::syncFdnMatchTransfer() {
     const uint8_t* fdnMac = rdc ? rdc->getConnectedPeerMac(DeviceType::FDN) : nullptr;
     if (!fdnMac) {
         transferWindowTimer.invalidate();
+        sentRecordSeq = 0;
         return;
     }
     // NVS is polled and records sent at most once per window; an ack ends it early.
@@ -400,6 +406,7 @@ void MatchManager::syncFdnMatchTransfer() {
     }
     match.serialize(pkt.matchData);
 
+    sentRecordSeq = nextToSend;
     wirelessManager->sendEspNowData(fdnMac, PktType::kMatchCollection,
                                     reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 }
@@ -416,10 +423,16 @@ void MatchManager::onMatchRecordAck(const uint8_t* fromMac, const uint8_t* data,
     MatchRecordAckPacket ack{};
     memcpy(&ack, data, sizeof(ack));
 
-    if (ack.matchSeq <= getCollectedHighWaterMark() || ack.matchSeq > getMatchSequenceNumber()) {
+    // Only the record just sent can be acked; anything else would mark records
+    // the FDN was never given as collected.
+    if (sentRecordSeq == 0 || ack.matchSeq != sentRecordSeq) {
         return;
     }
-    storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, ack.matchSeq);
+    if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, ack.matchSeq) !=
+        sizeof(uint32_t)) {
+        return;
+    }
+    sentRecordSeq = 0;
     transferWindowTimer.invalidate();
 }
 

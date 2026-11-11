@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
 
 #include "id-generator.hpp"
 #include "utils/uuid-bytes.hpp"
@@ -9,8 +8,8 @@
 struct MatchPacket {
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
     char playerId[5];
-    uint8_t playerUuid[UUIDBytes::SIZE];
-    uint8_t teamUuid[UUIDBytes::SIZE];
+    UUIDBytes playerUuid;
+    UUIDBytes teamUuid;
     uint8_t isHunter;
     long playerDrawTime;
     int command;

@@ -37,3 +37,7 @@ At most one match SHALL be active on a device at any time. Every match SHALL hav
 #### Scenario: Match whose opponent result never arrived is not stored
 - **WHEN** a provisioned player's result grace period expires without the opponent's draw result
 - **THEN** that device shows a loss and stores no match record, leaving the record to the opponent's device if it received both results
+
+#### Scenario: Recorded winner follows the never-pressed rule before the draw times
+- **WHEN** one provisioned player presses and the other never does, whatever the two effective draw times
+- **THEN** both devices store a record naming the player who pressed as the winner; if neither pressed, neither device stores a record

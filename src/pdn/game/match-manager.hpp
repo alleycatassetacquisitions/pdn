@@ -91,8 +91,8 @@ public:
     /** True once the match handshake has completed and countdown may begin. */
     bool isMatchReady() const;
 
-    /** Finalizes the active match and clears active match state. Shootout, demo, tied and
-     * half-reported matches are not stored. */
+    /** Finalizes the active match and clears it unless the storage write fails. Shootout,
+     * demo, tied and half-reported matches are not stored. */
     bool finalizeMatch();
 
     /** Sets the hunter draw time (ms) on the active match. */
@@ -206,6 +206,8 @@ private:
     Resender resender;
     ReliableChannel<MatchPacket> matchChannel;
     SimpleTimer transferWindowTimer;
+    // Sequence of the record sent and not yet acked; 0 when none is outstanding.
+    uint32_t sentRecordSeq = 0;
 
     /** @return the seqId the frame went out under. */
     uint8_t sendCommand(const uint8_t* mac, int command, const char* matchId, long drawTime,
