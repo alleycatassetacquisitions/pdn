@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include "device/drivers/native/native-prefs-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
 #include "device-mock.hpp"
@@ -645,4 +646,37 @@ TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
     }
     EXPECT_TRUE(resultRetried)
         << "clearing a finished match stripped the retransmits of its DRAW_RESULT";
+}
+
+TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
+    NativePrefsDriver prefs("ring-prefs", {MATCHES_PREFS_NAMESPACE});
+    matchManager->initialize(player, &prefs);
+
+    for (uint32_t i = 1; i <= 33; ++i) {
+        char mid[37];
+        snprintf(mid, sizeof(mid), "%08u-1234-4000-8000-000000000000", i);
+        setupMatchAsBounty(mid, "hunt");
+        matchManager->setHunterDrawTime(100 + static_cast<long>(i));
+        matchManager->setBountyDrawTime(200 + static_cast<long>(i));
+        matchManager->setReceivedButtonPush();
+        matchManager->setReceivedDrawResult();
+        ASSERT_TRUE(matchManager->finalizeMatch());
+    }
+
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 33u);
+
+    Match evicted{};
+    EXPECT_FALSE(matchManager->readMatchBySequence(1, evicted));
+
+    Match latest{};
+    ASSERT_TRUE(matchManager->readMatchBySequence(33, latest));
+    EXPECT_STREQ(latest.getMatchId(), "00000033-1234-4000-8000-000000000000");
+
+    uint8_t slot0[MATCH_BINARY_SIZE] = {};
+    ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", slot0, MATCH_BINARY_SIZE),
+              MATCH_BINARY_SIZE);
+    Match slot0Match{};
+    slot0Match.deserialize(slot0);
+    EXPECT_STREQ(slot0Match.getMatchId(), "00000033-1234-4000-8000-000000000000");
+    matchManager->initialize(player, &mockStorage);
 }

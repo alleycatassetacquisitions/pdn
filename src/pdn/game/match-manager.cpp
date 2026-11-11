@@ -1,15 +1,10 @@
 #include "game/match-manager.hpp"
-#include <ArduinoJson.h>
 #include "device/drivers/logger.hpp"
 #include "wireless/match-packet.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
 #include <optional>
 #include <cstring>
-
-static constexpr const char* PREF_COUNT_KEY = "count";
-static constexpr const char* PREF_MATCH_KEY  = "match_";
-static constexpr uint8_t     MAX_MATCHES      = 255;
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
@@ -70,9 +65,7 @@ void MatchManager::setBoostProvider(std::function<unsigned long()> provider) {
     boostProvider_ = provider;
 }
 
-void MatchManager::setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc) {
-    rdc_ = rdc;
-}
+void MatchManager::setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc) { this->rdc = rdc; }
 
 void MatchManager::setShootoutManager(ShootoutManager* shootoutManager) {
     shootoutManager_ = shootoutManager;
@@ -226,7 +219,6 @@ bool MatchManager::finalizeMatch() {
     }
 
     if (appendMatchToStorage(&*activeMatchState.match)) {
-        updateStoredMatchCount(getStoredMatchCount() + 1);
         clearCurrentMatch();
         LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", matchId.c_str());
         return true;
@@ -248,126 +240,74 @@ parameterizedCallbackFunction MatchManager::getMatchButtonPush() { return matchB
 
 void MatchManager::setReceivedButtonPush() { activeMatchState.hasPressedButton = true; }
 
-bool MatchManager::setHunterDrawTime(unsigned long hunter_time_ms) {
+bool MatchManager::setHunterDrawTime(unsigned long hunterTimeMs) {
     if (!activeMatchState.match) {
         return false;
     }
-    activeMatchState.match->setHunterDrawTime(hunter_time_ms);
+    activeMatchState.match->setHunterDrawTime(hunterTimeMs);
     return true;
 }
 
-bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
+bool MatchManager::setBountyDrawTime(unsigned long bountyTimeMs) {
     if (!activeMatchState.match) {
         return false;
     }
-    activeMatchState.match->setBountyDrawTime(bounty_time_ms);
+    activeMatchState.match->setBountyDrawTime(bountyTimeMs);
     return true;
 }
 
-std::string MatchManager::toJson() {
-    // Create JSON document with an object at the root
-    JsonDocument doc;  // Adjust size based on max matches
-    
-    // Create a "matches" array within the root object
-    JsonArray matchArray = doc["matches"].to<JsonArray>();
-
-    // Read all matches from storage
-    uint8_t count = getStoredMatchCount();
-    for (uint8_t i = 0; i < count; i++) {
-        Match* match = readMatchFromStorage(i);
-        if (match) {
-            // Add match to array
-            std::string matchJson = match->toJson();
-            JsonDocument matchDoc;
-            deserializeJson(matchDoc, matchJson);
-            matchArray.add(matchDoc.as<JsonObject>());
-            delete match;
-        }
-    }
-
-    // Serialize to string
-    std::string output;
-    serializeJson(doc, output);
-    return output;
+uint32_t MatchManager::getMatchSequenceNumber() {
+    if (!storage) return 0;
+    return storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, 0);
 }
 
-void MatchManager::clearStorage() {
-    storage->clear(MATCHES_PREFS_NAMESPACE);
-    updateStoredMatchCount(0);
-    LOG_I("PDN", "Cleared match storage\n");
-}
-
-size_t MatchManager::getStoredMatchCount() {
-    return storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, 0);
+uint32_t MatchManager::getOldestStoredSequence() {
+    const uint32_t seq = getMatchSequenceNumber();
+    return (seq > MATCH_RING_CAPACITY) ? (seq - MATCH_RING_CAPACITY + 1) : 1;
 }
 
 bool MatchManager::appendMatchToStorage(const Match* match) {
-    if (!match) return false;
+    if (!match || !storage) return false;
 
-    uint8_t count = getStoredMatchCount();
-    if (count >= MAX_MATCHES) {
-        LOG_E("PDN", "Cannot save match - storage full\n");
-        return false;
-    }
-
-    // Convert match to JSON for storage
-    std::string matchJson = match->toJson();
-    
-    // Create key for this match
+    const uint32_t nextSeq = getMatchSequenceNumber() + 1;
     char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, count);
+    snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
+             static_cast<unsigned>((nextSeq - 1) % MATCH_RING_CAPACITY));
 
-    LOG_W(MATCH_MANAGER_TAG, "Attempting to save match to storage at key %s (JSON length: %d bytes)", 
-            key, matchJson.length());
-    LOG_W(MATCH_MANAGER_TAG, "Match JSON: %s", matchJson.c_str());
-    
-    // Try to check if preferences is working
-    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, "test_key", 123) != 1) {
-        LOG_E(MATCH_MANAGER_TAG, "NVS Preference test write failed! Potential hardware or NVS issue");
-    } else {
-        uint8_t testValue = storage->readUChar(MATCHES_PREFS_NAMESPACE, "test_key", 0);
-        LOG_W(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", testValue);
-    }
+    uint8_t buffer[MATCH_BINARY_SIZE] = {};
+    match->serialize(buffer);
 
-    // Save match JSON to preferences
-    if (storage->write(MATCHES_PREFS_NAMESPACE, key, matchJson) != matchJson.length()) {
-        LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
-                key, matchJson.length());
-        
+    if (storage->writeBytes(MATCHES_PREFS_NAMESPACE, key, buffer, MATCH_BINARY_SIZE) !=
+        MATCH_BINARY_SIZE) {
+        LOG_E(MATCH_MANAGER_TAG, "Failed to save match binary at key %s", key);
         return false;
     }
 
-    LOG_W(MATCH_MANAGER_TAG, "Successfully saved match to storage at index %d", count);
+    if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, nextSeq) != sizeof(uint32_t)) {
+        LOG_E(MATCH_MANAGER_TAG, "Failed to update match sequence number to %u", nextSeq);
+        return false;
+    }
+
     return true;
 }
 
-void MatchManager::updateStoredMatchCount(uint8_t count) {
-    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, count) != 1) {
-        LOG_E("PDN", "Failed to update match count\n");
-    } else {
-        LOG_I("PDN", "Updated stored match count to %d\n", count);
-    }
-}
-
-Match* MatchManager::readMatchFromStorage(uint8_t index) {
-    if (index >= getStoredMatchCount()) {
-        return nullptr;
+bool MatchManager::readMatchBySequence(uint32_t seq, Match& out) {
+    if (!storage || seq == 0 || seq > getMatchSequenceNumber() || seq < getOldestStoredSequence()) {
+        return false;
     }
 
-    // Create key for this match
     char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
-    
-    // Read match JSON from preferences
-    std::string matchJson = storage->read(MATCHES_PREFS_NAMESPACE, key, "");
-    if (matchJson.empty()) {
-        return nullptr;
+    snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
+             static_cast<unsigned>((seq - 1) % MATCH_RING_CAPACITY));
+
+    uint8_t buffer[MATCH_BINARY_SIZE] = {};
+    if (storage->readBytes(MATCHES_PREFS_NAMESPACE, key, buffer, MATCH_BINARY_SIZE) !=
+        MATCH_BINARY_SIZE) {
+        return false;
     }
 
-    // Create and deserialize match
-    Match* match = new Match();
-    match->fromJson(matchJson);
-    return match;
+    out.deserialize(buffer);
+    return true;
 }
 
 parameterizedCallbackFunction MatchManager::getButtonMasher() {
@@ -465,7 +405,7 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
         // Gate on RDC peering — no active match exists yet, so the sender
         // must be authenticated via the cable-established direct peer.
         LOG_I(MATCH_MANAGER_TAG, "Received SEND_MATCH_ID command from opponent");
-        if (!rdc_ || !rdc_->isDirectPeer(command.wifiMacAddr)) {
+        if (!rdc || !rdc->isDirectPeer(command.wifiMacAddr)) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
             return;
         }

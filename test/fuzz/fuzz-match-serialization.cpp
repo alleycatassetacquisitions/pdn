@@ -9,12 +9,9 @@
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     std::string inputStr(reinterpret_cast<const char*>(data), size);
-    Match jsonMatch;
-    jsonMatch.fromJson(inputStr);
-
-    std::string reserializedJson = jsonMatch.toJson();
+    Match stringMatch(inputStr.c_str(), inputStr.c_str(), true);
     uint8_t binaryOut[MATCH_BINARY_SIZE] = {};
-    size_t written = jsonMatch.serialize(binaryOut);
+    size_t written = stringMatch.serialize(binaryOut);
     if (written != MATCH_BINARY_SIZE) {
         __builtin_trap();
     }
@@ -45,22 +42,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
         assertMatchStringBounds(binMatch);
 
-        // Invariant: deserialize -> toJson -> fromJson must preserve all fields
-        std::string binToJson = binMatch.toJson();
-        Match roundTripMatch;
-        roundTripMatch.fromJson(binToJson);
-
-        if (std::strcmp(binMatch.getMatchId(), roundTripMatch.getMatchId()) != 0 ||
-            std::strcmp(binMatch.getHunterId(), roundTripMatch.getHunterId()) != 0 ||
-            std::strcmp(binMatch.getBountyId(), roundTripMatch.getBountyId()) != 0 ||
-            binMatch.getHunterDrawTime() != roundTripMatch.getHunterDrawTime() ||
-            binMatch.getBountyDrawTime() != roundTripMatch.getBountyDrawTime()) {
-            __builtin_trap();
-        }
-
         // Invariant: re-serializing and re-deserializing must preserve all fields
         uint8_t roundTripBuf[MATCH_BINARY_SIZE] = {};
-        roundTripMatch.serialize(roundTripBuf);
+        binMatch.serialize(roundTripBuf);
         Match secondBinMatch;
         secondBinMatch.deserialize(roundTripBuf);
 

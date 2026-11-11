@@ -257,17 +257,17 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             }
             case 8: {
-                // Jump count near MAX_MATCHES (255) to exercise storage-full boundary.
                 if (pos < size) {
-                    uint8_t countOverride = data[pos++];
-                    if (countOverride >= 250) {
-                        storage.writeUChar(MATCHES_PREFS_NAMESPACE, "count", countOverride);
+                    uint32_t seqOverride = data[pos++];
+                    if (seqOverride >= 30) {
+                        storage.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, seqOverride);
                     }
                 }
                 if (matchManager.finalizeMatch()) {
-                    std::string json = matchManager.toJson();
-                    volatile size_t jsonLen = json.size();
-                    (void)jsonLen;
+                    Match stored{};
+                    volatile bool ok =
+                    matchManager.readMatchBySequence(matchManager.getMatchSequenceNumber(), stored);
+                    (void)ok;
                 }
                 break;
             }

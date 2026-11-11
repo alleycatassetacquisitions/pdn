@@ -9,14 +9,6 @@ constexpr size_t PLAYER_ID_BINARY_SIZE = 4;
 // Size of match data in bytes: 1 UUID match_id (16 bytes) + 2 player IDs (4 bytes each) + 2 draw times (8 bytes each)
 constexpr size_t MATCH_BINARY_SIZE = IdGenerator::UUID_BINARY_SIZE + 2 * PLAYER_ID_BINARY_SIZE + 2 * sizeof(unsigned long);
 
-// JSON keys for match serialization
-constexpr const char* JSON_KEY_MATCH_ID = "match_id";
-constexpr const char* JSON_KEY_HUNTER_ID = "hunter";
-constexpr const char* JSON_KEY_BOUNTY_ID = "bounty";
-constexpr const char* JSON_KEY_WINNER_IS_HUNTER = "winner_is_hunter";
-constexpr const char* JSON_KEY_HUNTER_TIME = "hunter_time";
-constexpr const char* JSON_KEY_BOUNTY_TIME = "bounty_time";
-
 /**
  * Represents a match between a hunter and bounty player.
  * Stores match details and outcome, with serialization support.
@@ -62,17 +54,6 @@ public:
      * @param bountyId Bounty player's ID
      */
     void setBountyId(const char* bountyId);
-
-    /**
-     * @return Match data as JSON string
-     */
-    std::string toJson() const;
-
-    /**
-     * Populates match data from JSON string
-     * @param json JSON string containing match data
-     */
-    void fromJson(const std::string &json);
 
     /**
      * Serializes match data to a byte array

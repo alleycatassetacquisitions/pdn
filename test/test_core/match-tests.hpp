@@ -86,53 +86,6 @@ inline void matchShorterIdOverwriteClearsTheTail() {
     EXPECT_STREQ(match.getBountyId(), "wx");
 }
 
-inline void matchJsonRoundTripPreservesAllFields() {
-    // Create a match with all fields
-    Match original("match-id-12345678-1234-1234-1234-123456789abc",
-                   "hunter-id-12345678-1234-1234-1234-123456789abc", true);
-    original.setBountyId("bounty-id-12345678-1234-1234-1234-123456789abc");
-    original.setHunterDrawTime(250);
-    original.setBountyDrawTime(300);
-
-    // Serialize to JSON
-    std::string json = original.toJson();
-
-    // Deserialize into new match
-    Match restored;
-    restored.fromJson(json);
-
-    // Verify all fields preserved
-    EXPECT_STREQ(restored.getMatchId(), original.getMatchId());
-    EXPECT_STREQ(restored.getHunterId(), original.getHunterId());
-    EXPECT_STREQ(restored.getBountyId(), original.getBountyId());
-    EXPECT_EQ(restored.getHunterDrawTime(), 250);
-    EXPECT_EQ(restored.getBountyDrawTime(), 300);
-}
-
-inline void matchJsonContainsWinnerFlag() {
-    // Hunter wins (faster draw time)
-    Match hunterWins("match-1", "hunter-1", true);
-    hunterWins.setBountyId("bounty-1");
-    hunterWins.setHunterDrawTime(200);
-    hunterWins.setBountyDrawTime(300);
-
-    std::string json = hunterWins.toJson();
-    
-    // The JSON should indicate hunter won
-    EXPECT_NE(json.find("\"winner_is_hunter\":true"), std::string::npos);
-
-    // Bounty wins (faster draw time)
-    Match bountyWins("match-2", "hunter-2", true);
-    bountyWins.setBountyId("bounty-2");
-    bountyWins.setHunterDrawTime(350);
-    bountyWins.setBountyDrawTime(200);
-
-    json = bountyWins.toJson();
-    
-    // The JSON should indicate bounty won
-    EXPECT_NE(json.find("\"winner_is_hunter\":false"), std::string::npos);
-}
-
 // ============================================
 // Binary Serialization Tests
 // ============================================
@@ -212,11 +165,6 @@ inline void matchWithZeroDrawTimes() {
     // Both times at 0 - edge case for tie
     EXPECT_EQ(match.getHunterDrawTime(), 0);
     EXPECT_EQ(match.getBountyDrawTime(), 0);
-
-    std::string json = match.toJson();
-    
-    // With equal times (0 == 0), hunter_time < bounty_time is false
-    EXPECT_NE(json.find("\"winner_is_hunter\":false"), std::string::npos);
 }
 
 inline void matchWithLargeDrawTimes() {
@@ -231,7 +179,9 @@ inline void matchWithLargeDrawTimes() {
     EXPECT_EQ(match.getHunterDrawTime(), largeTime);
     EXPECT_EQ(match.getBountyDrawTime(), largeTime - 1);
 
-    // Bounty should win (faster by 1ms)
-    std::string json = match.toJson();
-    EXPECT_NE(json.find("\"winner_is_hunter\":false"), std::string::npos);
+    uint8_t buffer[MATCH_BINARY_SIZE] = {};
+    match.serialize(buffer);
+    Match restored;
+    restored.deserialize(buffer);
+    EXPECT_EQ(restored.getHunterDrawTime(), largeTime);
 }

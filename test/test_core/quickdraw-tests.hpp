@@ -1115,13 +1115,13 @@ inline void resultPlayerStatsUpdatedOnLoss(MatchResultTests* suite) {
 // Test: Match finalized on result
 inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
-    
-    EXPECT_CALL(suite->storage, write(_, _, _))
-        .Times(testing::AtLeast(1))
-        .WillRepeatedly(Return(100));
-    EXPECT_CALL(suite->storage, writeUChar(_, _, _))
-        .Times(testing::AtLeast(1))
-        .WillRepeatedly(Return(1));
+
+    EXPECT_CALL(suite->storage, writeBytes(MATCHES_PREFS_NAMESPACE, _, _, MATCH_BINARY_SIZE))
+    .Times(testing::AtLeast(1))
+    .WillRepeatedly(Return(MATCH_BINARY_SIZE));
+    EXPECT_CALL(suite->storage, writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, _))
+    .Times(testing::AtLeast(1))
+    .WillRepeatedly(Return(sizeof(uint32_t)));
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setHunterDrawTime(200);

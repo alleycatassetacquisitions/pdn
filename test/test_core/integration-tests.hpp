@@ -192,13 +192,6 @@ inline void matchSerializationRoundTrip() {
     EXPECT_STREQ(receivedMatch.getMatchId(), originalMatch.getMatchId());
     EXPECT_EQ(receivedMatch.getHunterDrawTime(), 225);
     EXPECT_EQ(receivedMatch.getBountyDrawTime(), 310);
-
-    std::string json = receivedMatch.toJson();
-    Match jsonRestored;
-    jsonRestored.fromJson(json);
-
-    EXPECT_STREQ(jsonRestored.getMatchId(), originalMatch.getMatchId());
-    EXPECT_EQ(jsonRestored.getHunterDrawTime(), 225);
 }
 
 // ============================================

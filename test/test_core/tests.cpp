@@ -711,14 +711,6 @@ TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) {
     matchShorterIdOverwriteClearsTheTail();
 }
 
-TEST_F(MatchTestSuite, jsonRoundTripPreservesAllFields) {
-    matchJsonRoundTripPreservesAllFields();
-}
-
-TEST_F(MatchTestSuite, jsonContainsWinnerFlag) {
-    matchJsonContainsWinnerFlag();
-}
-
 TEST_F(MatchTestSuite, binaryRoundTripPreservesAllFields) {
     matchBinaryRoundTripPreservesAllFields();
 }
