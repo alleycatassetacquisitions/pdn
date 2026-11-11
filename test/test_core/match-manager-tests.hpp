@@ -1094,6 +1094,91 @@ TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {
     matchManager->initialize(player, &mockStorage);
 }
 
+TEST_F(MatchManagerTestSuite, fdnSpoolDropsUnreadableHeadInsteadOfFailingEveryBatch) {
+    using ::testing::_;
+    NativePrefsDriver fdnPrefs("fdn-corrupt-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    MockDevice fdnDevice;
+    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    FakeRemoteDeviceCoordinator fdnRdc;
+    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+
+    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x03};
+    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
+    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
+
+    for (uint32_t seq = 1; seq <= 2; ++seq) {
+        char mid[37];
+        snprintf(mid, sizeof(mid), "%08u-cccc-4000-8000-dddddddddddd", seq);
+        Match m(mid);
+        MatchRecordPacket pkt{};
+        pkt.matchSeq = seq;
+        m.serialize(pkt.matchData);
+        fdnSpool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+    }
+    const uint8_t torn[3] = {1, 2, 3};
+    fdnPrefs.writeBytes(FDN_MATCH_SPOOL_NAMESPACE, "spool_0", torn, sizeof(torn));
+
+    std::vector<HttpRequest> httpRequests;
+    ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
+    .WillByDefault(::testing::Invoke([&httpRequests](HttpRequest&& req) {
+        httpRequests.push_back(std::move(req));
+        return true;
+    }));
+
+    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_EQ(httpRequests.size(), 1u) << "the readable record still goes up";
+    EXPECT_EQ(fdnSpool.getStagedCount(), 1u);
+    httpRequests[0].onSuccess("");
+    EXPECT_EQ(fdnSpool.getStagedCount(), 0u);
+}
+
+TEST_F(MatchManagerTestSuite, fdnSpoolUploadStopsShortOfAnUnreadableRecord) {
+    using ::testing::_;
+    NativePrefsDriver fdnPrefs("fdn-mid-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    MockDevice fdnDevice;
+    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    FakeRemoteDeviceCoordinator fdnRdc;
+    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+
+    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x05};
+    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
+    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
+
+    for (uint32_t seq = 1; seq <= 3; ++seq) {
+        char mid[37];
+        snprintf(mid, sizeof(mid), "%08u-dddd-4000-8000-eeeeeeeeeeee", seq);
+        Match m(mid);
+        MatchRecordPacket pkt{};
+        pkt.matchSeq = seq;
+        m.serialize(pkt.matchData);
+        fdnSpool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+    }
+    const uint8_t torn[3] = {1, 2, 3};
+    fdnPrefs.writeBytes(FDN_MATCH_SPOOL_NAMESPACE, "spool_1", torn, sizeof(torn));
+
+    std::vector<HttpRequest> httpRequests;
+    ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
+    .WillByDefault(::testing::Invoke([&httpRequests](HttpRequest&& req) {
+        httpRequests.push_back(std::move(req));
+        return true;
+    }));
+
+    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_EQ(httpRequests.size(), 1u) << "the record ahead of the torn one still goes up";
+    httpRequests[0].onSuccess("");
+    EXPECT_EQ(fdnSpool.getStagedCount(), 2u);
+
+    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_EQ(httpRequests.size(), 2u);
+    EXPECT_EQ(fdnSpool.getStagedCount(), 1u) << "the torn record is dropped once it is the oldest";
+    httpRequests[1].onSuccess("");
+    EXPECT_EQ(fdnSpool.getStagedCount(), 0u);
+}
+
 TEST(MatchesApiUpload, unqueuedRequestFailsClosed) {
     ::testing::NiceMock<MockPeerComms> peerComms;
     ::testing::NiceMock<MockHttpClient> httpClient;
