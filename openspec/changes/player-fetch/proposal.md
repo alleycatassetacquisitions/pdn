@@ -7,7 +7,7 @@ PDNs do not use Wi-Fi or offline registration; player registration is performed 
 - Replace PDN Wi-Fi PIN lookup and offline registration with FDN-driven player provisioning in the PDN provisioning app (`player-provisioning`).
 - Ensure an unprovisioned PDN boots with a nil player UUID (never generating a random boot UUID before provisioning) and waits on the provisioning screen (where it also accepts or seeds peer-to-peer firmware distribution) until a Connected FDN delivers a resolved player profile.
 - Upon receiving a resolved player profile from the verified MAC of a Connected FDN, the PDN stores the profile on the session, displays the welcome screen (`Welcome` + player name) for `5000 ms`, and transitions into the hub app (`AwakenSequence` -> `Idle`).
-- On lookup failure from the Connected FDN, the PDN displays `Unable to` / `Locate Asset` for `3000 ms` and returns to the provisioning screen without offering offline registration or manual role selection.
+- On lookup failure from the Connected FDN, the PDN displays `Unable to` / `Locate Asset` for `3000 ms` and returns to the provisioning screen without offering offline registration.
 
 ## Capabilities
 
