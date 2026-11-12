@@ -31,6 +31,26 @@ TEST_F(SerialCableBrokerTestSuite, InvalidDeviceReturnsFalse) {
     serialBrokerInvalidDeviceReturnsFalse(this);
 }
 
+TEST_F(SerialCableBrokerTestSuite, CableCarriesBytesBothWays) {
+    serialBrokerCableCarriesBytesBothWays(this);
+}
+
+TEST_F(SerialCableBrokerTestSuite, DisconnectStopsRouting) {
+    serialBrokerDisconnectStopsRouting(this);
+}
+
+TEST_F(SerialCableBrokerTestSuite, HeldBytesCrossOnConnect) {
+    serialBrokerHeldBytesCrossOnConnect(this);
+}
+
+TEST_F(SerialCableBrokerTestSuite, ByteWritesShareOneRxEntry) {
+    serialBrokerByteWritesShareOneRxEntry(this);
+}
+
+TEST_F(SerialCableBrokerTestSuite, OccupiedJackRefusesSecondCable) {
+    serialBrokerOccupiedJackRefusesSecondCable(this);
+}
+
 // ============================================
 // NATIVE PEER BROKER TESTS
 // ============================================
