@@ -394,7 +394,7 @@ TEST(ReliableTransportTest, ackRoutesByPktType) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
 
-    ReliableChannel<TransportTestPayload> chA(&wm, PktType::kShootoutCommand);
+    ReliableChannel<TransportTestPayload> chA(&wm, PktType::kShootoutBracket);
     ReliableChannel<TransportTestPayload> chB(&wm, PktType::kMatchCommand);
 
     using ::testing::_;
@@ -417,7 +417,7 @@ TEST(ReliableTransportTest, ackRoutesByPktType) {
 
     TransportTestPayload sentEcho{};
     sentEcho.seqId = seqA;
-    wm.getReliableTransport()->onSendResult(PktType::kShootoutCommand, target,
+    wm.getReliableTransport()->onSendResult(PktType::kShootoutBracket, target,
                                             reinterpret_cast<const uint8_t*>(&sentEcho),
                                             sizeof(sentEcho), true);
 
@@ -435,7 +435,7 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
 
     int abandonCount = 0;
     uint8_t abandonedSeqId = 0;
-    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kShootoutCommand,
+    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kShootoutBracket,
                                              ChannelMode::KEEP_DISTINCT);
     ch.setOnAbandon([&](uint8_t seqId, const uint8_t*, const TransportTestPayload&) {
         abandonCount++;
@@ -460,7 +460,7 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
     for (uint8_t seq : {s2, s3}) {
         TransportTestPayload sentEcho{};
         sentEcho.seqId = seq;
-        wm.getReliableTransport()->onSendResult(PktType::kShootoutCommand, target,
+        wm.getReliableTransport()->onSendResult(PktType::kShootoutBracket, target,
                                                 reinterpret_cast<const uint8_t*>(&sentEcho),
                                                 sizeof(sentEcho), true);
     }
@@ -559,7 +559,7 @@ TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
 
     const uint8_t peer[6] = {0x02, 0, 0, 0, 0, 0x09};
     {
-        ReliableChannel<TransportTestPayload> channel(&wm, PktType::kShootoutCommand);
+        ReliableChannel<TransportTestPayload> channel(&wm, PktType::kShootoutBracket);
         TransportTestPayload p{};
         channel.sendReliable(peer, p);
         ASSERT_EQ(radio.frames.size(), 1u);
