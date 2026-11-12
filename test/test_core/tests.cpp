@@ -1461,6 +1461,18 @@ TEST_F(StateCleanupTests, receivedResultLeavesTheMatchAloneWhenDisconnected) {
     receivedResultLeavesTheMatchAloneWhenDisconnected(this);
 }
 
+TEST_F(StateCleanupTests, idleEntersSymbolOnlyFromTheOutputJack) {
+    idleEntersSymbolOnlyFromTheOutputJack(this);
+}
+
+TEST_F(StateCleanupTests, symbolStateLeavesForIdleWithoutBlocking) {
+    symbolStateLeavesForIdleWithoutBlocking(this);
+}
+
+TEST_F(StateCleanupTests, symbolMatchedLeavesForIdleWithoutBlocking) {
+    symbolMatchedLeavesForIdleWithoutBlocking(this);
+}
+
 TEST_F(StateCleanupTests, countdownDebouncesTransientDisconnect) {
     countdownDebouncesTransientDisconnect(this);
 }

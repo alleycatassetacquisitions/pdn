@@ -69,9 +69,6 @@ void SymbolMatched::onStateLoop(PDN* pdn) {
 
 void SymbolMatched::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "dismounted");
-    // Opposite registration order here: the sibling edge is declared first, so it
-    // outranks the Idle hand-off and the qualifier is load-bearing.
-    const bool showRefreshScreen = transitionToIdleState && !transitionToSymbolState;
     transitionToSymbolState = false;
     transitionToIdleState = false;
     toggleBlink = true;
@@ -79,22 +76,9 @@ void SymbolMatched::onStateDismounted(PDN* pdn) {
     blinkTimer.invalidate();
     successTimer.invalidate();
 
-
     pdn->getLightManager()->stopAnimation();
     pdn->getLightManager()->clear();
     pdn->getHaptics()->off();
-
-    if (showRefreshScreen) {
-        SimpleTimer bufferTimer;
-        const int bufferTimeout = 1000;
-        bufferTimer.setTimer(bufferTimeout);
-        while (!bufferTimer.expired()) {
-            if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
-                renderLoadingScreen(pdn->getDisplay());
-            }
-        }
-        bufferTimer.invalidate();
-    }
 
     symbolWirelessManager->clearCallback();
 }
