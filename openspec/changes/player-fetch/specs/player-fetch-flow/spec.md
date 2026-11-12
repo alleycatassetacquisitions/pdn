@@ -2,11 +2,11 @@
 
 ### Requirement: PDN registration is received from a Connected FDN without PDN Wi-Fi or offline registration
 
-A PDN SHALL NOT connect to Wi-Fi, issue HTTP player-lookup requests, or offer offline registration, PIN entry, or manual role selection. Instead, the PDN SHALL boot with a nil player UUID and remain on its provisioning screen until an FDN Connected on a physical serial jack resolves the player's registration from the server and delivers the player profile to the PDN (`player-provisioning`).
+A PDN SHALL NOT connect to Wi-Fi, issue HTTP player-lookup requests, or offer offline registration. Instead, the PDN SHALL boot with a nil player UUID and remain on its registration screen until an FDN Connected on a physical serial jack resolves the player's registration from the server and delivers the player profile to the PDN (`player-provisioning`).
 
 #### Scenario: Unprovisioned PDN waits for Connected FDN registration
 - **WHEN** an unprovisioned PDN boots into the provisioning app with no FDN connected
-- **THEN** the PDN advertises the nil UUID / `0xFFFF` unregistered sentinel, remains on the provisioning screen, does not enable Wi-Fi, and does not offer offline registration or manual role selection
+- **THEN** the PDN advertises the nil UUID / `0xFFFF` unregistered sentinel, remains on the registration screen, does not enable Wi-Fi, and does not offer offline registration
 
 ### Requirement: Cabled FDN-resolved player profile triggers welcome and transitions to hub app
 

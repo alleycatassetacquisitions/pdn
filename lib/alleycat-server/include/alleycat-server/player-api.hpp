@@ -32,7 +32,9 @@ inline void getDevicePlayerByPin(WirelessManager* wirelessManager, const std::st
 
     request.requestHeaders.push_back({"Accept", "application/protobuf"});
 
-    wirelessManager->queueHttpRequest(std::move(request));
+    if (!wirelessManager->queueHttpRequest(std::move(request))) {
+        onError({WirelessError::INVALID_STATE, "HTTP request not queued"});
+    }
 }
 
 }  // namespace PlayerApi

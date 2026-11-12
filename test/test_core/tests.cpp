@@ -29,6 +29,7 @@
 #include "symbol-wireless-tests.hpp"
 #include "crash-codec-tests.hpp"
 #include "device-player-codec-tests.hpp"
+#include "fdn-provisioning-tests.hpp"
 #include "player-fetch-tests.hpp"
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
@@ -662,8 +663,8 @@ TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
 // PLAYER TESTS
 // ============================================
 
-TEST_F(PlayerTestSuite, roleChangeFiresOnlyOnFlip) {
-    playerRoleChangeFiresOnlyOnFlip(player);
+TEST_F(PlayerTestSuite, observerFiresOnFlipAndAppliedProfile) {
+    playerObserverFiresOnFlipAndAppliedProfile(player);
 }
 
 TEST_F(PlayerTestSuite, profileCarriesRoleAndIdentity) {
@@ -1107,6 +1108,38 @@ TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
 
 TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
     chooseTeamConfirmReachesDemoStub(this);
+}
+
+TEST_F(PlayerFetchTestSuite, reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged) {
+    reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged(this);
+}
+
+TEST_F(FdnProvisioningTests, dropsMalformedOrUncabledProvisionRequest) {
+    fdnDropsMalformedOrUncabledProvisionRequest(this);
+}
+
+TEST_F(FdnProvisioningTests, servesRequestThatBeatItsJackToConnected) {
+    fdnServesRequestThatBeatItsJackToConnected(this);
+}
+
+TEST_F(FdnProvisioningTests, forgetsParkedRequestAfterItsWindow) {
+    fdnForgetsParkedRequestAfterItsWindow(this);
+}
+
+TEST_F(FdnProvisioningTests, cancelledLookupLeavesWifiAtOnce) {
+    fdnCancelledLookupLeavesWifiAtOnce(this);
+}
+
+TEST_F(FdnProvisioningTests, seesUnprovisionedPdnUntilItRegisters) {
+    fdnSeesUnprovisionedPdnUntilItRegisters(this);
+}
+
+TEST_F(FdnProvisioningTests, dropsLookupsWhileRegisteredPdnPlays) {
+    fdnDropsLookupsWhileRegisteredPdnPlays(this);
+}
+
+TEST_F(FdnProvisioningTests, reportsLookupResultAndResendsUnconfirmedReply) {
+    fdnReportsLookupResultAndResendsUnconfirmedReply(this);
 }
 
 // ============================================

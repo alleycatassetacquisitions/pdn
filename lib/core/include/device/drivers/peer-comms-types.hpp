@@ -33,6 +33,10 @@ enum class PktType : uint8_t {
     kCrashLog = 21,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kFirmwareUpdate = 22,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kPlayerProvision = 25,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kPlayerProvisionRequest = 26,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -41,11 +45,12 @@ enum class PktType : uint8_t {
 // wire format (both ends run the same firmware). RDC never reads these fields —
 // it forwards the profile to the game layer opaquely.
 struct PlayerProfile {
-    uint16_t userId;   // 0xFFFF while unregistered
+    uint16_t userId;   // 0xFFFF unless the player id is numeric
     uint8_t gameRole;  // 1 = hunter, 0 = bounty
     uint8_t allegiance;
     char faction[8];
     char name[16];
+    uint8_t registered;  // 1 once a profile is applied, demo included
 } __attribute__((packed));
 
 // PDN-to-neighbour connection context. seqId is stamped by the ReliableChannel.

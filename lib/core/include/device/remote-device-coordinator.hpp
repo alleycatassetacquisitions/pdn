@@ -116,6 +116,9 @@ public:
     /** MAC of the peer on the first CONNECTED jack whose peer is a `type`, or nullptr. */
     const uint8_t* getConnectedPeerMac(DeviceType type);
 
+    /** True iff `mac` is the peer on a CONNECTED jack whose peer is a `type`. */
+    bool isConnectedPeer(DeviceType type, const uint8_t* mac);
+
     // ---- Chain-level surface ----
 
     /** This device's chain role, derived from jack presence plus the ring latch. */

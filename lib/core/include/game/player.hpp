@@ -21,7 +21,7 @@ enum class Allegiance {
  * symbol. */
 class Player {
 public:
-    /** Fires after the hunter/bounty role flips. */
+    /** Fires after the role flips or a registration profile is applied. */
     using RoleChangedCallback = std::function<void()>;
 
     Player() = default;
@@ -36,16 +36,17 @@ public:
     void toggleHunter();
 
     /**
-     * Registers the role-flip observer (one slot). Fires only on an actual
-     * flip, never on a set that reasserts the current role.
+     * Registers the observer of what peers are told about this player (one
+     * slot). Fires on a role flip and once per applied registration profile,
+     * never on a set that reasserts the current role.
      */
     void setOnRoleChanged(RoleChangedCallback callback);
 
     /**
      * This player as the packed profile peers receive in the connection
-     * context. userId is 0xFFFF while the player id is not wholly numeric
-     * (registration has not completed); faction and name truncate to the
-     * fixed wire widths.
+     * context. userId is 0xFFFF unless the player id is wholly numeric;
+     * `registered` says whether a profile has been applied. Faction and name
+     * truncate to the fixed wire widths.
      */
     PlayerProfile toProfile() const;
 
@@ -127,10 +128,7 @@ public:
     /** @return true when registration includes a non-nil team id. */
     bool hasTeam() const;
 
-    /**
-     * Replaces registration fields and syncs legacy gameplay fields. Used by the device player
-     * codec and demo registration paths.
-     */
+    /** Replaces registration fields and syncs legacy gameplay fields. */
     void applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
                                   const Team& team, const std::vector<Affiliation>& affiliations);
 
@@ -138,8 +136,6 @@ public:
     void clearRegistrationProfile();
 
 private:
-    // Sole write path for `hunter`, so every flip notifies exactly once no
-    // matter which public setter produced it.
     void applyRole(bool isHunter);
     void syncLegacyFieldsFromRegistration();
 
