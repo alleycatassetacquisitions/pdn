@@ -54,7 +54,7 @@ struct ActiveMatchState {
     // draws are compared, and shown on the result screen.
     unsigned long boostMs = 0;
     unsigned long penaltyMs = 0;
-    // The boost the opponent's draw result carried.
+    // From the opponent's draw result, held to PosseManager::getMaxBoostMs().
     unsigned long opponentBoostMs = 0;
     unsigned long matchLocalStartTime = 0;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;

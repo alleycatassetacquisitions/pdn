@@ -221,9 +221,8 @@ bool MatchManager::didWin() {
     if (!activeMatchState.hasReceivedDrawResult) {
         return false;
     }
-    const long hunterTime = getEffectiveDrawTime(true);
-    const long bountyTime = getEffectiveDrawTime(false);
-    return activeMatchState.localIsHunter ? hunterTime < bountyTime : bountyTime < hunterTime;
+    return getEffectiveDrawTime(activeMatchState.localIsHunter) <
+           getEffectiveDrawTime(!activeMatchState.localIsHunter);
 }
 
 bool MatchManager::finalizeMatch() {
@@ -598,8 +597,8 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: names the local draw slot");
             return;
         }
-        // Not a reaction time, and as a signed effective time it would beat
-        // every honest draw.
+        // Not a reaction time, and as a signed effective time it could beat
+        // any honest draw.
         if (command.playerDrawTime < 0) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: negative draw time");
             return;
@@ -631,6 +630,9 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
     }
 
     activeMatchState.localIsHunter ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
+    // A pity time earns no boost, and the frame below says so; a press in the
+    // same tick as the grace expiry may have snapshotted one.
+    activeMatchState.boostMs = 0;
     setNeverPressed();
     // Mirror what gets uploaded: every match contributes a draw time to the server,
     // so on-device "average reaction" should include pity times too.
