@@ -204,37 +204,14 @@ public:
     }
 
     /**
-     * Ring closure the way production delivers it: the head's RDC callback, the
-     * roster broadcast, then each member's Idle -> ShootoutProposal mount.
-     *
-     * Index of the node that latched the ring, set by claimRing().
-     */
-    size_t ringHeadIndex = 0;
-
-    /**
      * Claims on whichever node latched, which `closeRing()` makes the last-indexed
      * one. Production fires onRingClosed() only from that RDC callback, so a
-     * self-claim on any other node is a state no device can reach. The roster is
-     * injected because the fixture does not route kConnectionAnnounce (see
-     * isRouted), so no roster ever reaches a head here.
+     * self-claim on any other node is a state no device can reach. The head
+     * announces the roster `closeRing()` seeded on its RDC.
      */
     void claimRing() {
-        size_t headIndex = nodes.size();
-        for (size_t i = 0; i < nodes.size(); ++i) {
-            if (nodes[i]->rdc->getChainRole() == ChainRole::RING) {
-                headIndex = i;
-                break;
-            }
-        }
+        const size_t headIndex = latchedNodeIndex();
         ASSERT_LT(headIndex, nodes.size()) << "closeRing() left no node latched";
-        ringHeadIndex = headIndex;
-        std::vector<std::array<uint8_t, 6>> roster;
-        for (auto& n : nodes) {
-            std::array<uint8_t, 6> mac;
-            memcpy(mac.data(), n->mac, 6);
-            roster.push_back(mac);
-        }
-        nodes[headIndex]->shootout->setRingMembersForTest(roster);
         nodes[headIndex]->shootout->onRingClosed();
         deliverAllPackets();
         for (auto& n : nodes) {
@@ -295,18 +272,30 @@ public:
     }
 
     /**
-     * Seeds every node's ring roster directly because dispatch() drops
-     * kConnectionAnnounce before it reaches the head.
+     * Puts one kConnectionAnnounce per other node into the latched head's radio
+     * handler; dispatch() drops the nodes' own.
      */
     void seedRingRoster() {
-        std::vector<std::array<uint8_t, 6>> members;
-        for (auto& n : nodes) {
-            std::array<uint8_t, 6> mac;
-            memcpy(mac.data(), n->mac, 6);
-            members.push_back(mac);
+        const size_t headIndex = latchedNodeIndex();
+        ASSERT_LT(headIndex, nodes.size()) << "closeRing() left no node latched";
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            if (i == headIndex) continue;
+            // Every cable runs the higher index's OUTPUT into the lower one's
+            // INPUT, and the closing cable runs node 0's into the tail's.
+            std::vector<uint8_t> announce =
+            announceBytes(nodes[(i + 1) % nodes.size()]->mac, /*seqId=*/0);
+            ASSERT_TRUE(nodes[headIndex]->device->mockPeerComms->triggerPacketCallback(
+            nodes[i]->mac, PktType::kConnectionAnnounce, announce.data(), announce.size()))
+            << "the head's RDC registered no roster handler";
         }
-        for (auto& n : nodes)
-            n->shootout->setRingMembersForTest(members);
+    }
+
+    /** Index of the node whose RDC latched the ring, or nodeCount() when none has. */
+    size_t latchedNodeIndex() const {
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            if (nodes[i]->rdc->getChainRole() == ChainRole::RING) return i;
+        }
+        return nodes.size();
     }
 
     // Pump all captured outgoing packets into the intended recipient's handlers
@@ -350,9 +339,9 @@ protected:
 
     /**
      * The PktTypes this fixture carries between nodes. Deliberately not every
-     * type: kConnectionAnnounce is dropped so no roster ever reaches a head here
-     * (claimRing and seedRingRoster inject rosters instead), and the cases below
-     * were written against that.
+     * type: kConnectionAnnounce is dropped so no node's own announce ever reaches
+     * a head here (seedRingRoster hands the head its roster instead), and the
+     * cases below were written against that.
      */
     static bool isRouted(PktType type) {
         switch (type) {
@@ -663,7 +652,9 @@ inline void shootoutFourDeviceConsensusAndMatchStart(PosseMultiDeviceFixture* su
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL)
         << "node " << i << " phase";
     }
-    EXPECT_TRUE(suite->node(suite->ringHeadIndex).shootout->isCoordinator());
+    const size_t headIndex = suite->latchedNodeIndex();
+    ASSERT_LT(headIndex, suite->nodeCount()) << "no node holds the ring latch";
+    EXPECT_TRUE(suite->node(headIndex).shootout->isCoordinator());
 
     // Advance past the bracket-reveal window and let the coordinator fire
     // the first MATCH_START.
