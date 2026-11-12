@@ -14,11 +14,15 @@
 constexpr size_t SHOOTOUT_NAME_LENGTH = 12;
 
 // The ring as of closure (kShootoutRingClosed). Sized to the chain cap so one
-// frame always holds it; `count` says how many entries are live, the rest are zero.
+// struct always holds it; `count` says how many entries are live, and only
+// those go on the wire.
 struct ShootoutRosterPayload {
     uint8_t seqId;
     uint8_t count;
     uint8_t macs[MAX_CHAIN_MEMBERS][6];
+
+    /** Bytes sent: the two header bytes and the `count` live entries. */
+    size_t wireSize() const { return sizeof(seqId) + sizeof(count) + count * sizeof(macs[0]); }
 } __attribute__((packed));
 
 // A member's press during the proposal, rebroadcast once a second until the

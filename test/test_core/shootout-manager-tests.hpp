@@ -260,9 +260,9 @@ inline void ringClosedAnnouncesRosterToMembers(ShootoutManagerTests* suite) {
     EXPECT_TRUE(suite->shootout->shouldEnterProposal());
 
     EXPECT_EQ(memcmp(destination.data(), MockDevice::BROADCAST_MAC, 6), 0);
-    ASSERT_EQ(frame.size(), sizeof(ShootoutRosterPayload));
-    ShootoutRosterPayload roster;
-    memcpy(&roster, frame.data(), sizeof(roster));
+    ASSERT_EQ(frame.size(), 2 + members.size() * 6) << "the unused roster tail went on the air";
+    ShootoutRosterPayload roster{};
+    memcpy(&roster, frame.data(), frame.size());
     EXPECT_EQ(roster.count, members.size());
     for (size_t i = 0; i < members.size(); i++) {
         EXPECT_EQ(memcmp(roster.macs[i], members[i].data(), 6), 0) << "member " << i;
@@ -656,9 +656,9 @@ inline void laggingRosterDoesNotRunSoloTournament(ShootoutManagerTests* suite) {
     suite->shootout->setRingMembersForTest({me, peer});
     suite->fakeClock->advance(ShootoutManager::kConfirmRebroadcastMs + 100);
     suite->tick();
-    ASSERT_EQ(lastRingClosed.size(), sizeof(ShootoutRosterPayload));
-    ShootoutRosterPayload roster;
-    memcpy(&roster, lastRingClosed.data(), sizeof(roster));
+    ASSERT_EQ(lastRingClosed.size(), 2u + 2 * 6);
+    ShootoutRosterPayload roster{};
+    memcpy(&roster, lastRingClosed.data(), lastRingClosed.size());
     ASSERT_EQ(roster.count, 2u);
     EXPECT_EQ(memcmp(roster.macs[1], peer.data(), 6), 0);
 
