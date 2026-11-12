@@ -35,7 +35,8 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToPlayerDetected();
-    /** @return true once the upload timer has expired with matches staged. */
+    /** @return true if matches are staged when the upload interval expires; that call restarts it.
+     */
     bool transitionToUploadPending();
 
 private:
@@ -131,7 +132,7 @@ public:
     void onStateMounted(FDN* fdn) override;
     /** Shows the failure screen on an error or the fallback timeout. */
     void onStateLoop(FDN* fdn) override;
-    /** Returns the radio to ESP-NOW and resets the upload phase. */
+    /** Returns the radio to ESP-NOW if the upload still holds it, and resets the upload phase. */
     void onStateDismounted(FDN* fdn) override;
 
     /** @return true when no upload was attempted, it succeeded, or the failure screen ended. */

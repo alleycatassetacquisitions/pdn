@@ -60,7 +60,11 @@ void UploadPendingState::onStateLoop(FDN* fdn) {
 
 void UploadPendingState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted — upload %s", phase == Phase::UPLOADED ? "done" : "not done");
-    fdn->getWirelessManager()->enablePeerCommsMode();
+    // The failure screen already handed the radio back. A second switch would cut
+    // off a PIN lookup that a PDN cabled during that screen has since started.
+    if (phase == Phase::UPLOADING || phase == Phase::UPLOADED) {
+        fdn->getWirelessManager()->enablePeerCommsMode();
+    }
     // A fast upload leaves before the loading glyphs hand the display back to text.
     fdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     glyphTimer.invalidate();
