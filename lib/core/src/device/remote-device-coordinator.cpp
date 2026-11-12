@@ -134,7 +134,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
         // older report's late delivery must not clear the newer pending one.
         disconnectReportChannel->setOnDelivered([this](uint8_t seqId, const uint8_t*) {
             if (seqId != pendingReportSeqId) return;
-            pendingReportMac.fill(0);
+            clearPendingReport();
         });
     }
     headTransferChannel = transport->channel<HeadTransferPayload>(
@@ -264,6 +264,11 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         context.jack = jack;
         context.nowMs = [] { return RemoteDeviceCoordinator::nowMs(); };
         context.onContextRequest = [this](SerialIdentifier j) {
+            // Ahead of this attempt's context send, which the peer needs to reach
+            // Connected and re-announce.
+            if (j == SerialIdentifier::OUTPUT_JACK) {
+                retractReportFor(helloByJack[jackIndex(j)].machine->peer().data());
+            }
             initiateContextExchange(j);
         };
         context.onJackChange = [this](SerialIdentifier j, bool connected) {
@@ -679,12 +684,9 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         const std::array<uint8_t, 6> formingHead = chainHeadMac;
         chainHeadMac.fill(0);
         chainHeadConfirmed = false;
-        // A downstream-loss report is owed only while we remain a child under a
-        // head. Becoming our own head voids it: clear the pending re-send state so
-        // a later head adoption (applyUpstreamHead's successor-chase) cannot ship
-        // this stale report to an unrelated new head and prune a live member.
-        pendingReportMac.fill(0);
-        pendingReportSeqId = 0;
+        // Becoming our own head voids the pending report, or adoptUpstreamHead's
+        // successor-chase would ship it to an unrelated new head and prune a live member.
+        clearPendingReport();
         cancelHeadRosterTraffic(formingHead.data());
         publishHelloState();
         // Copied before the call, as the chain-change dispatch is:
@@ -760,12 +762,9 @@ void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier jack) {
         // Connected would be adopted as whatever this one last advertised.
         upstreamAdvertisedHead.fill(0);
         upstreamRingClosed = false;
-        // A downstream-loss report is owed only while we remain a child under a
-        // head. Becoming our own head voids it: clear the pending re-send state so
-        // a later head adoption (applyUpstreamHead's successor-chase) cannot ship
-        // this stale report to an unrelated new head and prune a live member.
-        pendingReportMac.fill(0);
-        pendingReportSeqId = 0;
+        // Becoming our own head voids the pending report, or adoptUpstreamHead's
+        // successor-chase would ship it to an unrelated new head and prune a live member.
+        clearPendingReport();
         cancelHeadRosterTraffic(lostHead.data());
     }
     publishHelloState();
@@ -853,6 +852,21 @@ void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
     // memmove, not memcpy: the successor-chase re-send passes pendingReportMac
     // back in as lostMac, so source and destination alias on that path.
     memmove(pendingReportMac.data(), lostMac, 6);
+}
+
+void RemoteDeviceCoordinator::retractReportFor(const uint8_t* returnedMac) {
+    if (disconnectReportChannel == nullptr) return;
+    // By what each frame names, not by the newest-report slot: a later report
+    // overwrites that slot while this peer's own report is still retrying.
+    disconnectReportChannel->cancelMatching([returnedMac](const DisconnectReportPayload& report) {
+        return memcmp(report.disconnectedMac, returnedMac, 6) == 0;
+    });
+    if (memcmp(pendingReportMac.data(), returnedMac, 6) == 0) clearPendingReport();
+}
+
+void RemoteDeviceCoordinator::clearPendingReport() {
+    pendingReportMac.fill(0);
+    pendingReportSeqId = 0;
 }
 
 void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {

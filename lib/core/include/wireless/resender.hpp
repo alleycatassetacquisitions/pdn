@@ -152,6 +152,13 @@ public:
     void cancelAll(PktType type);
 
     /**
+     * Silent drop of every pending frame on this channel whose payload `matches`,
+     * to every recipient. For frames whose news went stale before delivery.
+     */
+    void cancelMatching(PktType type,
+                        const std::function<bool(const uint8_t* payload, size_t len)>& matches);
+
+    /**
      * cancelAll, sparing the frame sent under `keepSeqId`. For the frame that
      * announces the conversation is over: it owes delivery to exactly the peers
      * that have not yet heard the news, so it must outlive the teardown it is

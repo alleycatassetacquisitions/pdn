@@ -1747,6 +1747,15 @@ TEST_F(RDCHelloTests, backToBackReportsBothRetryToHead) {
 TEST_F(RDCHelloTests, pendingReportResentOnHeadChange) {
     rdcPendingReportResentOnHeadChange(this);
 }
+TEST_F(RDCHelloTests, returningDownstreamRetractsItsReport) {
+    rdcReturningDownstreamRetractsItsReport(this);
+}
+TEST_F(RDCHelloTests, returningDownstreamRetractsADisplacedReport) {
+    rdcReturningDownstreamRetractsADisplacedReport(this);
+}
+TEST_F(RDCHelloTests, newDownstreamLeavesReportPending) {
+    rdcNewDownstreamLeavesReportPending(this);
+}
 TEST_F(RDCHelloTests, pendingReportVoidedByBecomingHead) {
     rdcPendingReportVoidedByBecomingHead(this);
 }
