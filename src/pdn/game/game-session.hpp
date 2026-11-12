@@ -14,10 +14,10 @@
  * Owns the managers the gameplay apps share, above every app so none is tied to
  * one state machine.
  *
- * getContext() hands those managers out by value, so an app built from one — and
- * any state of that app which keeps a manager — holds a pointer the session frees.
- * Destroy the apps before the session. No state destructor dereferences one today,
- * so that is ordering hygiene rather than a live use-after-free.
+ * getContext() exposes those managers as raw pointers, so an app built from it —
+ * and any state of that app which keeps a manager — holds a pointer the session
+ * frees. Destroy the apps before the session: ~SupporterReady dereferences
+ * posseManager when destroyed mounted, so the order is load-bearing.
  *
  * sync() runs on each platform tick through Device::setTickCallback, not from a
  * state: only the mounted app receives an onStateLoop, and a tournament has to
@@ -40,19 +40,16 @@ public:
     void sync();
 
     /** The manager bundle every gameplay state is constructed from. */
-    GameContext getContext();
+    const GameContext& getContext() const { return context; }
 
 private:
     void logRetryStats();
 
-    Player* player = nullptr;
     Device* pdn = nullptr;
     WirelessManager* wirelessManager = nullptr;
-    RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
-    SymbolWirelessManager* symbolWirelessManager = nullptr;
-    MatchManager* matchManager = nullptr;
-    PosseManager* posseManager = nullptr;
-    ShootoutManager* shootoutManager = nullptr;
+    // Owns the match, posse and shootout managers in it; the other pointers are
+    // borrowed.
+    GameContext context;
 
     SimpleTimer statsLogTimer;
     static constexpr unsigned long STATS_LOG_INTERVAL_MS = 5000;
