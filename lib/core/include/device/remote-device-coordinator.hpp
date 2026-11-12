@@ -115,7 +115,7 @@ public:
 
     // ---- Chain-level surface ----
 
-    /** This device's chain role, derived from jack presence plus the ring latch. */
+    /** This device's chain role, derived from its PDN-to-PDN jack links plus the ring latch. */
     virtual ChainRole getChainRole() const;
 
     /**
@@ -444,10 +444,13 @@ private:
 
     static void unpackMac(uint64_t value, uint8_t* out);
     void publishHelloState();
-    // Ring detection and the latched-head conflict, driven by any INPUT HELLO;
-    // taking on a foreign head is left to adoptUpstreamHead.
+    // A Connected jack counts toward the chain unless either end is an FDN, which
+    // is a jack peer for symbol match and never a chain member.
+    bool isChainLink(SerialIdentifier jack) const;
+    // Ring detection and the latched-head conflict, driven by every INPUT HELLO a
+    // PDN hears; taking on a foreign head is left to adoptUpstreamHead.
     void applyUpstreamHead(const HelloPayload& hello);
-    // Adopts upstreamAdvertisedHead once the INPUT link reports CONNECTED: hands
+    // Adopts upstreamAdvertisedHead once the INPUT jack is a chain link: hands
     // over the roster and announces. No-op before that.
     void adoptUpstreamHead();
     void onLinkLost(SerialIdentifier jack);
