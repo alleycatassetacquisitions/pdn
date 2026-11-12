@@ -307,13 +307,20 @@ public:
             receiveHandler = callback;
             receiveContext = ctx;
         }));
+        ON_CALL(*radio, setSendStatusHandler(PktType::kMatchCommand, testing::_, testing::_))
+        .WillByDefault(testing::Invoke(
+        [this](PktType, PeerCommsInterface::SendStatusCallback callback, void* ctx) {
+            sendStatusHandler = callback;
+            sendStatusContext = ctx;
+        }));
         ON_CALL(*radio, sendData(testing::_, PktType::kMatchCommand, testing::_, testing::_))
         .WillByDefault(testing::DoAll(
-        testing::Invoke([this](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+        testing::Invoke([this](const uint8_t* dst, PktType, const uint8_t* data, const size_t len) {
             if (len != sizeof(MatchPacket)) return;
             MatchPacket p{};
             memcpy(&p, data, sizeof(p));
             sentFrames.push_back(p);
+            if (dst != nullptr) memcpy(lastDestination.data(), dst, 6);
         }),
         testing::Return(1)));
     }
@@ -321,6 +328,22 @@ public:
     /** The exact frame this radio last sent, for the peer's tap to replay. */
     const MatchPacket* lastFrame() const {
         return sentFrames.empty() ? nullptr : &sentFrames.back();
+    }
+
+    /**
+     * The radio's SEND_SUCCESS for @p frame, delivered after sendData has returned as both real
+     * drivers do.
+     */
+    void confirmSend(const MatchPacket& frame) {
+        ASSERT_NE(sendStatusHandler, nullptr);
+        sendStatusHandler(lastDestination.data(), reinterpret_cast<const uint8_t*>(&frame),
+                          sizeof(frame), true, sendStatusContext);
+    }
+
+    /** confirmSend for the frame this radio last sent. */
+    void confirmLastSend() {
+        ASSERT_FALSE(sentFrames.empty());
+        confirmSend(sentFrames.back());
     }
 
     /** Delivers frame from senderMac into this tap's own receiveHandler. */
@@ -342,6 +365,9 @@ public:
 private:
     PeerCommsInterface::PacketCallback receiveHandler = nullptr;
     void* receiveContext = nullptr;
+    PeerCommsInterface::SendStatusCallback sendStatusHandler = nullptr;
+    void* sendStatusContext = nullptr;
+    std::array<uint8_t, 6> lastDestination{};
 };
 
 // Fake light strip for LightManager

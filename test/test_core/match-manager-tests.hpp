@@ -18,12 +18,14 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(1000);
 
+        using ::testing::_;
+        radioTap.attach(device.mockPeerComms);
+
         matchManager = new MatchManager(device.wirelessManager);
         player = new Player();
         char playerId[] = "test";
         player->setUserID(playerId);
         matchManager->initialize(player, &mockStorage);
-        using ::testing::_;
         ON_CALL(mockStorage, write(_, _, _))
             .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
                 return value.size();
@@ -56,13 +58,14 @@ public:
     }
 
     // Creates a match from the bounty's perspective by synthesizing a
-    // SEND_MATCH_ID command from a fake hunter and feeding it to listenForMatchEvents().
+    // SEND_MATCH_ID command from a fake hunter, then reporting the MATCH_ID_ACK delivered.
     void setupMatchAsBounty(const char* matchId = "test-match-id",
                             const char* hunterId = "hunt") {
         player->setIsHunter(false);
         static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
         MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, matchId, hunterId, 0, true);
         matchManager->listenForMatchEvents(cmd);
+        radioTap.confirmLastSend();
     }
 
     MatchManager* matchManager;
@@ -71,6 +74,7 @@ public:
     MockStorage mockStorage;
     FakeRemoteDeviceCoordinator fakeRdc;
     FakePlatformClock* fakeClock;
+    QuickdrawRadioTap radioTap;
 };
 
 // initializeMatch hands primeMatch the generator's own buffer rather than a copy,
@@ -116,6 +120,27 @@ inline void matchManagerBoostSubtractedFromHunterReactionTime(MatchManagerTestSu
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 150u);
 }
 
+inline void matchManagerResultSnapshotCarriesOnlyThisMatchsPenalty(MatchManagerTestSuite* suite) {
+    suite->player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->matchManager->initializeMatch(dummyMac);
+    parameterizedCallbackFunction masher = suite->matchManager->getButtonMasher();
+    masher(suite->matchManager);
+    masher(suite->matchManager);
+
+    suite->matchManager->setMatchLocalStartTime(suite->fakeClock->milliseconds());
+    suite->fakeClock->advance(200);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 350u);
+    suite->matchManager->finalizeMatch();
+    EXPECT_EQ(suite->matchManager->getLastMatchDisplay().penaltyMs, 150u);
+
+    suite->matchManager->initializeMatch(dummyMac);
+    suite->matchManager->sendNeverPressed(4000);
+    suite->matchManager->finalizeMatch();
+    EXPECT_EQ(suite->matchManager->getLastMatchDisplay().penaltyMs, 0u)
+    << "a match that was never pressed showed the previous match's penalty";
+}
 
 // ============================================
 // Match Initialization / Handshake Tests
@@ -480,28 +505,63 @@ inline void matchManagerHunterMatchIsReadyAfterAck(MatchManager* mm, Player* pla
     EXPECT_TRUE(mm->isMatchReady());
 }
 
-// Bounty's matchIsReady becomes true immediately upon receiving SEND_MATCH_ID.
-inline void matchManagerBountyMatchIsReadyAfterReceivingMatch(MatchManager* mm, Player* player) {
-    player->setIsHunter(false);
+inline void matchManagerBountyReadiesWhenItsAckIsDelivered(MatchManagerTestSuite* suite) {
+    suite->player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
-    mm->listenForMatchEvents(cmd);
+    suite->matchManager->listenForMatchEvents(cmd);
+    EXPECT_FALSE(suite->matchManager->isMatchReady())
+    << "the bounty started its countdown before the hunter could have heard the ack";
 
-    EXPECT_TRUE(mm->isMatchReady());
+    suite->radioTap.confirmLastSend();
+    EXPECT_TRUE(suite->matchManager->isMatchReady());
+}
+
+// Every match frame to this peer shares the channel, and a late report for an earlier one
+// still fires the delivery callback; only the ack's own report may ready the bounty.
+inline void matchManagerBountyIgnoresDeliveryOfAnotherFrame(MatchManagerTestSuite* suite) {
+    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->player->setIsHunter(true);
+    MatchCommand sameRole(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-aaa", "hunt", 0, true);
+    suite->matchManager->listenForMatchEvents(sameRole);
+    suite->player->setIsHunter(false);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    suite->matchManager->listenForMatchEvents(cmd);
+    ASSERT_EQ(suite->radioTap.sentFrames.size(), 2u);
+    ASSERT_EQ(suite->radioTap.sentFrames[0].command, MatchCmd::MATCH_ROLE_MISMATCH);
+
+    suite->radioTap.confirmSend(suite->radioTap.sentFrames[0]);
+    EXPECT_FALSE(suite->matchManager->isMatchReady())
+    << "the role-mismatch reply's delivery was taken for the ack's";
+
+    suite->radioTap.confirmSend(suite->radioTap.sentFrames[1]);
+    EXPECT_TRUE(suite->matchManager->isMatchReady());
+}
+
+// No delivery report ever came, so the hunter may never have heard the ack.
+inline void matchManagerBountyDropsTheMatchWhenItsAckIsAbandoned(MatchManagerTestSuite* suite) {
+    suite->player->setIsHunter(false);
+    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    suite->matchManager->listenForMatchEvents(cmd);
+    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
+
+    suite->fakeClock->advance(Resender::RETRANSMIT_SPAN_MS + 1);
+    suite->matchManager->sync();
+
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_FALSE(suite->matchManager->isMatchReady());
 }
 
 // clearCurrentMatch resets the matchIsReady flag along with all other match state.
-inline void matchManagerClearMatchResetsMatchIsReadyFlag(MatchManager* mm, Player* player) {
-    player->setIsHunter(false);
-    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
-    mm->listenForMatchEvents(cmd);
-    ASSERT_TRUE(mm->isMatchReady());
+inline void matchManagerClearMatchResetsMatchIsReadyFlag(MatchManagerTestSuite* suite) {
+    suite->setupMatchAsBounty("match-id-abc", "hunt");
+    ASSERT_TRUE(suite->matchManager->isMatchReady());
 
-    mm->clearCurrentMatch();
+    suite->matchManager->clearCurrentMatch();
 
-    EXPECT_FALSE(mm->isMatchReady());
-    EXPECT_FALSE(mm->getCurrentMatch().has_value());
+    EXPECT_FALSE(suite->matchManager->isMatchReady());
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
 }
 
 // Receiving MATCH_ROLE_MISMATCH clears the initiator's active match and leaves matchIsReady false.

@@ -17,6 +17,17 @@ void SymbolMatchApp::populateStateMap() {
     auto* symbolIdle = new SymbolIdle(symbolManager, remoteDeviceCoordinator, symbolWirelessManager);
     auto* matchSuccess = new MatchSuccess(remoteDeviceCoordinator, symbolWirelessManager);
 
+    // The game ends once no PDN remains cabled. MatchSuccess holds its codeword first; one
+    // window spans Selection and SymbolIdle so their swap doesn't restart it.
+    RemoteDeviceCoordinator* rdc = remoteDeviceCoordinator;
+    DebouncedCondition* debounce = &gameOverDebounce;
+    auto gameOver = [rdc, debounce]() {
+        return debounce->heldFor(rdc->getConnectedPeerMac(DeviceType::PDN) == nullptr,
+                                 GAME_OVER_DEBOUNCE_MS);
+    };
+    selection->addAppTransition(gameOver, StateId(IDLE_APP_ID));
+    symbolIdle->addAppTransition(gameOver, StateId(IDLE_APP_ID));
+
     selection->addTransition(
     new StateTransition([selection]() { return selection->transitionToIdle(); }, symbolIdle));
 

@@ -32,6 +32,7 @@ struct LastMatchDisplay {
     unsigned long myTimeMs = 0;       // boosted draw time, as used for winner calc
     unsigned long opponentTimeMs = 0;
     unsigned long boostMs = 0;        // boost applied at own button press
+    unsigned long penaltyMs = 0;      // early-press penalty applied at own button press
     bool hasData = false;
 };
 
@@ -44,6 +45,11 @@ struct ActiveMatchState {
     bool hasPressedButton = false;
     bool gracePeriodExpiredNoResult = false;
     bool opponentNeverPressed = false;
+    // Bounty: seqId of the MATCH_ID_ACK whose delivery report is awaited (0 = none).
+    uint8_t pendingAckSeqId = 0;
+    // Earned at the local button press; shown on the result screen.
+    unsigned long boostMs = 0;
+    unsigned long penaltyMs = 0;
     unsigned long matchLocalStartTime = 0;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
@@ -133,8 +139,7 @@ public:
     void setBoostProvider(std::function<unsigned long()> provider);
 
     /**
-     * Result-screen snapshot that outlives the match: draw times from
-     * finalizeMatch, boost from the button press that earned it.
+     * Result-screen snapshot that outlives the match, taken whole by finalizeMatch.
      */
     const LastMatchDisplay& getLastMatchDisplay() const { return lastMatchDisplay; }
 
@@ -191,8 +196,9 @@ private:
     StorageInterface* storage;
     Resender resender;
     ReliableChannel<MatchPacket> matchChannel;
-    void sendCommand(const uint8_t* mac, int command, const char* matchId,
-                     long drawTime, bool isHunter);
+    /** @return the seqId the frame went out under. */
+    uint8_t sendCommand(const uint8_t* mac, int command, const char* matchId, long drawTime,
+                        bool isHunter);
     /**
      * Appends a match to storage
      * @param match Match to save
