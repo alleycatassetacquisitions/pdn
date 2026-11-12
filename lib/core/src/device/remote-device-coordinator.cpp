@@ -2,6 +2,7 @@
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/serial-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "utils/http-date.hpp"
 #include "wireless/mac-functions.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/hello-link-machine.hpp"
@@ -414,6 +415,9 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
         if (fdnContextChannel == nullptr) return;
         FdnConnectionContext ctx{};
         ctx.chainRole = role;
+        PlatformClock* clock = SimpleTimer::getPlatformClock();
+        const int64_t unixMs = clock != nullptr ? clock->unixMilliseconds() : 0;
+        ctx.fdn.utcUnixMs = isValidUtcUnixMs(unixMs) ? unixMs : 0;
         fdnContextChannel->sendReliable(mac, ctx);
         return;
     }
@@ -533,6 +537,18 @@ void RemoteDeviceCoordinator::recordJackContext(SerialIdentifier jack, DeviceTyp
     link.peerProfileLen = std::min(len, link.peerProfile.size());
     memcpy(link.peerProfile.data(), profile, link.peerProfileLen);
     link.peerUserId = peerUserId;
+
+    if (selfDeviceType == DeviceType::PDN && peerType == DeviceType::FDN &&
+        len >= sizeof(FdnProfile)) {
+        FdnProfile fdn{};
+        memcpy(&fdn, profile, sizeof(fdn));
+        if (isValidUtcUnixMs(fdn.utcUnixMs)) {
+            PlatformClock* clock = SimpleTimer::getPlatformClock();
+            if (clock != nullptr) {
+                clock->setUnixMilliseconds(fdn.utcUnixMs);
+            }
+        }
+    }
 }
 
 void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceType peerType,

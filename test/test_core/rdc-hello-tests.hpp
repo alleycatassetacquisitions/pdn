@@ -2510,7 +2510,7 @@ inline void rdcPeerUserIdAbsentForFdnContext(RDCHelloTests* suite) {
     FdnConnectionContext fdn{};
     fdn.seqId = 4;
     fdn.chainRole = 1;
-    fdn.fdn.reserved = 0x7F;
+    fdn.fdn.utcUnixMs = 0x7F;
     std::vector<uint8_t> ctx(sizeof(fdn));
     memcpy(ctx.data(), &fdn, sizeof(fdn));
     suite->transport()->deliverIncoming(
@@ -3099,4 +3099,55 @@ inline void rdcEmitHelloReadsPublishedSnapshotOnly(RDCHelloTests* suite) {
 
     ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
     EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), realHead, 6));
+}
+
+// A PDN connected to an FDN on a serial jack syncs its UTC wall clock from the
+// FDN's context without disturbing its monotonic millisecond clock, while
+// ignoring unsynchronized (0) timestamps and uncabled senders.
+inline void rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(RDCHelloTests* suite) {
+    const uint8_t fdnMac[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t uncabledMac[6] = {0xEE, 0x02, 0x03, 0x04, 0x05, 0x06};
+    constexpr int64_t SYNCED_UTC_MS = 1792359000000LL;
+
+    suite->fakeClock->setTime(5000);
+    suite->fakeClock->setUnixTimeMs(0);
+
+    // 1. Uncabled wireless FdnConnectionContext is ignored.
+    FdnConnectionContext uncabledCtx{};
+    uncabledCtx.seqId = 1;
+    uncabledCtx.chainRole = 0;
+    uncabledCtx.fdn.utcUnixMs = SYNCED_UTC_MS;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, uncabledMac,
+                                        reinterpret_cast<const uint8_t*>(&uncabledCtx),
+                                        sizeof(uncabledCtx));
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), 0);
+
+    // 2. Cabled FDN with valid UTC timestamp updates PDN wall clock, leaving monotonic untouched.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+
+    FdnConnectionContext cabledCtx{};
+    cabledCtx.seqId = 2;
+    cabledCtx.chainRole = 0;
+    cabledCtx.fdn.utcUnixMs = SYNCED_UTC_MS;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, fdnMac,
+                                        reinterpret_cast<const uint8_t*>(&cabledCtx),
+                                        sizeof(cabledCtx));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS);
+    EXPECT_EQ(suite->fakeClock->milliseconds(), 5000UL);
+
+    // 3. Subsequent unsynchronized (0) FdnConnectionContext does not overwrite valid PDN clock.
+    FdnConnectionContext unsyncedCtx{};
+    unsyncedCtx.seqId = 3;
+    unsyncedCtx.chainRole = 0;
+    unsyncedCtx.fdn.utcUnixMs = 0;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, fdnMac,
+                                        reinterpret_cast<const uint8_t*>(&unsyncedCtx),
+                                        sizeof(unsyncedCtx));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS);
 }

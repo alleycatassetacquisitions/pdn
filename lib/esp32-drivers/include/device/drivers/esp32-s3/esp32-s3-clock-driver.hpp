@@ -34,4 +34,13 @@ public:
         gettimeofday(&tv, nullptr);
         return static_cast<int64_t>(tv.tv_sec) * 1000 + static_cast<int64_t>(tv.tv_usec) / 1000;
     }
+
+    /** Sets the POSIX system clock from UTC milliseconds since the Unix epoch. */
+    void setUnixMilliseconds(int64_t unixMs) override {
+        if (unixMs < 0) return;
+        struct timeval tv = {};
+        tv.tv_sec = static_cast<time_t>(unixMs / 1000);
+        tv.tv_usec = static_cast<suseconds_t>((unixMs % 1000) * 1000);
+        settimeofday(&tv, nullptr);
+    }
 };
