@@ -475,7 +475,7 @@ private:
     // disconnectedMac of the report most recently sent whose delivery is not yet
     // confirmed (all-zero = none). A head change cancels the in-flight report to
     // the old head, and unlike the announce path nothing re-triggers it, so
-    // applyUpstreamHead re-sends it to the successor — otherwise the departed
+    // adoptUpstreamHead re-sends it to the successor — otherwise the departed
     // member stays a phantom in the new head's roster.
     std::array<uint8_t, 6> pendingReportMac{};
     uint8_t pendingReportSeqId = 0;
@@ -489,6 +489,10 @@ private:
     // Reliable-send a DisconnectReport naming `lostMac` to `headMac`, tracking
     // it as the pending report until its delivery is confirmed.
     void sendDisconnectReport(const uint8_t* headMac, const uint8_t* lostMac);
+    // Stop retrying every pending report that names `returnedMac`: delivered after
+    // that peer re-announces, it would erase a live member.
+    void retractReportFor(const uint8_t* returnedMac);
+    void clearPendingReport();
     // Drop `mac` and every member whose upstream chain passes through it.
     void removeChainMemberSubtree(const uint8_t* mac);
     // One OUTPUT jack means one downstream: when `member` announces `upstream`,

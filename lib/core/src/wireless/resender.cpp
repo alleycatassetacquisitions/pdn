@@ -113,6 +113,14 @@ void Resender::cancelAll(PktType type) {
     }
 }
 
+void Resender::cancelMatching(
+PktType type, const std::function<bool(const uint8_t* payload, size_t len)>& matches) {
+    for (std::vector<Group>::iterator g = groups.begin(); g != groups.end();) {
+        const bool drop = g->type == type && matches(g->payload.data(), g->payload.size());
+        g = drop ? groups.erase(g) : g + 1;
+    }
+}
+
 void Resender::cancelAllExcept(PktType type, uint8_t keepSeqId) {
     for (std::vector<Group>::iterator g = groups.begin(); g != groups.end();) {
         const bool drop = g->type == type && g->seqId != keepSeqId;
