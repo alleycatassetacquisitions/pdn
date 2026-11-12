@@ -5,21 +5,19 @@ PlayerFetchApp::PlayerFetchApp(WirelessManager* wirelessManager,
                                FirmwareUpdateManager* firmwareUpdateManager,
                                PlayerProvider* playerProvider)
     : StateMachine(PLAYER_FETCH_APP_ID)
-    , wirelessManager(wirelessManager)
+    , provisioningClient(wirelessManager)
     , firmwareUpdateManager(firmwareUpdateManager)
     , playerProvider(playerProvider) {}
 
 PlayerFetchApp::~PlayerFetchApp() {
-    wirelessManager = nullptr;
     firmwareUpdateManager = nullptr;
     playerProvider = nullptr;
 }
 
 void PlayerFetchApp::populateStateMap() {
     PinEntryState* pinEntry = new PinEntryState(playerProvider);
-    FetchUserState* fetchUser = new FetchUserState(wirelessManager, playerProvider);
+    FetchUserState* fetchUser = new FetchUserState(&provisioningClient, playerProvider);
     ChooseTeamState* chooseTeam = new ChooseTeamState(playerProvider);
-    DemoStubState* demoStub = new DemoStubState();
     PlayerFetchWelcome* welcome = new PlayerFetchWelcome(playerProvider);
 
     pinEntry->addTransition(
@@ -32,14 +30,10 @@ void PlayerFetchApp::populateStateMap() {
     fetchUser->addTransition(
     new StateTransition([fetchUser]() { return fetchUser->transitionToPinEntry(); }, pinEntry));
 
-    chooseTeam->addTransition(
-    new StateTransition([chooseTeam]() { return chooseTeam->transitionToDemoStub(); }, demoStub));
-
-    demoStub->addTransition(
-    new StateTransition([demoStub]() { return demoStub->transitionToPinEntry(); }, pinEntry));
-
     // Nothing checks a top-level app's own transition list, so registration's
     // hand-off to gameplay lives on the state that triggers it.
+    chooseTeam->addAppTransition([chooseTeam]() { return chooseTeam->transitionToHub(); },
+                                 StateId(HUB_APP_ID));
     welcome->addAppTransition(
         [welcome]() { return welcome->transitionToAwaken(); },
         StateId(HUB_APP_ID));
@@ -47,7 +41,6 @@ void PlayerFetchApp::populateStateMap() {
     stateMap.push_back(pinEntry);
     stateMap.push_back(fetchUser);
     stateMap.push_back(chooseTeam);
-    stateMap.push_back(demoStub);
     stateMap.push_back(welcome);
 
     if (firmwareUpdateManager != nullptr) {

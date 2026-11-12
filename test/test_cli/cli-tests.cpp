@@ -409,8 +409,8 @@ TEST_F(CliRoleCommandTestSuite, NoDevices) {
 // CLI COMMAND / REBOOT TESTS
 // ============================================
 
-TEST_F(CliCommandTestSuite, MockHttpFetchTransitions) {
-    cliDeviceMockHttpFetchTransitions(this);
+TEST_F(CliCommandTestSuite, CabledProvisionTransitions) {
+    cliDeviceCabledProvisionTransitions(this);
 }
 
 TEST_F(CliCommandTestSuite, RebootResetsState) {

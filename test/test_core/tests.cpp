@@ -1094,21 +1094,35 @@ TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
     pinEntryRoutesDemoPinToChooseTeam(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserQueuesDevicePlayerLookup) {
-    fetchUserQueuesDevicePlayerLookup(this);
+TEST_F(PlayerFetchTestSuite, fetchUserRequestsLookupFromCabledFdn) {
+    fetchUserRequestsLookupFromCabledFdn(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserStoresDevicePlayerOnSuccess) {
-    fetchUserStoresDevicePlayerOnSuccess(this);
+TEST_F(PlayerFetchTestSuite, fetchUserRequestsOnceFdnIsCabled) {
+    fetchUserRequestsOnceFdnIsCabled(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserStoresProvisionedPlayerOnSuccess) {
+    fetchUserStoresProvisionedPlayerOnSuccess(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserIgnoresUncabledOrMalformedProvision) {
+    fetchUserIgnoresUncabledOrMalformedProvision(this);
 }
 
 TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
     fetchUserFailureReturnsToPinAfterPageTimeout(this);
 }
 
-TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
-    chooseTeamConfirmReachesDemoStub(this);
+TEST_F(PlayerFetchTestSuite, fetchUserTimesOutWithoutFdn) { fetchUserTimesOutWithoutFdn(this); }
+
+TEST_F(PlayerFetchTestSuite, fetchUserResendsAbandonedRequestWithinOneReplyWindow) {
+    fetchUserResendsAbandonedRequestWithinOneReplyWindow(this);
 }
+
+TEST_F(PlayerFetchTestSuite, fdnLookupDeadlineLeavesWifi) { fdnLookupDeadlineLeavesWifi(this); }
+
+TEST_F(PlayerFetchTestSuite, chooseTeamConfirmEntersHub) { chooseTeamConfirmEntersHub(this); }
 
 TEST_F(PlayerFetchTestSuite, reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged) {
     reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged(this);
@@ -1254,10 +1268,6 @@ TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
 
 TEST_F(IdleStateTests, pairingCodeLeavesTheRadioAlone) {
     pairingCodeLeavesTheRadioAlone(this);
-}
-
-TEST_F(IdleStateTests, fetchExitPutsTheRadioBackOnEspNow) {
-    fetchExitPutsTheRadioBackOnEspNow(this);
 }
 
 TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) {

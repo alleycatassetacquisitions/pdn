@@ -249,14 +249,6 @@ inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
     pinEntry.onStateDismounted(&suite->device);
 }
 
-inline void fetchExitPutsTheRadioBackOnEspNow(IdleStateTests* suite) {
-    suite->device.wirelessManager->enableWifiMode();
-    PlayerProvider playerProvider;
-    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
-    fetch.onStateDismounted(&suite->device);
-    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
-}
-
 inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {
     suite->device.wirelessManager->enableWifiMode();
     FakeFirmwareStore store;

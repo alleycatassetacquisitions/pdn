@@ -29,6 +29,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "apps/idle/idle.hpp"
 #include "apps/symbol-match/symbol-match.hpp"
 #include "apps/fdn-app-ids.hpp"
+#include "alleycat-server/fdn-provisioning-manager.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template
@@ -69,6 +70,7 @@ Player fdnPlayer = FDN_PLAYER;
 // Managers
 RemotePlayerManager* remotePlayerManager = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
+FdnProvisioningManager* fdnProvisioningManager = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
 
@@ -143,7 +145,12 @@ static void setup() {
 
     symbolWirelessManager = new SymbolWirelessManager(fdn->getWirelessManager(),
                                                       fdn->getRemoteDeviceCoordinator());
-    fdn->setTickCallback([]() { symbolWirelessManager->sync(); });
+    fdnProvisioningManager =
+    new FdnProvisioningManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
+    fdn->setTickCallback([]() {
+        symbolWirelessManager->sync();
+        fdnProvisioningManager->sync();
+    });
 
     setupEspNow(peerCommsDriver);
 
@@ -155,8 +162,8 @@ static void setup() {
 
     // Apps
     RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
-    auto* idleApp = new IdleApp(remotePlayerManager, rdc);
-    auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager);
+    auto* idleApp = new IdleApp(remotePlayerManager, rdc, fdnProvisioningManager);
+    auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager, fdnProvisioningManager);
 
     // Splash screen
     fdn->getDisplay()

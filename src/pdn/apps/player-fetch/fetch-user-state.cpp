@@ -1,33 +1,40 @@
 #include "apps/player-fetch/player-fetch-states.hpp"
+#include <cstring>
+#include "alleycat-server/player-provision-codec.hpp"
 #include "device/device.hpp"
-#include "game/quickdraw-resources.hpp"
-#include "alleycat-server/player-api.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/remote-device-coordinator.hpp"
+#include "game/quickdraw-resources.hpp"
 
 static const char TAG[] = "FetchUserState";
 
-FetchUserState::FetchUserState(WirelessManager* wirelessManager, PlayerProvider* playerProvider)
+FetchUserState::FetchUserState(PdnProvisioningClient* provisioningClient,
+                               PlayerProvider* playerProvider)
     : TypedState<PDN>(PlayerFetchStateId::FETCH_USER)
-    , wirelessManager(wirelessManager)
+    , provisioningClient(provisioningClient)
     , playerProvider(playerProvider) {}
 
 FetchUserState::~FetchUserState() {
-    wirelessManager = nullptr;
+    provisioningClient = nullptr;
     playerProvider = nullptr;
+    remoteDeviceCoordinator = nullptr;
 }
 
 void FetchUserState::onStateMounted(PDN* pdn) {
-    LOG_I(TAG, "State mounted - fetching device player for PIN %s",
+    LOG_I(TAG, "State mounted - requesting provisioning for PIN %s",
           playerProvider->getRegistrationPin());
-    showingFailurePage = false;
-    failurePagePending = false;
-    transitionToWelcomeState = false;
-    transitionToPinEntryState = false;
+    remoteDeviceCoordinator = pdn->getRemoteDeviceCoordinator();
+    provisioningClient->setOnReply(
+    [this](const uint8_t* fromMac, const PlayerProvisionPacket& pkt) {
+        onProvisionPacket(fromMac, pkt);
+    });
     showLoadingGlyphs(pdn);
-    fetchDevicePlayer();
+    fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
+    requestProvisionFromCabledFdn();
 }
 
 void FetchUserState::onStateLoop(PDN* pdn) {
+    provisioningClient->sync();
     if (failurePagePending) {
         beginFailurePage(pdn);
         failurePagePending = false;
@@ -41,9 +48,14 @@ void FetchUserState::onStateLoop(PDN* pdn) {
         return;
     }
 
+    // The FDN may be cabled after the PIN was entered, or deaf on Wi-Fi when it was sent.
+    if (!requestEverSent || provisioningClient->isRequestAbandoned()) {
+        requestProvisionFromCabledFdn();
+    }
+
     fetchTimer.updateTime();
     if (fetchTimer.expired()) {
-        LOG_W(TAG, "Device player fetch timed out");
+        LOG_W(TAG, "Provisioning timed out");
         beginFailurePage(pdn);
     } else if (fetchTimer.isRunning()) {
         if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
@@ -53,32 +65,58 @@ void FetchUserState::onStateLoop(PDN* pdn) {
 }
 
 void FetchUserState::onStateDismounted(PDN* pdn) {
-    pdn->getWirelessManager()->enablePeerCommsMode();
+    provisioningClient->setOnReply(nullptr);
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     showingFailurePage = false;
     failurePagePending = false;
     transitionToWelcomeState = false;
     transitionToPinEntryState = false;
+    requestEverSent = false;
     fetchTimer.invalidate();
     failurePageTimer.invalidate();
 }
 
-void FetchUserState::fetchDevicePlayer() {
-    fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
-    Player* player = playerProvider->getPlayer();
-    PlayerApi::getDevicePlayerByPin(
-    wirelessManager, playerProvider->getRegistrationPin(), player,
-    [this, player](Player&) {
-        LOG_I(TAG, "Fetched device player: %s", player->getServerPlayerName());
-        fetchTimer.invalidate();
-        transitionToWelcomeState = true;
-    },
-    [this](const WirelessErrorInfo& error) {
-        LOG_E(TAG, "Device player fetch failed: %s (code: %d)", error.message.c_str(),
-              static_cast<int>(error.code));
+void FetchUserState::requestProvisionFromCabledFdn() {
+    const uint8_t* fdnMac = remoteDeviceCoordinator->getConnectedPeerMac(DeviceType::FDN);
+    if (fdnMac == nullptr) {
+        return;
+    }
+    provisioningClient->sendRequest(fdnMac, playerProvider->getRegistrationPin());
+    // The reply window runs from the first request, which can go out after the PIN was entered.
+    if (!requestEverSent) {
+        fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
+    }
+    requestEverSent = true;
+}
+
+void FetchUserState::onProvisionPacket(const uint8_t* fromMac, const PlayerProvisionPacket& pkt) {
+    if (showingFailurePage || failurePagePending) return;
+    if (!remoteDeviceCoordinator->isConnectedPeer(DeviceType::FDN, fromMac)) {
+        LOG_W(TAG, "Ignoring PlayerProvisionPacket from non-cabled sender");
+        return;
+    }
+
+    if (strncmp(pkt.pin, playerProvider->getRegistrationPin(), sizeof(pkt.pin) - 1) != 0) {
+        LOG_W(TAG, "Ignoring PlayerProvisionPacket for another PIN");
+        return;
+    }
+
+    if (pkt.status == static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED)) {
+        LOG_E(TAG, "FDN reported the lookup failed");
         fetchTimer.invalidate();
         failurePagePending = true;
-    });
+        return;
+    }
+
+    Player* player = playerProvider->getPlayer();
+    if (!PlayerProvisionCodec::decode(pkt, *player)) {
+        LOG_W(TAG, "Ignoring invalid PlayerProvisionPacket payload");
+        return;
+    }
+
+    LOG_I(TAG, "Provisioned player: %s", player->getServerPlayerName());
+    fetchTimer.invalidate();
+    transitionToWelcomeState = true;
 }
 
 void FetchUserState::beginFailurePage(PDN* pdn) {

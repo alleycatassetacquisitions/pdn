@@ -50,7 +50,6 @@ inline const char* getStateName(int stateId) {
         case PlayerFetchStateId::PIN_ENTRY: return "PinEntry";
         case PlayerFetchStateId::FETCH_USER: return "FetchUser";
         case PlayerFetchStateId::CHOOSE_TEAM: return "ChooseTeam";
-        case PlayerFetchStateId::DEMO_STUB: return "DemoStub";
         case PlayerFetchStateId::WELCOME: return "WelcomeMessage";
         case PlayerFetchStateId::FIRMWARE_UPDATE: return "FirmwareUpdate";
         case SLEEP: return "Sleep";
