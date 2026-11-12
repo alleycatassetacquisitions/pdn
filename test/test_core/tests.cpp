@@ -2196,7 +2196,9 @@ TEST_F(ShootoutManagerTests, coordinatorMissingOurResultIsRecoveredBySender) { c
 TEST_F(ShootoutManagerTests, matchStartRetriesToSilentMemberThenAborts) { matchStartRetriesToSilentMemberThenAborts(this); }
 TEST_F(ShootoutManagerTests, resetCancelsInFlightFanOuts) { resetCancelsInFlightFanOuts(this); }
 TEST_F(ShootoutManagerTests, spectatorDoesNotRepaintATornDownMatch) { spectatorDoesNotRepaintATornDownMatch(this); }
-TEST_F(ShootoutManagerTests, ackIsMatchedBySeqIdAlone) { ackIsMatchedBySeqIdAlone(this); }
+TEST_F(ShootoutManagerTests, ackNamingNoLiveFrameClearsNobody) {
+    ackNamingNoLiveFrameClearsNobody(this);
+}
 TEST_F(ShootoutManagerTests, reAnnouncedMatchIsNotReplayedOnceFinished) { reAnnouncedMatchIsNotReplayedOnceFinished(this); }
 TEST_F(ShootoutManagerTests, abortDoesNotTearDownAFinishedTournament) { abortDoesNotTearDownAFinishedTournament(this); }
 TEST_F(ShootoutManagerTests, abandonedMatchStartIsJudgedAgainstItsOwnMatch) { abandonedMatchStartIsJudgedAgainstItsOwnMatch(this); }

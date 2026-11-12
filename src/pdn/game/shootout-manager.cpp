@@ -26,7 +26,10 @@ ShootoutManager::ShootoutManager(Player* player, WirelessManager* wirelessManage
     , rdc(rdc)
     , resender(wirelessManager)
     , ringClosedChannel(wirelessManager, PktType::kShootoutRingClosed, ChannelMode::FAN_OUT)
-    , confirmChannel(wirelessManager, PktType::kShootoutConfirm, ChannelMode::FAN_OUT) {
+    , confirmChannel(wirelessManager, PktType::kShootoutConfirm, ChannelMode::FAN_OUT)
+    , bracketChannel(wirelessManager, PktType::kShootoutBracket, ChannelMode::FAN_OUT)
+    , matchStartChannel(wirelessManager, PktType::kShootoutMatchStart, ChannelMode::FAN_OUT)
+    , matchResultChannel(wirelessManager, PktType::kShootoutMatchResult, ChannelMode::FAN_OUT) {
     resender.setAbandonCallback(
         [this](PktType, uint8_t seqId, const uint8_t* targetMac,
                const uint8_t* packet, size_t len) {
@@ -37,6 +40,49 @@ ShootoutManager::ShootoutManager(Player* player, WirelessManager* wirelessManage
     });
     confirmChannel.onReceive([this](const uint8_t* fromMac, const ShootoutConfirmPayload& p) {
         onConfirmReceived(fromMac, p.name);
+    });
+    bracketChannel.onReceive([this](const uint8_t* fromMac, const ShootoutRosterPayload& p) {
+        onBracketReceived(fromMac, unpackRoster(p), p.seqId);
+    });
+    matchStartChannel.onReceive([this](const uint8_t* fromMac, const ShootoutMatchStartPayload& p) {
+        onMatchStartReceived(fromMac, p.playerA, p.playerB, p.matchIndex, p.seqId);
+    });
+    matchResultChannel.onReceive(
+    [this](const uint8_t* fromMac, const ShootoutMatchResultPayload& p) {
+        onMatchResultReceived(p.winner, p.loser, p.matchIndex, p.seqId, fromMac);
+    });
+
+    // BRACKET unacked by a member still in the running, or MATCH_START unacked
+    // by one of its two players, ends the tournament. A spectator's miss does
+    // not: that would put an abort opportunity on every member of every match.
+    // MATCH_START is judged from the abandoned frame: the fan-out outlives its
+    // match, so currentPlayer* may already name a later one.
+    bracketChannel.setOnAbandon(
+    [this](uint8_t seqId, const uint8_t* targetMac, const ShootoutRosterPayload&) {
+        if (!containsMac(bracket, targetMac) || isEliminated(targetMac)) return;
+        LOG_E(TAG, "bracket seq=%u unacked by %s; ending tournament", (unsigned)seqId,
+              MacToString(targetMac));
+        abortTournament();
+    });
+    matchStartChannel.setOnAbandon(
+    [this](uint8_t seqId, const uint8_t* targetMac, const ShootoutMatchStartPayload& start) {
+        if (memcmp(start.playerA, targetMac, 6) != 0 && memcmp(start.playerB, targetMac, 6) != 0) {
+            return;
+        }
+        LOG_E(TAG, "match start seq=%u unacked by %s; ending tournament", (unsigned)seqId,
+              MacToString(targetMac));
+        abortTournament();
+    });
+    // The coordinator advances only on receiving a result, so the sender
+    // re-sends once per match; a second abandonment cannot tell a lost result
+    // from a lost ack.
+    matchResultChannel.setOnAbandon(
+    [this](uint8_t, const uint8_t* targetMac, const ShootoutMatchResultPayload& result) {
+        if (memcmp(targetMac, coordinatorMac.data(), 6) != 0) return;
+        if (matchResultResentIndex == static_cast<int>(result.matchIndex)) return;
+        matchResultResentIndex = static_cast<int>(result.matchIndex);
+        LOG_W(TAG, "coordinator missed our match result; re-sending");
+        sendMatchResultToPeers(result.winner, result.loser, result.matchIndex);
     });
     if (rdc == nullptr) return;
     // Subscribed here rather than by whoever builds this manager: see
@@ -88,11 +134,9 @@ bool ShootoutManager::isInCurrentMatch() const {
            memcmp(selfMac, currentPlayerB.data(), 6) == 0;
 }
 
-// The single seqId allocator for every reliably-sent command this manager
-// sends — the five that ride the Resender; the rest go out unsequenced. That
-// is load-bearing, not incidental: because one counter serves all of them, a
-// seqId in flight names exactly one of this device's frames, which is what lets
-// an ack be answered on its seqId alone.
+// The seqId allocator for the two commands still riding the Resender,
+// TOURNAMENT_END and ABORT. One counter serves both, so a seqId in flight names
+// exactly one of this device's frames and an ack is answered on it alone.
 uint8_t ShootoutManager::nextSeqId() {
     uint8_t id = nextShootoutSeqId++;
     if (nextShootoutSeqId == 0) nextShootoutSeqId = 1;
@@ -151,9 +195,9 @@ void ShootoutManager::sendReliablyToPeers(const std::vector<std::array<uint8_t, 
 }
 
 void ShootoutManager::onCommandAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    // seqId alone names the fan-out: nextSeqId() is the single allocator for all
-    // five command families, so no two frames in flight from this device share
-    // one. Cross-checking the ack's command against a per-family cursor would
+    // seqId alone names the fan-out: nextSeqId() is the single allocator for both
+    // command families on this PktType, so no two frames in flight from this
+    // device share one. Cross-checking the ack's command against a per-family cursor would
     // catch nothing — an ack echoes both fields out of the frame it answers —
     // and would refuse a valid ack for a still-armed frame that is no longer its
     // family's latest.
@@ -163,50 +207,6 @@ void ShootoutManager::onCommandAckReceived(const uint8_t* fromMac, uint8_t seqId
 void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac,
                                          const uint8_t* packet, size_t len) {
     if (len == 0) return;
-    const ShootoutCmd cmd = static_cast<ShootoutCmd>(packet[0]);
-
-    // Only silence that actually blocks the tournament ends it. BRACKET is the
-    // roster, so a member still in the running who never received it cannot take
-    // part at all. MATCH_START only matters to the two devices fighting: a
-    // spectator missing it just does not see that round, and ending a tournament
-    // for that would put an abort opportunity on every member of every match
-    // rather than one on the bracket.
-    //
-    // Both questions are asked of the frame that was abandoned, not of the
-    // manager's current state. A fan-out outlives the match it announced — it
-    // keeps retrying a silent recipient for over a second — so by the time it is
-    // given up on, currentPlayer* may already name a different match, and a
-    // finished tournament still names its final pair.
-    bool blocksTournament = false;
-    if (cmd == ShootoutCmd::BRACKET) {
-        blocksTournament = containsMac(bracket, targetMac) && !isEliminated(targetMac);
-    } else if (cmd == ShootoutCmd::MATCH_START && len >= 14) {
-        // [cmd, seqId, playerA(6), playerB(6), matchIndex] — see
-        // buildMatchStartPacket.
-        blocksTournament = memcmp(&packet[2], targetMac, 6) == 0 ||
-                           memcmp(&packet[8], targetMac, 6) == 0;
-    } else if (cmd == ShootoutCmd::MATCH_RESULT && len >= 15 &&
-               memcmp(targetMac, coordinatorMac.data(), 6) == 0) {
-        // Nothing on the coordinator's side notices a result that never lands: it
-        // advances only on receiving one, so it waits with nothing owed. This
-        // device is the one that knows, so it says so again. One attempt per
-        // match — a second abandonment cannot distinguish a lost result from a
-        // lost ack, and guessing is worse than staying quiet.
-        if (matchResultResentIndex != static_cast<int>(packet[14])) {
-            matchResultResentIndex = static_cast<int>(packet[14]);
-            LOG_W(TAG, "coordinator missed our match result; re-sending");
-            // Off the abandoned frame, not current state: a fan-out outlives the
-            // match it announced. [cmd, seqId, winner(6), loser(6), matchIndex]
-            sendMatchResultToPeers(&packet[2], &packet[8], packet[14]);
-        }
-    }
-
-    if (blocksTournament) {
-        LOG_E(TAG, "shootout cmd=%u seq=%u unacked by %s; ending tournament",
-              (unsigned)packet[0], (unsigned)seqId, MacToString(targetMac));
-        abortTournament();
-        return;
-    }
     LOG_W(TAG, "shootout cmd=%u seq=%u unacked by %s",
           (unsigned)packet[0], (unsigned)seqId, MacToString(targetMac));
 }
@@ -254,6 +254,9 @@ void ShootoutManager::resetTournamentState() {
     // longer exists — except the frame reporting the ending, whose recipients are
     // exactly the members yet to hear it. Both the screen showing the ending and
     // the proposal after it reset, so it has to survive more than one.
+    bracketChannel.cancelAll();
+    matchStartChannel.cancelAll();
+    matchResultChannel.cancelAll();
     resender.cancelAllExcept(PktType::kShootoutCommand, terminalFanOutSeqId);
     if (getPendingAckCount(terminalFanOutSeqId) == 0) terminalFanOutSeqId = 0;
     eliminated.clear();
@@ -484,25 +487,6 @@ void ShootoutManager::advanceToBracketReveal() {
     sendBracketToPeers();
 }
 
-std::vector<uint8_t> ShootoutManager::buildMacListPacket(
-    ShootoutCmd cmd, uint8_t seqId,
-    const std::vector<std::array<uint8_t, 6>>& macs) const {
-    std::vector<uint8_t> packet;
-    packet.push_back(static_cast<uint8_t>(cmd));
-    packet.push_back(seqId);
-    size_t count = macs.size();
-    if (count > MAX_BRACKET_SIZE) {
-        LOG_E(TAG, "mac list %zu over cap %u; truncating", count,
-              static_cast<unsigned>(MAX_BRACKET_SIZE));
-        count = MAX_BRACKET_SIZE;
-    }
-    packet.push_back(static_cast<uint8_t>(count));
-    for (size_t i = 0; i < count; i++) {
-        packet.insert(packet.end(), macs[i].begin(), macs[i].end());
-    }
-    return packet;
-}
-
 ShootoutRosterPayload
 ShootoutManager::buildRoster(const std::vector<std::array<uint8_t, 6>>& macs) {
     ShootoutRosterPayload roster{};
@@ -535,10 +519,8 @@ ShootoutManager::unpackRoster(const ShootoutRosterPayload& roster) {
 
 void ShootoutManager::sendBracketToPeers() {
     if (bracket.empty()) return;
-    lastBracketSeqId = nextSeqId();
-    std::vector<uint8_t> packet =
-        buildMacListPacket(ShootoutCmd::BRACKET, lastBracketSeqId, bracket);
-    sendReliablyToPeers(bracket, lastBracketSeqId, packet.data(), packet.size());
+    ShootoutRosterPayload roster = buildRoster(bracket);
+    lastBracketSeqId = bracketChannel.sendBroadcast(peersExcludingSelf(bracket), roster);
 }
 
 void ShootoutManager::abortTournament() {
@@ -646,33 +628,24 @@ ShootoutManager::getCurrentMatchPair() const {
     return {currentPlayerA, currentPlayerB};
 }
 
-std::vector<uint8_t> ShootoutManager::buildMatchStartPacket() const {
-    std::vector<uint8_t> packet;
-    packet.push_back(static_cast<uint8_t>(ShootoutCmd::MATCH_START));
-    packet.push_back(lastMatchStartSeqId);
-    packet.insert(packet.end(), currentPlayerA.begin(), currentPlayerA.end());
-    packet.insert(packet.end(), currentPlayerB.begin(), currentPlayerB.end());
-    packet.push_back(static_cast<uint8_t>(currentMatchIndex));
-    return packet;
-}
-
 void ShootoutManager::sendMatchStartToPeers() {
-    lastMatchStartSeqId = nextSeqId();
-
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     const std::array<uint8_t, 6>& a = currentRound[roundPairIndex * 2];
     const std::array<uint8_t, 6>& b = currentRound[roundPairIndex * 2 + 1];
     currentPlayerA = a;
     currentPlayerB = b;
     currentMatchIndex++;
-    std::vector<uint8_t> packet = buildMatchStartPacket();
     reportedLocalWin = false;
     if (isInCurrentMatch() && selfMac != nullptr) {
         const uint8_t* opp = (memcmp(selfMac, a.data(), 6) == 0) ? b.data() : a.data();
         memcpy(opponentMac.data(), opp, 6);
         primeMatchManagerForMatch();
     }
-    sendReliablyToPeers(bracket, lastMatchStartSeqId, packet.data(), packet.size());
+    ShootoutMatchStartPayload start{};
+    memcpy(start.playerA, a.data(), 6);
+    memcpy(start.playerB, b.data(), 6);
+    start.matchIndex = static_cast<uint8_t>(currentMatchIndex);
+    lastMatchStartSeqId = matchStartChannel.sendBroadcast(peersExcludingSelf(bracket), start);
 }
 
 void ShootoutManager::maybeStartNextMatch() {
@@ -680,7 +653,7 @@ void ShootoutManager::maybeStartNextMatch() {
     // Nobody moves on until the whole bracket has it. The reveal window below
     // outlasts the fan-out's span, so in practice that resolves first and this
     // reads as already satisfied; it stands for the case the two constants move.
-    if (getPendingAckCount(lastBracketSeqId) > 0) return;
+    if (bracketChannel.pendingCount(lastBracketSeqId) > 0) return;
     if (phase != Phase::BRACKET_REVEAL && phase != Phase::BETWEEN_MATCHES) return;
     if (phase == Phase::BRACKET_REVEAL && !bracketRevealTimer.expired()) return;
     roundPairIndex++;
@@ -720,19 +693,18 @@ void ShootoutManager::onBracketReceived(
     if (isTerminalPhase()) return;
     const uint8_t* author = bracket.empty() ? ringHead() : coordinatorMac.data();
     if (author == nullptr || memcmp(fromMac, author, 6) != 0) return;
-    if (!bracket.empty()) {
-        sendShootoutAck(ShootoutCmd::BRACKET, seqId, coordinatorMac.data());
-        return;
+    if (bracket.empty()) {
+        // Adopting a bracket is the one way into a tournament that runs no
+        // reset, so an exemption left by the last one is retired here instead.
+        terminalFanOutSeqId = 0;
+        bracket = offeredBracket;
+        currentRound = offeredBracket;
+        memcpy(coordinatorMac.data(), fromMac, 6);
+        phase = Phase::BRACKET_REVEAL;
+        bracketRevealTimer.setTimer(kBracketRevealMs);
     }
-    // Adopting a bracket is the one way into a tournament that runs no reset, so
-    // an exemption left by the last one is retired here instead.
-    terminalFanOutSeqId = 0;
-    bracket = offeredBracket;
-    currentRound = offeredBracket;
-    memcpy(coordinatorMac.data(), fromMac, 6);
-    phase = Phase::BRACKET_REVEAL;
-    bracketRevealTimer.setTimer(kBracketRevealMs);
-    sendShootoutAck(ShootoutCmd::BRACKET, seqId, coordinatorMac.data());
+    // A repeat of the bracket already held still owes its ack.
+    bracketChannel.ack(fromMac, seqId);
 }
 
 void ShootoutManager::onMatchStartReceived(const uint8_t* fromMac, const uint8_t* playerA,
@@ -745,7 +717,7 @@ void ShootoutManager::onMatchStartReceived(const uint8_t* fromMac, const uint8_t
     // would admit a fresh-seqId match into a finished tournament.
     if (isTerminalPhase()) return;
     // Admitted on the sender, so the ack is owed however the payload reads.
-    sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
+    matchStartChannel.ack(coordinatorMac.data(), seqId);
     if (!containsMac(bracket, playerA) || !containsMac(bracket, playerB)) {
         LOG_E(TAG, "MATCH_START from coordinator names a player outside our bracket");
         return;
@@ -793,29 +765,16 @@ void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* los
     phase = Phase::BETWEEN_MATCHES;
 }
 
-std::vector<uint8_t> ShootoutManager::buildMatchResultPacket(
-    const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex) const {
-    std::vector<uint8_t> packet;
-    packet.push_back(static_cast<uint8_t>(ShootoutCmd::MATCH_RESULT));
-    packet.push_back(lastMatchResultSeqId);
-    packet.insert(packet.end(), winner, winner + 6);
-    packet.insert(packet.end(), loser, loser + 6);
-    packet.push_back(matchIndex);
-    return packet;
-}
-
 void ShootoutManager::sendMatchResultToPeers(
     const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex) {
-    lastMatchResultSeqId = nextSeqId();
-    auto packet = buildMatchResultPacket(winner, loser, matchIndex);
-    // Targets bracket, not confirmedSet. Both reach eliminated players — only
-    // currentRound shrinks — but confirmedSet is each device's own tally of the
-    // CONFIRMs it happened to hear, and those are unacked broadcasts sent once
-    // per press. A follower that missed the coordinator's would never track it
-    // as a recipient, so its result could never abandon against the coordinator
-    // and the recovery below could never fire. The bracket is the coordinator's
-    // own roster, acked on arrival.
-    sendReliablyToPeers(bracket, lastMatchResultSeqId, packet.data(), packet.size());
+    ShootoutMatchResultPayload result{};
+    memcpy(result.winner, winner, 6);
+    memcpy(result.loser, loser, 6);
+    result.matchIndex = matchIndex;
+    // bracket, not confirmedSet: a follower that never heard the coordinator's
+    // unacked CONFIRM would not track it as a recipient, so the abandon-handler
+    // recovery could never fire.
+    lastMatchResultSeqId = matchResultChannel.sendBroadcast(peersExcludingSelf(bracket), result);
 }
 
 void ShootoutManager::reportLocalWin() {
@@ -842,7 +801,7 @@ void ShootoutManager::onMatchResultReceived(
     // whatever sat there longest.
     if (!containsMac(bracket, fromMac)) return;
     // Always ack so the sender stops retrying, even when this is a duplicate.
-    sendShootoutAck(ShootoutCmd::MATCH_RESULT, seqId, fromMac);
+    matchResultChannel.ack(fromMac, seqId);
     if (!containsMac(bracket, winner) || !containsMac(bracket, loser)) {
         LOG_E(TAG, "MATCH_RESULT from ring member names a device outside our bracket");
         return;

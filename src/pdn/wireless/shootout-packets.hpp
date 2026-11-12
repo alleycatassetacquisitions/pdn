@@ -13,9 +13,9 @@
 // truncated to this size.
 constexpr size_t SHOOTOUT_NAME_LENGTH = 12;
 
-// The ring as of closure (kShootoutRingClosed). Sized to the chain cap so one
-// struct always holds it; `count` says how many entries are live, and only
-// those go on the wire.
+// A roster: the ring as of closure (kShootoutRingClosed) or the drawn bracket
+// (kShootoutBracket). Sized to the chain cap; `count` says how many entries
+// are live, and only those go on the wire.
 struct ShootoutRosterPayload {
     uint8_t seqId;
     uint8_t count;
@@ -30,4 +30,21 @@ struct ShootoutRosterPayload {
 struct ShootoutConfirmPayload {
     uint8_t seqId;
     char name[SHOOTOUT_NAME_LENGTH];
+} __attribute__((packed));
+
+// Coordinator -> ring: the pair fighting match `matchIndex`. The index is
+// tournament-wide and never reused within a tournament.
+struct ShootoutMatchStartPayload {
+    uint8_t seqId;
+    uint8_t playerA[6];
+    uint8_t playerB[6];
+    uint8_t matchIndex;
+} __attribute__((packed));
+
+// Winner -> ring: who was eliminated in match `matchIndex`.
+struct ShootoutMatchResultPayload {
+    uint8_t seqId;
+    uint8_t winner[6];
+    uint8_t loser[6];
+    uint8_t matchIndex;
 } __attribute__((packed));
