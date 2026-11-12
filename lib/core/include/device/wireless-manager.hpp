@@ -200,6 +200,6 @@ private:
     PeerCommsInterface* peerComms;
     HttpClientInterface* httpClient;
     WirelessMode currentMode;
-    // Last: its Resender sends through this object's peerComms.
+    // Last: its constructor registers the kReliableAck handler through peerComms.
     ReliableTransport reliableTransport{this};
 };

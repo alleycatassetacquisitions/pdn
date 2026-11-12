@@ -17,6 +17,8 @@
 #include "wireless/match-packet.hpp"
 #include "game/posse-manager.hpp"
 #include <queue>
+#include <map>
+#include <utility>
 #include <vector>
 
 using namespace std;
@@ -200,13 +202,16 @@ public:
         });
     }
 
-    /** Invokes the registered packet handler for @p type as if a frame arrived from @p srcMac. */
-    void triggerPacketCallback(const uint8_t* srcMac, PktType type, const uint8_t* data,
+    /**
+     * Invokes the registered packet handler for @p type as if a frame arrived from @p srcMac.
+     * Returns false when nothing is registered for @p type.
+     */
+    bool triggerPacketCallback(const uint8_t* srcMac, PktType type, const uint8_t* data,
                                size_t len) {
         auto it = registeredHandlers.find(type);
-        if (it != registeredHandlers.end() && it->second.first != nullptr) {
-            it->second.first(srcMac, data, len, it->second.second);
-        }
+        if (it == registeredHandlers.end() || it->second.first == nullptr) return false;
+        it->second.first(srcMac, data, len, it->second.second);
+        return true;
     }
 
     MOCK_METHOD(int, sendData, (const uint8_t*, PktType, const uint8_t*, const size_t), (override));
