@@ -11,7 +11,6 @@
 #include "device/wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/serial-wrapper.hpp"
-#include "wireless/resender.hpp"
 #include "wireless/reliable-channel.hpp"
 
 enum class ChainGameEventType : uint8_t {
@@ -27,8 +26,9 @@ enum class ChainGameEventType : uint8_t {
 // the frame's span runs out.
 //
 // challengerMac names the challenger the event came from. Game events go out as one
-// broadcast frame, so the sender's MAC says nothing about which chain the event
-// belongs to; this field is what each supporter filters on.
+// broadcast frame, so every chain in radio range hears it; a supporter takes a
+// frame only when this field and the frame's source MAC both name the
+// challenger it follows.
 struct ChainGameEventPayload {
     uint8_t event_type;
     uint8_t seqId;
@@ -37,6 +37,10 @@ struct ChainGameEventPayload {
 
 class PosseManager {
 public:
+    /** A chain game event from the challenger this device follows, after the posse has applied it.
+     */
+    using GameEventListener = std::function<void(uint8_t eventType)>;
+
     /** Requires a live rdc and owns its single-subscriber topology/context callback slots. */
     PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
     /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
@@ -71,20 +75,14 @@ public:
      */
     void onChainGameEventReceived(uint8_t eventType);
 
-    // Supporter-side: ACK a received WIN/LOSS game event back to the
-    // challenger so it stops retransmitting. Called from GameSession's packet
-    // handler when the incoming payload has seqId != 0.
-    void sendGameEventAck(const uint8_t* toMac, uint8_t seqId);
-
-    // Challenger-side: called when a supporter's ACK arrives. Clears the
-    // matching pending game event so retransmission stops.
-    void onChainGameEventAckReceived(const uint8_t* fromMac, uint8_t seqId);
-
     /**
-     * True when a broadcast game event names the challenger this device follows.
-     * The frame reaches every device in radio range, so this is the only thing
-     * separating our challenger's round from a neighbouring chain's.
+     * One slot: the state watching for game events sets it on mount and clears
+     * it on dismount. Told after onChainGameEventReceived has applied the event
+     * and before the frame is acked.
      */
+    void setOnGameEvent(GameEventListener listener) { onGameEvent = std::move(listener); }
+
+    /** True when a broadcast game event names the challenger this device follows. */
     bool isEventFromOwnChallenger(const uint8_t* eventChallengerMac) const;
 
     /**
@@ -115,23 +113,15 @@ public:
     /** Must exceed the retry span so the backstop does not supersede a live entry and reset its retry window. */
     static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::STALE_AFTER_MS;
 
-    struct RetryStats {
-        uint32_t sends = 0;
-        uint32_t retries = 0;
-        uint32_t abandons = 0;
-        uint32_t ackLatencyMsSum = 0;
-        uint32_t ackCount = 0;
+    struct AckLatency {
+        uint32_t sumMs = 0;
+        uint32_t count = 0;
     };
-    /** Cumulative kChainGameEvent fan-out counts plus delivery latency sampled on kRoleAnnounce (to
-     * SEND_SUCCESS) and kChainGameEvent (to Ack). */
-    RetryStats getRetryStats() const {
-        const Resender::Stats& carried = resender.getStats();
-        return {carried.sends, carried.retries, carried.abandons,
-                ackLatencyMsSum, ackCount};
-    }
+    /** Delivery latency sampled on kRoleAnnounce (to SEND_SUCCESS) and kChainGameEvent (to its
+     * ack). */
+    AckLatency getAckLatency() const { return {ackLatencyMsSum, ackCount}; }
 
 private:
-    // Delivery-time samples only; the retry counts live on the Resender.
     uint32_t ackLatencyMsSum = 0;
     uint32_t ackCount = 0;
     Player* player;
@@ -205,13 +195,13 @@ private:
     };
     std::optional<RoleAnnounceState> supporterAnnounce;
 
-    uint8_t nextGameEventSeqId = 1;
-
-    Resender resender;
-
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
     ReliableChannel<ChainConfirmPayload> chainConfirmChannel;
     ReliableChannel<ChainJoinPayload> chainJoinChannel;
+    ReliableChannel<ChainGameEventPayload> gameEventChannel;
+    GameEventListener onGameEvent;
+
+    void onGameEventFrame(const uint8_t* fromMac, const ChainGameEventPayload& payload);
 
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 

@@ -1929,9 +1929,9 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
     delete session;
 }
 
-// The event's other consumer: the mounted SupporterReady, which the session finds
-// through the device instead of being handed a pointer at mount. A lookup that
-// misses arms no supporter, so the challenger plays without their boost.
+// The event's other consumer: the mounted SupporterReady, which subscribes to
+// the posse manager for as long as it is mounted. Without it no supporter is
+// armed, so the challenger plays without their boost.
 inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* suite) {
     suite->player->setIsHunter(true);
     uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
@@ -1967,5 +1967,47 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
     EXPECT_TRUE(supporterReady->buttonArmed);
 
     delete hub;
+    delete session;
+}
+
+// A result stays up for 8 s and then a supporter who pressed is back on Ready.
+// Left confirmed, they would sit on "Locked In" through the next round.
+inline void supporterResultClearsAfterEightSeconds(GameSessionLifecycleTests* suite) {
+    suite->player->setIsHunter(true);
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, challenger);
+    rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
+
+    GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
+    PosseManager* posseManager = session->getContext().posseManager;
+    posseManager->onRoleAnnounceReceived(challenger, challenger);
+    ASSERT_TRUE(posseManager->isSupporter());
+
+    SupporterReady supporterReady(session->getContext());
+    supporterReady.onStateMounted(&suite->device);
+    supporterReady.onChainGameEventReceived(static_cast<uint8_t>(ChainGameEventType::COUNTDOWN));
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+    ASSERT_TRUE(supporterReady.hasConfirmed);
+    supporterReady.onChainGameEventReceived(static_cast<uint8_t>(ChainGameEventType::WIN));
+
+    // The challenger retransmits a WIN it has not seen acked; the repeat must
+    // not restart the eight seconds.
+    suite->fakeClock->advance(700);
+    supporterReady.onChainGameEventReceived(static_cast<uint8_t>(ChainGameEventType::WIN));
+
+    suite->fakeClock->advance(7200);
+    supporterReady.onStateLoop(&suite->device);
+    EXPECT_EQ(supporterReady.lastResult, 1);
+    EXPECT_TRUE(supporterReady.hasConfirmed);
+
+    suite->fakeClock->advance(200);
+    supporterReady.onStateLoop(&suite->device);
+    EXPECT_EQ(supporterReady.lastResult, 0);
+    EXPECT_FALSE(supporterReady.hasConfirmed);
+
+    supporterReady.onStateDismounted(&suite->device);
     delete session;
 }

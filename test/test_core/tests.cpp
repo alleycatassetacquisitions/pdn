@@ -1509,6 +1509,10 @@ TEST_F(GameSessionLifecycleTests, countdownArmsMountedSupporter) {
     gameSessionCountdownArmsMountedSupporter(this);
 }
 
+TEST_F(GameSessionLifecycleTests, supporterResultClearsAfterEightSeconds) {
+    supporterResultClearsAfterEightSeconds(this);
+}
+
 // ============================================
 // QUICKDRAW INTEGRATION TESTS - PACKET PARSING
 // ============================================

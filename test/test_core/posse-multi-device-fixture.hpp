@@ -60,7 +60,7 @@ struct MultiDeviceNode {
     // Per-device captured send-status handlers, one slot per PktType. Packet
     // handlers are not mirrored here: MockPeerComms keeps its own registry, and
     // that one already holds what the WirelessManager installed while the device
-    // was being built, which no capture wired
+    // was being built (the transport's kReliableAck), which no capture wired
     // afterwards can see.
     struct SendStatusSlot {
         PeerCommsInterface::SendStatusCallback handler = nullptr;
@@ -127,7 +127,6 @@ public:
             new PosseManager(node->player.get(), node->device->wirelessManager, node->rdc.get());
             node->shootout =
             new ShootoutManager(node->player.get(), node->device->wirelessManager, node->rdc.get());
-            wireChainEventHandlers(*node);
             wireShootoutHandlers(*node);
             Player* p = node->player.get();
             RemoteDeviceCoordinator* r = node->rdc.get();
@@ -350,32 +349,6 @@ protected:
         return SIZE_MAX;
     }
 
-    // Mirrors what the GameSession constructor installs for the posse packet
-    // types that no channel claims. Deliberately NOT kRoleAnnounce: the PosseManager's
-    // ReliableChannel claims that slot in its own constructor, and registering
-    // over it here would replace the channel with a trampoline that skips the
-    // length check, the decode and the duplicate suppression — leaving the
-    // production receive path untested by every chain and tournament case here.
-    void wireChainEventHandlers(MultiDeviceNode& n) {
-        PosseManager* posse = n.posse;
-
-        // GameSession fans this one to two consumers; only the manager half has a
-        // counterpart here, since the fixture stands up no states. Dropping it
-        // would leave a supporter's spent press standing into the next round.
-        // The challenger gate has to be mirrored too: without it a foreign chain's
-        // broadcast clears confirmSent here where hardware discards the frame.
-        n.device->wirelessManager->setEspNowPacketHandler(
-        PktType::kChainGameEvent,
-        [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
-            if (dataLen != sizeof(ChainGameEventPayload)) return;
-            const ChainGameEventPayload* p = reinterpret_cast<const ChainGameEventPayload*>(data);
-            PosseManager* manager = static_cast<PosseManager*>(ctx);
-            if (!manager->isEventFromOwnChallenger(p->challengerMac)) return;
-            manager->onChainGameEventReceived(p->event_type);
-        },
-        posse);
-    }
-
     // Register Shootout command + ack handlers. Mirrors the dispatcher in
     // the GameSession constructor so every packet path exercised on hardware is
     // exercised in the fixture too.
@@ -461,7 +434,7 @@ protected:
             case PktType::kChainConfirm:
             case PktType::kChainJoin:
             case PktType::kChainGameEvent:
-            case PktType::kChainGameEventAck:
+            case PktType::kReliableAck:
             case PktType::kShootoutCommand:
             case PktType::kShootoutCommandAck: return true;
             default: return false;
@@ -696,17 +669,11 @@ inline void posseMultiDeviceGameEventReachesDistantSupporter(PosseMultiDeviceFix
     MultiDeviceNode& challenger = suite->node(0);
     ASSERT_TRUE(challenger.posse->isChallenger());
 
+    // Counted after admission, so a node only scores an event its posse took.
     std::vector<int> accepted(suite->nodeCount(), 0);
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        MultiDeviceNode& n = suite->node(i);
         int* counter = &accepted[i];
-        n.device->wirelessManager->setEspNowPacketHandler(
-        PktType::kChainGameEvent,
-        [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
-            if (dataLen != sizeof(ChainGameEventPayload)) return;
-            static_cast<int*>(ctx)[0]++;
-        },
-        counter);
+        suite->node(i).posse->setOnGameEvent([counter](uint8_t) { (*counter)++; });
     }
 
     challenger.posse->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
