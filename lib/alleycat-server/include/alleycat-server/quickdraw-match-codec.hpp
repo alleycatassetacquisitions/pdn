@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/match.hpp"
 #include "utils/uuid-bytes.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -91,5 +92,20 @@ bool encodeRequest(size_t matchCount, const MatchSource& source, std::string& pa
  * @return false when @p body is not a valid WriteQuickdrawMatchesResponse.
  */
 bool decodeResponse(const std::string& body, const RejectionSink& onRejection, QuickdrawUploadResult& result);
+
+/** Converts a finalized Match into a QuickdrawMatchRecord for POST /quickdraw-matches. */
+inline QuickdrawMatchRecord fromMatch(const Match& match) {
+    QuickdrawMatchRecord rec{};
+    rec.matchId = match.getMatchUuid();
+    rec.playerAId = match.getHunterPlayerId();
+    rec.playerBId = match.getBountyPlayerId();
+    rec.playerATeamId = match.getHunterTeamId();
+    rec.playerBTeamId = match.getBountyTeamId();
+    rec.winnerPlayerId = match.getWinnerPlayerId();
+    rec.playerADrawTimeMs = match.getHunterDrawTime();
+    rec.playerBDrawTimeMs = match.getBountyDrawTime();
+    rec.occurredAtUnixMs = match.getOccurredAtUnixMs();
+    return rec;
+}
 
 }  // namespace QuickdrawMatchCodec

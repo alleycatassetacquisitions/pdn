@@ -54,7 +54,9 @@ inline void uploadQuickdrawMatches(
             }
         },
         onError);
-    wirelessManager->queueHttpRequest(std::move(request));
+    if (!wirelessManager->queueHttpRequest(std::move(request))) {
+        onError({WirelessError::INVALID_STATE, "HTTP request not queued"});
+    }
 }
 
 }  // namespace MatchesApi

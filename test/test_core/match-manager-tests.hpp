@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include "alleycat-server/fdn-match-spool.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
@@ -917,4 +918,274 @@ TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
     fakeClock->advance(MATCH_TRANSFER_WINDOW_MS + 1);
     matchManager->sync();
     EXPECT_EQ(sends, 2) << "an acked record is not resent";
+}
+
+TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
+    using ::testing::_;
+    NativePrefsDriver pdnPrefs("pdn-prefs", {MATCHES_PREFS_NAMESPACE});
+    NativePrefsDriver fdnPrefs("fdn-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    matchManager->initialize(player, &pdnPrefs);
+
+    MockDevice fdnDevice;
+    FakeRemoteDeviceCoordinator fdnRdc;
+    ON_CALL(*device.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+
+    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x02};
+
+    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kMatchCollection, _, _))
+    .WillByDefault(::testing::Invoke(
+    [&fdnDevice, &pdnMac](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+        fdnDevice.mockPeerComms->triggerPacketCallback(pdnMac, PktType::kMatchCollection, data,
+                                                       len);
+        return 1;
+    }));
+    ON_CALL(*fdnDevice.mockPeerComms, sendData(_, PktType::kMatchCollectionAck, _, _))
+    .WillByDefault(::testing::Invoke(
+    [this, &fdnMac](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+        device.mockPeerComms->triggerPacketCallback(fdnMac, PktType::kMatchCollectionAck, data,
+                                                    len);
+        return 1;
+    }));
+
+    setupMatchAsBounty("11111111-2222-4000-8000-333333333333");
+    matchManager->setHunterDrawTime(180);
+    matchManager->setBountyDrawTime(120);
+    matchManager->setReceivedButtonPush();
+    matchManager->setReceivedDrawResult();
+    ASSERT_TRUE(matchManager->finalizeMatch());
+    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
+    ASSERT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
+
+    // Uncabled ACK from stranger MAC is ignored
+    const uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
+    MatchRecordAckPacket forgedAck{1u};
+    device.mockPeerComms->triggerPacketCallback(strangerMac, PktType::kMatchCollectionAck,
+                                                reinterpret_cast<const uint8_t*>(&forgedAck),
+                                                sizeof(forgedAck));
+    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
+
+    fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
+    fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
+
+    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
+    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
+
+    matchManager->sync();
+    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 1u);
+    EXPECT_EQ(fdnSpool.getStagedCount(), 1u);
+
+    std::vector<HttpRequest> httpRequests;
+    ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
+    .WillByDefault(::testing::Invoke([&httpRequests](HttpRequest&& req) {
+        httpRequests.push_back(std::move(req));
+        return true;
+    }));
+
+    std::vector<bool> outcomes;
+    auto onComplete = [&outcomes](bool uploaded) { outcomes.push_back(uploaded); };
+    ASSERT_TRUE(fdnSpool.uploadPendingBatch(onComplete));
+    ASSERT_EQ(httpRequests.size(), 1u);
+    EXPECT_EQ(httpRequests[0].path, "/quickdraw-matches");
+    httpRequests[0].onError(WirelessErrorInfo{WirelessError::SERVER_ERROR, "HTTP 500"});
+    EXPECT_EQ(fdnSpool.getStagedCount(), 1u) << "5xx error must retain staged batch";
+
+    httpRequests.clear();
+    ASSERT_TRUE(fdnSpool.uploadPendingBatch(onComplete));
+    ASSERT_EQ(httpRequests.size(), 1u);
+    httpRequests[0].onSuccess("");
+    EXPECT_EQ(fdnSpool.getStagedCount(), 0u) << "HTTP 204 must retire uploaded batch";
+    EXPECT_EQ(outcomes, (std::vector<bool>{false, true}));
+    uint8_t retired[MATCH_BINARY_SIZE] = {};
+    EXPECT_EQ(fdnPrefs.readBytes(FDN_MATCH_SPOOL_NAMESPACE, "spool_0", retired, sizeof(retired)),
+              0u)
+    << "a retired record still holds its NVS entries";
+}
+
+TEST_F(MatchManagerTestSuite, fdnSpoolWithholdsAckWhenFullAt64Records) {
+    using ::testing::_;
+    NativePrefsDriver fdnPrefs("fdn-full-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    MockDevice fdnDevice;
+    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    FakeRemoteDeviceCoordinator fdnRdc;
+    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+
+    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02};
+    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
+    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
+
+    size_t acksSent = 0;
+    ON_CALL(*fdnDevice.mockPeerComms, sendData(_, PktType::kMatchCollectionAck, _, _))
+    .WillByDefault(
+    ::testing::Invoke([&acksSent](const uint8_t*, PktType, const uint8_t*, const size_t) {
+        acksSent++;
+        return 1;
+    }));
+
+    auto send = [&pdnMac](FdnMatchSpool& spool, uint32_t seq) {
+        char mid[37];
+        snprintf(mid, sizeof(mid), "%08u-aaaa-4000-8000-bbbbbbbbbbbb", seq);
+        Match m(mid);
+        MatchRecordPacket pkt{};
+        pkt.matchSeq = seq;
+        m.serialize(pkt.matchData);
+        spool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+    };
+    for (uint32_t seq = 1; seq <= 65; ++seq)
+        send(fdnSpool, seq);
+
+    EXPECT_EQ(fdnSpool.getStagedCount(), 64u);
+    EXPECT_EQ(acksSent, 64u) << "65th match must not be ACKed while spool is full";
+
+    send(fdnSpool, 64);
+    EXPECT_EQ(acksSent, 65u) << "a resend after a lost ack is re-acked even when full";
+    EXPECT_EQ(fdnSpool.getStagedCount(), 64u);
+
+    FdnMatchSpool rebooted(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+    send(rebooted, 1);
+    EXPECT_EQ(acksSent, 66u) << "staged records are known again after a reboot";
+    EXPECT_EQ(rebooted.getStagedCount(), 64u);
+}
+
+TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {
+    NativePrefsDriver pdnPrefs("pdn-len-prefs", {MATCHES_PREFS_NAMESPACE});
+    NativePrefsDriver fdnPrefs("fdn-len-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    matchManager->initialize(player, &pdnPrefs);
+    MockDevice fdnDevice;
+    FakeRemoteDeviceCoordinator fdnRdc;
+    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+
+    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x04};
+    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x04};
+    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
+    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
+
+    Match m("12345678-eeee-4000-8000-ffffffffffff");
+    MatchRecordPacket pkt{};
+    pkt.matchSeq = 1;
+    m.serialize(pkt.matchData);
+    fdnSpool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt) - 1);
+    EXPECT_EQ(fdnSpool.getStagedCount(), 0u);
+
+    setupMatchAsBounty("22222222-2222-4000-8000-333333333333");
+    matchManager->setHunterDrawTime(180);
+    matchManager->setBountyDrawTime(120);
+    matchManager->setReceivedButtonPush();
+    matchManager->setReceivedDrawResult();
+    EXPECT_TRUE(matchManager->finalizeMatch());
+    fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
+    fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
+    const uint8_t longAck[sizeof(MatchRecordAckPacket) + 1] = {1, 0, 0, 0, 0};
+    device.mockPeerComms->triggerPacketCallback(fdnMac, PktType::kMatchCollectionAck, longAck,
+                                                sizeof(longAck));
+    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
+}
+
+TEST_F(MatchManagerTestSuite, fdnSpoolDropsUnreadableHeadInsteadOfFailingEveryBatch) {
+    using ::testing::_;
+    NativePrefsDriver fdnPrefs("fdn-corrupt-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    MockDevice fdnDevice;
+    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    FakeRemoteDeviceCoordinator fdnRdc;
+    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+
+    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x03};
+    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
+    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
+
+    for (uint32_t seq = 1; seq <= 2; ++seq) {
+        char mid[37];
+        snprintf(mid, sizeof(mid), "%08u-cccc-4000-8000-dddddddddddd", seq);
+        Match m(mid);
+        MatchRecordPacket pkt{};
+        pkt.matchSeq = seq;
+        m.serialize(pkt.matchData);
+        fdnSpool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+    }
+    const uint8_t torn[3] = {1, 2, 3};
+    fdnPrefs.writeBytes(FDN_MATCH_SPOOL_NAMESPACE, "spool_0", torn, sizeof(torn));
+
+    std::vector<HttpRequest> httpRequests;
+    ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
+    .WillByDefault(::testing::Invoke([&httpRequests](HttpRequest&& req) {
+        httpRequests.push_back(std::move(req));
+        return true;
+    }));
+
+    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_EQ(httpRequests.size(), 1u) << "the readable record still goes up";
+    EXPECT_EQ(fdnSpool.getStagedCount(), 1u);
+    httpRequests[0].onSuccess("");
+    EXPECT_EQ(fdnSpool.getStagedCount(), 0u);
+}
+
+TEST_F(MatchManagerTestSuite, fdnSpoolUploadStopsShortOfAnUnreadableRecord) {
+    using ::testing::_;
+    NativePrefsDriver fdnPrefs("fdn-mid-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    MockDevice fdnDevice;
+    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
+    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    FakeRemoteDeviceCoordinator fdnRdc;
+    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+
+    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x05};
+    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
+    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
+
+    for (uint32_t seq = 1; seq <= 3; ++seq) {
+        char mid[37];
+        snprintf(mid, sizeof(mid), "%08u-dddd-4000-8000-eeeeeeeeeeee", seq);
+        Match m(mid);
+        MatchRecordPacket pkt{};
+        pkt.matchSeq = seq;
+        m.serialize(pkt.matchData);
+        fdnSpool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+    }
+    const uint8_t torn[3] = {1, 2, 3};
+    fdnPrefs.writeBytes(FDN_MATCH_SPOOL_NAMESPACE, "spool_1", torn, sizeof(torn));
+
+    std::vector<HttpRequest> httpRequests;
+    ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
+    .WillByDefault(::testing::Invoke([&httpRequests](HttpRequest&& req) {
+        httpRequests.push_back(std::move(req));
+        return true;
+    }));
+
+    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_EQ(httpRequests.size(), 1u) << "the record ahead of the torn one still goes up";
+    httpRequests[0].onSuccess("");
+    EXPECT_EQ(fdnSpool.getStagedCount(), 2u);
+
+    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_EQ(httpRequests.size(), 2u);
+    EXPECT_EQ(fdnSpool.getStagedCount(), 1u) << "the torn record is dropped once it is the oldest";
+    httpRequests[1].onSuccess("");
+    EXPECT_EQ(fdnSpool.getStagedCount(), 0u);
+}
+
+TEST(MatchesApiUpload, unqueuedRequestFailsClosed) {
+    ::testing::NiceMock<MockPeerComms> peerComms;
+    ::testing::NiceMock<MockHttpClient> httpClient;
+    ON_CALL(httpClient, queueRequest(::testing::_)).WillByDefault(::testing::Return(false));
+    WirelessManager wirelessManager(&peerComms, &httpClient);
+
+    bool errored = false;
+    MatchesApi::uploadQuickdrawMatches(
+    &wirelessManager, 1, [](size_t, QuickdrawMatchRecord&) { return true; },
+    [](const QuickdrawMatchRejection&) {}, [](const QuickdrawUploadResult&) {},
+    [&errored](const WirelessErrorInfo&) { errored = true; });
+    EXPECT_TRUE(errored) << "an unqueued upload must not leave its caller waiting";
 }
