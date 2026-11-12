@@ -193,3 +193,25 @@ inline void playerProfileCarriesRoleAndIdentity(Player* player) {
     player->setIsHunter(false);
     EXPECT_EQ(player->toProfile().gameRole, 0);
 }
+
+// A profile nobody filled reads as unregistered, and "70001" must not wrap into
+// a plausible four-digit id (4465).
+inline void playerProfileRejectsOutOfRangeUserIds(Player* player) {
+    EXPECT_EQ(PlayerProfile{}.userId, PEER_USER_ID_NONE);
+
+    char zeroId[] = "0";
+    player->setUserID(zeroId);
+    EXPECT_EQ(player->toProfile().userId, 0);
+
+    char maxValidId[] = "65534";
+    player->setUserID(maxValidId);
+    EXPECT_EQ(player->toProfile().userId, 0xFFFE);
+
+    char sentinelId[] = "65535";
+    player->setUserID(sentinelId);
+    EXPECT_EQ(player->toProfile().userId, PEER_USER_ID_NONE);
+
+    char overflowId[] = "70001";
+    player->setUserID(overflowId);
+    EXPECT_EQ(player->toProfile().userId, PEER_USER_ID_NONE);
+}

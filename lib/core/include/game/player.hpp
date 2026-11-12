@@ -44,9 +44,9 @@ public:
 
     /**
      * This player as the packed profile peers receive in the connection
-     * context. userId is 0xFFFF unless the player id is wholly numeric;
-     * `registered` says whether a profile has been applied. Faction and name
-     * truncate to the fixed wire widths.
+     * context. userId is PEER_USER_ID_NONE unless the player id is a decimal
+     * integer in 0..0xFFFE; `registered` says whether a profile has been
+     * applied. Faction and name truncate to the fixed wire widths.
      */
     PlayerProfile toProfile() const;
 
