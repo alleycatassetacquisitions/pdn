@@ -1713,6 +1713,9 @@ TEST_F(RDCHelloTests, announceOverCapIsDroppedNotAdmitted) {
 TEST_F(RDCHelloTests, headTransferCarriesFullCapRoster) {
     rdcHeadTransferCarriesFullCapRoster(this);
 }
+TEST_F(RDCHelloTests, fdnContextSyncsPdnWallClockOnlyFromCabledFdn) {
+    rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(this);
+}
 TEST_F(RDCHelloTests, staleTransferDoesNotReforkClaimedUpstream) {
     rdcStaleTransferDoesNotReforkClaimedUpstream(this);
 }
@@ -1834,6 +1837,9 @@ TEST_F(RDCHelloTests, chainRoleChangeReportsRingLatch) {
 }
 TEST_F(RDCHelloTests, unprovenUpstreamIsNeverAdopted) {
     rdcUnprovenUpstreamIsNeverAdopted(this);
+}
+TEST_F(RDCHelloTests, emitHelloReadsPublishedSnapshotOnly) {
+    rdcEmitHelloReadsPublishedSnapshotOnly(this);
 }
 
 // ============================================

@@ -112,6 +112,15 @@ public:
      */
     ReliableTransport* transport() { return rdc.transport; }
 
+    /** Writes `publishedHelloState` directly without updating main-loop chain state. */
+    void overridePublishedHelloState(const uint8_t* headMac, bool confirmed, bool ringClosed) {
+        uint64_t snapshot =
+        headMac != nullptr ? (MacToUInt64(headMac) & RemoteDeviceCoordinator::HEAD_MAC_MASK) : 0;
+        if (confirmed) snapshot |= RemoteDeviceCoordinator::CONFIRMED_BIT;
+        if (ringClosed) snapshot |= RemoteDeviceCoordinator::RING_CLOSED_BIT;
+        rdc.publishedHelloState.store(snapshot);
+    }
+
     MockDevice device;
     FakePlatformClock* fakeClock = nullptr;
     NativeSerialDriver outJack{"hello-out"};
@@ -2402,7 +2411,7 @@ inline void rdcPeerUserIdAbsentForFdnContext(RDCHelloTests* suite) {
     FdnConnectionContext fdn{};
     fdn.seqId = 4;
     fdn.chainRole = 1;
-    fdn.fdn.reserved = 0x7F;
+    fdn.fdn.utcUnixMs = 0x7F;
     std::vector<uint8_t> ctx(sizeof(fdn));
     memcpy(ctx.data(), &fdn, sizeof(fdn));
     suite->transport()->deliverIncoming(
@@ -2856,4 +2865,80 @@ inline void rdcHeadTransferCarriesFullCapRoster(RDCHelloTests* suite) {
                                         handoff.data(), handoff.size());
 
     EXPECT_EQ(suite->rdc.getChainMembers().size(), static_cast<size_t>(MAX_CHAIN_MEMBERS));
+}
+
+inline void rdcEmitHelloReadsPublishedSnapshotOnly(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t realHead[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t snapshotHead[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
+
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, realHead));
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), realHead, 6));
+    ASSERT_FALSE(suite->rdc.isInRing());
+
+    suite->overridePublishedHelloState(snapshotHead, /*confirmed=*/true, /*ringClosed=*/true);
+
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    const std::string raw = suite->outJack.getOutput();
+    EXPECT_EQ(raw.size(), HELLO_FRAME_LEN);
+    HelloPayload emitted = parseEmittedHello(raw);
+    EXPECT_EQ(0, memcmp(emitted.headMac, snapshotHead, 6));
+    EXPECT_EQ(emitted.flags, static_cast<uint8_t>(HELLO_FLAG_CONFIRMED | HELLO_FLAG_RING_CLOSED));
+
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), realHead, 6));
+}
+
+// A PDN connected to an FDN on a serial jack syncs its UTC wall clock from the
+// FDN's context without disturbing its monotonic millisecond clock, while
+// ignoring unsynchronized (0) timestamps and uncabled senders.
+inline void rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(RDCHelloTests* suite) {
+    const uint8_t fdnMac[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t uncabledMac[6] = {0xEE, 0x02, 0x03, 0x04, 0x05, 0x06};
+    constexpr int64_t SYNCED_UTC_MS = 1792359000000LL;
+
+    suite->fakeClock->setTime(5000);
+    suite->fakeClock->setUnixTimeMs(0);
+
+    // 1. Uncabled wireless FdnConnectionContext is ignored.
+    FdnConnectionContext uncabledCtx{};
+    uncabledCtx.seqId = 1;
+    uncabledCtx.chainRole = 0;
+    uncabledCtx.fdn.utcUnixMs = SYNCED_UTC_MS;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, uncabledMac,
+                                        reinterpret_cast<const uint8_t*>(&uncabledCtx),
+                                        sizeof(uncabledCtx));
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), 0);
+
+    // 2. Cabled FDN with valid UTC timestamp updates PDN wall clock, leaving monotonic untouched.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+
+    FdnConnectionContext cabledCtx{};
+    cabledCtx.seqId = 2;
+    cabledCtx.chainRole = 0;
+    cabledCtx.fdn.utcUnixMs = SYNCED_UTC_MS;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, fdnMac,
+                                        reinterpret_cast<const uint8_t*>(&cabledCtx),
+                                        sizeof(cabledCtx));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS);
+    EXPECT_EQ(suite->fakeClock->milliseconds(), 5000UL);
+
+    // 3. Subsequent unsynchronized (0) FdnConnectionContext does not overwrite valid PDN clock.
+    FdnConnectionContext unsyncedCtx{};
+    unsyncedCtx.seqId = 3;
+    unsyncedCtx.chainRole = 0;
+    unsyncedCtx.fdn.utcUnixMs = 0;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, fdnMac,
+                                        reinterpret_cast<const uint8_t*>(&unsyncedCtx),
+                                        sizeof(unsyncedCtx));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS);
 }
