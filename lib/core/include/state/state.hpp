@@ -154,8 +154,6 @@ public:
 
     int getStateId() const { return name.id; }
 
-    virtual bool isTerminalState() { return false; }
-
 protected:
     std::vector<StateTransition*> transitions;
 

@@ -38,6 +38,4 @@ void ShootoutFinalStandings::onStateDismounted(PDN* pdn) {
     shouldGoToSleep_ = false;
 }
 
-bool ShootoutFinalStandings::isTerminalState() { return false; }
-
 bool ShootoutFinalStandings::transitionToSleep() { return shouldGoToSleep_; }

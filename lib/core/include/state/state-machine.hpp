@@ -163,10 +163,6 @@ public:
         pendingTransition = nullptr;
     }
 
-    bool hasLaunched() const {
-        return launched;
-    }
-
 protected:
     // initial state is 0 in the list here
     std::vector<State *> stateMap;
