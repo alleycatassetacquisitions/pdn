@@ -470,12 +470,11 @@ private:
                 httpStr += it->success ? " [OK]" : format(" [%d]", it->statusCode);
             }
         }
-        
-        bufferLine(format("| HTTP: %s  Pending=%zu  Mock=%s",
-                   device.httpClientDriver->isConnected() ? "Connected" : "Disconnected",
-                   device.httpClientDriver->getPendingRequestCount(),
-                   device.httpClientDriver->isMockServerEnabled() ? "ON" : "OFF"));
-        
+
+        bufferLine(format("| HTTP: %s  Pending=%zu",
+                          device.httpClientDriver->isConnected() ? "Connected" : "Disconnected",
+                          device.httpClientDriver->getPendingRequestCount()));
+
         bufferLine(format("|   Requests: %s", httpStr.c_str()));
         
         bufferLine(format("| Errors: %s", errorStr.c_str()));

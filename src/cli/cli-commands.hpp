@@ -541,10 +541,6 @@ private:
         }
         auto& dev = devices[targetDevice];
 
-        // Ensure mock HTTP is ready for the new FetchUserData cycle
-        dev.httpClientDriver->setMockServerEnabled(true);
-        dev.httpClientDriver->setConnected(true);
-
         // Clear UI state history
         dev.stateHistory.clear();
         dev.lastStateId = -1;
