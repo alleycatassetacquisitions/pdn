@@ -8,9 +8,8 @@
 
 #include "cli/cli-terminal.hpp"
 #include "cli/cli-device.hpp"
-#include "cli/cli-serial-broker.hpp"
+#include "cli/cli-diagnostics.hpp"
 #include "device/drivers/peer-comms-types.hpp"
-#include "device/drivers/native/native-peer-broker.hpp"
 
 namespace cli {
 
@@ -25,13 +24,19 @@ public:
     
     Renderer() = default;
 
-    void setDisplayMirror(bool enabled) { displayMirrorEnabled_ = enabled; }
-    void toggleDisplayMirror() { displayMirrorEnabled_ = !displayMirrorEnabled_; }
-    bool isDisplayMirrorEnabled() const { return displayMirrorEnabled_; }
+    /** Shows or hides the braille mirror of the device's display. */
+    void setDisplayMirror(bool enabled) { displayMirrorEnabled = enabled; }
+    /** Flips the display mirror. */
+    void toggleDisplayMirror() { displayMirrorEnabled = !displayMirrorEnabled; }
+    /** True while the display mirror is shown. */
+    bool isDisplayMirrorEnabled() const { return displayMirrorEnabled; }
 
-    void setCaptions(bool enabled) { captionsEnabled_ = enabled; }
-    void toggleCaptions() { captionsEnabled_ = !captionsEnabled_; }
-    bool isCaptionsEnabled() const { return captionsEnabled_; }
+    /** Shows or hides the text the device last drew. */
+    void setCaptions(bool enabled) { captionsEnabled = enabled; }
+    /** Flips the captions. */
+    void toggleCaptions() { captionsEnabled = !captionsEnabled; }
+    /** True while captions are shown. */
+    bool isCaptionsEnabled() const { return captionsEnabled; }
 
     /**
      * Render the full UI for all devices, command result, and prompt.
@@ -40,8 +45,8 @@ public:
                   const std::string& commandResult,
                   const std::string& commandBuffer,
                   int selectedDeviceIndex) {
-        currentFrame_.clear();
-        
+        currentFrame.clear();
+
         // Device selector bar (shows all devices, highlights selected)
         if (devices.size() > 1) {
             std::string selectorBar = "Devices: ";
@@ -69,7 +74,8 @@ public:
         
         // Render only the selected device panel
         if (selectedDeviceIndex >= 0 && selectedDeviceIndex < static_cast<int>(devices.size())) {
-            renderDevicePanel(devices[selectedDeviceIndex], true);
+            renderDevicePanel(
+            gatherDiagnostics(devices[selectedDeviceIndex], displayMirrorEnabled));
         }
         
         // Blank line
@@ -95,18 +101,16 @@ public:
     }
 
 private:
-    bool displayMirrorEnabled_ = false;
-    bool captionsEnabled_ = true;
-    std::vector<std::string> previousFrame_;
-    std::vector<std::string> currentFrame_;
-    
+    bool displayMirrorEnabled = false;
+    bool captionsEnabled = true;
+    std::vector<std::string> previousFrame;
+    std::vector<std::string> currentFrame;
+
     /**
      * Add a line to the current frame buffer.
      */
-    void bufferLine(const std::string& line) {
-        currentFrame_.push_back(line);
-    }
-    
+    void bufferLine(const std::string& line) { currentFrame.push_back(line); }
+
     /**
      * Get terminal height to prevent cursor positioning past the screen edge.
      * Writing past the terminal height causes scrolling that corrupts
@@ -128,25 +132,25 @@ private:
         int termHeight = getTerminalHeight();
 
         // Ensure we have enough lines in previous frame for comparison
-        while (previousFrame_.size() < currentFrame_.size()) {
-            previousFrame_.push_back("");
+        while (previousFrame.size() < currentFrame.size()) {
+            previousFrame.push_back("");
         }
 
         // Compare and update only changed lines (within terminal bounds)
-        for (size_t i = 0; i < currentFrame_.size(); i++) {
+        for (size_t i = 0; i < currentFrame.size(); i++) {
             int row = STATUS_START_ROW + static_cast<int>(i);
             if (row >= termHeight) break;
 
-            if (i >= previousFrame_.size() || currentFrame_[i] != previousFrame_[i]) {
+            if (i >= previousFrame.size() || currentFrame[i] != previousFrame[i]) {
                 Terminal::moveCursor(row, 1);
                 Terminal::clearLine();
-                printf("%s", currentFrame_[i].c_str());
+                printf("%s", currentFrame[i].c_str());
             }
         }
 
         // Clear any extra lines from previous frame (within terminal bounds)
-        if (previousFrame_.size() > currentFrame_.size()) {
-            for (size_t i = currentFrame_.size(); i < previousFrame_.size(); i++) {
+        if (previousFrame.size() > currentFrame.size()) {
+            for (size_t i = currentFrame.size(); i < previousFrame.size(); i++) {
                 int row = STATUS_START_ROW + static_cast<int>(i);
                 if (row >= termHeight) break;
                 Terminal::moveCursor(row, 1);
@@ -155,8 +159,8 @@ private:
         }
 
         // Store current frame as previous for next comparison
-        previousFrame_ = currentFrame_;
-        currentFrame_.clear();
+        previousFrame = currentFrame;
+        currentFrame.clear();
 
         Terminal::flush();
     }
@@ -197,18 +201,39 @@ private:
             default: return "?" + std::to_string(static_cast<int>(type));
         }
     }
-    
-    /**
-     * Render a single device panel into the frame buffer.
-     * @param isSelected Whether this device is currently selected (affects header color)
-     */
-    void renderDevicePanel(DeviceInstance& device, bool isSelected = false) {
-        State* currentState = device.getCurrentState();
-        int stateId = currentState ? currentState->getStateId() : -1;
-        
-        // Update state history
-        device.updateStateHistory(stateId);
-        
+
+    /** Serial messages for one panel row, most recent first, or "(none)". */
+    static std::string formatHistory(const std::vector<std::string>& messages) {
+        if (messages.empty()) return "(none)";
+        std::string text;
+        for (size_t i = 0; i < messages.size(); i++) {
+            if (i > 0) text += ", ";
+            text += truncate(messages[i], 15);
+        }
+        return text;
+    }
+
+    /** One "TYPE<arrow>MAC" entry per packet, most recent first, or "(none)". */
+    static std::string formatPackets(const std::vector<PacketDiagnostics>& packets,
+                                     const char* arrow) {
+        if (packets.empty()) return "(none)";
+        std::string text;
+        for (size_t i = 0; i < packets.size(); i++) {
+            if (i > 0) text += ", ";
+            text += getPacketTypeName(packets[i].packetType);
+            text += arrow + truncate(packets[i].peerMac, 8);
+        }
+        return text;
+    }
+
+    /** The cable marker beside a jack, empty when nothing is plugged in. */
+    static std::string formatCableLabel(const JackDiagnostics& jack) {
+        if (jack.cabledDevice < 0) return "";
+        return format(" \033[32m<->[Dev%d]\033[0m", jack.cabledDevice);
+    }
+
+    /** Renders the selected device's panel into the frame buffer. */
+    void renderDevicePanel(const DeviceDiagnostics& device) {
         // Build state history string
         std::string historyStr;
         if (device.stateHistory.empty()) {
@@ -219,122 +244,38 @@ private:
                 historyStr += getStateName(device.stateHistory[i]);
             }
         }
-        
-        // Build serial history strings for OUT jack
-        std::string outSentStr = "(none)";
-        const auto& outSent = device.serialOutDriver->getSentHistory();
-        if (!outSent.empty()) {
-            outSentStr = "";
-            for (size_t i = 0; i < outSent.size() && i < 3; i++) {
-                if (i > 0) outSentStr += ", ";
-                outSentStr += truncate(outSent[outSent.size() - 1 - i], 15);
-            }
-        }
-        
-        std::string outRecvStr = "(none)";
-        const auto& outRecv = device.serialOutDriver->getReceivedHistory();
-        if (!outRecv.empty()) {
-            outRecvStr = "";
-            for (size_t i = 0; i < outRecv.size() && i < 3; i++) {
-                if (i > 0) outRecvStr += ", ";
-                outRecvStr += truncate(outRecv[outRecv.size() - 1 - i], 15);
-            }
-        }
-        
-        // Build serial history strings for IN jack
-        std::string inSentStr = "(none)";
-        const auto& inSent = device.serialInDriver->getSentHistory();
-        if (!inSent.empty()) {
-            inSentStr = "";
-            for (size_t i = 0; i < inSent.size() && i < 3; i++) {
-                if (i > 0) inSentStr += ", ";
-                inSentStr += truncate(inSent[inSent.size() - 1 - i], 15);
-            }
-        }
-        
-        std::string inRecvStr = "(none)";
-        const auto& inRecv = device.serialInDriver->getReceivedHistory();
-        if (!inRecv.empty()) {
-            inRecvStr = "";
-            for (size_t i = 0; i < inRecv.size() && i < 3; i++) {
-                if (i > 0) inRecvStr += ", ";
-                inRecvStr += truncate(inRecv[inRecv.size() - 1 - i], 15);
-            }
-        }
-        
+
         // Build error log string
         std::string errorStr = "(none)";
-        const auto& logs = device.loggerDriver->getRecentLogs();
-        int errorCount = 0;
-        for (auto it = logs.rbegin(); it != logs.rend() && errorCount < 2; ++it) {
-            if (it->level == LogLevel::ERROR) {
-                if (errorCount == 0) errorStr = "";
-                if (errorCount > 0) errorStr += ", ";
-                errorStr += truncate(it->message, 25);
-                errorCount++;
-            }
-        }
-        
-        // Build display content - always collect captions, optionally render mirror
-        std::vector<std::string> asciiMirrorLines;
-        std::vector<std::string> displayRows(4, "");
-
-        const auto& textHistory = device.displayDriver->getTextHistory();
-        for (size_t i = 0; i < textHistory.size() && i < 4; i++) {
-            displayRows[i] = truncate(textHistory[i], 40);
+        for (size_t i = 0; i < device.recentErrors.size(); i++) {
+            if (i == 0) errorStr = "";
+            if (i > 0) errorStr += ", ";
+            errorStr += truncate(device.recentErrors[i], 25);
         }
 
-        if (displayMirrorEnabled_) {
-            asciiMirrorLines = device.displayDriver->renderToBraille();
+        // Captions are always laid out; the mirror lines exist only when it is on
+        std::vector<std::string> displayRows(PANEL_DISPLAY_TEXT_ROWS, "");
+        for (size_t i = 0; i < device.displayText.size(); i++) {
+            displayRows[i] = truncate(device.displayText[i], 40);
         }
-        
-        // Build ESP-NOW packet history strings (separate TX and RX)
-        std::string espNowTxStr = "(none)";
-        std::string espNowRxStr = "(none)";
-        const auto& pktHistory = device.peerCommsDriver->getPacketHistory();
-        
-        // Collect TX packets
-        int txCount = 0;
-        for (auto it = pktHistory.rbegin(); it != pktHistory.rend() && txCount < 3; ++it) {
-            if (it->isSent) {
-                if (txCount == 0) espNowTxStr = "";
-                if (txCount > 0) espNowTxStr += ", ";
-                espNowTxStr += getPacketTypeName(it->packetType);
-                espNowTxStr += "->" + truncate(it->dstMac, 8);
-                txCount++;
-            }
-        }
-        
-        // Collect RX packets
-        int rxCount = 0;
-        for (auto it = pktHistory.rbegin(); it != pktHistory.rend() && rxCount < 3; ++it) {
-            if (!it->isSent) {
-                if (rxCount == 0) espNowRxStr = "";
-                if (rxCount > 0) espNowRxStr += ", ";
-                espNowRxStr += getPacketTypeName(it->packetType);
-                espNowRxStr += "<-" + truncate(it->srcMac, 8);
-                rxCount++;
-            }
-        }
-        
+
         // Build LED string with colored blocks
         std::string ledStr = "| LEDs: L[";
         for (int i = 8; i >= 0; i--) {
-            ledStr += renderLEDStr(device.lightDriver->getLeftLights()[i]);
+            ledStr += renderLEDStr(device.leftLights[i]);
         }
         ledStr += "] T[";
-        ledStr += renderLEDStr(device.lightDriver->getTransmitLight());
+        ledStr += renderLEDStr(device.transmitLight);
         ledStr += "] R[";
         for (int i = 8; i >= 0; i--) {
-            ledStr += renderLEDStr(device.lightDriver->getRightLights()[i]);
+            ledStr += renderLEDStr(device.rightLights[i]);
         }
         char brightBuf[32];
-        snprintf(brightBuf, sizeof(brightBuf), "]  Bright=%3d", device.lightDriver->getGlobalBrightness());
+        snprintf(brightBuf, sizeof(brightBuf), "]  Bright=%3d", device.globalBrightness);
         ledStr += brightBuf;
-        
+
         // Build LED debug string showing key indices with brightness
-        auto& leftLeds = device.lightDriver->getLeftLights();
-        auto& rightLeds = device.lightDriver->getRightLights();
+        const std::array<LEDState::SingleLEDState, 9>& leftLeds = device.leftLights;
         char rgbBuf[200];
         snprintf(rgbBuf, sizeof(rgbBuf), "|   L0=(%d,%d,%d)@%d  L3=(%d,%d,%d)@%d  L5=(%d,%d,%d)@%d  L8=(%d,%d,%d)@%d",
                  leftLeds[0].color.red, leftLeds[0].color.green, leftLeds[0].color.blue, leftLeds[0].brightness,
@@ -342,44 +283,40 @@ private:
                  leftLeds[5].color.red, leftLeds[5].color.green, leftLeds[5].color.blue, leftLeds[5].brightness,
                  leftLeds[8].color.red, leftLeds[8].color.green, leftLeds[8].color.blue, leftLeds[8].brightness);
         std::string ledDebugStr = rgbBuf;
-        
-        // Buffer all lines - use brighter color for selected device
-        const char* headerColor = isSelected ? "\033[1;33m" : "\033[33m";  // Bold yellow vs dim yellow
-        const char* selectedMarker = isSelected ? " *SELECTED*" : "";
+
+        // Buffer all lines
+        const char* headerColor = "\033[1;33m";
+        const char* selectedMarker = " *SELECTED*";
         bufferLine(format("%s+-- Device [%s] %-6s%s -------------------------------+\033[0m",
                    headerColor,
                    device.deviceId.c_str(),
                    device.isHunter ? "HUNTER" : "BOUNTY",
                    selectedMarker));
-        
+
         bufferLine(format("| Player: ID=%-4s  Allegiance=%-10s  W=%d L=%d Streak=%d",
-                   device.player->getUserID().c_str(),
-                   device.player->getAllegianceString().c_str(),
-                   device.player->getWins(),
-                   device.player->getLosses(),
-                   device.player->getStreak()));
-        
-        bufferLine(format("| State: [%2d] %-20s  Game: Quickdraw",
-                   stateId, getStateName(stateId)));
-        
+                          device.userId.c_str(), device.allegiance.c_str(), device.wins,
+                          device.losses, device.streak));
+
+        bufferLine(format("| State: [%2d] %-20s  Game: Quickdraw", device.stateId,
+                          getStateName(device.stateId)));
+
         bufferLine(format("| History: %s", historyStr.c_str()));
         
         // Display info
-        if (displayMirrorEnabled_) {
-            bufferLine(format("| Display: Font=%-6s    Mirror=ON",
-                       device.displayDriver->getFontModeName().c_str()));
+        if (displayMirrorEnabled) {
+            bufferLine(format("| Display: Font=%-6s    Mirror=ON", device.fontModeName.c_str()));
 
             // Top border — with Captions header when enabled
-            if (captionsEnabled_) {
+            if (captionsEnabled) {
                 bufferLine("|  +----------------------------------------------------------------+  Captions:");
             } else {
                 bufferLine("|  +----------------------------------------------------------------+");
             }
 
             // Mirror lines — first 4 get captions alongside when enabled
-            for (size_t i = 0; i < asciiMirrorLines.size(); i++) {
-                std::string line = "|  |" + asciiMirrorLines[i] + "|";
-                if (captionsEnabled_ && i < 4) {
+            for (size_t i = 0; i < device.displayMirror.size(); i++) {
+                std::string line = "|  |" + device.displayMirror[i] + "|";
+                if (captionsEnabled && i < 4) {
                     std::string caption = displayRows[i].empty() ? "" : displayRows[i];
                     line += "  [" + std::to_string(i) + "] " + caption;
                 }
@@ -387,93 +324,58 @@ private:
             }
 
             bufferLine("|  +----------------------------------------------------------------+");
-        } else if (captionsEnabled_) {
-            bufferLine(format("| Display: Font=%-6s  Captions:",
-                       device.displayDriver->getFontModeName().c_str()));
+        } else if (captionsEnabled) {
+            bufferLine(format("| Display: Font=%-6s  Captions:", device.fontModeName.c_str()));
             bufferLine(format("|                       [0] %s",
                        displayRows[0].empty() ? "(blank)" : displayRows[0].c_str()));
             bufferLine(format("|                       [1] %s", displayRows[1].c_str()));
             bufferLine(format("|                       [2] %s", displayRows[2].c_str()));
             bufferLine(format("|                       [3] %s", displayRows[3].c_str()));
         } else {
-            bufferLine(format("| Display: Font=%-6s",
-                       device.displayDriver->getFontModeName().c_str()));
+            bufferLine(format("| Display: Font=%-6s", device.fontModeName.c_str()));
         }
-        
+
         bufferLine(ledStr);
         bufferLine(ledDebugStr);
-        
-        bufferLine(format("| Haptics: %-3s  Intensity=%3d",
-                   device.hapticsDriver->isOn() ? "ON" : "OFF",
-                   device.hapticsDriver->getIntensity()));
-        
-        // Get serial connection info from broker
-        std::string outConnLabel = "";
-        std::string inConnLabel = "";
-        const auto& connections = SerialCableBroker::getInstance().getConnections();
-        for (const auto& conn : connections) {
-            if (conn.deviceA == device.deviceIndex || conn.deviceB == device.deviceIndex) {
-                // This device is part of this connection
-                bool isDeviceA = (conn.deviceA == device.deviceIndex);
-                int otherDevice = isDeviceA ? conn.deviceB : conn.deviceA;
-                JackType myJack = isDeviceA ? conn.jackA : conn.jackB;
-                
-                if (myJack == JackType::OUTPUT_JACK) {
-                    outConnLabel = format(" \033[32m<->[Dev%d]\033[0m", otherDevice);
-                } else {
-                    inConnLabel = format(" \033[32m<->[Dev%d]\033[0m", otherDevice);
-                }
-            }
-        }
-        
+
+        bufferLine(format("| Haptics: %-3s  Intensity=%3d", device.hapticsOn ? "ON" : "OFF",
+                          device.hapticsIntensity));
+
         // Determine which jack is PRIMARY based on role
         const char* outPrimaryLabel = device.isHunter ? " (PRIMARY)" : "";
         const char* inPrimaryLabel = device.isHunter ? "" : " (PRIMARY)";
-        
-        bufferLine(format("| Serial OUT%s: in=%zu out=%zu%s",
-                   outPrimaryLabel,
-                   device.serialOutDriver->getInputQueueSize(),
-                   device.serialOutDriver->getOutputBufferSize(),
-                   outConnLabel.c_str()));
-        bufferLine(format("|   TX: %s", outSentStr.c_str()));
-        bufferLine(format("|   RX: %s", outRecvStr.c_str()));
-        
-        bufferLine(format("| Serial IN%s:  in=%zu out=%zu%s",
-                   inPrimaryLabel,
-                   device.serialInDriver->getInputQueueSize(),
-                   device.serialInDriver->getOutputBufferSize(),
-                   inConnLabel.c_str()));
-        bufferLine(format("|   TX: %s", inSentStr.c_str()));
-        bufferLine(format("|   RX: %s", inRecvStr.c_str()));
-        
-        // Get broker stats
-        size_t pendingPkts = NativePeerBroker::getInstance().getPendingPacketCount();
-        size_t peerCount = NativePeerBroker::getInstance().getPeerCount();
-        
+
+        bufferLine(format("| Serial OUT%s: in=%zu out=%zu%s", outPrimaryLabel,
+                          device.outputJack.inputQueueSize, device.outputJack.outputBufferSize,
+                          formatCableLabel(device.outputJack).c_str()));
+        bufferLine(format("|   TX: %s", formatHistory(device.outputJack.sentHistory).c_str()));
+        bufferLine(format("|   RX: %s", formatHistory(device.outputJack.receivedHistory).c_str()));
+
+        bufferLine(format("| Serial IN%s:  in=%zu out=%zu%s", inPrimaryLabel,
+                          device.inputJack.inputQueueSize, device.inputJack.outputBufferSize,
+                          formatCableLabel(device.inputJack).c_str()));
+        bufferLine(format("|   TX: %s", formatHistory(device.inputJack.sentHistory).c_str()));
+        bufferLine(format("|   RX: %s", formatHistory(device.inputJack.receivedHistory).c_str()));
+
         bufferLine(format("| ESP-NOW: %s  MAC=%s  Peers=%zu  Pending=%zu",
-                   device.peerCommsDriver->getStateString().c_str(),
-                   device.peerCommsDriver->getMacString().c_str(),
-                   peerCount,
-                   pendingPkts));
-        bufferLine(format("|   TX: %s", espNowTxStr.c_str()));
-        bufferLine(format("|   RX: %s", espNowRxStr.c_str()));
-        
+                          device.peerCommsState == PeerCommsState::ENABLED ? "ENABLED" : "DISABLED",
+                          device.macAddress.c_str(), device.peerCount, device.pendingPacketCount));
+        bufferLine(format("|   TX: %s", formatPackets(device.sentPackets, "->").c_str()));
+        bufferLine(format("|   RX: %s", formatPackets(device.receivedPackets, "<-").c_str()));
+
         // Build HTTP history string
         std::string httpStr = "(none)";
-        const auto& httpHistory = device.httpClientDriver->getRequestHistory();
-        if (!httpHistory.empty()) {
-            httpStr = "";
-            int count = 0;
-            for (auto it = httpHistory.rbegin(); it != httpHistory.rend() && count < 3; ++it, ++count) {
-                if (count > 0) httpStr += ", ";
-                httpStr += it->method + " " + truncate(it->path, 20);
-                httpStr += it->success ? " [OK]" : format(" [%d]", it->statusCode);
-            }
+        for (size_t i = 0; i < device.httpRequests.size(); i++) {
+            const HttpRequestDiagnostics& request = device.httpRequests[i];
+            if (i == 0) httpStr = "";
+            if (i > 0) httpStr += ", ";
+            httpStr += request.method + " " + truncate(request.path, 20);
+            httpStr += request.success ? " [OK]" : format(" [%d]", request.statusCode);
         }
 
         bufferLine(format("| HTTP: %s  Pending=%zu",
-                          device.httpClientDriver->isConnected() ? "Connected" : "Disconnected",
-                          device.httpClientDriver->getPendingRequestCount()));
+                          device.httpConnected ? "Connected" : "Disconnected",
+                          device.httpPendingRequestCount));
 
         bufferLine(format("|   Requests: %s", httpStr.c_str()));
         

@@ -12,26 +12,25 @@
 // Track packet history for CLI display
 struct PacketHistoryEntry {
     bool isSent;  // true = sent, false = received
-    std::string srcMac;
-    std::string dstMac;
+    uint8_t srcMac[6];
+    uint8_t dstMac[6];
     PktType packetType;
-    size_t length;
 };
 
 class NativePeerCommsDriver : public PeerCommsDriverInterface {
 public:
     explicit NativePeerCommsDriver(const std::string& name) : PeerCommsDriverInterface(name) {
         // Get unique MAC from broker
-        NativePeerBroker::getInstance().generateUniqueMac(macAddress_);
+        NativePeerBroker::getInstance().generateUniqueMac(macAddress);
     }
 
     ~NativePeerCommsDriver() override {
-        NativePeerBroker::getInstance().unregisterPeer(macAddress_);
+        NativePeerBroker::getInstance().unregisterPeer(macAddress);
     }
 
     int initialize() override {
         // Register with the broker
-        NativePeerBroker::getInstance().registerPeer(this, macAddress_);
+        NativePeerBroker::getInstance().registerPeer(this, macAddress);
         return 0;
     }
 
@@ -44,13 +43,7 @@ public:
 
         while (!pending.empty()) {
             DeferredPacket& pkt = pending.front();
-            PacketHistoryEntry entry;
-            entry.isSent = false;
-            entry.srcMac = macToString(pkt.srcMac);
-            entry.dstMac = getMacString();
-            entry.packetType = pkt.type;
-            entry.length = pkt.data.size();
-            addToHistory(entry);
+            recordPacket(false, pkt.srcMac, macAddress, pkt.type);
 
             auto it = handlers_.find(pkt.type);
             if (it != handlers_.end()) {
@@ -98,15 +91,9 @@ public:
             return -1;
         }
 
-        PacketHistoryEntry entry;
-        entry.isSent = true;
-        entry.srcMac = getMacString();
-        entry.dstMac = macToString(dst);
-        entry.packetType = packetType;
-        entry.length = length;
-        addToHistory(entry);
-        
-        NativePeerBroker::getInstance().sendPacket(macAddress_, dst, packetType, data, length);
+        recordPacket(true, macAddress, dst, packetType);
+
+        NativePeerBroker::getInstance().sendPacket(macAddress, dst, packetType, data, length);
 
         // Report SEND_SUCCESS on the next exec() (never inline: that would
         // re-enter Resender::send mid-transmit). The sim's broker delivery is
@@ -146,9 +133,8 @@ public:
         return NativePeerBroker::getInstance().getBroadcastAddress();
     }
 
-    uint8_t* getMacAddress() override {
-        return macAddress_;
-    }
+    /** The MAC the broker assigned this driver at construction. */
+    uint8_t* getMacAddress() override { return macAddress; }
 
     /**
      * Called by the broker to deliver a packet to this peer.
@@ -174,9 +160,8 @@ public:
      */
     std::string getMacString() const {
         char buf[18];
-        snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-                 macAddress_[0], macAddress_[1], macAddress_[2],
-                 macAddress_[3], macAddress_[4], macAddress_[5]);
+        snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", macAddress[0], macAddress[1],
+                 macAddress[2], macAddress[3], macAddress[4], macAddress[5]);
         return std::string(buf);
     }
 
@@ -190,9 +175,7 @@ public:
     /**
      * Get packet history for CLI display.
      */
-    const std::deque<PacketHistoryEntry>& getPacketHistory() const {
-        return packetHistory_;
-    }
+    const std::deque<PacketHistoryEntry>& getPacketHistory() const { return packetHistory; }
 
 private:
     struct HandlerEntry {
@@ -223,23 +206,22 @@ private:
     std::queue<DeferredSendResult> sendResultQueue;
     std::mutex recvMutex_;
     std::queue<DeferredPacket> recvQueue_;
-    uint8_t macAddress_[6];
+    uint8_t macAddress[6];
     PeerCommsState peerCommsState = PeerCommsState::DISABLED;
-    std::deque<PacketHistoryEntry> packetHistory_;
+    std::deque<PacketHistoryEntry> packetHistory;
     static const size_t MAX_HISTORY = 5;
-    
-    void addToHistory(const PacketHistoryEntry& entry) {
-        packetHistory_.push_back(entry);
-        while (packetHistory_.size() > MAX_HISTORY) {
-            packetHistory_.pop_front();
+
+    void recordPacket(bool isSent, const uint8_t* srcMac, const uint8_t* dstMac,
+                      PktType packetType) {
+        PacketHistoryEntry entry;
+        entry.isSent = isSent;
+        memcpy(entry.srcMac, srcMac, 6);
+        memcpy(entry.dstMac, dstMac, 6);
+        entry.packetType = packetType;
+        packetHistory.push_back(entry);
+        while (packetHistory.size() > MAX_HISTORY) {
+            packetHistory.pop_front();
         }
-    }
-    
-    static std::string macToString(const uint8_t* mac) {
-        char buf[18];
-        snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-        return std::string(buf);
     }
 };
 
