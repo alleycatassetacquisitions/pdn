@@ -4,7 +4,8 @@
 
 #define TAG "POSSE"
 
-PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
+PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager,
+                           RemoteDeviceCoordinator* rdc)
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
@@ -12,9 +13,9 @@ PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, Rem
     , resender(wirelessManager)
     // No abandon handler: a role announce that ran out its span is repaired by the
     // backstop in sync(), not by a callback.
-    , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr)
-    , chainConfirmChannel(wirelessManager, &resender, PktType::kChainConfirm, nullptr)
-    , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr) {
+    , roleAnnounceChannel(wirelessManager, PktType::kRoleAnnounce)
+    , chainConfirmChannel(wirelessManager, PktType::kChainConfirm)
+    , chainJoinChannel(wirelessManager, PktType::kChainJoin) {
     chainConfirmChannel.onReceive([this](const uint8_t*, const ChainConfirmPayload& p) {
         onConfirmReceived(p.originatorMac);
     });
@@ -253,7 +254,7 @@ void PosseManager::resendConfirm() {
 void PosseManager::onChainGameEventReceived(uint8_t eventType) {
     if (static_cast<ChainGameEventType>(eventType) != ChainGameEventType::COUNTDOWN) return;
     confirmSent = false;
-    resender.cancelAll(PktType::kChainConfirm);
+    chainConfirmChannel.cancelAll();
 }
 
 void PosseManager::onConfirmReceived(const uint8_t* originatorMac) {
@@ -333,8 +334,8 @@ void PosseManager::onChainStateChanged() {
     } else {
         // Clear confirmSent so patching into another chain mid-round cannot forward a prior press.
         confirmSent = false;
-        resender.cancelAll(PktType::kChainConfirm);
-        resender.cancelAll(PktType::kChainJoin);
+        chainConfirmChannel.cancelAll();
+        chainJoinChannel.cancelAll();
     }
 }
 
@@ -381,8 +382,8 @@ void PosseManager::onRoleAnnounceReceived(
     // the zero would cascade it onward as this device's challenger.
     if (MacToUInt64(announcedChallengerMac) == 0) {
         challengerMac.reset();
-        resender.cancelAll(PktType::kChainConfirm);
-        resender.cancelAll(PktType::kChainJoin);
+        chainConfirmChannel.cancelAll();
+        chainJoinChannel.cancelAll();
         if (isSupporter()) broadcastRoleAndChallenger();
         return;
     }
@@ -392,8 +393,8 @@ void PosseManager::onRoleAnnounceReceived(
     bool changed = !challengerMac.has_value() || *challengerMac != newMac;
     challengerMac = newMac;
     if (changed) {
-        resender.cancelAll(PktType::kChainConfirm);
-        resender.cancelAll(PktType::kChainJoin);
+        chainConfirmChannel.cancelAll();
+        chainJoinChannel.cancelAll();
     }
     if (!isSupporter()) return;
     const bool cascadeInFlight = supporterAnnounce.has_value() &&
@@ -456,8 +457,8 @@ void PosseManager::sync() {
         onChainStateChanged();
     }
 
-    // The role announce clears on SEND_SUCCESS; the WIN/LOSS fan-out clears one
-    // supporter at a time, since a broadcast carries no per-member evidence.
+    // The WIN/LOSS fan-out clears one supporter at a time, since a broadcast
+    // carries no per-member evidence; its retries still live here.
     resender.sync();
 
     if (roleAnnounceBackstopTimer.expired()) {

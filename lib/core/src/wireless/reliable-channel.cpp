@@ -23,14 +23,12 @@ uint8_t seedInitialSeqId() {
 }
 }
 
-ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager, Resender* resender,
-                                         PktType type, OnAbandon onAbandon,
-                                         Resender::SendMode sendMode)
-    : resender(resender)
+ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager, PktType type,
+                                         ChannelMode mode)
+    : resender(nullptr)
     , packetType(type)
     , wirelessManager(wirelessManager)
-    , sendMode(sendMode)
-    , onAbandon(std::move(onAbandon))
+    , channelMode(mode)
     , lastSentSeqId(seedInitialSeqId()) {
     // Owning the PktType is the whole registration. This channel already holds
     // both things the wiring needs, and a channel whose send results never
@@ -38,19 +36,24 @@ ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager, Resen
     // whoever constructs it makes a second, undeclared step that every caller
     // has to imitate and any caller can forget.
     if (this->wirelessManager == nullptr) return;
+    ReliableTransport* transport = this->wirelessManager->getReliableTransport();
+    if (!transport->attach(this)) {
+        this->wirelessManager = nullptr;
+        return;
+    }
+    resender = &transport->resender;
     this->wirelessManager->setEspNowPacketHandler(
-        type,
-        [](const uint8_t* src, const uint8_t* data, const size_t len, void* ctx) {
-            static_cast<ReliableChannelBase*>(ctx)->deliverBytes(src, data, len);
-        },
-        this);
+    type,
+    [](const uint8_t* src, const uint8_t* data, const size_t len, void* ctx) {
+        static_cast<ReliableChannelBase*>(ctx)->deliverBytes(src, data, len);
+    },
+    this);
     this->wirelessManager->setEspNowSendStatusHandler(
-        type,
-        [](const uint8_t* dst, const uint8_t* data, const size_t len,
-           bool success, void* ctx) {
-            static_cast<ReliableChannelBase*>(ctx)->onSendResult(dst, data, len, success);
-        },
-        this);
+    type,
+    [](const uint8_t* dst, const uint8_t* data, const size_t len, bool success, void* ctx) {
+        static_cast<ReliableChannelBase*>(ctx)->onSendResult(dst, data, len, success);
+    },
+    this);
 }
 
 ReliableChannelBase::~ReliableChannelBase() {
@@ -59,23 +62,27 @@ ReliableChannelBase::~ReliableChannelBase() {
     // makes that safe is not the ordering here: the driver queues receives and
     // records a send verdict, acting on both from the main loop, which
     // is also where channels are destroyed, so no dispatch can land mid-teardown.
-    if (resender != nullptr) resender->cancelAll(packetType);
-    if (transport != nullptr) transport->detach(this);
     if (wirelessManager == nullptr) return;
+    resender->cancelAll(packetType);
+    wirelessManager->getReliableTransport()->detach(this);
     wirelessManager->clearEspNowPacketHandler(packetType);
     wirelessManager->clearEspNowSendStatusHandler(packetType);
 }
 
-void ReliableChannelBase::onResenderAbandon(uint8_t seqId, const uint8_t* targetMac) {
-    if (onAbandon) onAbandon(seqId, targetMac);
+bool ReliableChannelBase::isPending(const uint8_t* mac) const {
+    return resender != nullptr && resender->isPending(packetType, mac);
 }
 
-bool ReliableChannelBase::isPending(const uint8_t* mac) const {
-    return resender->isPending(packetType, mac);
+void ReliableChannelBase::onResenderAbandon(uint8_t seqId, const uint8_t* targetMac) {
+    if (onAbandonCallback) onAbandonCallback(seqId, targetMac);
 }
 
 void ReliableChannelBase::cancel(const uint8_t* mac) {
-    resender->cancel(packetType, mac);
+    if (resender != nullptr) resender->cancel(packetType, mac);
+}
+
+void ReliableChannelBase::cancelAll() {
+    if (resender != nullptr) resender->cancelAll(packetType);
 }
 
 uint8_t ReliableChannelBase::nextSeqId() {

@@ -13,8 +13,7 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     : player(nullptr)
     , storage(nullptr)
     , wirelessManager(wirelessManager)
-    , resender(wirelessManager)
-    , matchChannel(wirelessManager, &resender, PktType::kMatchCommand, nullptr) {
+    , matchChannel(wirelessManager, PktType::kMatchCommand) {
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
         MatchCommand command(fromMac, p.command, p.matchId, p.playerDrawTime, p.isHunter,
                              p.playerUuid, p.teamUuid);
@@ -31,8 +30,7 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     });
     // No delivery report within the retransmit span: drop the match rather than
     // count down against a hunter that may never have heard the ack.
-    resender.setAbandonCallback(
-    [this](PktType, uint8_t seqId, const uint8_t*, const uint8_t*, size_t) {
+    matchChannel.setOnAbandon([this](uint8_t seqId, const uint8_t*) {
         if (activeMatchState.pendingAckSeqId == 0 || seqId != activeMatchState.pendingAckSeqId) {
             return;
         }
@@ -46,11 +44,6 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
         },
         this);
     }
-}
-
-void MatchManager::sync() {
-    resender.sync();
-    syncFdnMatchTransfer();
 }
 
 uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* matchId,
@@ -372,7 +365,7 @@ bool MatchManager::readMatchBySequence(uint32_t seq, Match& out) {
     return true;
 }
 
-void MatchManager::syncFdnMatchTransfer() {
+void MatchManager::sync() {
     if (!storage || !wirelessManager) return;
 
     const uint8_t* fdnMac = rdc ? rdc->getConnectedPeerMac(DeviceType::FDN) : nullptr;

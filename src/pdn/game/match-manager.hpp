@@ -18,7 +18,6 @@
 #include "wireless/mac-functions.hpp"
 #include "wireless/match-packet.hpp"
 #include "wireless/reliable-channel.hpp"
-#include "wireless/resender.hpp"
 #include "device/drivers/storage-interface.hpp"
 
 class ShootoutManager;
@@ -168,9 +167,8 @@ public:
     /** Binds the player and storage this manager records matches against. */
     void initialize(Player* player, StorageInterface* storage);
 
-    /** Pumps match channel retries and the FDN match transfer. */
+    /** Sends stored matches to a cabled FDN; call every tick. */
     void sync();
-
     /** Button callback that records a valid match draw press and sends DRAW_RESULT. */
     parameterizedCallbackFunction getMatchButtonPush();
 
@@ -206,7 +204,6 @@ private:
 
     StorageInterface* storage;
     WirelessManager* wirelessManager = nullptr;
-    Resender resender;
     ReliableChannel<MatchPacket> matchChannel;
     SimpleTimer transferWindowTimer;
     // Sequence of the record sent and not yet acked; 0 when none is outstanding.
@@ -219,7 +216,6 @@ private:
     bool appendMatchToStorage(const Match* match);
 
     uint32_t getOldestStoredSequence();
-    void syncFdnMatchTransfer();
     void onMatchRecordAck(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
 
     // Returns true when `command` belongs to the currently-active match and

@@ -567,7 +567,7 @@ inline void matchManagerBountyDropsTheMatchWhenItsAckIsAbandoned(MatchManagerTes
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
 
     suite->fakeClock->advance(Resender::RETRANSMIT_SPAN_MS + 1);
-    suite->matchManager->sync();
+    suite->device.wirelessManager->sync();
 
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
     EXPECT_FALSE(suite->matchManager->isMatchReady());
@@ -619,13 +619,13 @@ TEST_F(MatchManagerTestSuite, abandoningAHandshakeCancelsItsPendingRetries) {
     ASSERT_FALSE(sentCommands.empty()) << "initializeMatch sent no SEND_MATCH_ID";
 
     fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
-    matchManager->sync();
+    device.wirelessManager->sync();
     const size_t beforeClear = sentCommands.size();
     ASSERT_GT(beforeClear, 1u) << "the handshake never retransmitted";
 
     matchManager->clearCurrentMatch();
     fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 2 + 1);
-    matchManager->sync();
+    device.wirelessManager->sync();
 
     EXPECT_EQ(sentCommands.size(), beforeClear)
         << "an abandoned handshake kept retransmitting its SEND_MATCH_ID";
@@ -657,7 +657,7 @@ TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
 
     matchManager->clearCurrentMatch();
     fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
-    matchManager->sync();
+    device.wirelessManager->sync();
 
     bool resultRetried = false;
     for (size_t i = afterResult; i < sentCommands.size(); ++i) {

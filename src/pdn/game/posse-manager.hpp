@@ -122,7 +122,8 @@ public:
         uint32_t ackLatencyMsSum = 0;
         uint32_t ackCount = 0;
     };
-    /** Cumulative resender counts plus delivery latency sampled on kRoleAnnounce (to SEND_SUCCESS) and kChainGameEvent (to Ack). */
+    /** Cumulative kChainGameEvent fan-out counts plus delivery latency sampled on kRoleAnnounce (to
+     * SEND_SUCCESS) and kChainGameEvent (to Ack). */
     RetryStats getRetryStats() const {
         const Resender::Stats& carried = resender.getStats();
         return {carried.sends, carried.retries, carried.abandons,

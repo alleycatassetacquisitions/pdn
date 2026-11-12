@@ -9,17 +9,11 @@ static const char* const SWM_TAG = "SWM";
 SymbolWirelessManager::SymbolWirelessManager(WirelessManager* wirelessManager,
                                              RemoteDeviceCoordinator* remoteDeviceCoordinator)
     : remoteDeviceCoordinator(remoteDeviceCoordinator)
-    , resender(wirelessManager)
-    , channel(wirelessManager, &resender, PktType::kSymbolMatchCommand, nullptr,
-              Resender::SendMode::SUPERSEDE_PER_TARGET) {
+    , channel(wirelessManager, PktType::kSymbolMatchCommand) {
     std::memset(macPeer, 0, sizeof(macPeer));
     channel.onReceive([this](const uint8_t* fromMac, const SymbolMatchPacket& packet) {
         onSymbolPacket(fromMac, packet);
     });
-}
-
-void SymbolWirelessManager::sync() {
-    resender.sync();
 }
 
 void SymbolWirelessManager::setMacPeer(const uint8_t* macAddress) {
@@ -74,5 +68,5 @@ const std::function<void(const SymbolMatchCommand&)>& callback, SerialIdentifier
 
 void SymbolWirelessManager::clearCallback() {
     packetReceivedCallbacks.clear();
-    resender.cancelAll(PktType::kSymbolMatchCommand);
+    channel.cancelAll();
 }
