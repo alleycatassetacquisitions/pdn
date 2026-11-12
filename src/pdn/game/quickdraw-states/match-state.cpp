@@ -25,7 +25,7 @@ MatchState::~MatchState() {
 void MatchState::onStateMounted(PDN* pdn) {
     LOG_I(MATCH_TAG, "Match state mounted");
 
-    // Arm the supporter chain for confirmations during the draw window.
+    // Disarm the supporter confirmation window now that the draw phase has begun.
     posseManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
 
     matchManager->setMatchLocalStartTime(SimpleTimer::getPlatformClock()->milliseconds());
@@ -34,9 +34,9 @@ void MatchState::onStateMounted(PDN* pdn) {
 
     parameterizedCallbackFunction matchButtonPush = matchManager->getMatchButtonPush();
     pdn->getPrimaryButton()->setButtonPress(matchButtonPush, matchManager,
-                                            ButtonInteraction::CLICK);
+                                            ButtonInteraction::PRESS);
     pdn->getSecondaryButton()->setButtonPress(matchButtonPush, matchManager,
-                                              ButtonInteraction::CLICK);
+                                              ButtonInteraction::PRESS);
 
     matchTimer.setTimer(MATCH_TIMEOUT);
 

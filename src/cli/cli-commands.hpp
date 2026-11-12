@@ -182,6 +182,7 @@ private:
             targetDevice = findDevice(tokens[1], devices, selectedDevice);
         }
         if (targetDevice >= 0 && targetDevice < static_cast<int>(devices.size())) {
+            devices[targetDevice].primaryButtonDriver->execCallback(ButtonInteraction::PRESS);
             devices[targetDevice].primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
             result.message = "Button1 click on " + devices[targetDevice].deviceId;
         } else {
@@ -216,6 +217,7 @@ private:
             targetDevice = findDevice(tokens[1], devices, selectedDevice);
         }
         if (targetDevice >= 0 && targetDevice < static_cast<int>(devices.size())) {
+            devices[targetDevice].secondaryButtonDriver->execCallback(ButtonInteraction::PRESS);
             devices[targetDevice].secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
             result.message = "Button2 click on " + devices[targetDevice].deviceId;
         } else {
