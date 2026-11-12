@@ -630,9 +630,6 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
     }
 
     activeMatchState.localIsHunter ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
-    // A pity time earns no boost, and the frame below says so; a press in the
-    // same tick as the grace expiry may have snapshotted one.
-    activeMatchState.boostMs = 0;
     setNeverPressed();
     // Mirror what gets uploaded: every match contributes a draw time to the server,
     // so on-device "average reaction" should include pity times too.

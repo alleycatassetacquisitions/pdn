@@ -970,24 +970,6 @@ TEST_F(MatchManagerTestSuite, localBoostIsHeldToAFullPosse) {
               300 - static_cast<long>(PosseManager::getMaxBoostMs()));
 }
 
-// A pity time earns no boost, even when a press in the same tick as the grace
-// expiry took one first.
-TEST_F(MatchManagerTestSuite, neverPressedDropsABoostTakenByALatePress) {
-    setupMatchAsHunter();
-    matchManager->setBoostProvider([]() -> unsigned long { return 60; });
-    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
-    fakeClock->advance(100);
-    matchManager->getMatchButtonPush()(matchManager);
-
-    matchManager->sendNeverPressed(4000);
-    ASSERT_NE(radioTap.lastFrame(), nullptr);
-    EXPECT_EQ(radioTap.lastFrame()->command, MatchCmd::NEVER_PRESSED);
-    EXPECT_EQ(radioTap.lastFrame()->boostMs, 0u);
-    ASSERT_TRUE(matchManager->finalizeMatch());
-    EXPECT_EQ(matchManager->getLastMatchDisplay().myTimeMs, 4000);
-    EXPECT_EQ(matchManager->getLastMatchDisplay().boostMs, 0u);
-}
-
 // A time below zero is not a reaction time; as an effective time it could
 // beat any honest draw.
 TEST_F(MatchManagerTestSuite, drawResultWithANegativeTimeIsIgnored) {

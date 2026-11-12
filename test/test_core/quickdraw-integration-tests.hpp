@@ -577,6 +577,28 @@ inline void stateFlowThroughMatchResultToWin(StateFlowIntegrationTests* suite) {
     EXPECT_FALSE(resultState.transitionToLose());
 }
 
+// The spec gives a press precedence over the timeout. A press dispatched in
+// the same loop pass the grace timer expires in has already sent its result,
+// so the loop must not then report the player as never having pressed.
+inline void stateFlowPressInTheGraceExpiryPassStands(StateFlowIntegrationTests* suite) {
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 0, 900);
+    suite->processPacket(packet);
+    MatchReceivedResult receivedResult(suite->ctx);
+    receivedResult.onStateMounted(&suite->device);
+
+    suite->fakeClock->advance(800);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
+    receivedResult.onStateLoop(&suite->device);
+
+    ASSERT_NE(suite->wirelessManager->lastFrame(), nullptr);
+    EXPECT_EQ(suite->wirelessManager->lastFrame()->command, MatchCmd::DRAW_RESULT);
+    EXPECT_TRUE(receivedResult.transitionToMatchResult());
+    EXPECT_TRUE(suite->matchManager->didWin()) << "800 ms lost to 900 ms";
+    receivedResult.onStateDismounted(&suite->device);
+}
+
 inline void stateFlowThroughMatchResultToLose(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);

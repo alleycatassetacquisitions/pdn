@@ -1593,6 +1593,10 @@ TEST_F(StateFlowIntegrationTests, throughMatchResultToWin) {
     stateFlowThroughMatchResultToWin(this);
 }
 
+TEST_F(StateFlowIntegrationTests, pressInTheGraceExpiryPassStands) {
+    stateFlowPressInTheGraceExpiryPassStands(this);
+}
+
 TEST_F(StateFlowIntegrationTests, throughMatchResultToLose) {
     stateFlowThroughMatchResultToLose(this);
 }
