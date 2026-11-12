@@ -61,11 +61,11 @@ public:
         matchManager->initializeMatch(dummyMac);
     }
 
-    // Creates a match from the bounty's perspective by synthesizing a
-    // SEND_MATCH_ID command from a fake hunter, then reporting the MATCH_ID_ACK delivered.
-    // Both sides carry non-nil server player UUIDs, so finalizeMatch can store the match.
-    void setupMatchAsBounty(const char* matchId = "test-match-id",
-                            const char* hunterId = "hunt") {
+    /**
+     * Bounty-side match with its MATCH_ID_ACK reported delivered. Both players have
+     * non-nil UUIDs, so finalizeMatch can store it.
+     */
+    void setupMatchAsBounty(const char* matchId = "test-match-id") {
         UUIDBytes selfId{};
         UUIDBytes::parse("0b0b0b0b-0000-4000-8000-000000000001", selfId);
         Team bounty{};
@@ -74,7 +74,7 @@ public:
         UUIDBytes hunterUuid{};
         UUIDBytes::parse("0a0a0a0a-0000-4000-8000-000000000002", hunterUuid);
         static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-        MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, matchId, hunterId, 0, true, hunterUuid);
+        MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, matchId, 0, true, hunterUuid);
         matchManager->listenForMatchEvents(cmd);
         radioTap.confirmLastSend();
     }
@@ -182,7 +182,7 @@ inline void matchManagerInitializePreventsDoubleActive(MatchManager* mm, Player*
 inline void matchManagerBountyReceivesMatchViaHandshake(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "received-match", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "received-match", 0, true);
     mm->listenForMatchEvents(cmd);
 
     ASSERT_TRUE(mm->getCurrentMatch().has_value());
@@ -216,7 +216,7 @@ inline void matchManagerHunterLosesWhenSlower(MatchManager* mm, Player* player) 
 inline void matchManagerBountyWinsWhenFaster(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-3", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-3", 0, true);
     mm->listenForMatchEvents(cmd);
     mm->setHunterDrawTime(400);
     mm->setBountyDrawTime(250);
@@ -227,7 +227,7 @@ inline void matchManagerBountyWinsWhenFaster(MatchManager* mm, Player* player) {
 inline void matchManagerBountyLosesWhenSlower(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-4", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-4", 0, true);
     mm->listenForMatchEvents(cmd);
     mm->setHunterDrawTime(150);
     mm->setBountyDrawTime(300);
@@ -248,7 +248,7 @@ inline void matchManagerHunterWinsWhenBountyNeverPressed(MatchManager* mm, Playe
 inline void matchManagerBountyWinsWhenHunterNeverPressed(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-6", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-6", 0, true);
     mm->listenForMatchEvents(cmd);
     mm->setBountyDrawTime(300);
     mm->setOpponentNeverPressed();
@@ -340,7 +340,7 @@ inline void matchManagerRejectsNeverPressedFromStranger(MatchManager* mm, Player
     mm->setReceivedButtonPush();
 
     uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-    MatchCommand forged(strangerMac, MatchCmd::NEVER_PRESSED, realMatchId, "xxxx", 0, false);
+    MatchCommand forged(strangerMac, MatchCmd::NEVER_PRESSED, realMatchId, 0, false);
     mm->listenForMatchEvents(forged);
 
     EXPECT_FALSE(mm->didWin());
@@ -355,7 +355,7 @@ inline void matchManagerRejectsWrongMatchId(MatchManager* mm, Player* player) {
     mm->initializeMatch(opponentMac);
 
     MatchCommand stale(opponentMac, MatchCmd::DRAW_RESULT, "wrong-match-id-xxxxxxxxxxxxxxxxxxxx",
-                       "opp_", 222, false);
+                       222, false);
     mm->listenForMatchEvents(stale);
 
     EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 0u);
@@ -369,7 +369,7 @@ inline void matchManagerSendMatchIdRejectsUnknownPeer(MatchManager* mm, Player* 
     player->setIsHunter(false);
     uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
     MatchCommand cmd(strangerMac, MatchCmd::SEND_MATCH_ID, "match-id-000000000000000000000000000",
-                     "xxxx", 0, true);
+                     0, true);
     mm->listenForMatchEvents(cmd);
 
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
@@ -382,7 +382,7 @@ inline void matchManagerAcceptsResultFromOpponent(MatchManager* mm, Player* play
     mm->initializeMatch(opponentMac);
     const char* realMatchId = mm->getCurrentMatch()->getMatchId();
 
-    MatchCommand legit(opponentMac, MatchCmd::DRAW_RESULT, realMatchId, "opp_", 150, false);
+    MatchCommand legit(opponentMac, MatchCmd::DRAW_RESULT, realMatchId, 150, false);
     mm->listenForMatchEvents(legit);
 
     EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 150u);
@@ -507,7 +507,7 @@ inline void matchManagerHunterMatchIsReadyAfterAck(MatchManager* mm, Player* pla
     mm->initializeMatch(dummyMac);
 
     const char* matchId = mm->getCurrentMatch()->getMatchId();
-    MatchCommand ack(dummyMac, MatchCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
+    MatchCommand ack(dummyMac, MatchCmd::MATCH_ID_ACK, matchId, 0, false);
     mm->listenForMatchEvents(ack);
 
     EXPECT_TRUE(mm->isMatchReady());
@@ -516,7 +516,7 @@ inline void matchManagerHunterMatchIsReadyAfterAck(MatchManager* mm, Player* pla
 inline void matchManagerBountyReadiesWhenItsAckIsDelivered(MatchManagerTestSuite* suite) {
     suite->player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", 0, true);
     suite->matchManager->listenForMatchEvents(cmd);
     EXPECT_FALSE(suite->matchManager->isMatchReady())
     << "the bounty started its countdown before the hunter could have heard the ack";
@@ -530,10 +530,10 @@ inline void matchManagerBountyReadiesWhenItsAckIsDelivered(MatchManagerTestSuite
 inline void matchManagerBountyIgnoresDeliveryOfAnotherFrame(MatchManagerTestSuite* suite) {
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->player->setIsHunter(true);
-    MatchCommand sameRole(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-aaa", "hunt", 0, true);
+    MatchCommand sameRole(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-aaa", 0, true);
     suite->matchManager->listenForMatchEvents(sameRole);
     suite->player->setIsHunter(false);
-    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", 0, true);
     suite->matchManager->listenForMatchEvents(cmd);
     ASSERT_EQ(suite->radioTap.sentFrames.size(), 2u);
     ASSERT_EQ(suite->radioTap.sentFrames[0].command, MatchCmd::MATCH_ROLE_MISMATCH);
@@ -550,7 +550,7 @@ inline void matchManagerBountyIgnoresDeliveryOfAnotherFrame(MatchManagerTestSuit
 inline void matchManagerBountyDropsTheMatchWhenItsAckIsAbandoned(MatchManagerTestSuite* suite) {
     suite->player->setIsHunter(false);
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", 0, true);
     suite->matchManager->listenForMatchEvents(cmd);
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
 
@@ -563,7 +563,7 @@ inline void matchManagerBountyDropsTheMatchWhenItsAckIsAbandoned(MatchManagerTes
 
 // clearCurrentMatch resets the matchIsReady flag along with all other match state.
 inline void matchManagerClearMatchResetsMatchIsReadyFlag(MatchManagerTestSuite* suite) {
-    suite->setupMatchAsBounty("match-id-abc", "hunt");
+    suite->setupMatchAsBounty("match-id-abc");
     ASSERT_TRUE(suite->matchManager->isMatchReady());
 
     suite->matchManager->clearCurrentMatch();
@@ -581,7 +581,7 @@ inline void matchManagerRoleMismatchClearsInitiatorMatch(MatchManager* mm, Playe
     ASSERT_FALSE(mm->isMatchReady());
 
     const char* matchId = mm->getCurrentMatch()->getMatchId();
-    MatchCommand mismatch(dummyMac, MatchCmd::MATCH_ROLE_MISMATCH, matchId, "hunt2", 0, true);
+    MatchCommand mismatch(dummyMac, MatchCmd::MATCH_ROLE_MISMATCH, matchId, 0, true);
     mm->listenForMatchEvents(mismatch);
 
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
@@ -662,7 +662,7 @@ TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
     for (uint32_t i = 1; i <= 33; ++i) {
         char mid[37];
         snprintf(mid, sizeof(mid), "%08u-1234-4000-8000-000000000000", i);
-        setupMatchAsBounty(mid, "hunt");
+        setupMatchAsBounty(mid);
         matchManager->setHunterDrawTime(100 + static_cast<long>(i));
         matchManager->setBountyDrawTime(200 + static_cast<long>(i));
         matchManager->setReceivedButtonPush();
@@ -710,7 +710,7 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOppo
     static const uint8_t peerMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     MatchCommand demoCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000001",
-                         "hunt", 0, true, UUIDBytes{}, UUIDBytes{});
+                         0, true, UUIDBytes{}, UUIDBytes{});
     matchManager->listenForMatchEvents(demoCmd);
     ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
     matchManager->setHunterDrawTime(300);
@@ -722,14 +722,14 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOppo
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u) << "a demo match is never stored";
 
     MatchCommand selfIdCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000002",
-                           "hunt", 0, true, selfId, UUIDBytes{});
+                           0, true, selfId, UUIDBytes{});
     matchManager->listenForMatchEvents(selfIdCmd);
     EXPECT_FALSE(matchManager->getCurrentMatch().has_value());
 
     UUIDBytes distinctId{};
     UUIDBytes::parse("aaaaaaaa-bbbb-4000-8000-cccccccccccc", distinctId);
     MatchCommand validCmd(peerMac, MatchCmd::SEND_MATCH_ID, "12345678-1234-4000-8000-000000000003",
-                          "hunt", 0, true, distinctId, UUIDBytes{});
+                          0, true, distinctId, UUIDBytes{});
     matchManager->listenForMatchEvents(validCmd);
     ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
     EXPECT_EQ(matchManager->getCurrentMatch()->getHunterPlayerId(), distinctId);
@@ -747,7 +747,7 @@ TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
     static const uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     const auto finishOnBountyDevice = [&](unsigned long hunterMs, unsigned long bountyMs) {
-        setupMatchAsBounty("51111111-2222-4000-8000-333333333333", "hunt");
+        setupMatchAsBounty("51111111-2222-4000-8000-333333333333");
         matchManager->setHunterDrawTime(hunterMs);
         matchManager->setBountyDrawTime(bountyMs);
         matchManager->setReceivedButtonPush();
@@ -762,8 +762,7 @@ TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
         memcpy(mac, opponentMac, 6);
         matchManager->initializeMatch(mac);
         MatchCommand ack(opponentMac, MatchCmd::MATCH_ID_ACK,
-                         matchManager->getCurrentMatch()->getMatchId(), "boun", 0, false,
-                         bountyUuid);
+                         matchManager->getCurrentMatch()->getMatchId(), 0, false, bountyUuid);
         matchManager->listenForMatchEvents(ack);
         matchManager->setHunterDrawTime(hunterMs);
         matchManager->setBountyDrawTime(bountyMs);
@@ -796,7 +795,7 @@ TEST_F(MatchManagerTestSuite, recordedWinnerRanksNeverPressedAboveTimes) {
     static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     Match stored{};
 
-    setupMatchAsBounty("61111111-2222-4000-8000-333333333333", "hunt");
+    setupMatchAsBounty("61111111-2222-4000-8000-333333333333");
     matchManager->setHunterDrawTime(5000);
     matchManager->setBountyDrawTime(1000);
     matchManager->setReceivedDrawResult();
@@ -806,11 +805,11 @@ TEST_F(MatchManagerTestSuite, recordedWinnerRanksNeverPressedAboveTimes) {
     ASSERT_TRUE(matchManager->readMatchBySequence(1, stored));
     EXPECT_EQ(stored.getWinnerPlayerId(), stored.getHunterPlayerId());
 
-    setupMatchAsBounty("62222222-2222-4000-8000-333333333333", "hunt");
+    setupMatchAsBounty("62222222-2222-4000-8000-333333333333");
     matchManager->setBountyDrawTime(5000);
     matchManager->setReceivedButtonPush();
     MatchCommand neverPressed(hunterMac, MatchCmd::NEVER_PRESSED,
-                              "62222222-2222-4000-8000-333333333333", "hunt", 1000, true);
+                              "62222222-2222-4000-8000-333333333333", 1000, true);
     matchManager->listenForMatchEvents(neverPressed);
     ASSERT_TRUE(matchManager->didWin());
     ASSERT_TRUE(matchManager->finalizeMatch());
@@ -818,9 +817,9 @@ TEST_F(MatchManagerTestSuite, recordedWinnerRanksNeverPressedAboveTimes) {
     EXPECT_EQ(stored.getWinnerPlayerId(), stored.getBountyPlayerId());
 
     // Neither side drew: each screen shows its own outcome, so there is no shared winner.
-    setupMatchAsBounty("63333333-2222-4000-8000-333333333333", "hunt");
+    setupMatchAsBounty("63333333-2222-4000-8000-333333333333");
     MatchCommand bothNever(hunterMac, MatchCmd::NEVER_PRESSED,
-                           "63333333-2222-4000-8000-333333333333", "hunt", 1000, true);
+                           "63333333-2222-4000-8000-333333333333", 1000, true);
     matchManager->listenForMatchEvents(bothNever);
     matchManager->setNeverPressed();
     ASSERT_TRUE(matchManager->finalizeMatch());
@@ -843,8 +842,7 @@ TEST_F(MatchManagerTestSuite, unreadableStoredMatchIsSkippedNotRetriedForever) {
     matchManager->initialize(player, &pdnPrefs);
     for (int i = 0; i < 2; ++i) {
         setupMatchAsBounty(i == 0 ? "33333333-2222-4000-8000-333333333333"
-                                  : "44444444-2222-4000-8000-333333333333",
-                           "hunt");
+                                  : "44444444-2222-4000-8000-333333333333");
         matchManager->setHunterDrawTime(180);
         matchManager->setBountyDrawTime(120);
         matchManager->setReceivedButtonPush();
@@ -880,7 +878,7 @@ TEST_F(MatchManagerTestSuite, unreadableStoredMatchIsSkippedNotRetriedForever) {
 TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
     NativePrefsDriver pdnPrefs("pdn-window-prefs", {MATCHES_PREFS_NAMESPACE});
     matchManager->initialize(player, &pdnPrefs);
-    setupMatchAsBounty("55555555-2222-4000-8000-333333333333", "hunt");
+    setupMatchAsBounty("55555555-2222-4000-8000-333333333333");
     matchManager->setHunterDrawTime(180);
     matchManager->setBountyDrawTime(120);
     matchManager->setReceivedButtonPush();

@@ -7,7 +7,6 @@
 
 struct MatchPacket {
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
-    char playerId[5];
     UUIDBytes playerUuid;
     UUIDBytes teamUuid;
     uint8_t isHunter;
@@ -28,15 +27,14 @@ struct MatchCommand {
     const uint8_t* wifiMacAddr;
     int command;
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
-    char playerId[5];
     UUIDBytes playerUuid;
     UUIDBytes teamUuid;
     bool isHunter;
     long playerDrawTime;
 
     /** Decoded match frame received from macAddress. */
-    MatchCommand(const uint8_t* macAddress, int command, const char* matchId, const char* playerId,
-                 long playerDrawTime, bool isHunter, const UUIDBytes& playerUuid = UUIDBytes{},
+    MatchCommand(const uint8_t* macAddress, int command, const char* matchId, long playerDrawTime,
+                 bool isHunter, const UUIDBytes& playerUuid = UUIDBytes{},
                  const UUIDBytes& teamUuid = UUIDBytes{})
         : wifiMacAddr(macAddress)
         , command(command)
@@ -45,6 +43,5 @@ struct MatchCommand {
         , isHunter(isHunter)
         , playerDrawTime(playerDrawTime) {
         IdGenerator::copyId(this->matchId, matchId);
-        IdGenerator::copyId(this->playerId, playerId);
     }
 };

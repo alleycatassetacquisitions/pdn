@@ -16,8 +16,8 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     , resender(wirelessManager)
     , matchChannel(wirelessManager, &resender, PktType::kMatchCommand, nullptr) {
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
-        MatchCommand command(fromMac, p.command, p.matchId, p.playerId, p.playerDrawTime,
-                             p.isHunter, p.playerUuid, p.teamUuid);
+        MatchCommand command(fromMac, p.command, p.matchId, p.playerDrawTime, p.isHunter,
+                             p.playerUuid, p.teamUuid);
         listenForMatchEvents(command);
     });
     // The bounty readies on the radio's SEND_SUCCESS for its MATCH_ID_ACK, not on
@@ -60,7 +60,6 @@ uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* m
     packet.playerDrawTime = drawTime;
     packet.isHunter = isHunter;
     IdGenerator::copyId(packet.matchId, matchId);
-    IdGenerator::copyId(packet.playerId, player->getUserID().c_str());
     packet.playerUuid = player->getServerPlayerId();
     packet.teamUuid = player->getRegistrationTeam().id;
 

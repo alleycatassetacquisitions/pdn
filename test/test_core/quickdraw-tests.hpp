@@ -283,7 +283,7 @@ inline void idleTransitionsToMatchCountdownWhenMatchIsReady(IdleStateTests* suit
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     const char* matchId = suite->matchManager->getCurrentMatch()->getMatchId();
-    MatchCommand ack(dummyMac, MatchCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
+    MatchCommand ack(dummyMac, MatchCmd::MATCH_ID_ACK, matchId, 0, false);
     suite->matchManager->listenForMatchEvents(ack);
 
     EXPECT_TRUE(suite->idleState->transitionToMatchCountdown());
@@ -994,7 +994,7 @@ inline void resultBountyWinsWithFasterTime(MatchResultTests* suite) {
     // Use the fixture's stubbed RDC peer MAC so the SEND_MATCH_ID gate accepts it.
     uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     MatchCommand sendMatchCmd(hunterMac, MatchCmd::SEND_MATCH_ID, "test-match-id-000000000000000",
-                              "5678", 0, true);
+                              0, true);
     suite->matchManager->listenForMatchEvents(sendMatchCmd);
     suite->matchManager->setHunterDrawTime(250);
     suite->matchManager->setBountyDrawTime(150);

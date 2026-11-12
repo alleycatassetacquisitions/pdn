@@ -23,14 +23,12 @@ using ::testing::DoAll;
 // Packet Creation Helpers
 // ============================================
 
-inline MatchPacket createTestPacket(const std::string& matchId, const std::string& playerId,
-                                    int command, long playerDrawTime = 0, bool isHunter = true) {
+inline MatchPacket createTestPacket(const std::string& matchId, int command,
+                                    long playerDrawTime = 0, bool isHunter = true) {
     // Zero-init sets seqId = 0 (the unsequenced sentinel that bypasses RX dedup).
     MatchPacket packet{};
     strncpy(packet.matchId, matchId.c_str(), 36);
     packet.matchId[36] = '\0';
-    strncpy(packet.playerId, playerId.c_str(), 4);
-    packet.playerId[4] = '\0';
     packet.isHunter = isHunter;
     packet.playerDrawTime = playerDrawTime;
     packet.command = command;
@@ -43,8 +41,6 @@ inline MatchPacket createTestPacket(const std::string& matchId, const std::strin
 
 class SingleDeviceTestFixture : public testing::Test {
 public:
-    static constexpr const char* DEFAULT_HUNTER_ID = "hunt";
-    static constexpr const char* DEFAULT_BOUNTY_ID = "boun";
     static constexpr const char* DEFAULT_OPPONENT_MAC = "AA:BB:CC:DD:EE:FF";
     static constexpr long DEFAULT_START_TIME = 10000;
 
@@ -78,10 +74,10 @@ public:
     MatchPacket createPacket(int command, long hunterTime = 0, long bountyTime = 0) {
         if (player->isHunter()) {
             // Opponent is the bounty: send bountyTime with isHunter=false
-            return createTestPacket(getMatchId(), DEFAULT_BOUNTY_ID, command, bountyTime, false);
+            return createTestPacket(getMatchId(), command, bountyTime, false);
         } else {
             // Opponent is the hunter: send hunterTime with isHunter=true
-            return createTestPacket(getMatchId(), DEFAULT_HUNTER_ID, command, hunterTime, true);
+            return createTestPacket(getMatchId(), command, hunterTime, true);
         }
     }
 
@@ -364,7 +360,7 @@ inline void listenForMatchResultsHandlesNeverPressed(PacketParsingTests* suite) 
 inline void listenForMatchResultsIgnoresUnexpectedCommands(PacketParsingTests* suite) {
     static const char kMatchId[37] = "000000000000000000000000000000000000";
     uint8_t strangerMac[6] = {0x99, 0x99, 0x99, 0x99, 0x99, 0x99};
-    MatchCommand cmd(strangerMac, MatchCmd::SEND_MATCH_ID, kMatchId, "test", 0, true);
+    MatchCommand cmd(strangerMac, MatchCmd::SEND_MATCH_ID, kMatchId, 0, true);
 
     suite->matchManager->listenForMatchEvents(cmd);
     
