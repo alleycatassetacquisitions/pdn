@@ -17,12 +17,14 @@ Idle::Idle(const GameContext& ctx)
     : ConnectState<PDN>(ctx.remoteDeviceCoordinator, IDLE)
     , player(ctx.player)
     , matchManager(ctx.matchManager)
-    , posseManager(ctx.posseManager) {
-}
+    , posseManager(ctx.posseManager)
+    , shootoutManager(ctx.shootoutManager) {}
 
 Idle::~Idle() {
     player = nullptr;
     matchManager = nullptr;
+    posseManager = nullptr;
+    shootoutManager = nullptr;
 }
 
 void Idle::onStateMounted(PDN* pdn) {
@@ -69,8 +71,7 @@ void Idle::onStateLoop(PDN* pdn) {
         displayIsDirty = false;
     }
 
-    ShootoutManager* shMgr = matchManager->getShootoutManager();
-    bool shootoutActive = shMgr && shMgr->active();
+    bool shootoutActive = shootoutManager && shootoutManager->active();
     if (!shootoutActive && isConnected()) {
         if (posseManager->canInitiateMatch()) {
             if (!matchInitialized) {
@@ -91,8 +92,8 @@ void Idle::onStateLoop(PDN* pdn) {
 }
 
 void Idle::onStateDismounted(PDN* pdn) {
-    ShootoutManager* shMgr = matchManager->getShootoutManager();
-    if (!matchManager->isMatchReady() || (shMgr && shMgr->shouldEnterProposal())) {
+    if (!matchManager->isMatchReady() ||
+        (shootoutManager && shootoutManager->shouldEnterProposal())) {
         matchManager->clearCurrentMatch();
     }
     statsIndex = 0;

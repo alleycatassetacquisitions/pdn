@@ -120,15 +120,13 @@ private:
         deviceWirelessManager = new WirelessManager(&peerComms, &httpClient);
         wirelessManager = new QuickdrawRadioTap();
         wirelessManager->attach(&peerComms);
-        matchManager = new MatchManager(deviceWirelessManager);
-        matchManager->initialize(player, &storage);
+        matchManager = new MatchManager(player, &storage, deviceWirelessManager, &fakeRdc);
         // Stub the RDC with the opponent MAC this fixture uses so the
         // SEND_MATCH_ID gate in listenForMatchEvents passes for delivered packets.
         {
             uint8_t stubMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
             fakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, stubMac);
             fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, stubMac);
-            matchManager->setRemoteDeviceCoordinator(&fakeRdc);
         }
 
         // Must match processPacket's defaultMac so isFromActiveMatchOpponent accepts delivered frames.
@@ -231,9 +229,8 @@ private:
         hunterDeviceWirelessManager = new WirelessManager(&hunterPeerComms, &hunterHttpClient);
         hunterWirelessManager = new QuickdrawRadioTap();
         hunterWirelessManager->attach(&hunterPeerComms);
-        hunterMatchManager = new MatchManager(hunterDeviceWirelessManager);
-        hunterMatchManager->initialize(hunter, &hunterStorage);
-        hunterMatchManager->setRemoteDeviceCoordinator(&hunterFakeRdc);
+        hunterMatchManager =
+        new MatchManager(hunter, &hunterStorage, hunterDeviceWirelessManager, &hunterFakeRdc);
     }
 
     void setupBounty() {
@@ -245,9 +242,8 @@ private:
         bountyDeviceWirelessManager = new WirelessManager(&bountyPeerComms, &bountyHttpClient);
         bountyWirelessManager = new QuickdrawRadioTap();
         bountyWirelessManager->attach(&bountyPeerComms);
-        bountyMatchManager = new MatchManager(bountyDeviceWirelessManager);
-        bountyMatchManager->initialize(bounty, &bountyStorage);
-        bountyMatchManager->setRemoteDeviceCoordinator(&bountyFakeRdc);
+        bountyMatchManager =
+        new MatchManager(bounty, &bountyStorage, bountyDeviceWirelessManager, &bountyFakeRdc);
     }
 
     void setupMatches() {

@@ -7,19 +7,16 @@ GameSession::GameSession(Player* player, Device* pdn, SymbolWirelessManager* sym
     context.player = player;
     context.remoteDeviceCoordinator = pdn->getRemoteDeviceCoordinator();
     context.symbolWirelessManager = symbolWirelessManager;
-    context.matchManager = new MatchManager(wirelessManager);
+    context.matchManager =
+    new MatchManager(player, pdn->getStorage(), wirelessManager, context.remoteDeviceCoordinator);
     context.posseManager =
     new PosseManager(player, wirelessManager, context.remoteDeviceCoordinator);
-    context.shootoutManager =
-    new ShootoutManager(player, wirelessManager, context.remoteDeviceCoordinator);
-    context.shootoutManager->setMatchManager(context.matchManager);
-    context.matchManager->setShootoutManager(context.shootoutManager);
+    context.shootoutManager = new ShootoutManager(
+    player, wirelessManager, context.remoteDeviceCoordinator, context.matchManager);
 
-    context.matchManager->initialize(player, pdn->getStorage());
     context.matchManager->setBoostProvider([this]() -> unsigned long {
         return context.posseManager ? context.posseManager->getBoostMs() : 0;
     });
-    context.matchManager->setRemoteDeviceCoordinator(context.remoteDeviceCoordinator);
 
     // The Player is the authority on this device's identity; RDC only carries it.
     context.remoteDeviceCoordinator->setSelfProfileProvider(

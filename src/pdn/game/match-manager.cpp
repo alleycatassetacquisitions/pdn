@@ -9,9 +9,11 @@
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
-MatchManager::MatchManager(WirelessManager* wirelessManager)
-    : player(nullptr)
-    , storage(nullptr)
+MatchManager::MatchManager(Player* player, StorageInterface* storage,
+                           WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
+    : player(player)
+    , rdc(rdc)
+    , storage(storage)
     , wirelessManager(wirelessManager)
     , matchChannel(wirelessManager, PktType::kMatchCommand) {
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
@@ -44,6 +46,7 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
         },
         this);
     }
+    initialize();
 }
 
 uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* matchId,
@@ -73,14 +76,8 @@ void MatchManager::setBoostProvider(std::function<unsigned long()> provider) {
     boostProvider_ = provider;
 }
 
-void MatchManager::setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc) { this->rdc = rdc; }
-
 void MatchManager::setShootoutManager(ShootoutManager* shootoutManager) {
     shootoutManager_ = shootoutManager;
-}
-
-ShootoutManager* MatchManager::getShootoutManager() const {
-    return shootoutManager_;
 }
 
 bool MatchManager::currentMatchIsShootout() const {
@@ -434,11 +431,9 @@ parameterizedCallbackFunction MatchManager::getButtonMasher() {
 
 void MatchManager::clearButtonMasherCount() { activeMatchState.buttonMasherCount = 0; }
 
-void MatchManager::initialize(Player* player, StorageInterface* storage) {
-    this->player = player;
-    this->storage = storage;
+void MatchManager::initialize() {
     // An NVS wipe of "seq" alone would otherwise leave every new match marked collected.
-    if (storage && getCollectedHighWaterMark() > getMatchSequenceNumber()) {
+    if (getCollectedHighWaterMark() > getMatchSequenceNumber()) {
         storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY,
                            getMatchSequenceNumber());
     }

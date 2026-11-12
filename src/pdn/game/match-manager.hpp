@@ -66,9 +66,11 @@ class MatchManager {
 public:
     /**
      * Claims the kMatchCommand channel and the kMatchCollectionAck handler on
-     * wirelessManager (may be nullptr in tests).
+     * wirelessManager. wirelessManager and rdc may be null in tests; with a null
+     * rdc every SEND_MATCH_ID is refused.
      */
-    explicit MatchManager(WirelessManager* wirelessManager);
+    MatchManager(Player* player, StorageInterface* storage, WirelessManager* wirelessManager,
+                 RemoteDeviceCoordinator* rdc);
     ~MatchManager();
 
     /** Initializes a match and sends SEND_MATCH_ID to opponentMac. */
@@ -150,22 +152,15 @@ public:
      */
     const LastMatchDisplay& getLastMatchDisplay() const { return lastMatchDisplay; }
 
-    // Required for SEND_MATCH_ID to be accepted: sender MAC must match one
-    // of the RDC's direct-peer MACs (cable-established neighbor). If unset,
-    // SEND_MATCH_ID is refused — no match initiation from an unknown MAC.
-    void setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc);
-
-    // Shootout tournament suppresses the hunter/bounty role-mismatch rejection
-    // so same-role matches in the bracket proceed. Injected by GameSession after
-    // both managers are built.
+    /**
+     * Called by ShootoutManager as it is built on this manager and again, with
+     * nullptr, as it is destroyed. A live tournament suppresses the
+     * hunter/bounty role-mismatch rejection so same-role bracket matches proceed.
+     */
     void setShootoutManager(ShootoutManager* shootoutManager);
-    ShootoutManager* getShootoutManager() const;
 
     /** Dispatches an inbound match command (handshake or active-match event). */
     void listenForMatchEvents(const MatchCommand& command);
-
-    /** Binds the player and storage this manager records matches against. */
-    void initialize(Player* player, StorageInterface* storage);
 
     /** Sends stored matches to a cabled FDN; call every tick. */
     void sync();
@@ -209,6 +204,7 @@ private:
     // Sequence of the record sent and not yet acked; 0 when none is outstanding.
     uint32_t sentRecordSeq = 0;
 
+    void initialize();
     /** @return the seqId the frame went out under. */
     uint8_t sendCommand(const uint8_t* mac, int command, const char* matchId, long drawTime,
                         bool isHunter);

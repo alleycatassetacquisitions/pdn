@@ -20,10 +20,11 @@ void deriveShootoutMatchId(int matchIndex, char* out, size_t outSize) {
 }
 
 ShootoutManager::ShootoutManager(Player* player, WirelessManager* wirelessManager,
-                                 RemoteDeviceCoordinator* rdc)
+                                 RemoteDeviceCoordinator* rdc, MatchManager* matchManager)
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
+    , matchManager(matchManager)
     , ringClosedChannel(wirelessManager, PktType::kShootoutRingClosed, ChannelMode::FAN_OUT)
     , confirmChannel(wirelessManager, PktType::kShootoutConfirm, ChannelMode::FAN_OUT)
     , bracketChannel(wirelessManager, PktType::kShootoutBracket, ChannelMode::FAN_OUT)
@@ -88,6 +89,10 @@ ShootoutManager::ShootoutManager(Player* player, WirelessManager* wirelessManage
         sendMatchResultToPeers(result.winner, result.loser, result.matchIndex);
     });
 
+    // Registered here rather than by whoever builds the pair, so a MatchManager
+    // with a ShootoutManager built on it cannot be left reading "no tournament".
+    if (matchManager != nullptr) matchManager->setShootoutManager(this);
+
     if (rdc == nullptr) return;
     // Subscribed here rather than by whoever builds this manager: see
     // PosseManager's constructor for the reasoning.
@@ -95,6 +100,7 @@ ShootoutManager::ShootoutManager(Player* player, WirelessManager* wirelessManage
 }
 
 ShootoutManager::~ShootoutManager() {
+    if (matchManager != nullptr) matchManager->setShootoutManager(nullptr);
     if (rdc == nullptr) return;
     rdc->setOnRingClosed(nullptr);
 }

@@ -125,8 +125,8 @@ public:
 
             node->posse =
             new PosseManager(node->player.get(), node->device->wirelessManager, node->rdc.get());
-            node->shootout =
-            new ShootoutManager(node->player.get(), node->device->wirelessManager, node->rdc.get());
+            node->shootout = new ShootoutManager(node->player.get(), node->device->wirelessManager,
+                                                 node->rdc.get(), nullptr);
             Player* p = node->player.get();
             RemoteDeviceCoordinator* r = node->rdc.get();
             PosseManager* c = node->posse;

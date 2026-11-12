@@ -22,10 +22,10 @@ These change runtime behavior or API contracts.
 
 ---
 
-### `ShootoutManager` dependency injection simplified
+### `ShootoutManager` and `MatchManager` wiring
 
-- `ShootoutManager` was previously injected redundantly into both `MatchManager` and `Idle`
-- `Idle` now retrieves it via `matchManager_->getShootoutManager()` — one owner, one path
+- `Idle` reads `ShootoutManager` from the `GameContext` it is built from, like every other state
+- `MatchManager` holds its own pointer for the role-mismatch gate and exposes no getter. `ShootoutManager` sets it in its constructor and clears it in its destructor
 
 ---
 

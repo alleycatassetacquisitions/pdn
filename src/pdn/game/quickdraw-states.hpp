@@ -114,6 +114,7 @@ private:
     Player *player;
     MatchManager* matchManager;
     PosseManager* posseManager;
+    ShootoutManager* shootoutManager;
     bool matchInitialized = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
