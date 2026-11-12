@@ -62,7 +62,6 @@ inline const char* getStateName(int stateId) {
         case MATCH_RESULT: return "MatchResult";
         case WIN: return "Win";
         case LOSE: return "Lose";
-        case UPLOAD_MATCHES: return "UploadMatches";
         case SUPPORTER_READY: return "SupporterReady";
         case SHOOTOUT_PROPOSAL: return "ShootoutProposal";
         case SHOOTOUT_BRACKET_REVEAL: return "ShootoutBracketReveal";

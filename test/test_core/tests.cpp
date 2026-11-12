@@ -1012,6 +1012,10 @@ TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
     storageUCharRoundTripInRegisteredNamespace();
 }
 
+TEST(StorageDriver, uintAndBytesRoundTripInRegisteredNamespace) {
+    storageUIntAndBytesRoundTripInRegisteredNamespace();
+}
+
 // ============================================
 // CRASH CODEC TESTS
 // ============================================
@@ -1437,6 +1441,10 @@ TEST_F(StateCleanupTests, countdownStateInvalidatesTimer) {
 
 TEST_F(StateCleanupTests, matchResultResetsStateOnDismount) {
     cleanupMatchResultResetsStateOnDismount(this);
+}
+
+TEST_F(StateCleanupTests, resultStatesStopTheirAnimationOnDismount) {
+    resultStatesStopTheirAnimationOnDismount(this);
 }
 
 TEST_F(StateCleanupTests, matchManagerClearsCurrentMatch) {

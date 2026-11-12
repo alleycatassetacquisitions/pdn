@@ -58,6 +58,8 @@ void Win::onStateDismounted(PDN* pdn) {
     winTimer.invalidate();
     reset = false;
     pdn->getHaptics()->setIntensity(VIBRATION_OFF);
+    // Sleep comes next and draws nothing on the LEDs; the looping win animation would run on.
+    pdn->getLightManager()->stopAnimation();
 }
 
 bool Win::resetGame() {

@@ -15,8 +15,8 @@
 #include "state/state.hpp"
 #include "state/state-machine.hpp"
 
-// The literals below are the pre-split flat graph, recorded before Quickdraw was
-// broken into swappable apps, and they are the equivalence check for that split.
+// The literals below began as the pre-split flat graph, recorded before Quickdraw
+// was broken into swappable apps; UploadMatches has since been removed from it.
 // Position in a transition list is priority, so it is behaviour, not style.
 //
 // They must not be "corrected" to match a future change: if a change is meant to
@@ -29,13 +29,13 @@
 namespace quickdraw_state_graph_expectations {
 
 // Registration order of the pre-split graph with its slot-0 PlayerRegistrationApp
-// dropped — that app is now mounted by the device rather than nested as a state.
+// dropped — that app is now mounted by the device rather than nested as a state —
+// and UploadMatches removed.
 // The hub, match, shootout and symbol maps concatenate to this.
 //
-// One deliberate divergence from the pre-split order: Sleep sat between
-// UploadMatches and the shootout states, and now sits in the hub with the other
-// three between-match states. Every edge is unchanged; only the flat position
-// moved.
+// One deliberate divergence from the pre-split order: Sleep sat between the
+// match result states and the shootout states, and now sits in the hub with the
+// other three between-match states. Only the flat position moved.
 inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
 AWAKEN_SEQUENCE,
 IDLE,
@@ -48,7 +48,6 @@ MATCH_RECEIVED_RESULT,
 MATCH_RESULT,
 WIN,
 LOSE,
-UPLOAD_MATCHES,
 SHOOTOUT_PROPOSAL,
 SHOOTOUT_BRACKET_REVEAL,
 SHOOTOUT_SPECTATOR,
@@ -59,10 +58,7 @@ SYMBOL,
 SYMBOL_MATCHED,
 };
 
-// Per-state transition targets, in the order they were added. 47 edges — the
-// pre-split graph's 48 less PlayerRegistration -> AwakenSequence, which moved off
-// the app object onto the state that triggered it (see
-// registrationHandsOffFromWelcomeMessage below).
+// Per-state transition targets, in the order they were added.
 inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_EDGES = {
 {AWAKEN_SEQUENCE, {IDLE}},
 {IDLE, {SHOOTOUT_PROPOSAL, MATCH_COUNTDOWN, SUPPORTER_READY, SHOOTOUT_ABORTED, SYMBOL}},
@@ -74,9 +70,8 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 {MATCH_PUSHED, {SHOOTOUT_ABORTED, IDLE, MATCH_RESULT}},
 {MATCH_RECEIVED_RESULT, {SHOOTOUT_ABORTED, IDLE, MATCH_RESULT}},
 {MATCH_RESULT, {SHOOTOUT_ABORTED, WIN, LOSE, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED}},
-{WIN, {UPLOAD_MATCHES}},
-{LOSE, {UPLOAD_MATCHES}},
-{UPLOAD_MATCHES, {SLEEP}},
+{WIN, {SLEEP}},
+{LOSE, {SLEEP}},
 {SLEEP, {AWAKEN_SEQUENCE}},
 {SHOOTOUT_PROPOSAL, {SHOOTOUT_BRACKET_REVEAL, SHOOTOUT_ABORTED}},
 {SHOOTOUT_BRACKET_REVEAL, {MATCH_COUNTDOWN, SHOOTOUT_SPECTATOR, SHOOTOUT_ABORTED}},
@@ -92,8 +87,6 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 // state's list) -> (target app, entry state). Every other edge in the table above
 // stays inside its app. Pinned separately because the equivalence check reads
 // through a hand-off to the state it lands on and so cannot tell the two apart.
-//
-// All 24 were intra-app edges pre-split, when the whole game was one machine.
 inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> CROSS_APP_EDGES = {
 {{IDLE, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_PROPOSAL}},
 {{IDLE, 1}, {MATCH_APP_ID, MATCH_COUNTDOWN}},
@@ -112,7 +105,8 @@ inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>>
 {{MATCH_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
 {{MATCH_RESULT, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
 {{MATCH_RESULT, 4}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
-{{UPLOAD_MATCHES, 0}, {HUB_APP_ID, SLEEP}},
+{{WIN, 0}, {HUB_APP_ID, SLEEP}},
+{{LOSE, 0}, {HUB_APP_ID, SLEEP}},
 {{SHOOTOUT_BRACKET_REVEAL, 0}, {MATCH_APP_ID, MATCH_COUNTDOWN}},
 {{SHOOTOUT_SPECTATOR, 0}, {MATCH_APP_ID, MATCH_COUNTDOWN}},
 {{SHOOTOUT_FINAL_STANDINGS, 0}, {HUB_APP_ID, SLEEP}},
@@ -202,9 +196,9 @@ struct QuickdrawAppsForTest {
 };
 
 // The concatenated app maps are the declared registration order, which is the
-// pre-split order with Sleep moved into the hub. Each app's stateMap[0] is what a
-// mount with no named entry state enters at, which is the one position a reorder
-// can still change the behaviour of.
+// pre-split order with Sleep moved into the hub and UploadMatches removed. Each app's stateMap[0]
+// is what a mount with no named entry state enters at, which is the one position a reorder can
+// still change the behaviour of.
 inline void quickdrawAppsRegisterStatesInDeclaredOrder() {
     QuickdrawAppsForTest apps;
 
@@ -223,7 +217,7 @@ inline void quickdrawAppsRegisterStatesInDeclaredOrder() {
     EXPECT_EQ(apps.symbol->getStateMap()[0]->getStateId(), SYMBOL);
 }
 
-// Every edge of the pre-split graph still leaves the same state, at the same
+// Every edge leaves the state the literals name, at the same
 // position in its list, for the same target — reading a hand-off through to the
 // state it enters. Transition position is priority: checkTransitions returns the
 // first condition that holds, so demoting an edge below a sibling that can be
@@ -250,7 +244,7 @@ inline void quickdrawAppEdgesMatchPreSplitGraph() {
         }
         totalEdges += expected.second.size();
     }
-    EXPECT_EQ(totalEdges, 47u);
+    EXPECT_EQ(totalEdges, 46u);
 }
 
 // Which of those edges became hand-offs, and the app plus entry state each names.

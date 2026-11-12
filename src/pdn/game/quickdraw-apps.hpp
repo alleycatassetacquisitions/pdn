@@ -12,7 +12,7 @@
  * The between-match app: Awaken -> Idle, Idle <-> SupporterReady, Sleep -> Awaken.
  * Every other app hands back here, and Idle declares every launch out of it.
  * Sleep has no inbound edge from within the hub — it is entered only by hand-off,
- * from the match app's upload and from a finished tournament. Registration is its
+ * from the match app's Win or Lose and from a finished tournament. Registration is its
  * own top-level app, not a state in this one.
  */
 class HubApp : public StateMachine {
@@ -32,10 +32,10 @@ private:
 
 /**
  * MatchCountdown -> MatchState -> MatchPushed / MatchReceivedResult -> MatchResult ->
- * Win|Lose -> Upload. Entered at MatchCountdown from the hub's Idle for a 1v1,
+ * Win|Lose. Entered at MatchCountdown from the hub's Idle for a 1v1,
  * and from the shootout's bracket reveal or spectator for a tournament match.
- * Leaves to the hub's Idle on an abandoned match, to the hub's Sleep once the
- * upload finishes, and to the shootout on abort or a bracket outcome.
+ * Leaves to the hub's Idle on an abandoned match, to the hub's Sleep from Win
+ * or Lose, and to the shootout on abort or a bracket outcome.
  */
 class MatchApp : public StateMachine {
 public:
