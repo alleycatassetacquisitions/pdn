@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include "rdc-test-harness.hpp"
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
 #include "device/remote-device-coordinator.hpp"
@@ -26,15 +27,6 @@ using ::testing::Return;
 // into the SerialFrameParser. Single-threaded via setExternalConnectivityTask —
 // the test calls emitHello()/sync() itself instead of the FreeRTOS task.
 
-// Radio mock defaults shared by the fixture and the standalone ring nodes:
-// sends and peer-table ops succeed, the device reports `mac` as its own.
-inline void wireRadioDefaults(MockDevice& device, uint8_t* mac) {
-    ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-    ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(mac));
-    ON_CALL(*device.mockPeerComms, getPeerCommsState())
-    .WillByDefault(Return(PeerCommsState::ENABLED));
-}
-
 // One direction of a cable: drains `from`'s emitted bytes into `to`'s RX and
 // runs the real exec() pump.
 inline void pumpCable(NativeSerialDriver& from, NativeSerialDriver& to) {
@@ -45,31 +37,16 @@ inline void pumpCable(NativeSerialDriver& from, NativeSerialDriver& to) {
     to.exec();
 }
 
-// Pushes a frame into a jack's RX and drains it via the real exec() pump.
-inline void deliverFrame(NativeSerialDriver& jack, const std::vector<uint8_t>& frame) {
-    jack.injectBytes(frame);
-    jack.exec();
-}
-
-class RDCHelloTests : public testing::Test {
+class RDCHelloTests : public RdcTestHarness {
 public:
     /**
-     * Fake clock, mocked radio, native jacks swapped in, RDC in HELLO mode with
-     * the emit task externalized so the test drives it single-threaded.
+     * The harness's device with a third jack on the secondary input, and jack
+     * edges counted so a test can assert on them.
      */
     void SetUp() override {
-        fakeClock = new FakePlatformClock();
-        SimpleTimer::setPlatformClock(fakeClock);
-        fakeClock->setTime(1000);
-
-        wireRadioDefaults(device, localMac);
-
-        device.serialManager->setOutputJack(&outJack);
-        device.serialManager->setInputJack(&inJack);
+        // Before the harness initializes the RDC, which wires every jack it finds.
         device.serialManager->setSecondaryInputJack(&secondaryJack);
-
-        rdc.setExternalConnectivityTask(true);
-        rdc.initialize(device.wirelessManager, device.serialManager, &device);
+        RdcTestHarness::SetUp();
         rdc.setOnJackChange(
         [this](SerialIdentifier jack, bool connected) {
             if (connected) {
@@ -81,12 +58,6 @@ public:
             }
         },
         this);
-    }
-
-    /** Restores the real platform clock. */
-    void TearDown() override {
-        SimpleTimer::setPlatformClock(nullptr);
-        delete fakeClock;
     }
 
     /** A HELLO frame whose source MAC starts with firstByte (rest fixed). */
@@ -121,17 +92,6 @@ public:
         if (ringClosed) snapshot |= RemoteDeviceCoordinator::RING_CLOSED_BIT;
         rdc.publishedHelloState.store(snapshot);
     }
-
-    MockDevice device;
-    FakePlatformClock* fakeClock = nullptr;
-    NativeSerialDriver outJack{"hello-out"};
-    NativeSerialDriver inJack{"hello-in"};
-    NativeSerialDriver secondaryJack{"hello-sec"};
-    // Declared after the jacks so it is destroyed FIRST: the RDC dtor clears the
-    // byte callbacks on the jacks, which must still be alive (mirrors production,
-    // where the serial drivers outlive the RDC).
-    RemoteDeviceCoordinator rdc;
-    uint8_t localMac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 
     int connectCount = 0;
     int disconnectCount = 0;
@@ -287,18 +247,6 @@ inline void rdcHelloEveryJackInitiatesContext(RDCHelloTests* suite) {
     EXPECT_TRUE(suite->rdc.isContextSendPending(inPeer));
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
-}
-
-inline std::vector<uint8_t> pdnContextBytes(ChainRole chainRole, uint16_t userId, uint8_t seqId,
-                                            uint8_t gameRole = 0) {
-    PdnConnectionContext ctx{};
-    ctx.seqId = seqId;
-    ctx.chainRole = chainRole;
-    ctx.player.userId = userId;
-    ctx.player.gameRole = gameRole;
-    std::vector<uint8_t> bytes(sizeof(ctx));
-    memcpy(bytes.data(), &ctx, sizeof(ctx));
-    return bytes;
 }
 
 // (a)+(b) A new OUT-jack HELLO MAC sends context (pending), and the #152
@@ -874,18 +822,6 @@ inline void rdcHelloByteModeSuppressesStringAssembly() {
 // ============================================
 // Device-level chain state machine (#156)
 // ============================================
-
-// A framed HELLO carrying a source MAC and, optionally, an advertised head
-// and flag bits.
-inline std::vector<uint8_t> chainHelloFrame(const uint8_t* source, const uint8_t* head,
-                                            uint8_t flags = 0) {
-    HelloPayload hello{};
-    memcpy(hello.source, source, 6);
-    hello.deviceType = static_cast<uint8_t>(DeviceType::PDN);
-    if (head != nullptr) memcpy(hello.headMac, head, 6);
-    hello.flags = flags;
-    return encodeFramed(hello);
-}
 
 // Decodes a jack's emitted output back into a single HelloPayload.
 inline HelloPayload parseEmittedHello(const std::string& out) {
@@ -1534,15 +1470,6 @@ inline void captureSends(RDCHelloTests* suite, PktType type, RosterSendCapture& 
                     capture.lastPayload.assign(data, data + len);
                 }),
             Return(1)));
-}
-
-inline std::vector<uint8_t> announceBytes(const uint8_t* upstream, uint8_t seqId) {
-    ConnectionAnnouncePayload payload{};
-    payload.seqId = seqId;
-    memcpy(payload.upstreamMac, upstream, 6);
-    std::vector<uint8_t> bytes(sizeof(payload));
-    memcpy(bytes.data(), &payload, sizeof(payload));
-    return bytes;
 }
 
 inline std::vector<uint8_t> disconnectReportBytes(const uint8_t* mac, uint8_t seqId) {

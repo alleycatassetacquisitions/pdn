@@ -7,7 +7,7 @@
 #include <gmock/gmock.h>
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
-#include "rdc-hello-tests.hpp"
+#include "rdc-test-harness.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "wireless/shootout-packets.hpp"
 #include "game/shootout-manager.hpp"
@@ -17,33 +17,23 @@
 #include "game/quickdraw-apps.hpp"
 #include "game/player.hpp"
 
-class ShootoutManagerTests : public testing::Test {
+class ShootoutManagerTests : public RdcTestHarness {
 public:
-    void SetUp() override {
-        fakeClock = new FakePlatformClock();
-        SimpleTimer::setPlatformClock(fakeClock);
-        fakeClock->setTime(1000);
+    /** The shootout cases are written against a device whose MAC sorts lowest. */
+    ShootoutManagerTests() {
+        const uint8_t lowestMac[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
+        memcpy(localMac, lowestMac, 6);
+    }
 
-        wireRadioDefaults(device, localMac);
-        ON_CALL(*device.mockPeerComms,
-                setPacketHandler(testing::Eq(PktType::kPdnConnectionContext), testing::_, testing::_))
-            .WillByDefault(testing::DoAll(testing::SaveArg<1>(&contextHandler),
-                                          testing::SaveArg<2>(&contextCtx)));
+    /** The harness's device with a ShootoutManager on its RDC and the air recorded. */
+    void SetUp() override {
+        RdcTestHarness::SetUp();
         // What goes on the air, so a test learns a frame's seqId the way a peer does.
         ON_CALL(*device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
         .WillByDefault(
         testing::DoAll(testing::Invoke([this](const uint8_t*, PktType type, const uint8_t* data,
                                               const size_t len) { recordFrame(type, data, len); }),
                        testing::Return(1)));
-
-        // Real jacks, so tests can drive topology through the production HELLO
-        // path instead of calling the manager's handlers by hand. Idle unless a
-        // test feeds them.
-        device.serialManager->setOutputJack(&outJack);
-        device.serialManager->setInputJack(&inJack);
-
-        rdc.setExternalConnectivityTask(true);
-        rdc.initialize(device.wirelessManager, device.serialManager, &device);
         rebuildShootout(nullptr);
     }
 
@@ -57,17 +47,6 @@ public:
         // shootout packet types.
         delete shootout;
         shootout = new ShootoutManager(&player, device.wirelessManager, &rdc, matchManager);
-    }
-
-    /**
-     * Feeds a peer's PdnConnectionContext in through the handler the reliable
-     * transport registered with the radio driver — the production receive path.
-     */
-    void deliverPdnContext(const uint8_t* peerMac) {
-        if (contextHandler == nullptr) return;
-        std::vector<uint8_t> bytes =
-        pdnContextBytes(ChainRole::STANDALONE, /*userId=*/4242, ++contextSeqId);
-        contextHandler(peerMac, bytes.data(), bytes.size(), contextCtx);
     }
 
     /**
@@ -173,25 +152,14 @@ public:
         return device.wirelessManager->getReliableTransport()->pendingCount(type, seqId);
     }
 
-    /**
-     * Brings `jack` from Idle to Connected against `peerMac`, optionally carrying
-     * an advertised chain head and HELLO flag bits.
-     */
-    void connectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac,
-                       const uint8_t* advertisedHead = nullptr, uint8_t flags = 0) {
-        deliverFrame(jack, chainHelloFrame(peerMac, advertisedHead, flags));
-        rdc.sync(&device);
-        deliverPdnContext(peerMac);
-        rdc.sync(&device);
-    }
-
     /** Connects both jacks as a relayed ring member under `head` (defaults to 0x06). */
     void joinRelayedRing(const uint8_t* head = nullptr) {
         const uint8_t downstream[6] = {0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
         const uint8_t upstream[6] = {0x05, 0x00, 0x00, 0x00, 0x00, 0x00};
         const uint8_t defaultHead[6] = {0x06, 0x00, 0x00, 0x00, 0x00, 0x00};
         connectJackTo(outJack, downstream);
-        connectJackTo(inJack, upstream, head != nullptr ? head : defaultHead, HELLO_FLAG_RING_CLOSED);
+        connectJackTo(inJack, upstream, head != nullptr ? head : defaultHead, /*isHunter=*/false,
+                      HELLO_FLAG_RING_CLOSED);
     }
 
     /**
@@ -219,28 +187,17 @@ public:
         rdc.sync(&device);
     }
 
+    /** Frees the manager while the harness's RDC it subscribed to still stands. */
     void TearDown() override {
         delete shootout;
         shootout = nullptr;
-        SimpleTimer::setPlatformClock(nullptr);
-        delete fakeClock;
+        RdcTestHarness::TearDown();
     }
 
-    MockDevice device;
-    NativeSerialDriver outJack{"shootout-out"};
-    NativeSerialDriver inJack{"shootout-in"};
-    // Declared after the jacks so it is destroyed first; its dtor clears their
-    // byte callbacks, mirroring production where the drivers outlive the RDC.
-    RemoteDeviceCoordinator rdc;
     FakeRingRemoteDeviceCoordinator memberRdc;
     Player player{"TEST", Allegiance::RESISTANCE, true};
     ShootoutManager* shootout = nullptr;
-    FakePlatformClock* fakeClock = nullptr;
-    PeerCommsInterface::PacketCallback contextHandler = nullptr;
-    void* contextCtx = nullptr;
-    uint8_t contextSeqId = 0;
     std::map<PktType, uint8_t> lastSeqIdByType;
-    uint8_t localMac[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
     uint8_t peerMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
 };
 
