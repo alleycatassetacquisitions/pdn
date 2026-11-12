@@ -21,7 +21,7 @@
 
 class Device;
 class HelloLinkMachine;
-class RDCHelloTests;  // drives the context exchange via the owned transport in tests
+class RDCHelloTests;
 
 enum class JackStatus {
     DISCONNECTED = 0,  // No HELLO peer on the jack.
@@ -30,8 +30,8 @@ enum class JackStatus {
 };
 
 class RemoteDeviceCoordinator {
-    // Reaches the owned transport to inject SEND_SUCCESS / inbound contexts without
-    // a radio; the transport stays out of the public API.
+    // Lets a test put the published snapshot out of step with main-loop chain
+    // state, which no public call can do.
     friend class RDCHelloTests;
 
 public:
@@ -63,10 +63,7 @@ public:
      */
     void initialize(WirelessManager* radio, SerialManager* serial, Device* device);
 
-    /**
-     * Must be called every loop tick (from PDN::loop). Pumps the reliable
-     * transport and drives each jack's HELLO link machine.
-     */
+    /** Drives each jack's HELLO link machine; must be called every loop tick. */
     void sync(Device* PDN);
 
     /**
@@ -322,9 +319,9 @@ private:
     std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 
-    // Owned reliable transport + one context channel per device-type PktType.
-    // Device-level, not per-jack: on receive the source MAC is matched back to a
-    // jack. Constructed in initialize() once the WirelessManager is known.
+    // The device's transport, and one context channel per device-type PktType
+    // claimed on it. Device-level, not per-jack: on receive the source MAC is
+    // matched back to a jack. Bound in initialize() once the WirelessManager is known.
     ReliableTransport* transport = nullptr;
     ReliableChannel<PdnConnectionContext>* pdnContextChannel = nullptr;
     ReliableChannel<FdnConnectionContext>* fdnContextChannel = nullptr;

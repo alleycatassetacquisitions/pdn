@@ -28,13 +28,14 @@ At boot, before entering gameplay apps, the PDN SHALL display the faction boot s
 
 ### Requirement: Background session pump across all apps
 
-The PDN SHALL advance all wireless gameplay transport state machines on every device main-loop tick regardless of which app or state is currently mounted:
+The PDN SHALL advance all wireless gameplay state machines on every device main-loop tick regardless of which app or state is currently mounted:
 
-- On every main-loop tick, the session pump SHALL execute the periodic retry and timeout checks for posse membership, 1v1 match result replication, and shootout result replication.
+- Reliable retransmission and abandonment for every channel is the device transport's (`wireless-transport`), pumped by the device loop itself before any app or session code runs on the tick.
+- On every main-loop tick, the session pump SHALL execute the per-tick logic of posse membership, 1v1 match collection, and shootout progression (bracket advancement, ring-break and short-roster timeouts, rebroadcast timers), so a tournament keeps advancing while the device is in the match app for a bracket match.
 
 #### Scenario: Retry machines advance while non-hub app is mounted
-- **WHEN** a PDN is mounted in the match, shootout, or symbol app with an unacknowledged posse or result packet in flight
-- **THEN** the session pump continues advancing the posse, match, and shootout retry timers on every device tick
+- **WHEN** a PDN is mounted in the match, shootout, or symbol app with an unacknowledged posse or tournament frame in flight
+- **THEN** the frame is still retransmitted on its backoff timer and abandoned at its deadline on every device tick, and the session pump keeps advancing the tournament
 
 ### Requirement: Hub awaken sequence and idle screen behavior
 

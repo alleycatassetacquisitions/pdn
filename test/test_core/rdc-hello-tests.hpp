@@ -106,11 +106,10 @@ public:
     }
 
     /**
-     * The RDC's owned transport, reached via friendship so a test can inject
-     * SEND_SUCCESS (onSendResult) and inbound contexts (deliverIncoming) without a
-     * radio. Not part of the production API.
+     * The device's shared transport, so a test can inject SEND_SUCCESS
+     * (onSendResult) and inbound contexts (deliverIncoming) without a radio.
      */
-    ReliableTransport* transport() { return rdc.transport; }
+    ReliableTransport* transport() { return device.wirelessManager->getReliableTransport(); }
 
     /** Writes `publishedHelloState` directly without updating main-loop chain state. */
     void overridePublishedHelloState(const uint8_t* headMac, bool confirmed, bool ringClosed) {
@@ -620,6 +619,7 @@ inline void rdcLinkDeathCancelsPendingContextSend(RDCHelloTests* suite) {
     for (int i = 0; i < 4; ++i) {
         suite->fakeClock->advance(400);
         suite->rdc.sync(&suite->device);
+        suite->device.wirelessManager->sync();
     }
     EXPECT_EQ(contextSends, sendsAtDeath);
 }
@@ -2081,6 +2081,7 @@ inline void rdcBackToBackReportsBothRetryToHead(RDCHelloTests* suite) {
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
     suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
     suite->rdc.sync(&suite->device);
+    suite->device.wirelessManager->sync();
     EXPECT_EQ(forwarded.count, 4);
 }
 
@@ -2260,6 +2261,7 @@ inline void rdcPendingReportVoidedByBecomingHead(RDCHelloTests* suite) {
     // it (a resender retransmit to h1 may have fired) to isolate the h2 re-send.
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
+    suite->device.wirelessManager->sync();
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::STANDALONE);
     const int baseline = report.count;
 
