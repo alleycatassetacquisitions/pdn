@@ -58,8 +58,7 @@ inline void matchManagerConcurrentDriverVsReader() {
             snprintf(matchId, sizeof(matchId), "match-%08d", iter++);
 
             MatchPacket pkt = {};
-            strncpy(pkt.matchId,  matchId, sizeof(pkt.matchId) - 1);
-            strncpy(pkt.playerId, "hunt",  sizeof(pkt.playerId) - 1);
+            strncpy(pkt.matchId, matchId, sizeof(pkt.matchId) - 1);
             pkt.command = MatchCmd::SEND_MATCH_ID;
             pkt.isHunter       = true;
             pkt.playerDrawTime = 0;

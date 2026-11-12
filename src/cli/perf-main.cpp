@@ -133,11 +133,9 @@ private:
     uint8_t mac_[6] = {0};
 };
 
-static MatchPacket makeDrawResultPacket(const std::optional<Match>& match, bool senderIsHunter,
-                                        const char* senderId) {
+static MatchPacket makeDrawResultPacket(const std::optional<Match>& match, bool senderIsHunter) {
     MatchPacket p = {};
-    strncpy(p.matchId,  match->getMatchId(), sizeof(p.matchId) - 1);
-    strncpy(p.playerId, senderId,            sizeof(p.playerId) - 1);
+    strncpy(p.matchId, match->getMatchId(), sizeof(p.matchId) - 1);
     p.isHunter       = senderIsHunter;
     p.playerDrawTime = senderIsHunter ? match->getHunterDrawTime()
                                       : match->getBountyDrawTime();
@@ -229,9 +227,9 @@ int main(int argc, char** argv) {
 
         // Bypass listenForMatchEvents(SEND_MATCH_ID), which requires a non-null RDC.
         const char* matchId = hunter.matchMgr->getCurrentMatch()->getMatchId();
-        bounty.matchMgr->receiveMatch(matchId, const_cast<uint8_t*>(kHunterMac));
+        bounty.matchMgr->receiveMatch(matchId, true, const_cast<uint8_t*>(kHunterMac));
 
-        MatchCommand ackCmd(kBountyMac, MatchCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
+        MatchCommand ackCmd(kBountyMac, MatchCmd::MATCH_ID_ACK, matchId, 0, false);
         hunter.matchMgr->listenForMatchEvents(ackCmd);
 
         hunter.matchMgr->setMatchLocalStartTime(matchStart);
@@ -246,10 +244,8 @@ int main(int argc, char** argv) {
         clock.set(matchStart + bountyPress);
         bounty.matchMgr->getMatchButtonPush()(bounty.matchMgr);
 
-        MatchPacket hunterPkt =
-        makeDrawResultPacket(hunter.matchMgr->getCurrentMatch(), true, "hunt");
-        MatchPacket bountyPkt =
-        makeDrawResultPacket(bounty.matchMgr->getCurrentMatch(), false, "boun");
+        MatchPacket hunterPkt = makeDrawResultPacket(hunter.matchMgr->getCurrentMatch(), true);
+        MatchPacket bountyPkt = makeDrawResultPacket(bounty.matchMgr->getCurrentMatch(), false);
 
         deliver(bounty.peerComms, kHunterMac, hunterPkt);
         deliver(hunter.peerComms, kBountyMac, bountyPkt);

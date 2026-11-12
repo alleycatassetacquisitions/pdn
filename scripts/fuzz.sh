@@ -100,7 +100,7 @@ generate_seeds_and_dict() {
 
     printf '12345678-abcd-ef01-2345-6789abcdef01' > "$SEEDS_DIR/match/valid_match_id.txt"
 
-    printf '\x03\x02AAAA\x00\x00\x07\x01\x05\x02BBBB\x00\x00\x09\x02\x08' \
+    printf '\x03\x02\x00\x07\x01\x05\x02\x00\x09\x02\x08' \
         > "$SEEDS_DIR/wireless/match_flow.bin"
 
     cat > "$DICT_FILE" << 'EOF'

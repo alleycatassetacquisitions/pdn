@@ -192,7 +192,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             }
             case 1: {
                 // Deliver a raw MatchPacket directly from fuzz bytes (tests non-null-terminated
-                // matchId/playerId and arbitrary command/drawTime values)
+                // matchId and arbitrary command/drawTime values)
                 if (size - pos < sizeof(MatchPacket)) {
                     pos = size;
                     break;
@@ -203,7 +203,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             }
             case 2: {
-                if (size - pos < 8) {
+                if (size - pos < 3) {
                     pos = size;
                     break;
                 }
@@ -214,12 +214,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 } else {
                     std::memset(pkt.matchId, 'A', IdGenerator::UUID_BUFFER_SIZE);
                 }
-                std::memcpy(pkt.playerId, data + pos, 5);
-                pkt.isHunter = data[pos + 5];
-                pkt.command = static_cast<int>(data[pos + 6] % 12U);
-                pkt.seqId = data[pos + 7];
-                pkt.playerDrawTime = static_cast<long>(static_cast<int8_t>(data[pos + 5])) * 100L;
-                pos += 8;
+                pkt.isHunter = data[pos];
+                pkt.command = static_cast<int>(data[pos + 1] % 12U);
+                pkt.seqId = data[pos + 2];
+                pkt.playerDrawTime = static_cast<long>(static_cast<int8_t>(data[pos])) * 100L;
+                pos += 3;
                 peerComms.deliverRxExact(PktType::kMatchCommand, peerMac,
                                          reinterpret_cast<const uint8_t*>(&pkt),
                                          sizeof(MatchPacket));
