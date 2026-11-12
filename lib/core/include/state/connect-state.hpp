@@ -34,14 +34,8 @@ struct JackConnectionState {
 };
 
 /*
- * The coordinator's observer slot is single, and the mounted ConnectState holds it.
- * That works because StateMachine dismounts the outgoing state before mounting the
- * incoming one, handing the slot over cleanly; a second ConnectState mounted without
- * that dismount would take the slot and leave the first one permanently deaf.
- *
- * `subscribed` records that this state registered, not that it still holds the slot
- * — the coordinator arbitrates nothing — so the two clear paths below are only safe
- * under that same dismount-before-mount ordering.
+ * Subscribes to the coordinator's jack-change observers while mounted, keyed on
+ * `this`, so its dismount and its destructor remove only its own registration.
  */
 template <typename DeviceT>
 class ConnectState : public TypedState<DeviceT> {
@@ -51,7 +45,7 @@ public:
         : TypedState<DeviceT>(stateId)
         , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
 
-    /** Non-owning; just drops the coordinator pointer. */
+    /** Removes its jack-change registration if still subscribed; the coordinator is not owned. */
     ~ConnectState() override {
         // App teardown deletes states without dismounting them, which would leave a
         // `this`-bound lambda in the device-owned coordinator.
@@ -130,17 +124,14 @@ private:
         replayConnectedJacks();
     }
 
-    // A dismounted state must stop receiving; the next mounted state may not be a
-    // ConnectState, and nothing else would clear the slot.
     void beforeDismount(DeviceT* device) final {
         if (subscribed) unsubscribe();
     }
 
     void subscribe() {
         remoteDeviceCoordinator->setOnJackChange(
-            [this](SerialIdentifier jack, bool connected) {
-                dispatchJackState(jack, connected);
-            });
+        [this](SerialIdentifier jack, bool connected) { dispatchJackState(jack, connected); },
+        this);
         subscribed = true;
     }
 
@@ -170,7 +161,7 @@ private:
     }
 
     void unsubscribe() {
-        remoteDeviceCoordinator->setOnJackChange(nullptr);
+        remoteDeviceCoordinator->setOnJackChange(nullptr, this);
         subscribed = false;
     }
 

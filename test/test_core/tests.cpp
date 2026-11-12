@@ -18,6 +18,7 @@
 #include "quickdraw-integration-tests.hpp"
 #include "rdc-hello-tests.hpp"
 #include "connect-state-callback-tests.hpp"
+#include "callback-list-tests.hpp"
 #include "posse-manager-tests.hpp"
 #include "posse-multi-device-fixture.hpp"
 #include "shootout-manager-tests.hpp"
@@ -1667,6 +1668,18 @@ TEST_F(ConnectStateTests, replayCarriesPeerContext) {
 
 TEST_F(ConnectStateTests, disconnectCarriesNoContext) {
     connectStateDisconnectCarriesNoContext(this);
+}
+
+TEST_F(ConnectStateTests, twoMountedStatesKeepTheirOwnSubscription) {
+    connectStateTwoMountedStatesKeepTheirOwnSubscription(this);
+}
+
+TEST(CallbackListTests, keepsEachOwnersCallback) { callbackListKeepsEachOwnersCallback(); }
+
+TEST(CallbackListTests, toleratesClearingDuringFire) { callbackListToleratesClearingDuringFire(); }
+
+TEST(CallbackListTests, defersCallbacksAddedDuringFire) {
+    callbackListDefersCallbacksAddedDuringFire();
 }
 
 TEST_F(RDCHelloTests, silentLinkDisconnects) {

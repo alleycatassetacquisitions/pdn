@@ -9,6 +9,7 @@
 #include <vector>
 #include "device/serial-manager.hpp"
 #include "device/serial-frame-parser.hpp"
+#include "utils/callback-list.hpp"
 #include "utils/simple-timer.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/reliable-channel.hpp"
@@ -125,13 +126,14 @@ public:
     virtual bool isInRing() const;
 
     /**
-     * Registers the per-jack connect/disconnect observer. The connect fires
-     * after the chain state it implies is in place; the disconnect fires BEFORE
-     * chain-state teardown, so handlers must not read chain state there —
-     * consistent chain facts arrive via setOnChainRoleChange.
+     * Registers `owner`'s per-jack connect/disconnect observer; a null callback
+     * removes it and no other owner's. The connect fires after the chain state
+     * it implies is in place; the disconnect fires BEFORE chain-state teardown,
+     * so handlers must not read chain state there — consistent chain facts
+     * arrive via setOnChainRoleChange.
      */
-    void setOnJackChange(JackChangeCallback callback) {
-        jackChangeCallback = std::move(callback);
+    void setOnJackChange(JackChangeCallback callback, const void* owner) {
+        jackChangeCallbacks.set(std::move(callback), owner);
     }
 
     // ---- Per-jack HELLO connectivity ----
@@ -176,9 +178,9 @@ public:
     using ContextReceivedCallback =
         std::function<void(SerialIdentifier jack, DeviceType peerType,
                            const uint8_t* profile, size_t len)>;
-    /** Registers the opaque peer-context consumer. */
-    void setOnContextReceived(ContextReceivedCallback callback) {
-        contextReceivedCallback = std::move(callback);
+    /** Registers `owner`'s opaque peer-context consumer; null removes it. */
+    void setOnContextReceived(ContextReceivedCallback callback, const void* owner) {
+        contextReceivedCallbacks.set(std::move(callback), owner);
     }
 
     /**
@@ -259,43 +261,43 @@ public:
     /** This jack's HELLO link state (observability / tests). */
     HelloLinkState getHelloLinkState(SerialIdentifier jack) const;
 
-    /** Registers the chain-role transition observer. */
-    void setOnChainRoleChange(ChainRoleChangeCallback callback) {
-        chainRoleChangeCallback = std::move(callback);
+    /** Registers `owner`'s chain-role transition observer; null removes it. */
+    void setOnChainRoleChange(ChainRoleChangeCallback callback, const void* owner) {
+        chainRoleChangeCallbacks.set(std::move(callback), owner);
     }
 
-    /** Registers the head-only roster observer. */
-    void setOnMembershipChange(MembershipChangeCallback callback) {
-        membershipChangeCallback = std::move(callback);
+    /** Registers `owner`'s head-only roster observer; null removes it. */
+    void setOnMembershipChange(MembershipChangeCallback callback, const void* owner) {
+        membershipChangeCallbacks.set(std::move(callback), owner);
     }
 
-    /** Registers the head-only ring-closure observer. */
-    void setOnRingClosed(RingClosedCallback callback) {
-        ringClosedCallback = std::move(callback);
+    /** Registers `owner`'s head-only ring-closure observer; null removes it. */
+    void setOnRingClosed(RingClosedCallback callback, const void* owner) {
+        ringClosedCallbacks.set(std::move(callback), owner);
     }
 
     /**
-     * Registers an observer for any jack connect/disconnect. Coarser than
-     * setOnJackChange: it says the chain moved, not which jack or which way.
+     * Registers `owner`'s observer for any jack connect/disconnect; null removes
+     * it. Coarser than setOnJackChange: it says the chain moved, not which jack
+     * or which way.
      */
-    void setChainChangeCallback(std::function<void()> callback);
+    void setChainChangeCallback(std::function<void()> callback, const void* owner);
 
 private:
     static constexpr size_t NUM_JACKS = 3;
 
     size_t jackIndex(SerialIdentifier jack) const;
 
-    void notifyChainChange();
     void recordJackContext(SerialIdentifier jack, DeviceType peerType, ChainRole chainRole,
                            uint16_t peerUserId, const uint8_t* profile, size_t len);
 
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
-    std::function<void()> chainChangeCallback;
-    JackChangeCallback jackChangeCallback;
-    ChainRoleChangeCallback chainRoleChangeCallback;
-    MembershipChangeCallback membershipChangeCallback;
-    RingClosedCallback ringClosedCallback;
+    CallbackList<std::function<void()>> chainChangeCallbacks;
+    CallbackList<JackChangeCallback> jackChangeCallbacks;
+    CallbackList<ChainRoleChangeCallback> chainRoleChangeCallbacks;
+    CallbackList<MembershipChangeCallback> membershipChangeCallbacks;
+    CallbackList<RingClosedCallback> ringClosedCallbacks;
 
     // ---- HELLO connectivity internals ----
     struct JackHelloLink {
@@ -314,7 +316,7 @@ private:
     };
     std::array<JackHelloLink, NUM_JACKS> helloByJack;
     bool externalConnectivityTask = false;
-    ContextReceivedCallback contextReceivedCallback;
+    CallbackList<ContextReceivedCallback> contextReceivedCallbacks;
     SelfProfileProvider selfProfileProvider;
     std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
