@@ -156,23 +156,6 @@ public:
     }
 
     /**
-     * Get MAC address as string for display.
-     */
-    std::string getMacString() const {
-        char buf[18];
-        snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", macAddress[0], macAddress[1],
-                 macAddress[2], macAddress[3], macAddress[4], macAddress[5]);
-        return std::string(buf);
-    }
-
-    /**
-     * Get radio state as string for display.
-     */
-    std::string getStateString() const {
-        return peerCommsState == PeerCommsState::ENABLED ? "ENABLED" : "DISABLED";
-    }
-    
-    /**
      * Get packet history for CLI display.
      */
     const std::deque<PacketHistoryEntry>& getPacketHistory() const { return packetHistory; }

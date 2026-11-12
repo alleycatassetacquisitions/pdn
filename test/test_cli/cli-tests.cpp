@@ -151,10 +151,6 @@ TEST_F(NativeSerialDriverTestSuite, AvailableForWrite) {
     serialDriverAvailableForWrite(this);
 }
 
-TEST_F(NativeSerialDriverTestSuite, TracksHistory) {
-    serialDriverTracksHistory(this);
-}
-
 TEST_F(NativeSerialDriverTestSuite, ClearOutput) {
     serialDriverClearOutput(this);
 }
@@ -175,12 +171,8 @@ TEST_F(NativePeerCommsDriverTestSuite, TracksHistory) {
     peerCommsTracksHistory(this);
 }
 
-TEST_F(NativePeerCommsDriverTestSuite, StateString) {
-    peerCommsStateString(this);
-}
-
-TEST_F(NativePeerCommsDriverTestSuite, MacString) {
-    peerCommsMacString(this);
+TEST_F(NativePeerCommsDriverTestSuite, StateFollowsEnableDisable) {
+    peerCommsStateFollowsEnableDisable(this);
 }
 
 TEST_F(NativePeerCommsDriverTestSuite, CannotSendWhenDisabled) {

@@ -202,17 +202,6 @@ private:
         }
     }
 
-    /** Serial messages for one panel row, most recent first, or "(none)". */
-    static std::string formatHistory(const std::vector<std::string>& messages) {
-        if (messages.empty()) return "(none)";
-        std::string text;
-        for (size_t i = 0; i < messages.size(); i++) {
-            if (i > 0) text += ", ";
-            text += truncate(messages[i], 15);
-        }
-        return text;
-    }
-
     /** One "TYPE<arrow>MAC" entry per packet, most recent first, or "(none)". */
     static std::string formatPackets(const std::vector<PacketDiagnostics>& packets,
                                      const char* arrow) {
@@ -348,14 +337,9 @@ private:
         bufferLine(format("| Serial OUT%s: in=%zu out=%zu%s", outPrimaryLabel,
                           device.outputJack.inputQueueSize, device.outputJack.outputBufferSize,
                           formatCableLabel(device.outputJack).c_str()));
-        bufferLine(format("|   TX: %s", formatHistory(device.outputJack.sentHistory).c_str()));
-        bufferLine(format("|   RX: %s", formatHistory(device.outputJack.receivedHistory).c_str()));
-
         bufferLine(format("| Serial IN%s:  in=%zu out=%zu%s", inPrimaryLabel,
                           device.inputJack.inputQueueSize, device.inputJack.outputBufferSize,
                           formatCableLabel(device.inputJack).c_str()));
-        bufferLine(format("|   TX: %s", formatHistory(device.inputJack.sentHistory).c_str()));
-        bufferLine(format("|   RX: %s", formatHistory(device.inputJack.receivedHistory).c_str()));
 
         bufferLine(format("| ESP-NOW: %s  MAC=%s  Peers=%zu  Pending=%zu",
                           device.peerCommsState == PeerCommsState::ENABLED ? "ENABLED" : "DISABLED",

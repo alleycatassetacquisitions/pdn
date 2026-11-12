@@ -28,9 +28,6 @@ struct JackDiagnostics {
     size_t outputBufferSize = 0;
     // Index of the device at the other end of the cable, -1 with nothing plugged in.
     int cabledDevice = -1;
-    // Most recent first.
-    std::vector<std::string> sentHistory;
-    std::vector<std::string> receivedHistory;
 };
 
 /** One ESP-NOW packet a device sent or received. */
@@ -102,14 +99,6 @@ inline JackDiagnostics gatherJackDiagnostics(const NativeSerialDriver& jack) {
     JackDiagnostics diagnostics;
     diagnostics.inputQueueSize = jack.getInputQueueSize();
     diagnostics.outputBufferSize = jack.getOutputBufferSize();
-    const std::deque<std::string>& sent = jack.getSentHistory();
-    for (size_t i = 0; i < sent.size() && i < PANEL_HISTORY_ENTRIES; i++) {
-        diagnostics.sentHistory.push_back(sent[sent.size() - 1 - i]);
-    }
-    const std::deque<std::string>& received = jack.getReceivedHistory();
-    for (size_t i = 0; i < received.size() && i < PANEL_HISTORY_ENTRIES; i++) {
-        diagnostics.receivedHistory.push_back(received[received.size() - 1 - i]);
-    }
     return diagnostics;
 }
 

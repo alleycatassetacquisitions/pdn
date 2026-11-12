@@ -68,7 +68,6 @@ public:
         if (!result.empty() && result.back() == terminator) {
             result.pop_back();
         }
-        // Note: History tracking is done in injectInput() when data arrives
         return result;
     }
 
@@ -79,14 +78,12 @@ public:
     void println(char* msg) override {
         transmit(msg, strlen(msg));
         transmit("\n", 1);
-        addToHistory(sentHistory, std::string(msg));
     }
 
     /** Writes `msg` and a newline. */
     void println(const std::string& msg) override {
         transmit(msg.data(), msg.size());
         transmit("\n", 1);
-        addToHistory(sentHistory, msg);
     }
 
     /**
@@ -144,9 +141,6 @@ public:
         if (!cleanMsg.empty() && cleanMsg.back() == '\r') {
             cleanMsg.pop_back();
         }
-        
-        // Track the clean message in history for UI display
-        addToHistory(receivedHistory, cleanMsg);
 
         // Invoke callback with clean message
         if (stringCallback) {
@@ -160,11 +154,6 @@ public:
     /** Discards the bytes getOutput() would return. */
     void clearOutput() { outputBuffer.clear(); }
 
-    /** Last few println() messages, most recent at the back. */
-    const std::deque<std::string>& getSentHistory() const { return sentHistory; }
-    /** Last few injectInput() messages, most recent at the back. */
-    const std::deque<std::string>& getReceivedHistory() const { return receivedHistory; }
-
     /** RX entries waiting to be read. */
     size_t getInputQueueSize() const { return inputBuffer.size(); }
     /** Bytes getOutput() would return. */
@@ -177,18 +166,6 @@ private:
     SerialByteCallback byteCallback;
     // Not owned. Whoever called routeTo() clears it before the peer is destroyed.
     NativeSerialDriver* cablePeer = nullptr;
-
-    // Message history (most recent at back)
-    std::deque<std::string> sentHistory;
-    std::deque<std::string> receivedHistory;
-    static const size_t MAX_HISTORY = 5;
-    
-    void addToHistory(std::deque<std::string>& history, const std::string& msg) {
-        history.push_back(msg);
-        while (history.size() > MAX_HISTORY) {
-            history.pop_front();
-        }
-    }
 
     void transmit(const char* data, size_t length) {
         // An empty write would leave the peer an empty RX entry, which reads
