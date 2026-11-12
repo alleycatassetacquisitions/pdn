@@ -10,9 +10,8 @@ struct MatchPacket {
     UUIDBytes playerUuid;
     UUIDBytes teamUuid;
     uint8_t isHunter;
-    long playerDrawTime;  // raw reaction time
-    // Raw time minus posse boost; below zero when the boost exceeds the raw time.
-    int32_t effectiveDrawTime;
+    long playerDrawTime;  // raw reaction time, before any boost
+    uint32_t boostMs;     // posse boost the sender earned; 0 without supporters
     int command;
     uint8_t seqId;
 } __attribute__((packed));
@@ -33,8 +32,7 @@ struct MatchCommand {
     UUIDBytes teamUuid;
     bool isHunter;
     long playerDrawTime;
-    // No boost unless the frame says otherwise.
-    long effectiveDrawTime;
+    unsigned long boostMs = 0;
 
     /** Decoded match frame received from macAddress. */
     MatchCommand(const uint8_t* macAddress, int command, const char* matchId, long playerDrawTime,
@@ -45,8 +43,7 @@ struct MatchCommand {
         , playerUuid(playerUuid)
         , teamUuid(teamUuid)
         , isHunter(isHunter)
-        , playerDrawTime(playerDrawTime)
-        , effectiveDrawTime(playerDrawTime) {
+        , playerDrawTime(playerDrawTime) {
         IdGenerator::copyId(this->matchId, matchId);
     }
 };

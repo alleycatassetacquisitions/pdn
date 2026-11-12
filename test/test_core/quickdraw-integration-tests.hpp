@@ -31,8 +31,6 @@ inline MatchPacket createTestPacket(const std::string& matchId, int command,
     packet.matchId[36] = '\0';
     packet.isHunter = isHunter;
     packet.playerDrawTime = playerDrawTime;
-    // An opponent with no posse: nothing subtracted.
-    packet.effectiveDrawTime = static_cast<int32_t>(playerDrawTime);
     packet.command = command;
     return packet;
 }

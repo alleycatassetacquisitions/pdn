@@ -50,14 +50,12 @@ struct ActiveMatchState {
     bool opponentNeverPressed = false;
     // Bounty: seqId of the MATCH_ID_ACK whose delivery report is awaited (0 = none).
     uint8_t pendingAckSeqId = 0;
-    // Earned at the local button press; shown on the result screen.
+    // Earned at the local button press: taken off the raw time when the two
+    // draws are compared, and shown on the result screen.
     unsigned long boostMs = 0;
     unsigned long penaltyMs = 0;
-    // Raw reaction time minus posse boost, which can go below zero. These decide
-    // the winner and fill the result screen; the match record keeps the raw times.
-    // The opponent's is empty until its result is recorded.
-    long localEffectiveMs = 0;
-    std::optional<long> opponentEffectiveMs;
+    // The boost the opponent's draw result carried.
+    unsigned long opponentBoostMs = 0;
     unsigned long matchLocalStartTime = 0;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
@@ -103,9 +101,9 @@ public:
      * demo, tied and half-reported matches are not stored. */
     bool finalizeMatch();
 
-    /** Sets the hunter's raw draw time (ms) on the active match, with no boost applied. */
+    /** Sets the hunter draw time (ms) on the active match. */
     bool setHunterDrawTime(unsigned long hunterTimeMs);
-    /** Sets the bounty's raw draw time (ms) on the active match, with no boost applied. */
+    /** Sets the bounty draw time (ms) on the active match. */
     bool setBountyDrawTime(unsigned long bountyTimeMs);
 
     /** Records the local timestamp when the match draw window starts. */
@@ -194,7 +192,7 @@ private:
 
     Player* player;
 
-    std::function<unsigned long()> boostProvider_;
+    std::function<unsigned long()> boostProvider;
     RemoteDeviceCoordinator* rdc = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
 
@@ -214,10 +212,10 @@ private:
     void initialize();
     /** @return the seqId the frame went out under. */
     uint8_t sendCommand(const uint8_t* mac, int command, const char* matchId, long drawTime,
-                        long effectiveDrawTime, bool isHunter);
-    // Puts the raw time on the record's slot and the effective time beside it
-    // for whichever player holds that slot. Needs an active match.
-    void recordDrawTime(bool hunterSlot, unsigned long rawTimeMs, long effectiveTimeMs);
+                        unsigned long boostMs, bool isHunter);
+    // The slot's raw draw time minus its player's posse boost; below zero when
+    // the boost is the larger. Needs an active match.
+    long getEffectiveDrawTime(bool hunterSlot) const;
     /** Appends a match to the binary ring buffer and increments the sequence number. */
     bool appendMatchToStorage(const Match* match);
 
