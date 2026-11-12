@@ -196,7 +196,7 @@ inline void renderLastMatchStats(Display* display, const LastMatchDisplay& stats
     // One buffer serves every line: drawText copies into the frame buffer at once.
     char line[28];
     display->drawImage(Image(image_stats_card, 60, 64, 0, 0));
-    snprintf(line, sizeof(line), "You:%4lu", stats.myTimeMs);
+    snprintf(line, sizeof(line), "You:%4ld", stats.myTimeMs);
     display->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText(line, 2, 12);
     if (hasBoost) {
         snprintf(line, sizeof(line), "Boost: %lu",
@@ -207,7 +207,7 @@ inline void renderLastMatchStats(Display* display, const LastMatchDisplay& stats
         snprintf(line, sizeof(line), "Pen:+%lu", stats.penaltyMs);
         display->drawText(line, 2, hasBoost ? 36 : 28);
     }
-    snprintf(line, sizeof(line), "Opp:%4lu", stats.opponentTimeMs);
+    snprintf(line, sizeof(line), "Opp:%4ld", stats.opponentTimeMs);
     display->drawText(line, 2, (hasBoost && hasPenalty) ? 48 : 44);
 }
 

@@ -15,7 +15,7 @@ Terms used throughout:
 - **Standing role**: a player's persistent Hunter or Bounty role from registration.
 - **Match draw slot**: the Hunter slot or Bounty slot assigned to a player for the duration of a single match. In a standalone match, each player's match draw slot equals their standing role; in a shootout match, the paired player with the lower MAC address takes the Hunter draw slot and the higher MAC takes the Bounty draw slot without altering either player's standing role.
 - **Raw reaction time**: the elapsed monotonic milliseconds from the start of the local draw window to the player's button down-edge press (`PRESS`), plus any early-press countdown penalties.
-- **Effective draw time**: the player's raw reaction time minus any posse boost earned from confirmed supporters, floored at $0\text{ ms}$.
+- **Effective draw time**: the player's raw reaction time minus any posse boost earned from confirmed supporters. It is signed: a boost larger than the raw reaction time gives a negative effective draw time, which orders below $0\text{ ms}$.
 
 ## Requirements
 
@@ -81,10 +81,11 @@ When the countdown completes, the device SHALL open the active draw window for u
 
 - **First button down-edge press during the draw window (or post-receive grace window)**:
   - Both the primary and secondary buttons SHALL score on the button down-edge (`PRESS`, not button release/click resolution) so grip hold duration does not inflate reaction time; only the first button down-edge press in the draw window is counted and subsequent presses in the same match are ignored.
-  - The device computes the player's raw reaction time (elapsed milliseconds since the draw window opened plus $75\text{ ms}$ per early countdown press) and effective draw time (raw reaction time minus posse supporter boost, floored at $0\text{ ms}$).
+  - The device computes the player's raw reaction time (elapsed milliseconds since the draw window opened plus $75\text{ ms}$ per early countdown press) and effective draw time (raw reaction time minus posse supporter boost, with no floor).
   - The device records the raw reaction time in the player's personal reaction-time history and in its match draw slot (Hunter slot or Bounty slot) on the match record, records the effective draw time for winner determination and the result screen (snapshotting the posse boost and early-press penalty), and reliably sends a draw-result frame carrying both its raw reaction time and its effective draw time alongside its match draw slot to the opponent.
 - **Validating an incoming draw result from the opponent**:
   - The device SHALL accept a draw-result frame only if it comes from the active opponent for the active match ID, names the opponent's match draw slot (never the local player's draw slot), recording the opponent's raw reaction time in the opponent's match draw slot on the match record and the opponent's effective draw time for winner determination and the result screen.
+  - A boost only subtracts, and by at most a full posse's worth (18 supporters, $270\text{ ms}$). The device SHALL hold a received effective draw time to that span: one above the frame's raw reaction time is taken as the raw reaction time, and one more than $270\text{ ms}$ below it is taken as the raw reaction time minus $270\text{ ms}$.
 - **Pressing before receiving the opponent's result (post-push wait)**:
   - If the local player presses before receiving a draw result or never-pressed report from the opponent, the device waits up to a **2500 ms** result grace period (`750 ms` opponent button-push grace window plus the `1500 ms` reliable-channel retry deadline plus a `250 ms` margin) for the opponent's result to arrive, then transitions to match resolution as soon as the opponent's result arrives or the 2500 ms grace period expires.
 - **Receiving the opponent's result before pressing (post-receive wait)**:
@@ -96,9 +97,9 @@ When the countdown completes, the device SHALL open the active draw window for u
 - **WHEN** a Hunter challenger with 2 confirmed supporters ($30\text{ ms}$ boost) presses 210 ms after the draw window opens with 0 early presses, and the Bounty opponent presses at 195 ms with 0 boost
 - **THEN** the Hunter records a personal and match-record raw reaction time of 210 ms, exchanges its 210 ms raw reaction time and $210 - 30 = 180\text{ ms}$ effective draw time in its draw result, and wins the match ($180 < 195$) while the finalized match record stores raw reaction times of 210 ms for the Hunter and 195 ms for the Bounty
 
-#### Scenario: Posse boost exceeding raw reaction time floors effective draw time at 0 ms
-- **WHEN** a challenger with 4 confirmed supporters ($60\text{ ms}$ boost) presses 45 ms after the draw window opens with 0 early presses
-- **THEN** the challenger computes and exchanges an effective draw time of $0\text{ ms}$ ($45 - 60$ floored at $0\text{ ms}$) alongside its raw reaction time of $45\text{ ms}$
+#### Scenario: Posse boost exceeding raw reaction time gives a negative effective draw time
+- **WHEN** a challenger with 4 confirmed supporters ($60\text{ ms}$ boost) presses 45 ms after the draw window opens with 0 early presses, and the opponent presses at 10 ms with 0 boost
+- **THEN** the challenger computes and exchanges an effective draw time of $45 - 60 = -15\text{ ms}$ alongside its raw reaction time of $45\text{ ms}$, wins the match ($-15 < 10$), and both result screens show $-15\text{ ms}$ for the challenger while the match record stores $45\text{ ms}$
 
 #### Scenario: Opponent presses first and local player fails to press within 750 ms grace
 - **WHEN** player $A$ receives a draw result of 220 ms from player $B$ and does not press within the 750 ms grace window

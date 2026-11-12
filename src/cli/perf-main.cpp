@@ -139,6 +139,8 @@ static MatchPacket makeDrawResultPacket(const std::optional<Match>& match, bool 
     p.isHunter       = senderIsHunter;
     p.playerDrawTime = senderIsHunter ? match->getHunterDrawTime()
                                       : match->getBountyDrawTime();
+    // The harness has no posse, so nothing is subtracted.
+    p.effectiveDrawTime = static_cast<int32_t>(p.playerDrawTime);
     p.command = MatchCmd::DRAW_RESULT;
     return p;
 }

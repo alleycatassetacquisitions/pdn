@@ -110,6 +110,10 @@ public:
     void sync();
 
     static constexpr unsigned long BOOST_PER_SUPPORTER_MS = 15;
+    /** The boost with every supporter slot confirmed: the most a draw can earn. */
+    static constexpr unsigned long getMaxBoostMs() {
+        return MAX_CHAIN_SUPPORTERS * BOOST_PER_SUPPORTER_MS;
+    }
     /** Must exceed the retry span so the backstop does not supersede a live entry and reset its retry window. */
     static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::STALE_AFTER_MS;
 
