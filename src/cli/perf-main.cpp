@@ -229,8 +229,7 @@ int main(int argc, char** argv) {
 
         // Bypass listenForMatchEvents(SEND_MATCH_ID), which requires a non-null RDC.
         const char* matchId = hunter.matchMgr->getCurrentMatch()->getMatchId();
-        bounty.matchMgr->receiveMatch(matchId, "hunt", true,
-                                      const_cast<uint8_t*>(kHunterMac));
+        bounty.matchMgr->receiveMatch(matchId, const_cast<uint8_t*>(kHunterMac));
 
         MatchCommand ackCmd(kBountyMac, MatchCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
         hunter.matchMgr->listenForMatchEvents(ackCmd);

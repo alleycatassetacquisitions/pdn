@@ -65,6 +65,7 @@ MATCH_SRCS=(
     test/fuzz/fuzz-match-serialization.cpp
     lib/core/src/game/match.cpp
     lib/core/src/utils/UUID.cpp
+    lib/core/src/utils/uuid-bytes.cpp
     lib/core/src/utils/logger.cpp
 )
 
@@ -97,28 +98,18 @@ generate_seeds_and_dict() {
     printf '\xaa\x55\x00\x11\x22\x33\x44\x55\x66\x01\xde\xad\xbe\xef\x00\x01\x01\xdc\x48' \
         > "$SEEDS_DIR/serial/valid_hello.bin"
 
-    printf '{"match_id":"12345678-abcd-ef01-2345-6789abcdef01","hunter":"0001","bounty":"0002","winner_is_hunter":true,"hunter_time":250,"bounty_time":400}' \
-        > "$SEEDS_DIR/match/valid_match.json"
+    printf '12345678-abcd-ef01-2345-6789abcdef01' > "$SEEDS_DIR/match/valid_match_id.txt"
 
     printf '\x03\x02AAAA\x00\x00\x07\x01\x05\x02BBBB\x00\x00\x09\x02\x08' \
         > "$SEEDS_DIR/wireless/match_flow.bin"
 
     cat > "$DICT_FILE" << 'EOF'
-kw_match_id="match_id"
-kw_hunter="hunter"
-kw_bounty="bounty"
-kw_winner="winner_is_hunter"
-kw_hunter_time="hunter_time"
-kw_bounty_time="bounty_time"
-kw_matches="matches"
-kw_true="true"
-kw_false="false"
 kw_shootout="SHT-"
 kw_preamble="\xaa\x55"
 kw_hello="\xaa\x55\x00"
 EOF
 
-    # Instrument only project sources and harnesses, skipping ArduinoJson and STL.
+    # Instrument only project sources and harnesses, skipping the STL.
     cat > "$ALLOWLIST_FILE" << 'EOF'
 *lib/core/*
 *src/pdn/*

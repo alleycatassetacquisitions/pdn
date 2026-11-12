@@ -173,11 +173,7 @@ inline void completeMatchFlowBountyWins(MatchIntegrationTestSuite* suite) {
 // ============================================
 
 inline void matchSerializationRoundTrip() {
-    Match originalMatch(
-        "abcdef12-3456-7890-abcd-ef1234567890",
-        "a0b1c2d3-0000-0000-0000-000000000001",
-        true
-    );
+    Match originalMatch("abcdef12-3456-7890-abcd-ef1234567890");
     originalMatch.setHunterDrawTime(225);
     originalMatch.setBountyDrawTime(310);
 
@@ -192,13 +188,6 @@ inline void matchSerializationRoundTrip() {
     EXPECT_STREQ(receivedMatch.getMatchId(), originalMatch.getMatchId());
     EXPECT_EQ(receivedMatch.getHunterDrawTime(), 225);
     EXPECT_EQ(receivedMatch.getBountyDrawTime(), 310);
-
-    std::string json = receivedMatch.toJson();
-    Match jsonRestored;
-    jsonRestored.fromJson(json);
-
-    EXPECT_STREQ(jsonRestored.getMatchId(), originalMatch.getMatchId());
-    EXPECT_EQ(jsonRestored.getHunterDrawTime(), 225);
 }
 
 // ============================================

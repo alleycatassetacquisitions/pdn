@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include "device/drivers/native/native-prefs-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
 #include "device-mock.hpp"
@@ -44,6 +45,9 @@ public:
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
+        // Tests point the manager at a NativePrefsDriver local to their body;
+        // its destructor must not reach for one that is already gone.
+        matchManager->initialize(player, &mockStorage);
         delete matchManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
@@ -152,7 +156,6 @@ inline void matchManagerInitializeCreatesMatch(MatchManager* mm, Player* player)
     mm->initializeMatch(dummyMac);
 
     ASSERT_TRUE(mm->getCurrentMatch().has_value());
-    EXPECT_STREQ(mm->getCurrentMatch()->getHunterId(), player->getUserID().c_str());
     EXPECT_EQ(mm->getCurrentMatch()->getHunterDrawTime(), 0);
     EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 0);
 }
@@ -177,8 +180,6 @@ inline void matchManagerBountyReceivesMatchViaHandshake(MatchManager* mm, Player
 
     ASSERT_TRUE(mm->getCurrentMatch().has_value());
     EXPECT_STREQ(mm->getCurrentMatch()->getMatchId(), "received-match");
-    EXPECT_STREQ(mm->getCurrentMatch()->getHunterId(), "hunt");
-    EXPECT_STREQ(mm->getCurrentMatch()->getBountyId(), player->getUserID().c_str());
 }
 
 // ============================================
@@ -645,4 +646,47 @@ TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
     }
     EXPECT_TRUE(resultRetried)
         << "clearing a finished match stripped the retransmits of its DRAW_RESULT";
+}
+
+TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
+    NativePrefsDriver prefs("ring-prefs", {MATCHES_PREFS_NAMESPACE});
+    matchManager->initialize(player, &prefs);
+
+    for (uint32_t i = 1; i <= 33; ++i) {
+        char mid[37];
+        snprintf(mid, sizeof(mid), "%08u-1234-4000-8000-000000000000", i);
+        setupMatchAsBounty(mid, "hunt");
+        matchManager->setHunterDrawTime(100 + static_cast<long>(i));
+        matchManager->setBountyDrawTime(200 + static_cast<long>(i));
+        matchManager->setReceivedButtonPush();
+        matchManager->setReceivedDrawResult();
+        ASSERT_TRUE(matchManager->finalizeMatch());
+    }
+
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 33u);
+
+    Match evicted{};
+    EXPECT_FALSE(matchManager->readMatchBySequence(1, evicted));
+
+    Match latest{};
+    ASSERT_TRUE(matchManager->readMatchBySequence(33, latest));
+    EXPECT_STREQ(latest.getMatchId(), "00000033-1234-4000-8000-000000000000");
+
+    uint8_t slot0[MATCH_BINARY_SIZE] = {};
+    ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", slot0, MATCH_BINARY_SIZE),
+              MATCH_BINARY_SIZE);
+    Match slot0Match{};
+    slot0Match.deserialize(slot0);
+    EXPECT_STREQ(slot0Match.getMatchId(), "00000033-1234-4000-8000-000000000000");
+}
+
+TEST_F(MatchManagerTestSuite, initializeDropsRecordsFromBeforeTheRing) {
+    NativePrefsDriver prefs("legacy-prefs", {MATCHES_PREFS_NAMESPACE});
+    prefs.write(MATCHES_PREFS_NAMESPACE, "match_40", R"({"match_id":"old"})");
+    prefs.writeUChar(MATCHES_PREFS_NAMESPACE, "count", 41);
+
+    matchManager->initialize(player, &prefs);
+
+    EXPECT_EQ(prefs.read(MATCHES_PREFS_NAMESPACE, "match_40", ""), "");
+    EXPECT_EQ(prefs.readUChar(MATCHES_PREFS_NAMESPACE, "count", 0), 0);
 }
