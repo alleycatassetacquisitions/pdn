@@ -145,6 +145,12 @@ public:
         rdc.sync(&device);
     }
 
+    /** One device loop pass: the transport pumps its retries, then the manager runs. */
+    void tick() {
+        device.wirelessManager->sync();
+        shootout->sync();
+    }
+
     void TearDown() override {
         delete shootout;
         shootout = nullptr;
@@ -176,9 +182,9 @@ inline void localConfirmIsRecordedAndBroadcast(ShootoutManagerTests* suite) {
     suite->shootout->setRingMembersForTest({{0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}});
     suite->shootout->startProposal();
     EXPECT_CALL(*suite->device.mockPeerComms,
-        sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
-        .Times(testing::AtLeast(1))
-        .WillRepeatedly(testing::Return(1));
+                sendData(testing::_, PktType::kShootoutConfirm, testing::_, testing::_))
+    .Times(testing::AtLeast(1))
+    .WillRepeatedly(testing::Return(1));
     suite->shootout->confirmLocal();
     EXPECT_EQ(suite->shootout->getConfirmedCount(), 1u);
     EXPECT_TRUE(suite->shootout->hasConfirmed(selfMac));
@@ -191,15 +197,15 @@ inline void confirmRebroadcastsEverySecondDuringProposal(ShootoutManagerTests* s
     suite->closeRingOnJacks();
     suite->shootout->setRingMembersForTest({{0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}});
     EXPECT_CALL(*suite->device.mockPeerComms,
-        sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
-        .Times(testing::AnyNumber())
-        .WillRepeatedly(testing::Return(1));
+                sendData(testing::_, testing::_, testing::_, testing::_))
+    .Times(testing::AnyNumber())
+    .WillRepeatedly(testing::Return(1));
     suite->shootout->startProposal();
     suite->shootout->confirmLocal();
 
     for (int i = 0; i < 30; i++) {
         suite->fakeClock->advance(100);
-        suite->shootout->sync();
+        suite->tick();
     }
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
 }
@@ -235,14 +241,13 @@ inline void ringClosedAnnouncesRosterToMembers(ShootoutManagerTests* suite) {
     std::vector<uint8_t> frame;
     std::array<uint8_t, 6> destination{};
     ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
-        .WillByDefault(testing::Invoke(
-            [&frame, &destination](const uint8_t* dst, PktType, const uint8_t* data,
-                                   const size_t len) {
-                memcpy(destination.data(), dst, 6);
-                frame.assign(data, data + len);
-                return 1;
-            }));
+            sendData(testing::_, PktType::kShootoutRingClosed, testing::_, testing::_))
+    .WillByDefault(testing::Invoke(
+    [&frame, &destination](const uint8_t* dst, PktType, const uint8_t* data, const size_t len) {
+        memcpy(destination.data(), dst, 6);
+        frame.assign(data, data + len);
+        return 1;
+    }));
 
     EXPECT_FALSE(suite->shootout->shouldEnterProposal());
 
@@ -255,11 +260,12 @@ inline void ringClosedAnnouncesRosterToMembers(ShootoutManagerTests* suite) {
     EXPECT_TRUE(suite->shootout->shouldEnterProposal());
 
     EXPECT_EQ(memcmp(destination.data(), MockDevice::BROADCAST_MAC, 6), 0);
-    ASSERT_EQ(frame.size(), 3u + 6u * members.size());
-    EXPECT_EQ(frame[0], static_cast<uint8_t>(ShootoutCmd::RING_CLOSED));
-    EXPECT_EQ(frame[2], members.size());
+    ASSERT_EQ(frame.size(), 2 + members.size() * 6) << "the unused roster tail went on the air";
+    ShootoutRosterPayload roster{};
+    memcpy(&roster, frame.data(), frame.size());
+    EXPECT_EQ(roster.count, members.size());
     for (size_t i = 0; i < members.size(); i++) {
-        EXPECT_EQ(memcmp(&frame[3 + 6 * i], members[i].data(), 6), 0) << "member " << i;
+        EXPECT_EQ(memcmp(roster.macs[i], members[i].data(), 6), 0) << "member " << i;
     }
 }
 
@@ -273,14 +279,12 @@ inline void ringClosureFromCoordinatorAnnouncesRing(ShootoutManagerTests* suite)
     // reads true from the RDC latch alone.
     std::vector<uint8_t> frame;
     ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
-        .WillByDefault(testing::Invoke(
-            [&frame](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
-                if (len > 0 && data[0] == static_cast<uint8_t>(ShootoutCmd::RING_CLOSED)) {
-                    frame.assign(data, data + len);
-                }
-                return 1;
-            }));
+            sendData(testing::_, PktType::kShootoutRingClosed, testing::_, testing::_))
+    .WillByDefault(
+    testing::Invoke([&frame](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+        frame.assign(data, data + len);
+        return 1;
+    }));
 
     // Head a chain out of OUTPUT, then take our own MAC back on INPUT — the only
     // local evidence that a ring closed.
@@ -291,8 +295,7 @@ inline void ringClosureFromCoordinatorAnnouncesRing(ShootoutManagerTests* suite)
 
     // The claim only; entering PROPOSAL is the app's transition, driven off
     // shouldEnterProposal() on a later tick.
-    ASSERT_FALSE(frame.empty());
-    EXPECT_EQ(frame[0], static_cast<uint8_t>(ShootoutCmd::RING_CLOSED));
+    EXPECT_FALSE(frame.empty()) << "ring closure never went out on kShootoutRingClosed";
 }
 
 // A member is never the head that latches the ring, so it learns closure twice
@@ -324,9 +327,9 @@ inline void ringClosedBroadcastPromotesOnlyItsOwnMembers(ShootoutManagerTests* s
     // have suppressed it at the broadcast guard.
     suite->shootout->startProposal();
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
-        .Times(testing::AtLeast(1))
-        .WillRepeatedly(testing::Return(1));
+                sendData(testing::_, PktType::kShootoutConfirm, testing::_, testing::_))
+    .Times(testing::AtLeast(1))
+    .WillRepeatedly(testing::Return(1));
     suite->shootout->confirmLocal();
 }
 
@@ -535,13 +538,12 @@ inline void memberKeepsConfirmingUntilItHoldsABracket(ShootoutManagerTests* suit
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
 
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(testing::_, PktType::kShootoutCommand,
-                         testing::Pointee(static_cast<uint8_t>(ShootoutCmd::CONFIRM)), testing::_))
-        .Times(testing::AtLeast(1))
-        .WillRepeatedly(testing::Return(1));
+                sendData(testing::_, PktType::kShootoutConfirm, testing::_, testing::_))
+    .Times(testing::AtLeast(1))
+    .WillRepeatedly(testing::Return(1));
 
     suite->fakeClock->advance(ShootoutManager::kConfirmRebroadcastMs + 1);
-    suite->shootout->sync();
+    suite->tick();
 }
 
 inline void memberTakesItsHeadsRosterDuringTheProposal(ShootoutManagerTests* suite) {
@@ -596,33 +598,31 @@ inline void abortedRingReclaimsWhileStillCabled(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(selfMac));
     int ringClosedSends = 0;
     ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
-        .WillByDefault(testing::Invoke(
-            [&ringClosedSends](const uint8_t*, PktType, const uint8_t* data, const size_t) {
-                if (data[0] == static_cast<uint8_t>(ShootoutCmd::RING_CLOSED)) ringClosedSends++;
-                return 1;
-            }));
+            sendData(testing::_, PktType::kShootoutRingClosed, testing::_, testing::_))
+    .WillByDefault(
+    testing::Invoke([&ringClosedSends](const uint8_t*, PktType, const uint8_t*, const size_t) {
+        ringClosedSends++;
+        return 1;
+    }));
 
-    FakeRingRemoteDeviceCoordinator ringRdc;
-    ringRdc.chainMembers = {{0x02, 0, 0, 0, 0, 0}};
-    ShootoutManager ringShootout(&suite->player, suite->device.wirelessManager, &ringRdc);
+    suite->headRingServing({{0x02, 0, 0, 0, 0, 0}});
 
-    ringShootout.onRingClosed();
-    ASSERT_TRUE(ringShootout.shouldEnterProposal());
+    suite->shootout->onRingClosed();
+    ASSERT_TRUE(suite->shootout->shouldEnterProposal());
 
     // Abort back to idle without touching a cable. The RDC latch stays set and is
     // edge-triggered, so it will never announce this ring again.
-    ringShootout.resetToIdle();
-    ASSERT_EQ(ringRdc.getChainRole(), ChainRole::RING);
+    suite->shootout->resetToIdle();
+    ASSERT_EQ(suite->memberRdc.getChainRole(), ChainRole::RING);
 
     // Idle polls this predicate every tick and mounts the proposal on it. Both
     // halves have to work, so drive those rather than the manager's sync().
-    ASSERT_TRUE(ringShootout.shouldEnterProposal());
+    ASSERT_TRUE(suite->shootout->shouldEnterProposal());
     ringClosedSends = 0;
-    ringShootout.startProposal();
+    suite->shootout->startProposal();
 
     EXPECT_EQ(ringClosedSends, 1) << "the still-closed ring was not re-announced";
-    EXPECT_EQ(ringShootout.getPhase(), ShootoutManager::Phase::PROPOSAL);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
 }
 
 // The head's roster fills from announces that can still be in flight when the
@@ -636,14 +636,12 @@ inline void laggingRosterDoesNotRunSoloTournament(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(selfMac));
     std::vector<uint8_t> lastRingClosed;
     ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
-        .WillByDefault(testing::Invoke(
-            [&lastRingClosed](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
-                if (data[0] == static_cast<uint8_t>(ShootoutCmd::RING_CLOSED)) {
-                    lastRingClosed.assign(data, data + len);
-                }
-                return 1;
-            }));
+            sendData(testing::_, PktType::kShootoutRingClosed, testing::_, testing::_))
+    .WillByDefault(testing::Invoke(
+    [&lastRingClosed](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+        lastRingClosed.assign(data, data + len);
+        return 1;
+    }));
 
     suite->closeRingOnJacks();
     suite->shootout->setRingMembersForTest({me});
@@ -657,9 +655,12 @@ inline void laggingRosterDoesNotRunSoloTournament(ShootoutManagerTests* suite) {
     // in the frame.
     suite->shootout->setRingMembersForTest({me, peer});
     suite->fakeClock->advance(ShootoutManager::kConfirmRebroadcastMs + 100);
-    suite->shootout->sync();
-    ASSERT_EQ(lastRingClosed.size(), 3u + 6u * 2u);
-    EXPECT_EQ(memcmp(&lastRingClosed[9], peer.data(), 6), 0);
+    suite->tick();
+    ASSERT_EQ(lastRingClosed.size(), 2u + 2 * 6);
+    ShootoutRosterPayload roster{};
+    memcpy(&roster, lastRingClosed.data(), lastRingClosed.size());
+    ASSERT_EQ(roster.count, 2u);
+    EXPECT_EQ(memcmp(roster.macs[1], peer.data(), 6), 0);
 
     suite->shootout->onConfirmReceived(peer.data());
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
@@ -678,12 +679,12 @@ inline void ringClosedReannouncesWhileMembersUnconfirmed(ShootoutManagerTests* s
 
     int ringClosedFrames = 0;
     ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
-        .WillByDefault(testing::Invoke(
-            [&ringClosedFrames](const uint8_t*, PktType, const uint8_t* data, const size_t) {
-                if (data[0] == static_cast<uint8_t>(ShootoutCmd::RING_CLOSED)) ringClosedFrames++;
-                return 1;
-            }));
+            sendData(testing::_, PktType::kShootoutRingClosed, testing::_, testing::_))
+    .WillByDefault(
+    testing::Invoke([&ringClosedFrames](const uint8_t*, PktType, const uint8_t*, const size_t) {
+        ringClosedFrames++;
+        return 1;
+    }));
 
     suite->closeRingOnJacks();
     suite->shootout->setRingMembersForTest({me, peer});
@@ -693,7 +694,7 @@ inline void ringClosedReannouncesWhileMembersUnconfirmed(ShootoutManagerTests* s
 
     for (int i = 0; i < 30; i++) {
         suite->fakeClock->advance(100);
-        suite->shootout->sync();
+        suite->tick();
     }
     EXPECT_GT(ringClosedFrames, 1);
 
@@ -703,7 +704,7 @@ inline void ringClosedReannouncesWhileMembersUnconfirmed(ShootoutManagerTests* s
     int afterConfirmed = ringClosedFrames;
     for (int i = 0; i < 30; i++) {
         suite->fakeClock->advance(100);
-        suite->shootout->sync();
+        suite->tick();
     }
     EXPECT_EQ(ringClosedFrames, afterConfirmed);
 }

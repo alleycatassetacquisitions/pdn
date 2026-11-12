@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "device/drivers/peer-comms-types.hpp"
@@ -156,6 +158,13 @@ private:
     std::vector<RxSeqRecord> rxSeq;
 };
 
+// A payload ending in a front-filled array may declare `size_t wireSize() const`
+// to keep unused entries off the air; any other payload goes out whole.
+template <class P, class = void> struct HasWireSize : std::false_type {};
+template <class P>
+struct HasWireSize<P, std::void_t<decltype(std::declval<const P&>().wireSize())>> : std::true_type {
+};
+
 template <class P>
 class ReliableChannel : public ReliableChannelBase {
 public:
@@ -178,7 +187,7 @@ public:
         p.seqId = nextSeqId();
         if (resender != nullptr) {
             resender->send(mac, packetType, p.seqId, reinterpret_cast<const uint8_t*>(&p),
-                           sizeof(P), sendMode());
+                           wireSizeOf(p), sendMode());
         }
         return p.seqId;
     }
@@ -193,7 +202,7 @@ public:
         p.seqId = nextSeqId();
         if (resender != nullptr) {
             resender->sendBroadcast(recipients, packetType, p.seqId,
-                                    reinterpret_cast<const uint8_t*>(&p), sizeof(P));
+                                    reinterpret_cast<const uint8_t*>(&p), wireSizeOf(p));
         }
         return p.seqId;
     }
@@ -205,7 +214,7 @@ public:
      */
     void sendUnsequenced(const uint8_t* mac, P& p) {
         p.seqId = 0;
-        sendUnsequencedBytes(mac, reinterpret_cast<const uint8_t*>(&p), sizeof(P));
+        sendUnsequencedBytes(mac, reinterpret_cast<const uint8_t*>(&p), wireSizeOf(p));
     }
 
     /**
@@ -215,14 +224,14 @@ public:
      * idempotence to the handler, which has to see the duplicate to ack it.
      */
     bool deliver(const uint8_t* fromMac, const uint8_t* data, size_t len) {
-        if (len != sizeof(P)) {
+        P p;
+        if (!decode(data, len, p)) {
             // A corrupt/truncated ESP-NOW frame (no CRC on this path); log so
-            // it's diagnosable rather than silently dropped.
-            logLengthMismatch(packetType, len, sizeof(P));
+            // it's diagnosable rather than silently dropped. A frame that fit
+            // was decoded far enough to say how long it claims to be.
+            logLengthMismatch(packetType, len, len <= sizeof(P) ? wireSizeOf(p) : sizeof(P));
             return false;
         }
-        P p;
-        std::memcpy(&p, data, sizeof(P));
         if (channelMode != ChannelMode::FAN_OUT && isDuplicateReliableRx(fromMac, p.seqId)) {
             return true;
         }
@@ -246,9 +255,8 @@ public:
     void onSendResult(const uint8_t* toMac, const uint8_t* data, size_t len,
                       bool success) override {
         if (channelMode == ChannelMode::FAN_OUT) return;
-        if (!success || len != sizeof(P)) return;
         P p;
-        std::memcpy(&p, data, sizeof(P));
+        if (!success || !decode(data, len, p)) return;
         if (p.seqId == 0) return;  // fire-and-forget, no pending entry to clear
         if (resender != nullptr) resender->onAck(packetType, p.seqId, toMac);
         // SEND_SUCCESS is the delivery signal whether or not a slot was still
@@ -259,9 +267,8 @@ public:
     /** Decodes the abandoned frame and hands it to the abandon callback. */
     void onAbandon(uint8_t seqId, const uint8_t* targetMac, const uint8_t* payload,
                    size_t len) override {
-        if (!onAbandonCallback || len != sizeof(P)) return;
         P p;
-        std::memcpy(&p, payload, sizeof(P));
+        if (!onAbandonCallback || !decode(payload, len, p)) return;
         onAbandonCallback(seqId, targetMac, p);
     }
 
@@ -272,10 +279,8 @@ public:
     void cancelMatching(const std::function<bool(const P&)>& matches) {
         if (resender == nullptr) return;
         resender->cancelMatching(packetType, [&matches](const uint8_t* payload, size_t len) {
-            if (len != sizeof(P)) return false;
-            P typed{};
-            memcpy(&typed, payload, sizeof(P));
-            return matches(typed);
+            P typed;
+            return decode(payload, len, typed) && matches(typed);
         });
     }
 
@@ -290,6 +295,23 @@ private:
     Resender::SendMode sendMode() const {
         return channelMode == ChannelMode::KEEP_DISTINCT ? Resender::SendMode::KEEP_DISTINCT
                                                          : Resender::SendMode::SUPERSEDE_PER_TARGET;
+    }
+
+    static size_t wireSizeOf(const P& p) {
+        if constexpr (HasWireSize<P>::value) {
+            return p.wireSize();
+        } else {
+            return sizeof(P);
+        }
+    }
+
+    // Fills `p` from a frame, zeroing whatever tail the sender left off. False
+    // unless the frame is exactly as long as the payload it decodes to says.
+    static bool decode(const uint8_t* data, size_t len, P& p) {
+        if (len > sizeof(P)) return false;
+        std::memcpy(&p, data, len);
+        std::memset(reinterpret_cast<uint8_t*>(&p) + len, 0, sizeof(P) - len);
+        return len == wireSizeOf(p);
     }
 
     OnReceive onReceiveCallback;

@@ -62,7 +62,8 @@ Every unicast state-carrying channel SHALL use superseding mode so that at most 
 - When a frame with a non-zero sequence ID arrives whose length matches the channel's expected payload size:
   - If its sequence ID equals the recorded last sequence ID for that sender MAC, the channel SHALL suppress the duplicate without invoking the application receive callback.
   - Otherwise, the channel SHALL record that sequence ID as the last delivered sequence ID for that sender MAC and invoke the application receive callback.
-- When a frame arrives whose byte length does not match the channel's payload size, the channel SHALL log a length mismatch and drop the frame without updating the sender's last sequence ID or invoking the receive callback.
+- A payload whose last field is a list filled from the front MAY declare its own on-air length, in which case only the live entries are sent and the receiver reads the missing tail as zeros. Such a frame's expected length is the one its own contents declare; every other payload's is the full size of its layout.
+- When a frame arrives whose byte length does not match the channel's expected payload size, the channel SHALL log a length mismatch and drop the frame without updating the sender's last sequence ID or invoking the receive callback.
 
 Unicast channels that rely on single-slot sequence-ID deduplication SHALL NOT use distinct retry mode, because concurrent in-flight frames with different sequence IDs from the same sender alternate on retransmission and defeat single-slot deduplication.
 
@@ -75,7 +76,7 @@ Unicast channels that rely on single-slot sequence-ID deduplication SHALL NOT us
 - **THEN** $B$ suppresses the retransmission and does not invoke the application handler a second time
 
 #### Scenario: Corrupted or wrong-length frame is rejected
-- **WHEN** a frame arrives on a channel with a byte length different from that channel's payload size
+- **WHEN** a frame arrives on a channel with a byte length different from that channel's expected payload size
 - **THEN** the frame is dropped, the sender's recorded sequence ID is unchanged, and the application handler is not called
 
 ### Requirement: Broadcast fan-out tracking and per-recipient acknowledgement

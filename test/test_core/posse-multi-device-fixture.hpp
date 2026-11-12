@@ -365,16 +365,7 @@ protected:
             const uint8_t* payload = data + 2;
             size_t payloadLen = dataLen - 2;
             switch (cmd) {
-                case ShootoutCmd::CONFIRM: {
-                    if (payloadLen < 6) break;
-                    const char* name = (payloadLen >= 6 + ShootoutManager::kNameLength)
-                                       ? reinterpret_cast<const char*>(payload + 6)
-                                       : nullptr;
-                    m->onConfirmReceived(payload, name);
-                    break;
-                }
-                case ShootoutCmd::BRACKET:
-                case ShootoutCmd::RING_CLOSED: {
+                case ShootoutCmd::BRACKET: {
                     if (payloadLen < 1) break;
                     uint8_t count = payload[0];
                     if (payloadLen < 1 + 6u * static_cast<size_t>(count)) break;
@@ -384,11 +375,7 @@ protected:
                         memcpy(mac.data(), payload + 1 + 6 * i, 6);
                         macs.push_back(mac);
                     }
-                    if (cmd == ShootoutCmd::BRACKET) {
-                        m->onBracketReceived(fromMac, macs, seqId);
-                    } else {
-                        m->onRingClosedReceived(fromMac, macs);
-                    }
+                    m->onBracketReceived(fromMac, macs, seqId);
                     break;
                 }
                 case ShootoutCmd::MATCH_START:
@@ -435,6 +422,8 @@ protected:
             case PktType::kChainJoin:
             case PktType::kChainGameEvent:
             case PktType::kReliableAck:
+            case PktType::kShootoutRingClosed:
+            case PktType::kShootoutConfirm:
             case PktType::kShootoutCommand:
             case PktType::kShootoutCommandAck: return true;
             default: return false;
