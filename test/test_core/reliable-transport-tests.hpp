@@ -84,6 +84,61 @@ TEST(ReliableTransportTest, seqIdReachesTheBytesHandedToTheRadio) {
     EXPECT_EQ(payload.seqId, seq) << "the id did not reach the caller's struct";
 }
 
+// A payload that leaves the unused part of its array off the wire.
+struct TrimmedTestPayload {
+    uint8_t seqId;
+    uint8_t count;
+    uint8_t items[8];
+
+    /** Bytes sent: the two header bytes and the `count` live items. */
+    size_t wireSize() const { return 2 + count; }
+} __attribute__((packed));
+
+TEST(ReliableTransportTest, aTrimmedPayloadSendsItsLivePrefixAndDecodesZeroFilled) {
+    ::testing::NiceMock<MockPeerComms> mockComms;
+    WirelessManager wm(&mockComms, nullptr);
+    RadioTap radio;
+    radio.attach(mockComms);
+    ReliableChannel<TrimmedTestPayload> ch(&wm, PktType::kChainGameEvent);
+    std::vector<TrimmedTestPayload> received;
+    ch.onReceive([&](const uint8_t*, const TrimmedTestPayload& p) { received.push_back(p); });
+
+    uint8_t peer[6] = {1, 2, 3, 4, 5, 6};
+    TrimmedTestPayload sent{};
+    sent.count = 3;
+    sent.items[0] = 7;
+    sent.items[2] = 9;
+    sent.items[3] = 0xEE;  // past `count`: must not reach the receiver
+    ch.sendReliable(peer, sent);
+    ASSERT_EQ(radio.frames.size(), 1u);
+    const std::vector<uint8_t> wire = radio.frames[0].bytes;
+    ASSERT_EQ(wire.size(), 5u);
+
+    // The radio's verdict names the trimmed frame, and must still clear it.
+    ASSERT_TRUE(ch.isPending(peer));
+    wm.getReliableTransport()->onSendResult(PktType::kChainGameEvent, peer, wire.data(),
+                                            wire.size(), true);
+    EXPECT_FALSE(ch.isPending(peer));
+
+    ReliableTransport* transport = wm.getReliableTransport();
+    ASSERT_TRUE(
+    transport->deliverIncoming(PktType::kChainGameEvent, peer, wire.data(), wire.size()));
+    ASSERT_EQ(received.size(), 1u);
+    EXPECT_EQ(received[0].count, 3);
+    EXPECT_EQ(received[0].items[2], 9);
+    EXPECT_EQ(received[0].items[3], 0) << "the tail the sender left off was not zeroed";
+
+    // A frame shorter or longer than its own count says is not this payload.
+    std::vector<uint8_t> shortFrame(wire.begin(), wire.end() - 1);
+    EXPECT_FALSE(transport->deliverIncoming(PktType::kChainGameEvent, peer, shortFrame.data(),
+                                            shortFrame.size()));
+    std::vector<uint8_t> longFrame = wire;
+    longFrame.push_back(0);
+    EXPECT_FALSE(
+    transport->deliverIncoming(PktType::kChainGameEvent, peer, longFrame.data(), longFrame.size()));
+    EXPECT_EQ(received.size(), 1u);
+}
+
 TEST(ReliableTransportTest, deliverIncomingReturnsFalseWhenChannelMissing) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
