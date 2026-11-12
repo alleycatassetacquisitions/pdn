@@ -39,7 +39,7 @@ class PosseManager {
 public:
     /** A chain game event from the challenger this device follows, after the posse has applied it.
      */
-    using GameEventListener = std::function<void(uint8_t eventType, const uint8_t* fromMac)>;
+    using GameEventListener = std::function<void(uint8_t eventType)>;
 
     /** Requires a live rdc and owns its single-subscriber topology/context callback slots. */
     PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
@@ -82,11 +82,7 @@ public:
      */
     void setOnGameEvent(GameEventListener listener) { onGameEvent = std::move(listener); }
 
-    /**
-     * True when a broadcast game event names the challenger this device follows.
-     * The frame reaches every device in radio range, so this is the only thing
-     * separating our challenger's round from a neighbouring chain's.
-     */
+    /** True when a broadcast game event names the challenger this device follows. */
     bool isEventFromOwnChallenger(const uint8_t* eventChallengerMac) const;
 
     /**

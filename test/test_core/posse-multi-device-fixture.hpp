@@ -673,7 +673,7 @@ inline void posseMultiDeviceGameEventReachesDistantSupporter(PosseMultiDeviceFix
     std::vector<int> accepted(suite->nodeCount(), 0);
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         int* counter = &accepted[i];
-        suite->node(i).posse->setOnGameEvent([counter](uint8_t, const uint8_t*) { (*counter)++; });
+        suite->node(i).posse->setOnGameEvent([counter](uint8_t) { (*counter)++; });
     }
 
     challenger.posse->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);

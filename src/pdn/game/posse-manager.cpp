@@ -30,13 +30,8 @@ PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager,
         ackLatencyMsSum += gameEventSentTimer.getElapsedTime();
         ackCount++;
     });
-    // The radio's delivery report is this channel's ack; there is no reply
-    // packet. Latency is read here because the channel reports delivery but does
-    // not time it, and the peer is recorded as told here for the same reason:
-    // this is the first moment it is true.
-    // Receive rides the channel too, so the length check, the decode and the
-    // duplicate suppression are the channel's rather than a second copy of them
-    // in whoever routes the packet.
+    // roleAnnounceChannel: SEND_SUCCESS is its ack (no reply packet), and the
+    // first moment the peer is known told.
     roleAnnounceChannel.onReceive([this](const uint8_t* fromMac, const RoleAnnouncePayload& p) {
         onRoleAnnounceReceived(fromMac, p.challengerMac);
     });
@@ -217,11 +212,11 @@ void PosseManager::onGameEventFrame(const uint8_t* fromMac, const ChainGameEvent
     // SupporterReady is mounted to see it.
     onChainGameEventReceived(payload.event_type);
 
-    if (onGameEvent) onGameEvent(payload.event_type, fromMac);
+    if (onGameEvent) onGameEvent(payload.event_type);
 
     // Acked even with nothing mounted to act on it, or the challenger keeps
     // retrying a WIN/LOSS this device has left behind.
-    if (payload.seqId != 0) gameEventChannel.ack(fromMac, payload.seqId);
+    gameEventChannel.ack(fromMac, payload.seqId);
 }
 
 void PosseManager::sendConfirm() {

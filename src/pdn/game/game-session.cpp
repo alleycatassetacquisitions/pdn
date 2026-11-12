@@ -1,5 +1,4 @@
 #include "game/game-session.hpp"
-#include "state/state-machine.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/wireless-manager.hpp"

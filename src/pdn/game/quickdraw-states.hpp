@@ -12,7 +12,6 @@
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 #include <array>
-#include <atomic>
 #include <cstdio>
 #include <cstddef>
 #include <cstdlib>
@@ -146,25 +145,27 @@ public:
 
     /** A chain game event from the challenger this device follows, via
      * PosseManager::setOnGameEvent. */
-    void onChainGameEventReceived(uint8_t event_type, const uint8_t* senderMac);
+    void onChainGameEventReceived(uint8_t eventType);
 
 public:
-    // Button callback in onStateMounted uses these via `this` capture.
+    // Plain members: the button driver and the ESP-NOW driver both dispatch
+    // from exec() on the main task, the same one that runs onStateLoop.
     Player *player;
-    std::atomic<bool> buttonArmed{false};
-    std::atomic<bool> hasConfirmed{false};
-    std::atomic<bool> displayIsDirty{true};
-    std::atomic<bool> ledsAreDirty{true};
-    std::atomic<int> lastResult{0};
+    bool buttonArmed = false;
+    bool hasConfirmed = false;
+    bool displayIsDirty = true;
+    bool ledsAreDirty = true;
+    int lastResult = 0;
     SimpleTimer resultClearTimer;
     PDN* cachedPDN = nullptr;
 
     void startLEDs(PDN* pdn, bool armed, bool confirmed);
 
 private:
+    static constexpr unsigned long RESULT_CLEAR_MS = 8000;
+
     PosseManager* posseManager;
     bool transitionToIdleFlag = false;
-    int lastProcessedResult_ = 0;  // main-task-only; mirrors lastResult
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
