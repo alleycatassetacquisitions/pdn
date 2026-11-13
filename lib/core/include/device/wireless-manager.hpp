@@ -184,18 +184,6 @@ public:
     /** Drives reliable retransmits and abandonment; called once per tick by Device::loop(). */
     void sync() { reliableTransport.sync(); }
 
-    /** Returns a debug string representing the current wireless state. */
-    const char* getStateString() {
-        switch (currentMode) {
-            case WirelessMode::WIFI:
-                return httpClient->isConnected() ? "WIFI_CONNECTED" : "WIFI_CONNECTING";
-            case WirelessMode::ESPNOW:
-                return "ESPNOW_ACTIVE";
-            default:
-                return "UNKNOWN";
-        }
-    }
-
 private:
     PeerCommsInterface* peerComms;
     HttpClientInterface* httpClient;

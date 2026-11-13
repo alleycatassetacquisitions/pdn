@@ -161,7 +161,7 @@ size_t RemoteDeviceCoordinator::jackIndex(SerialIdentifier jack) const {
     }
 }
 
-JackStatus RemoteDeviceCoordinator::getJackStatus(SerialIdentifier jack) {
+JackStatus RemoteDeviceCoordinator::getJackStatus(SerialIdentifier jack) const {
     const HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
     if (machine == nullptr) return JackStatus::DISCONNECTED;
     switch (machine->currentStateId()) {
@@ -602,17 +602,6 @@ void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {
     if (machine) machine->onContextExchangeComplete();
 }
 
-RemoteDeviceCoordinator::HelloLinkState
-RemoteDeviceCoordinator::getHelloLinkState(SerialIdentifier jack) const {
-    const HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
-    if (machine == nullptr) return HelloLinkState::IDLE;
-    switch (machine->currentStateId()) {
-        case HELLO_LINK_CONNECTED:  return HelloLinkState::CONNECTED;
-        case HELLO_LINK_CONNECTING: return HelloLinkState::CONNECTING;
-        default:                    return HelloLinkState::IDLE;
-    }
-}
-
 void RemoteDeviceCoordinator::unpackMac(uint64_t value, uint8_t* out) {
     for (int i = 5; i >= 0; --i) {
         out[i] = static_cast<uint8_t>(value & 0xFF);
@@ -644,8 +633,7 @@ bool RemoteDeviceCoordinator::isInRing() const {
 }
 
 bool RemoteDeviceCoordinator::isChainLink(SerialIdentifier jack) const {
-    return selfDeviceType == DeviceType::PDN &&
-           getHelloLinkState(jack) == HelloLinkState::CONNECTED &&
+    return selfDeviceType == DeviceType::PDN && getJackStatus(jack) == JackStatus::CONNECTED &&
            getPeerDeviceType(jack) != DeviceType::FDN;
 }
 

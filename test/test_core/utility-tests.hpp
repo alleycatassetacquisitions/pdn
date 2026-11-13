@@ -146,30 +146,6 @@ inline void macToStringHandlesZeros() {
     EXPECT_STREQ(macStr, "00:00:00:00:00:00");
 }
 
-inline void stringToMacParsesValidFormat() {
-    uint8_t mac[6];
-
-    bool result = StringToMac("AA:BB:CC:DD:EE:FF", mac);
-
-    EXPECT_TRUE(result);
-    EXPECT_EQ(mac[0], 0xAA);
-    EXPECT_EQ(mac[1], 0xBB);
-    EXPECT_EQ(mac[2], 0xCC);
-    EXPECT_EQ(mac[3], 0xDD);
-    EXPECT_EQ(mac[4], 0xEE);
-    EXPECT_EQ(mac[5], 0xFF);
-}
-
-inline void stringToMacRejectsInvalidLength() {
-    uint8_t mac[6];
-
-    // Too short
-    EXPECT_FALSE(StringToMac("AA:BB:CC", mac));
-
-    // Too long
-    EXPECT_FALSE(StringToMac("AA:BB:CC:DD:EE:FF:00", mac));
-}
-
 inline void macToUInt64ProducesCorrectValue() {
     uint8_t mac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
 
@@ -177,22 +153,6 @@ inline void macToUInt64ProducesCorrectValue() {
 
     // Expected: 0x010203040506
     EXPECT_EQ(result, 0x010203040506ULL);
-}
-
-inline void macRoundTripPreservesData() {
-    uint8_t original[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-
-    // Convert to string
-    const char* macStr = MacToString(original);
-
-    // Convert back to bytes
-    uint8_t restored[6];
-    bool success = StringToMac(macStr, restored);
-
-    EXPECT_TRUE(success);
-    for (int i = 0; i < 6; i++) {
-        EXPECT_EQ(restored[i], original[i]);
-    }
 }
 
 // ============================================

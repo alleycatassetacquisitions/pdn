@@ -8,7 +8,6 @@ enum class PktType : uint8_t {
     kPlayerInfoBroadcast = 0,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kMatchCommand = 1,
-    kDebugPacket = 2,
     kChainGameEvent = 6,
     kChainConfirm = 7,
     kRoleAnnounce = 8,

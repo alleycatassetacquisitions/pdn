@@ -71,7 +71,7 @@ public:
      * Connection state of one jack (device-level chain facts live in
      * getChainRole(), not here).
      */
-    virtual JackStatus getJackStatus(SerialIdentifier jack);
+    virtual JackStatus getJackStatus(SerialIdentifier jack) const;
 
     /**
      * Returns a pointer to the jack's direct peer MAC address, or nullptr when the
@@ -160,10 +160,6 @@ public:
     // arithmetic and not a bound on any particular chain length. Deliberately not
     // sized off MAX_CHAIN_MEMBERS, a roster-array cap set past any real chain.
     static constexpr unsigned long RING_EVIDENCE_TIMEOUT_MS = 500;
-
-    enum class HelloLinkState { IDLE,
-                                CONNECTING,
-                                CONNECTED };
 
     // Sized to the larger of the two context profiles so a stored profile is never
     // truncated; both are packed wire structs, so sizeof is the wire length.
@@ -257,9 +253,6 @@ public:
      * fires the jack-connect observer.
      */
     void onContextExchangeComplete(SerialIdentifier jack);
-
-    /** This jack's HELLO link state (observability / tests). */
-    HelloLinkState getHelloLinkState(SerialIdentifier jack) const;
 
     /** Registers `owner`'s chain-role transition observer; null removes it. */
     void setOnChainRoleChange(ChainRoleChangeCallback callback, const void* owner) {

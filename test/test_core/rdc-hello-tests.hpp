@@ -117,67 +117,54 @@ inline void rdcHelloRejectsSelfAndZeroSource(RDCHelloTests* suite) {
     HelloPayload zero{};
     zero.deviceType = static_cast<uint8_t>(DeviceType::PDN);
     suite->deliverHello(suite->outJack, encodeFramed(zero));
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
 
     HelloPayload self{};
     for (int i = 0; i < 6; ++i)
         self.source[i] = suite->localMac[i];
     self.deviceType = static_cast<uint8_t>(DeviceType::PDN);
     suite->deliverHello(suite->outJack, encodeFramed(self));
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
 }
 
 inline void rdcHelloWatchdogFiresAcrossClockRollover(RDCHelloTests* suite) {
     // Drive to CONNECTED so only sinceHello() (not contextTimeoutMs) can transition to IDLE.
     suite->fakeClock->setTime(std::numeric_limits<unsigned long>::max() - 10);
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xA1));
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
 
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 11);
     suite->rdc.sync(&suite->device);
 
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
     EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
     EXPECT_EQ(suite->disconnectCount, 1);
 }
 
 // (a) A HELLO from a new MAC drives that jack Idle -> Connecting.
 inline void rdcHelloNewMacDrivesConnecting(RDCHelloTests* suite) {
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
 
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
     EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
     // A distinct jack is untouched.
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::DISCONNECTED);
 }
 
 // (b) onContextExchangeComplete drives Connecting -> Connected and fires jack-connect.
 inline void rdcHelloContextCompleteConnects(RDCHelloTests* suite) {
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
 
     suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
     suite->rdc.sync(&suite->device);
 
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
     EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     EXPECT_EQ(suite->connectCount, 1);
     EXPECT_EQ(suite->lastConnectJack, SerialIdentifier::OUTPUT_JACK);
@@ -190,14 +177,11 @@ inline void rdcHelloSilentLinkDisconnects(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
     suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
 
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
 
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
     EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
     EXPECT_EQ(suite->disconnectCount, 1);
     EXPECT_EQ(suite->lastDisconnectJack, SerialIdentifier::OUTPUT_JACK);
@@ -245,8 +229,7 @@ inline void rdcHelloEveryJackInitiatesContext(RDCHelloTests* suite) {
 
     EXPECT_TRUE(suite->rdc.isContextSendPending(outPeer));
     EXPECT_TRUE(suite->rdc.isContextSendPending(inPeer));
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTING);
 }
 
 // (a)+(b) A new OUT-jack HELLO MAC sends context (pending), and the #152
@@ -303,8 +286,7 @@ inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
     // received context to match a jack.
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);  // drive Idle->Connecting; fires onContextRequest
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
 
     std::vector<uint8_t> ctx = pdnContextBytes(ChainRole::CHILD, /*userId=*/4242, /*seqId=*/9);
     suite->transport()->deliverIncoming(
@@ -316,8 +298,7 @@ inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
     EXPECT_EQ(cbType, DeviceType::PDN);
     EXPECT_EQ(cbUserId, 4242);
     EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::CHILD);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     EXPECT_EQ(suite->connectCount, 1);
     EXPECT_EQ(suite->lastConnectJack, SerialIdentifier::OUTPUT_JACK);
 }
@@ -334,8 +315,7 @@ inline void rdcContextInputJackInitiates(RDCHelloTests* suite) {
     // Peer arrives on the INPUT jack; the jack initiates its own context on connecting.
     suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
     suite->rdc.sync(&suite->device);  // drive Idle->Connecting; input jack initiates
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTING);
     ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
 
     // Receiving the peer's context completes the input jack; nothing is sent back.
@@ -344,8 +324,7 @@ inline void rdcContextInputJackInitiates(RDCHelloTests* suite) {
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);  // commit Connecting->Connected
 
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
 }
 
 // A 2-node ring cables the same peer to BOTH jacks. One received context must
@@ -363,10 +342,8 @@ inline void rdcContextCompletesBothJacksForSamePeer(RDCHelloTests* suite) {
     suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
     suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTING);
     // Both jacks face the same peer, but our context goes out ONCE, not twice.
     EXPECT_EQ(contextSends, 1);
 
@@ -375,10 +352,8 @@ inline void rdcContextCompletesBothJacksForSamePeer(RDCHelloTests* suite) {
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
 
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
 }
 
 // A context that beats its own HELLO (arrives while the jack is still IDLE) must be
@@ -390,14 +365,12 @@ inline void rdcContextBeforeConnectingIsBufferedAndApplied(RDCHelloTests* suite)
 
     // Context arrives BEFORE any HELLO: the input jack is still Idle, so it can't be
     // completed yet — but it must be held, not discarded.
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::DISCONNECTED);
     std::vector<uint8_t> ctx = pdnContextBytes(ChainRole::HEAD, /*userId=*/7, /*seqId=*/3);
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::DISCONNECTED);
 
     // The HELLO finally arrives: the jack connects and the buffered context completes
     // it (no re-send from the peer needed).
@@ -405,8 +378,7 @@ inline void rdcContextBeforeConnectingIsBufferedAndApplied(RDCHelloTests* suite)
     suite->rdc.sync(&suite->device);  // Idle->Connecting drains the buffer
     suite->rdc.sync(&suite->device);  // commit Connecting->Connected
 
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
 }
 
 inline void rdcContextEvictionOrdersByAgeAcrossRollover(RDCHelloTests* suite) {
@@ -432,12 +404,10 @@ inline void rdcContextEvictionOrdersByAgeAcrossRollover(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
     suite->rdc.sync(&suite->device);
 
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK_SECONDARY),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK_SECONDARY),
+              JackStatus::CONNECTED);
 }
 
 // A 2-node ring (same peer on BOTH jacks) whose context beats both HELLOs: it is
@@ -463,10 +433,8 @@ inline void rdcCachedContextCompletesBoth2NodeRingJacks(RDCHelloTests* suite) {
     suite);
 
     // Context arrives before EITHER jack is CONNECTING: both are Idle, so it is cached.
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::DISCONNECTED);
     std::vector<uint8_t> ctx = pdnContextBytes(ChainRole::HEAD, /*userId=*/7, /*seqId=*/3);
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
@@ -479,10 +447,8 @@ inline void rdcCachedContextCompletesBoth2NodeRingJacks(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);  // both drain the cache as they connect
     suite->rdc.sync(&suite->device);  // commit Connecting->Connected
 
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
     EXPECT_EQ(outCb, 1);
     EXPECT_EQ(inCb, 1);
 }
@@ -502,16 +468,14 @@ inline void rdcPeerSwapDropsTheOldLinkThenAdoptsNew(RDCHelloTests* suite) {
 
     EXPECT_EQ(suite->disconnectCount, 1);
     EXPECT_EQ(suite->lastDisconnectJack, SerialIdentifier::OUTPUT_JACK);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
     EXPECT_TRUE(suite->rdc.isContextSendPending(arriving))
         << "the arriving peer was never addressed";
 
     suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
     suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->connectCount, 2);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
 }
 
 // Link death must drop the half-read frame: the parser's 50ms stall window is
@@ -519,8 +483,7 @@ inline void rdcPeerSwapDropsTheOldLinkThenAdoptsNew(RDCHelloTests* suite) {
 // to splice onto the next device's bytes into a CRC-valid HELLO nobody sent.
 inline void rdcJackDeathDropsHalfReadFrame(RDCHelloTests* suite) {
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xA1));
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
 
     // Everything but the trailing CRC of a HELLO from a second peer, fed one tick
     // before the link dies so the parser's own stall window is nowhere near
@@ -533,15 +496,13 @@ inline void rdcJackDeathDropsHalfReadFrame(RDCHelloTests* suite) {
 
     suite->fakeClock->advance(1);
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
 
     deliverFrame(suite->outJack,
                  std::vector<uint8_t>(frame.begin() + crcStart, frame.end()));
     suite->rdc.sync(&suite->device);
 
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
 }
 
 // Link death must cancel the pending context send: the exchange is per-jack, so
@@ -562,8 +523,7 @@ inline void rdcLinkDeathCancelsPendingContextSend(RDCHelloTests* suite) {
     // The exchange never completes; the link dies.
     suite->fakeClock->advance(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
     EXPECT_FALSE(suite->rdc.isContextSendPending(peer));
 
     // Pumping the retransmit timers after death must produce no further sends.
@@ -592,23 +552,20 @@ inline void rdcReplugAfterFailedExchangeRecovers(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
     suite->fakeClock->advance(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
     const int sendsBeforeReplug = contextSends;
 
     // Replug: the fresh exchange must re-send its context, then complete.
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
     EXPECT_EQ(contextSends, sendsBeforeReplug + 1);
 
     std::vector<uint8_t> ctx = pdnContextBytes(ChainRole::HEAD, /*userId=*/7, /*seqId=*/3);
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
 }
 
 // Half-open recovery: we are CONNECTED but the peer never got our context (lost
@@ -640,8 +597,7 @@ inline void rdcConnectedPeerRetryTriggersContextResend(RDCHelloTests* suite) {
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     ASSERT_EQ(contextSends, 1);
 
     // The peer retries (fresh seqId): we resend our context and stay CONNECTED.
@@ -651,8 +607,7 @@ inline void rdcConnectedPeerRetryTriggersContextResend(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
     EXPECT_EQ(contextSends, 2);
     EXPECT_TRUE(suite->rdc.isContextSendPending(peer));
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
 
     // A context from a MAC no jack tracks is buffered only — no resend to strangers.
     std::vector<uint8_t> unknown = pdnContextBytes(ChainRole::HEAD, /*userId=*/9, /*seqId=*/5);
@@ -687,8 +642,7 @@ inline void rdcConnectedRetryResendThrottled(RDCHelloTests* suite) {
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
 
     // First retry resends; ack it so pending cannot mask the throttle.
     std::vector<uint8_t> retry1 = pdnContextBytes(ChainRole::HEAD, /*userId=*/7, /*seqId=*/4);
@@ -722,14 +676,12 @@ inline void rdcLinkDeathClearsPeerChainRole(RDCHelloTests* suite) {
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     ASSERT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::CHILD);
 
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
     EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::STANDALONE);
 }
 
@@ -745,15 +697,13 @@ inline void rdcContextWithOutOfRangeChainRoleIsDropped(RDCHelloTests* suite) {
     suite->transport()->deliverIncoming(PktType::kPdnConnectionContext, peer, bad.data(),
                                         bad.size());
     suite->rdc.sync(&suite->device);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
 
     std::vector<uint8_t> good = pdnContextBytes(ChainRole::RING, /*userId=*/7, /*seqId=*/4);
     suite->transport()->deliverIncoming(PktType::kPdnConnectionContext, peer, good.data(),
                                         good.size());
     suite->rdc.sync(&suite->device);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::RING);
 }
 
@@ -766,8 +716,7 @@ inline void rdcDuplicateContextSameTickFiresCallbackOnce(RDCHelloTests* suite) {
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
 
     std::vector<uint8_t> first =
     pdnContextBytes(ChainRole::HEAD, /*userId=*/7, /*seqId=*/3, /*gameRole=*/0);
@@ -780,8 +729,7 @@ inline void rdcDuplicateContextSameTickFiresCallbackOnce(RDCHelloTests* suite) {
     EXPECT_EQ(callbacks, 1);
 
     suite->rdc.sync(&suite->device);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     EXPECT_EQ(callbacks, 1);
     EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), ChainRole::CHILD);
     EXPECT_EQ(suite->rdc.getPeerUserId(SerialIdentifier::OUTPUT_JACK), 99);
@@ -903,8 +851,7 @@ inline void rdcRingClaimOverUnestablishedUpstreamIsIgnored(RDCHelloTests* suite)
                         chainHelloFrame(upstream, foreignHead, HELLO_FLAG_RING_CLOSED));
     suite->rdc.sync(&suite->device);
 
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTING);
     ASSERT_EQ(suite->rdc.getHeadMac(), nullptr) << "an unestablished upstream was adopted";
     EXPECT_FALSE(suite->rdc.isInRing());
 
@@ -1289,8 +1236,7 @@ inline void pumpChainCycle(const std::vector<ChainRingNode*>& nodes,
     for (ChainRingNode* n : nodes) {
         n->rdc.sync(&n->device);
         for (SerialIdentifier jack : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
-            if (n->rdc.getHelloLinkState(jack) ==
-                RemoteDeviceCoordinator::HelloLinkState::CONNECTING) {
+            if (n->rdc.getJackStatus(jack) == JackStatus::CONNECTING) {
                 n->rdc.onContextExchangeComplete(jack);
             }
         }
@@ -1400,8 +1346,6 @@ inline void rdcHelloOneWayCableTimesOutInsteadOfGhostChild() {
     pumpCable(B.out, A.in);
     A.rdc.sync(&A.device);
     B.rdc.sync(&B.device);
-    ASSERT_EQ(A.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
     ASSERT_EQ(A.rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTING);
     ASSERT_EQ(A.rdc.getChainRole(), ChainRole::STANDALONE);
 
@@ -1416,9 +1360,8 @@ inline void rdcHelloOneWayCableTimesOutInsteadOfGhostChild() {
         A.in.clearOutput();  // the cut conductor: A's frames reach no one
         A.rdc.sync(&A.device);
         B.rdc.sync(&B.device);
-        ASSERT_EQ(A.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-                  RemoteDeviceCoordinator::HelloLinkState::CONNECTING)
-            << "connecting for " << connectingMs << "ms";
+        ASSERT_EQ(A.rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTING)
+        << "connecting for " << connectingMs << "ms";
     }
 
     // One cadence step past the timeout ends it, with the HELLO still fresh.
@@ -1427,8 +1370,6 @@ inline void rdcHelloOneWayCableTimesOutInsteadOfGhostChild() {
     pumpCable(B.out, A.in);
     A.rdc.sync(&A.device);
 
-    EXPECT_EQ(A.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
     EXPECT_EQ(A.rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::DISCONNECTED);
     EXPECT_EQ(A.rdc.getChainRole(), ChainRole::STANDALONE);
     EXPECT_EQ(A.rdc.getHeadMac(), nullptr);
@@ -1648,8 +1589,7 @@ inline void rdcChildReportsDownstreamLossToHead(RDCHelloTests* suite) {
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
 
     ASSERT_EQ(report.count, 1);
     EXPECT_EQ(0, memcmp(report.lastDst.data(), head, 6));
@@ -1695,8 +1635,7 @@ inline void rdcRingLatchedNeverAnnouncesOrReportsToSelf(RDCHelloTests* suite) {
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->deliverHello(suite->inJack, chainHelloFrame(lowNeighbour, suite->localMac));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
     EXPECT_EQ(report.count, 0);
     EXPECT_EQ(membershipChanges, 2);
 }
@@ -1764,8 +1703,7 @@ inline void rdcOutputLossOfOwnHeadSendsNoReport(RDCHelloTests* suite) {
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
 
     EXPECT_EQ(report.count, 0);
 }
@@ -1907,8 +1845,7 @@ inline void rdcHeadDirectChildLossClearsWholeRoster(RDCHelloTests* suite) {
     // The direct child's cable dies.
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
 
     // Re-heading a chain must not resurface the gapped member.
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
@@ -1966,15 +1903,13 @@ inline void rdcInputHeadLinkDeathCancelsPendingContextSend(RDCHelloTests* suite)
     // The INPUT peer advertises no head, so it IS the head this device adopts.
     suite->deliverHello(suite->inJack, chainHelloFrame(peer, nullptr));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTING);
     ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
 
     // The exchange never completes (no SEND_SUCCESS); the link dies.
     suite->fakeClock->advance(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::DISCONNECTED);
 
     EXPECT_FALSE(suite->rdc.isContextSendPending(peer));
 }
@@ -2406,8 +2341,7 @@ inline void rdcPeerMacReadsHelloLink(RDCHelloTests* suite) {
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
     ASSERT_NE(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
     EXPECT_EQ(0, memcmp(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), outPeer, 6));
     EXPECT_TRUE(suite->rdc.isDirectPeer(outPeer));
@@ -2439,8 +2373,7 @@ inline void rdcPeerUserIdLiftedFromContext(RDCHelloTests* suite) {
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
 
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     EXPECT_EQ(suite->rdc.getPeerUserId(SerialIdentifier::OUTPUT_JACK), 4242);
     // Lifted per jack, not device-wide.
     EXPECT_EQ(suite->rdc.getPeerUserId(SerialIdentifier::INPUT_JACK), PEER_USER_ID_NONE);
@@ -2468,8 +2401,7 @@ inline void rdcPeerUserIdAbsentForFdnContext(RDCHelloTests* suite) {
         PktType::kFdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
 
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     EXPECT_EQ(suite->rdc.getPeerUserId(SerialIdentifier::OUTPUT_JACK), PEER_USER_ID_NONE);
 }
 
@@ -2557,8 +2489,7 @@ inline void rdcUnprovenUpstreamIsNeverAdopted(RDCHelloTests* suite) {
         elapsed += RemoteDeviceCoordinator::HELLO_CADENCE_MS;
     }
 
-    EXPECT_NE(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_NE(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
     EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
     EXPECT_EQ(suite->rdc.getChainMembers().size(), 1u);
     EXPECT_EQ(suite->rdc.getHeadMac(), nullptr);
@@ -2583,8 +2514,7 @@ inline void connectFdnOnOutput(RDCHelloTests* suite, const uint8_t* fdn) {
                                         reinterpret_cast<const uint8_t*>(&context),
                                         sizeof(context));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
 }
 
 inline void rdcPdnCabledOnlyToAnFdnStaysStandalone(RDCHelloTests* suite) {
@@ -2608,8 +2538,7 @@ inline void rdcFdnLeavingTheOutputJackIsNotReportedToTheHead(RDCHelloTests* suit
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
 
     EXPECT_EQ(report.count, 0) << "the head was told a member left that was never one";
 }
@@ -2671,8 +2600,7 @@ inline void rdcFdnNeverAdoptsItsPdnsChainHead() {
     fdnRdc.sync(&fdnDevice);
     fdnRdc.onContextExchangeComplete(SerialIdentifier::INPUT_JACK);
     fdnRdc.sync(&fdnDevice);
-    EXPECT_EQ(fdnRdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(fdnRdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
 
     EXPECT_EQ(fdnRdc.getHeadMac(), nullptr)
     << "the FDN adopted a chain head, so it announces itself into that head's roster";
@@ -2737,8 +2665,7 @@ inline void rdcResendContextPushesCurrentProfile(RDCHelloTests* suite) {
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     ASSERT_EQ(contextSends.size(), 1u);
 
     // The role flips; the re-broadcast carries the new one.
@@ -2790,8 +2717,7 @@ inline void rdcResendContextSkipsUnconnectedJacks(RDCHelloTests* suite) {
     suite->transport()->onSendResult(
         PktType::kPdnConnectionContext, peer, sentPayload.data(), sentPayload.size(), true);
     ASSERT_FALSE(suite->rdc.isContextSendPending(peer));
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
 
     suite->rdc.resendContext();
     EXPECT_EQ(contextSends, 1);
@@ -2824,8 +2750,7 @@ inline void rdcResendContextSupersedesUnackedSend(RDCHelloTests* suite) {
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
     ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
     ASSERT_EQ(contextSends.size(), 1u);
 
@@ -2879,10 +2804,8 @@ inline void rdcResendContextSendsOncePerPeer(RDCHelloTests* suite) {
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
     const size_t beforeResend = contextSends.size();
 
     suite->rdc.resendContext();
@@ -2912,10 +2835,8 @@ inline void rdcConnectedJackUpdatesPeerContextOnResend(RDCHelloTests* suite) {
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, initial.data(), initial.size());
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
     ASSERT_EQ(outCallbacks, 1);
     ASSERT_EQ(inCallbacks, 1);
 
