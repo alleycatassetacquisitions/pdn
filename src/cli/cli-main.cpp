@@ -253,15 +253,9 @@ int main(int argc, char** argv) {
             }
             key = cli::Terminal::readKey();
         }
-        
-        // Deliver pending peer-to-peer messages
-        NativePeerBroker::getInstance().deliverPackets();
 
-        // Update all devices
-        for (auto& device : devices) {
-            device.pdn->loop();
-        }
-        
+        cli::advanceSimulation(devices);
+
         // Render UI
         renderer.renderUI(devices, g_commandResult, g_commandBuffer, g_selectedDevice);
         

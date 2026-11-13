@@ -102,11 +102,7 @@ inline JackDiagnostics gatherJackDiagnostics(const NativeSerialDriver& jack) {
     return diagnostics;
 }
 
-/**
- * Reads everything the panel shows about `device`. Also records the device's
- * current state in its state history, which therefore only advances for a
- * device that is being shown.
- */
+/** Reads everything the panel shows about `device`. */
 inline DeviceDiagnostics gatherDiagnostics(DeviceInstance& device, bool includeDisplayMirror) {
     DeviceDiagnostics diagnostics;
     diagnostics.deviceId = device.deviceId;
@@ -120,7 +116,6 @@ inline DeviceDiagnostics gatherDiagnostics(DeviceInstance& device, bool includeD
 
     State* currentState = device.getCurrentState();
     diagnostics.stateId = currentState ? currentState->getStateId() : -1;
-    device.updateStateHistory(diagnostics.stateId);
     diagnostics.stateHistory = device.stateHistory;
 
     diagnostics.fontModeName = device.displayDriver->getFontModeName();
