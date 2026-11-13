@@ -36,15 +36,16 @@ void MatchReceivedResult::onStateLoop(PDN* pdn) {
 
     buttonPushGraceTimer.updateTime();
 
-    // A press dispatched earlier in this same loop pass has already sent its
-    // result; the timeout must not then report the player as never pressing.
-    if (buttonPushGraceTimer.expired() && !matchManager->getHasPressedButton()) {
+    if (buttonPushGraceTimer.expired()) {
         LOG_I(MATCH_RECEIVED_RESULT_TAG, "Button push grace period expired");
 
-        unsigned long pityTime =
-        SimpleTimer::getPlatformClock()->milliseconds() - matchManager->getMatchLocalStartTime();
-
-        matchManager->sendNeverPressed(pityTime);
+        // A press dispatched earlier in this same loop pass has already sent its
+        // result; the timeout must not then report the player as never pressing.
+        if (!matchManager->getHasPressedButton()) {
+            unsigned long pityTime = SimpleTimer::getPlatformClock()->milliseconds() -
+                                     matchManager->getMatchLocalStartTime();
+            matchManager->sendNeverPressed(pityTime);
+        }
         transitionToMatchResultState = true;
     }
 }

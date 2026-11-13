@@ -577,9 +577,8 @@ inline void stateFlowThroughMatchResultToWin(StateFlowIntegrationTests* suite) {
     EXPECT_FALSE(resultState.transitionToLose());
 }
 
-// The spec gives a press precedence over the timeout. A press dispatched in
-// the same loop pass the grace timer expires in has already sent its result,
-// so the loop must not then report the player as never having pressed.
+// Spec: a press in the same tick a grace period expires takes precedence over
+// the timeout.
 inline void stateFlowPressInTheGraceExpiryPassStands(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 

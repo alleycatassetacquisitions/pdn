@@ -194,12 +194,10 @@ bool MatchManager::matchResultsAreIn() {
     }
 
     // Final clause is the deadlock escape for both-timed-out matches where the
-    // opponent's NEVER_PRESSED packet drops. Gated on !hasPressedButton so a
-    // button-press in the same tick as grace expiry still takes the press
-    // path (clauses 1/2) — otherwise didWin() would spuriously return false.
+    // opponent's NEVER_PRESSED packet drops.
     return (activeMatchState.hasReceivedDrawResult && activeMatchState.hasPressedButton) ||
            (activeMatchState.opponentNeverPressed && activeMatchState.hasPressedButton) ||
-           (activeMatchState.gracePeriodExpiredNoResult && !activeMatchState.hasPressedButton);
+           activeMatchState.gracePeriodExpiredNoResult;
 }
 
 void MatchManager::setNeverPressed() { activeMatchState.gracePeriodExpiredNoResult = true; }
