@@ -141,27 +141,21 @@ static void setup() {
     symbolWirelessManager =
     new SymbolWirelessManager(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
 
-    crashLogger = new CrashLogger(storageDriver, pdn->getWirelessManager());
+    crashLogger = new CrashLogger(storageDriver);
     crashLogger->capture(crashedBootUptimeMs);
-    crashLogger->transmitPending();
 
     gameSession = new GameSession(playerProvider->getPlayer(), pdn, symbolWirelessManager);
+    gameSession->setCrashRecordSource(crashLogger);
 
     PlayerFetchApp* playerFetchApp =
     new PlayerFetchApp(pdn->getWirelessManager(), pdn->getFirmwareUpdateManager(), playerProvider);
 
-    pdn->getDisplay()->
-    invalidateScreen()->
-        drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
-        drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
-        render();
-    // Lets a crash upload finish before the output jack's handshake takes the radio back.
-    SimpleTimer splashTimer;
-    splashTimer.setTimer(SPLASH_HOLD_MS);
-    while (!splashTimer.expired()) {
-        httpClientDriver->exec();
-        vTaskDelay(pdMS_TO_TICKS(1));
-    }
+    pdn->getDisplay()
+    ->invalidateScreen()
+    ->drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))
+    ->drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))
+    ->render();
+    vTaskDelay(pdMS_TO_TICKS(SPLASH_HOLD_MS));
 
     // Register the swappable state machines and boot into registration
     AppConfig apps = makeGameplayApps(gameSession->getContext());
@@ -173,13 +167,8 @@ void loop() {
     if (crashLogger != nullptr) {
         CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
-        crashLogger->restoreEspNowAfterUploads();
     }
     pdn->loop();
-    // After the device loop, so the one offer per boot runs with exec() having
-    // pumped the radio at least once: the channel pin is retried from there, and a
-    // frame sent before it lands goes out where nobody is listening.
-    if (crashLogger != nullptr) crashLogger->transmitPending();
 }
 
 extern "C" void app_main() {

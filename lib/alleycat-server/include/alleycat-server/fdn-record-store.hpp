@@ -38,23 +38,22 @@ static_assert(sizeof(FdnStoredEntry<MATCH_RECORD_SIZE>) == 140, "stored match en
 // record's slot is its count modulo CAPACITY. Storage is written only here, so
 // both are kept in memory. storageRefused is the store's one latch, shared by
 // its rings because they share the partition whose refusal sets it.
-template <size_t RECORD_SIZE, size_t CAPACITY> class FdnRecordRing {
+template <class Traits, size_t CAPACITY> class FdnRecordRing {
 public:
-    using Frame = RecordFramePacket<RECORD_SIZE>;
-    using Entry = FdnStoredEntry<RECORD_SIZE>;
+    using Frame = typename Traits::Frame;
+    using Entry = FdnStoredEntry<Traits::RECORD_SIZE>;
 
-    /** Loads the ring from storage and claims the frame and acknowledgement packet types. */
+    /**
+     * Loads the ring from storage and claims the kind's record and
+     * acknowledgement types. Every storage key of the ring starts with @p keyPrefix.
+     */
     FdnRecordRing(WirelessManager* wirelessManager, StorageInterface* storage, bool& storageRefused,
-                  RecordKind kind, PktType framePacketType, PktType ackPacketType,
-                  const char* headKey, const char* tailKey, const char* slotPrefix)
+                  const char* keyPrefix)
         : storage(storage)
         , storageRefused(storageRefused)
-        , kind(kind)
-        , headKey(headKey)
-        , tailKey(tailKey)
-        , slotPrefix(slotPrefix)
-        , frameChannel(wirelessManager, framePacketType)
-        , ackChannel(wirelessManager, ackPacketType) {
+        , keyPrefix(keyPrefix)
+        , frameChannel(wirelessManager, Traits::FRAME_PACKET_TYPE)
+        , ackChannel(wirelessManager, Traits::ACK_PACKET_TYPE) {
         loadFromStorage();
         frameChannel.onReceive(
         [this](const uint8_t* fromMac, const Frame& frame) { onRecordFrame(fromMac, frame); });
@@ -76,7 +75,7 @@ public:
         return storage->readBytes(FDN_RECORD_STORE_NAMESPACE, key,
                                   reinterpret_cast<uint8_t*>(&entry),
                                   sizeof(entry)) == sizeof(entry) &&
-               entry.kind == static_cast<uint8_t>(kind);
+               entry.kind == static_cast<uint8_t>(Traits::KIND);
     }
 
     /**
@@ -101,12 +100,12 @@ public:
         if (storageRefused) {
             LOG_W("FDN_RECORDS",
                   "Storage refused a record earlier; record %u of kind %u is not stored",
-                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(kind));
+                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(Traits::KIND));
             return false;
         }
         if (tail - head >= CAPACITY) {
             LOG_W("FDN_RECORDS", "No room for kind %u; record %u is not acknowledged",
-                  static_cast<unsigned>(kind), static_cast<unsigned>(recordNumber));
+                  static_cast<unsigned>(Traits::KIND), static_cast<unsigned>(recordNumber));
             return false;
         }
 
@@ -116,13 +115,15 @@ public:
                                 reinterpret_cast<const uint8_t*>(&entry),
                                 sizeof(entry)) != sizeof(entry)) {
             LOG_E("FDN_RECORDS", "Storing record %u of kind %u failed",
-                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(kind));
+                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(Traits::KIND));
             storageRefused = true;
             return false;
         }
+        char tailKey[16];
+        counterKey("tail", tailKey);
         if (storage->writeUInt(FDN_RECORD_STORE_NAMESPACE, tailKey, tail + 1) != sizeof(uint32_t)) {
             LOG_E("FDN_RECORDS", "Committing record %u of kind %u failed",
-                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(kind));
+                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(Traits::KIND));
             // Outside [head, tail) nothing would ever retire this blob.
             storage->remove(FDN_RECORD_STORE_NAMESPACE, key);
             storageRefused = true;
@@ -154,8 +155,11 @@ public:
         }
         storageRefused = false;
         head = from + count;
+        char headKey[16];
+        counterKey("head", headKey);
         if (storage->writeUInt(FDN_RECORD_STORE_NAMESPACE, headKey, head) != sizeof(uint32_t)) {
-            LOG_E("FDN_RECORDS", "Storing the head of kind %u failed", static_cast<unsigned>(kind));
+            LOG_E("FDN_RECORDS", "Storing the head of kind %u failed",
+                  static_cast<unsigned>(Traits::KIND));
         }
     }
 
@@ -168,10 +172,19 @@ private:
     };
 
     void slotKey(uint32_t index, char (&key)[16]) const {
-        snprintf(key, sizeof(key), "%s%u", slotPrefix, static_cast<unsigned>(index % CAPACITY));
+        snprintf(key, sizeof(key), "%s%u", keyPrefix, static_cast<unsigned>(index % CAPACITY));
+    }
+
+    // The key of the ring's head or tail count: the prefix, then @p name.
+    void counterKey(const char* name, char (&key)[16]) const {
+        snprintf(key, sizeof(key), "%s%s", keyPrefix, name);
     }
 
     void loadFromStorage() {
+        char tailKey[16];
+        counterKey("tail", tailKey);
+        char headKey[16];
+        counterKey("head", headKey);
         tail = storage->readUInt(FDN_RECORD_STORE_NAMESPACE, tailKey, 0);
         head = storage->readUInt(FDN_RECORD_STORE_NAMESPACE, headKey, 0);
         // Clamped so a torn head/tail pair from storage corruption reads as at most a full ring.
@@ -210,9 +223,9 @@ private:
     // A frame whose kind is not this ring's is dropped: the channel fixed its
     // length, so its bytes are not a record of the kind it claims.
     void onRecordFrame(const uint8_t* fromMac, const Frame& frame) {
-        if (frame.kind != static_cast<uint8_t>(kind)) {
+        if (frame.kind != static_cast<uint8_t>(Traits::KIND)) {
             LOG_W("FDN_RECORDS", "Dropping a record frame of kind %u on the channel for kind %u",
-                  static_cast<unsigned>(frame.kind), static_cast<unsigned>(kind));
+                  static_cast<unsigned>(frame.kind), static_cast<unsigned>(Traits::KIND));
             return;
         }
 
@@ -237,10 +250,7 @@ private:
 
     StorageInterface* storage = nullptr;
     bool& storageRefused;
-    RecordKind kind;
-    const char* headKey = nullptr;
-    const char* tailKey = nullptr;
-    const char* slotPrefix = nullptr;
+    const char* keyPrefix = nullptr;
     ReliableChannel<Frame> frameChannel;
     ReliableChannel<RecordAckPacket> ackChannel;
     uint32_t head = 0;
@@ -262,10 +272,8 @@ public:
                    RemoteDeviceCoordinator* rdc)
         : wirelessManager(wirelessManager)
         , rdc(rdc)
-        , crashRing(wirelessManager, storage, storageRefused, RecordKind::CRASH,
-                    PktType::kCrashRecord, PktType::kCrashRecordAck, "c_head", "c_tail", "c_")
-        , matchRing(wirelessManager, storage, storageRefused, RecordKind::MATCH,
-                    PktType::kMatchRecord, PktType::kMatchRecordAck, "m_head", "m_tail", "m_") {
+        , crashRing(wirelessManager, storage, storageRefused, "c_")
+        , matchRing(wirelessManager, storage, storageRefused, "m_") {
         wirelessManager->setEspNowPacketHandler(
         PktType::kMatchCollection,
         [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
@@ -367,8 +375,8 @@ public:
     }
 
 private:
-    using CrashRing = FdnRecordRing<CRASH_RECORD_SIZE, FDN_CRASH_RECORD_CAPACITY>;
-    using MatchRing = FdnRecordRing<MATCH_RECORD_SIZE, FDN_MATCH_RECORD_CAPACITY>;
+    using CrashRing = FdnRecordRing<CrashRecordTraits, FDN_CRASH_RECORD_CAPACITY>;
+    using MatchRing = FdnRecordRing<MatchRecordTraits, FDN_MATCH_RECORD_CAPACITY>;
 
     bool readMatch(uint32_t index, Match& out) const {
         MatchRing::Entry entry{};

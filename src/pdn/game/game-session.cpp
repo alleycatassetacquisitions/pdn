@@ -3,17 +3,10 @@
 
 GameSession::GameSession(Player* player, Device* pdn, SymbolWirelessManager* symbolWirelessManager)
     : pdn(pdn)
-    , wirelessManager(pdn->getWirelessManager()) {
-    context.player = player;
-    context.remoteDeviceCoordinator = pdn->getRemoteDeviceCoordinator();
-    context.symbolWirelessManager = symbolWirelessManager;
-    context.matchManager =
-    new MatchManager(player, pdn->getStorage(), wirelessManager, context.remoteDeviceCoordinator);
-    context.posseManager =
-    new PosseManager(player, wirelessManager, context.remoteDeviceCoordinator);
-    context.shootoutManager = new ShootoutManager(
-    player, wirelessManager, context.remoteDeviceCoordinator, context.matchManager);
-
+    , wirelessManager(pdn->getWirelessManager())
+    , context(makeContext(player, pdn, symbolWirelessManager))
+    , recordRelay(new RecordRelay(wirelessManager, context.remoteDeviceCoordinator,
+                                  context.matchManager, context.shootoutManager)) {
     context.matchManager->setBoostProvider([this]() -> unsigned long {
         return context.posseManager ? context.posseManager->getBoostMs() : 0;
     });
@@ -48,6 +41,10 @@ GameSession::~GameSession() {
     // and is deleted below.
     context.remoteDeviceCoordinator = nullptr;
     context.symbolWirelessManager = nullptr;
+    // First of the owned objects: it reads the match and shootout managers and
+    // observes both.
+    delete recordRelay;
+    recordRelay = nullptr;
     // Managers before matchManager: shootoutManager holds a raw MatchManager*
     // and dereferences it when priming a bracket match.
     delete context.posseManager;
@@ -72,6 +69,26 @@ void GameSession::sync() {
     if (context.matchManager) context.matchManager->sync();
 
     logRetryStats();
+}
+
+void GameSession::setCrashRecordSource(RecordSource<CrashRecordTraits>* crashRecordSource) {
+    recordRelay->setCrashRecordSource(crashRecordSource);
+}
+
+GameContext GameSession::makeContext(Player* player, Device* pdn,
+                                     SymbolWirelessManager* symbolWirelessManager) {
+    WirelessManager* wirelessManager = pdn->getWirelessManager();
+    GameContext context;
+    context.player = player;
+    context.remoteDeviceCoordinator = pdn->getRemoteDeviceCoordinator();
+    context.symbolWirelessManager = symbolWirelessManager;
+    context.matchManager =
+    new MatchManager(player, pdn->getStorage(), wirelessManager, context.remoteDeviceCoordinator);
+    context.posseManager =
+    new PosseManager(player, wirelessManager, context.remoteDeviceCoordinator);
+    context.shootoutManager = new ShootoutManager(
+    player, wirelessManager, context.remoteDeviceCoordinator, context.matchManager);
+    return context;
 }
 
 void GameSession::logRetryStats() {

@@ -190,10 +190,6 @@ void loop() {
         crashLogger->restoreEspNowAfterUploads();
     }
     fdn->loop();
-    // After the device loop, so the one offer per boot runs with exec() having
-    // pumped the radio at least once: the channel pin is retried from there, and a
-    // frame sent before it lands goes out where nobody is listening.
-    if (crashLogger != nullptr) crashLogger->transmitPending();
 }
 
 extern "C" void app_main() {

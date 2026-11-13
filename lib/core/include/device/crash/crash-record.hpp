@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
 #include <optional>
 
 constexpr size_t  TASK_NAME_LENGTH   = 16;
@@ -38,7 +39,8 @@ struct CrashRecord {
 };
 
 // A crash record as it travels and is relayed: fixed layout, so it has no
-// presence flags (see CrashLogger for how absent details are marked).
+// presence flags. An empty task name marks a record without core dump details,
+// and CRASH_PACKET_NO_EXCEPTION_CAUSE one with details but no exception cause.
 struct CrashPacket {
     uint32_t crashNumber;
     uint32_t timestamp;
@@ -48,3 +50,24 @@ struct CrashPacket {
     char taskName[TASK_NAME_LENGTH];
     char commitHash[COMMIT_HASH_LENGTH];
 } __attribute__((packed));
+
+// No exception has this cause: it is IDF's COREDUMP_INVALID_CAUSE_VALUE (which
+// espcoredump does not export), the value a core dump reports for a
+// frame it could not read.
+constexpr uint32_t CRASH_PACKET_NO_EXCEPTION_CAUSE = 0xFFFF;
+
+/** @return @p record in the layout it is sent and relayed in. */
+inline CrashPacket toCrashPacket(const CrashRecord& record) {
+    CrashPacket packet{};
+    packet.crashNumber = record.crashNumber;
+    packet.timestamp = record.timestamp;
+    packet.resetReason = record.resetReason;
+    if (record.coreDumpDetails) {
+        packet.programCounter = record.coreDumpDetails->programCounter;
+        packet.exceptionCause =
+        record.coreDumpDetails->exceptionCause.value_or(CRASH_PACKET_NO_EXCEPTION_CAUSE);
+        memcpy(packet.taskName, record.coreDumpDetails->taskName, TASK_NAME_LENGTH);
+    }
+    memcpy(packet.commitHash, record.commitHash, COMMIT_HASH_LENGTH);
+    return packet;
+}

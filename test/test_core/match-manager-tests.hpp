@@ -1405,3 +1405,28 @@ TEST(MatchesApiUpload, unqueuedRequestFailsClosed) {
     [&errored](const WirelessErrorInfo&) { errored = true; });
     EXPECT_TRUE(errored) << "an unqueued upload must not leave its caller waiting";
 }
+
+// The record relay stops its sends on this, so a way of starting a match that
+// skipped it would let a record retry out during that match.
+inline void matchManagerTellsObserversOnceHoweverAMatchStarts(MatchManagerTestSuite* suite) {
+    int started = 0;
+    suite->matchManager->setOnMatchStarted([&started]() { started++; }, &started);
+    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    suite->player->setIsHunter(true);
+    suite->matchManager->initializeMatch(opponentMac);
+    EXPECT_EQ(started, 1) << "initializeMatch";
+    suite->matchManager->clearCurrentMatch();
+
+    suite->matchManager->initializeShootoutMatch("SHT-observer", opponentMac, false);
+    EXPECT_EQ(started, 2) << "initializeShootoutMatch";
+    suite->matchManager->clearCurrentMatch();
+
+    suite->matchManager->receiveMatch("observer-match-id", false, opponentMac);
+    EXPECT_EQ(started, 3) << "receiveMatch";
+    suite->matchManager->clearCurrentMatch();
+
+    suite->matchManager->setOnMatchStarted(nullptr, &started);
+    suite->matchManager->initializeShootoutMatch("SHT-unobserved", opponentMac, false);
+    EXPECT_EQ(started, 3) << "a removed observer was told";
+}

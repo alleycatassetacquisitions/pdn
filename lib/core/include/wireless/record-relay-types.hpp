@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "device/crash/crash-record.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include "game/match.hpp"
 
 /// What a record frame carries; also the first byte a record tag covers.
@@ -44,6 +45,25 @@ static_assert(sizeof(CrashRecordFramePacket) == 65, "CrashRecordFramePacket wire
 /// Over PktType::kMatchRecord.
 using MatchRecordFramePacket = RecordFramePacket<MATCH_RECORD_SIZE>;
 static_assert(sizeof(MatchRecordFramePacket) == 135, "MatchRecordFramePacket wire size");
+
+// Everything that has to agree for one record kind, so that a relay lane, an
+// FDN ring or a record source is written against a kind and cannot mix one
+// kind's packet types or record size with another's.
+struct CrashRecordTraits {
+    static constexpr RecordKind KIND = RecordKind::CRASH;
+    static constexpr size_t RECORD_SIZE = CRASH_RECORD_SIZE;
+    static constexpr PktType FRAME_PACKET_TYPE = PktType::kCrashRecord;
+    static constexpr PktType ACK_PACKET_TYPE = PktType::kCrashRecordAck;
+    using Frame = CrashRecordFramePacket;
+};
+
+struct MatchRecordTraits {
+    static constexpr RecordKind KIND = RecordKind::MATCH;
+    static constexpr size_t RECORD_SIZE = MATCH_RECORD_SIZE;
+    static constexpr PktType FRAME_PACKET_TYPE = PktType::kMatchRecord;
+    static constexpr PktType ACK_PACKET_TYPE = PktType::kMatchRecordAck;
+    using Frame = MatchRecordFramePacket;
+};
 
 /// FDN-to-PDN over PktType::kCrashRecordAck or kMatchRecordAck: the record is in
 /// the FDN's non-volatile storage. recordCheck names the exact frame that was stored.

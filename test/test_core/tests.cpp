@@ -39,6 +39,7 @@
 #include "sha256-tests.hpp"
 #include "fdn-record-store-tests.hpp"
 #include "fdn-beacon-tests.hpp"
+#include "record-relay-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -969,6 +970,10 @@ TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
     matchManagerRoleMismatchClearsInitiatorMatch(matchManager, player);
 }
 
+TEST_F(MatchManagerTestSuite, tellsObserversOnceHoweverAMatchStarts) {
+    matchManagerTellsObserversOnceHoweverAMatchStarts(this);
+}
+
 // ============================================
 // STORAGE / NVS NAMESPACE TESTS
 // ============================================
@@ -1237,6 +1242,128 @@ TEST_F(FdnBeaconTests, refusedWhileTheRadioIsDisabledGoesOutOnceItIsEnabled) {
 
 TEST_F(AppSwapTestSuite, fdnBeaconRunsWhicheverAppIsMounted) {
     fdnBeaconRunsWhicheverAppIsMounted(this);
+}
+
+// ============================================
+// PDN RECORD RELAY TESTS
+// ============================================
+
+TEST_F(RecordRelayTests, sendsTheLowestPendingCrashRecordToTheFdnWhoseBeaconItHeard) {
+    recordRelaySendsTheLowestPendingCrashRecordToTheFdnWhoseBeaconItHeard(this);
+}
+
+TEST_F(RecordRelayTests, ignoresABeaconThatDoesNotIdentifyAnFdn) {
+    recordRelayIgnoresABeaconThatDoesNotIdentifyAnFdn(this);
+}
+
+TEST_F(RecordRelayTests, sendsWhenAnFdnBecomesConnectedOnAJack) {
+    recordRelaySendsWhenAnFdnBecomesConnectedOnAJack(this);
+}
+
+TEST_F(RecordRelayTests, deliversBothPendingRecordsToAConnectedFdn) {
+    recordRelayDeliversBothPendingRecordsToAConnectedFdn(this);
+}
+
+TEST_F(RecordRelayTests, sendsNothingWithNoFdnInReach) {
+    recordRelaySendsNothingWithNoFdnInReach(this);
+}
+
+TEST_F(RecordRelayTests, sendsNothingWhenNoRecordIsPending) {
+    recordRelaySendsNothingWhenNoRecordIsPending(this);
+}
+
+TEST_F(RecordRelayTests, sendsAnUnacknowledgedRecordAgainOnTheNextBeacon) {
+    recordRelaySendsAnUnacknowledgedRecordAgainOnTheNextBeacon(this);
+}
+
+TEST_F(RecordRelayTests, keepsTheMarkOnADeliveryReportAlone) {
+    recordRelayKeepsTheMarkOnADeliveryReportAlone(this);
+}
+
+TEST_F(RecordRelayTests, ignoresAnAcknowledgementFromAnotherDevice) {
+    recordRelayIgnoresAnAcknowledgementFromAnotherDevice(this);
+}
+
+TEST_F(RecordRelayTests, ignoresALateAcknowledgementFromAnEarlierFdn) {
+    recordRelayIgnoresALateAcknowledgementFromAnEarlierFdn(this);
+}
+
+TEST_F(RecordRelayTests, ignoresAnAcknowledgementThatDoesNotMatchTheFrameItSent) {
+    recordRelayIgnoresAnAcknowledgementThatDoesNotMatchTheFrameItSent(this);
+}
+
+TEST_F(RecordRelayTests, advancesTheMarkAndSendsTheNextRecordToTheFdnThatAcknowledged) {
+    recordRelayAdvancesTheMarkAndSendsTheNextRecordToTheFdnThatAcknowledged(this);
+}
+
+TEST_F(RecordRelayTests, doesNotMultiplySendsOnABurstOfBeacons) {
+    recordRelayDoesNotMultiplySendsOnABurstOfBeacons(this);
+}
+
+TEST_F(RecordRelayTests, sendsNothingDuringAMatchOrAShootout) {
+    recordRelaySendsNothingDuringAMatchOrAShootout(this);
+}
+
+TEST_F(RecordRelayTests, cancelsASendInFlightWhenAMatchStarts) {
+    recordRelayCancelsASendInFlightWhenAMatchStarts(this);
+}
+
+TEST_F(RecordRelayTests, cancelsASendInFlightWhenAShootoutStarts) {
+    recordRelayCancelsASendInFlightWhenAShootoutStarts(this);
+}
+
+TEST_F(RecordRelayTests, cancelsASendInFlightWhenAnInboundCommandStartsAMatch) {
+    recordRelayCancelsASendInFlightWhenAnInboundCommandStartsAMatch(this);
+}
+
+TEST_F(RecordRelayTests, deliversToAnotherFdnWhilePluggedIntoOne) {
+    recordRelayDeliversToAnotherFdnWhilePluggedIntoOne(this);
+}
+
+TEST_F(RecordRelayTests, advancesTheMarkOnAnAcknowledgementMidMatchAndSendsNothing) {
+    recordRelayAdvancesTheMarkOnAnAcknowledgementMidMatchAndSendsNothing(this);
+}
+
+TEST_F(RecordRelayTests, deliversTwoCrashRecordsToAnFdnItIsNotConnectedTo) {
+    recordRelayDeliversTwoCrashRecordsToAnFdnItIsNotConnectedTo(this);
+}
+
+TEST_F(RecordRelayTests, keepsARecordPendingWhenTheFdnIsFull) {
+    recordRelayKeepsARecordPendingWhenTheFdnIsFull(this);
+}
+
+TEST_F(RecordRelayTests, waitsForATriggerWhenTheMarkDoesNotMove) {
+    recordRelayWaitsForATriggerWhenTheMarkDoesNotMove(this);
+}
+
+TEST(RecordRelay, doesNotLetOneKindHoldBackTheOther) {
+    recordRelayDoesNotLetOneKindHoldBackTheOther();
+}
+
+TEST(RecordRelay, leavesNoPlayObserverBehind) { recordRelayLeavesNoPlayObserverBehind(); }
+
+TEST(RecordPendingRange, startsAfterTheMarkAndInsideTheRing) {
+    recordPendingRangeStartsAfterTheMarkAndInsideTheRing();
+}
+
+TEST(RecordPendingRange, markMovesOnlyForwardsAndNeverPastTheNewestRecord) {
+    recordMarkMovesOnlyForwardsAndNeverPastTheNewestRecord();
+}
+
+TEST(RecordPendingRange, searchOffersTheNextReadableRecordAfterAnUnreadableOne) {
+    recordSearchOffersTheNextReadableRecordAfterAnUnreadableOne();
+}
+
+TEST(RecordPendingRange, searchOffersNothingOnAnUnreadableTail) {
+    recordSearchOffersNothingOnAnUnreadableTail();
+}
+
+TEST(RecordPendingRange, searchEndsAtTheLargestRecordNumber) {
+    recordSearchEndsAtTheLargestRecordNumber();
+}
+
+TEST(CrashPacket, carriesTheRecordInItsFixedLayout) {
+    crashPacketCarriesTheRecordInItsFixedLayout();
 }
 
 // ============================================
