@@ -1433,6 +1433,9 @@ TEST_F(StateCleanupTests, matchReceivedResultClearsButtonCallbacks) {
 }
 
 TEST_F(StateCleanupTests, matchStateInvalidatesTimer) { cleanupMatchStateInvalidatesTimer(this); }
+TEST_F(StateCleanupTests, matchStateLeavesOnTheDisconnectEdge) {
+    matchStateLeavesOnTheDisconnectEdge(this);
+}
 
 TEST_F(StateCleanupTests, countdownStateInvalidatesTimer) {
     cleanupCountdownStateInvalidatesTimer(this);
@@ -1488,6 +1491,9 @@ TEST_F(StateCleanupTests, matchPushedDebouncesTransientDisconnect) {
 
 TEST_F(StateCleanupTests, matchReceivedResultDebouncesTransientDisconnect) {
     matchReceivedResultDebouncesTransientDisconnect(this);
+}
+TEST_F(StateCleanupTests, disconnectWindowDoesNotCarryIntoTheNextTenure) {
+    disconnectWindowDoesNotCarryIntoTheNextTenure(this);
 }
 
 TEST_F(StateCleanupTests, countdownFreezesDisconnectDebounceDuringShootout) {
@@ -1672,6 +1678,12 @@ TEST_F(ConnectStateTests, disconnectCarriesNoContext) {
 
 TEST_F(ConnectStateTests, twoMountedStatesKeepTheirOwnSubscription) {
     connectStateTwoMountedStatesKeepTheirOwnSubscription(this);
+}
+TEST_F(ConnectStateTests, isConnectedFollowsJackEdges) {
+    connectStateIsConnectedFollowsJackEdges(this);
+}
+TEST_F(ConnectStateTests, forgetsItsJacksBetweenTenures) {
+    connectStateForgetsItsJacksBetweenTenures(this);
 }
 
 TEST(CallbackListTests, keepsEachOwnersCallback) { callbackListKeepsEachOwnersCallback(); }

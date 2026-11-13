@@ -33,6 +33,8 @@ public:
         // mounted — which for a replayed event means the mount hook had run.
         bool afterMountHook = false;
         bool hadContext = false;
+        // What the state's own isConnected() answered inside the handler.
+        bool stateReadConnected = false;
         DeviceType peerType = DeviceType::UNKNOWN;
         ChainRole chainRole = ChainRole::STANDALONE;
         std::vector<uint8_t> profile;
@@ -67,6 +69,7 @@ private:
         event.connected = state.connected;
         event.afterMountHook = mountedCount > dismountedCount;
         event.hadContext = state.context.has_value();
+        event.stateReadConnected = isConnected();
         if (state.context.has_value()) {
             event.peerType = state.context->peerType;
             event.chainRole = state.context->chainRole;
@@ -102,15 +105,6 @@ protected:
     bool isPrimaryRequired() override { return true; }
     bool isAuxRequired() override { return true; }
 };
-
-// mount/dismount are private on State; StateMachine reaches them through
-// StateLifecycle, and so do these tests.
-inline void mountState(State* state, Device* device) {
-    static_cast<StateLifecycle*>(state)->mount(device);
-}
-inline void dismountState(State* state, Device* device) {
-    static_cast<StateLifecycle*>(state)->dismount(device);
-}
 
 // The fixture keeps its own jack observer for connectCount / disconnectCount;
 // a mounted ConnectState registers beside it under its own key.
@@ -205,6 +199,45 @@ inline void connectStateReceivesDisconnect(RDCHelloTests* suite) {
     ASSERT_EQ(state.events.size(), 2u);
     EXPECT_EQ(state.events[1].jack, SerialIdentifier::OUTPUT_JACK);
     EXPECT_FALSE(state.events[1].connected);
+}
+
+// isConnected() is answered from the edges a mounted state has been handed, and
+// already reflects each one when the state's handler runs.
+inline void connectStateIsConnectedFollowsJackEdges(RDCHelloTests* suite) {
+    RecordingConnectState state(&suite->rdc, /*stateId=*/1);
+    mountState(&state, &suite->device);
+    EXPECT_FALSE(state.isConnected());
+
+    connectOutJack(suite, ChainRole::CHILD, /*userId=*/4242);
+    EXPECT_TRUE(state.isConnected());
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    EXPECT_FALSE(state.isConnected());
+
+    ASSERT_EQ(state.events.size(), 2u);
+    EXPECT_TRUE(state.events[0].stateReadConnected);
+    EXPECT_FALSE(state.events[1].stateReadConnected)
+    << "the handler saw the departed peer's jack as still connected";
+
+    dismountState(&state, &suite->device);
+}
+
+// What a tenure learned goes with it, and the next mount's replay rebuilds it.
+inline void connectStateForgetsItsJacksBetweenTenures(RDCHelloTests* suite) {
+    RecordingConnectState state(&suite->rdc, /*stateId=*/1);
+    EXPECT_FALSE(state.isConnected()) << "a state that was never mounted read as cabled";
+
+    connectOutJack(suite, ChainRole::CHILD, /*userId=*/4242);
+    mountState(&state, &suite->device);
+    EXPECT_TRUE(state.isConnected()) << "the mount replay did not reach isConnected()";
+
+    dismountState(&state, &suite->device);
+    EXPECT_FALSE(state.isConnected()) << "an unmounted state still read as cabled";
+
+    mountState(&state, &suite->device);
+    EXPECT_TRUE(state.isConnected());
+    dismountState(&state, &suite->device);
 }
 
 // Dismount removes the registration, so a dismounted state hears nothing

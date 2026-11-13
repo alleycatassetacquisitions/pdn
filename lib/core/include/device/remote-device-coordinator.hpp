@@ -283,6 +283,15 @@ public:
      */
     void setChainChangeCallback(std::function<void()> callback, const void* owner);
 
+protected:
+    /**
+     * Tells every jack-change observer about one edge. The link machines are
+     * its source here; a coordinator double that stands in for them calls it too.
+     */
+    void fireJackChange(SerialIdentifier jack, bool connected) {
+        jackChangeCallbacks.fire(jack, connected);
+    }
+
 private:
     static constexpr size_t NUM_JACKS = 3;
 
