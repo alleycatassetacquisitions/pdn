@@ -158,11 +158,10 @@ public:
     const LastMatchDisplay& getLastMatchDisplay() const { return lastMatchDisplay; }
 
     /**
-     * Called by ShootoutManager as it is built on this manager and again, with
-     * nullptr, as it is destroyed. A live tournament suppresses the
-     * hunter/bounty role-mismatch rejection so same-role bracket matches proceed.
+     * Non-owning; nullptr detaches. Standalone match initiations are ignored
+     * while its tournament is active.
      */
-    void setShootoutManager(ShootoutManager* shootoutManager);
+    void setShootoutManager(ShootoutManager* manager);
 
     /** Dispatches an inbound match command (handshake or active-match event). */
     void listenForMatchEvents(const MatchCommand& command);
@@ -194,7 +193,7 @@ private:
 
     std::function<unsigned long()> boostProvider;
     RemoteDeviceCoordinator* rdc = nullptr;
-    ShootoutManager* shootoutManager_ = nullptr;
+    ShootoutManager* shootoutManager = nullptr;
 
     ActiveMatchState activeMatchState;
     LastMatchDisplay lastMatchDisplay;
