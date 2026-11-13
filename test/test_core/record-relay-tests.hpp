@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <functional>
@@ -170,9 +171,9 @@ public:
         delete fakeClock;
     }
 
-    /** The crash record frames the PDN's radio was asked to send, in order. */
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> crashFrames() const {
-        return pdnRadio.framesOf<CrashRecordFramePacket>(PktType::kCrashRecord);
+    /** The record frames of Traits' kind the PDN's radio was asked to send, in order. */
+    template <class Traits> std::vector<SentRecordFrame<typename Traits::Frame>> framesOf() const {
+        return pdnRadio.framesOf<typename Traits::Frame>(Traits::FRAME_PACKET_TYPE);
     }
 
     /** Delivers a player-info beacon from @p fromMac whose sender says it is a @p senderType. */
@@ -194,14 +195,16 @@ public:
     }
 
     /** The radio's report that @p sent reached the device it was addressed to. */
-    void reportDelivered(const SentRecordFrame<CrashRecordFramePacket>& sent) {
+    template <class Traits>
+    void reportDelivered(const SentRecordFrame<typename Traits::Frame>& sent) {
         pdnDevice.wirelessManager->getReliableTransport()->onSendResult(
-        PktType::kCrashRecord, sent.toMac.data(), reinterpret_cast<const uint8_t*>(&sent.frame),
+        Traits::FRAME_PACKET_TYPE, sent.toMac.data(), reinterpret_cast<const uint8_t*>(&sent.frame),
         sizeof(sent.frame), true);
     }
 
     /** The stored acknowledgement an FDN sends for @p frame. */
-    static RecordAckPacket acknowledgementFor(const CrashRecordFramePacket& frame) {
+    template <class Traits>
+    static RecordAckPacket acknowledgementFor(const typename Traits::Frame& frame) {
         RecordAckPacket ack{};
         ack.kind = frame.kind;
         ack.recordNumber = frame.recordNumber;
@@ -211,15 +214,16 @@ public:
     }
 
     /**
-     * Delivers @p ack to the PDN as if @p fromMac had sent it on @p type. Every
-     * delivery is a new send, so it carries a new sequence ID.
+     * Delivers @p ack to the PDN as if @p fromMac had sent it on the
+     * acknowledgement packet type of Traits' kind. Every delivery is a new
+     * send, so it carries a new sequence ID.
      */
-    void deliverAcknowledgement(const uint8_t* fromMac, RecordAckPacket ack,
-                                PktType type = PktType::kCrashRecordAck) {
+    template <class Traits>
+    void deliverAcknowledgement(const uint8_t* fromMac, RecordAckPacket ack) {
         nextSeqId = nextSeqId == 255 ? 1 : nextSeqId + 1;
         ack.seqId = nextSeqId;
         ASSERT_TRUE(pdnDevice.mockPeerComms->triggerPacketCallback(
-        fromMac, type, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack)))
+        fromMac, Traits::ACK_PACKET_TYPE, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack)))
         << "nothing on the PDN listens for stored acknowledgements";
     }
 
@@ -246,7 +250,7 @@ public:
         fdnRadio.onSent = [this](const RecordRelayRadioLog::Sent& frame) {
             air.push_back({false, frame});
         };
-        fdnRecordStore = new FdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+        fdnRecordStore = new FdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs);
     }
 
     /**
@@ -277,7 +281,6 @@ public:
     FakePlatformClock* fakeClock = nullptr;
     MockDevice pdnDevice;
     MockDevice fdnDevice;
-    FakeRemoteDeviceCoordinator fdnRdc;
     NativePrefsDriver fdnPrefs{"relay-fdn-prefs", {FDN_RECORD_STORE_NAMESPACE}};
     RecordRelayRadioLog pdnRadio;
     RecordRelayRadioLog fdnRadio;
@@ -312,7 +315,8 @@ recordRelaySendsTheLowestPendingCrashRecordToTheFdnWhoseBeaconItHeard(RecordRela
 
     suite->hearBeacon(suite->fdnMac);
 
-    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
     EXPECT_EQ(frames[0].toMac, relayMacArray(suite->fdnMac));
     ASSERT_EQ(frames[0].length, 65u) << "a crash record goes out as one 65-byte frame";
@@ -341,7 +345,7 @@ inline void recordRelayIgnoresABeaconThatDoesNotIdentifyAnFdn(RecordRelayTests* 
     // Too short to carry the byte that says who sent it.
     suite->hearBeacon(suite->fdnMac, DeviceType::FDN, sizeof(PlayerInfoPkt) - 1);
 
-    EXPECT_TRUE(suite->crashFrames().empty());
+    EXPECT_TRUE(suite->framesOf<CrashRecordTraits>().empty());
     EXPECT_EQ(suite->crashSource.mark, 0u);
 }
 
@@ -351,41 +355,44 @@ inline void recordRelaySendsWhenAnFdnBecomesConnectedOnAJack(RecordRelayTests* s
     // The other observers of a PDN connecting read its profile.
     suite->pdnDevice.fakeRemoteDeviceCoordinator.setPeerRole(SerialIdentifier::INPUT_JACK, true);
     suite->connectPeer(SerialIdentifier::INPUT_JACK, DeviceType::PDN, suite->opponentMac);
-    EXPECT_TRUE(suite->crashFrames().empty()) << "a PDN on a jack is not a relay target";
+    EXPECT_TRUE(suite->framesOf<CrashRecordTraits>().empty())
+    << "a PDN on a jack is not a relay target";
 
     suite->connectPeer(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN, suite->fdnMac);
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
     EXPECT_EQ(frames[0].toMac, relayMacArray(suite->fdnMac));
     EXPECT_EQ(frames[0].recordNumber, 1u);
 
     // Becoming Connected is the trigger; staying Connected is not.
-    suite->reportDelivered(frames[0]);
+    suite->reportDelivered<CrashRecordTraits>(frames[0]);
     for (int tick = 0; tick < 5; tick++) {
         suite->pdnDevice.loop();
     }
-    EXPECT_EQ(suite->crashFrames().size(), 1u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u);
 }
 
 inline void recordRelayDeliversBothPendingRecordsToAConnectedFdn(RecordRelayTests* suite) {
     suite->crashSource.newestNumber = 2;
 
     suite->connectPeer(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN, suite->fdnMac);
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
     EXPECT_EQ(frames[0].recordNumber, 1u);
-    suite->deliverAcknowledgement(suite->fdnMac,
-                                  RecordRelayTests::acknowledgementFor(frames[0].frame));
+    suite->deliverAcknowledgement<CrashRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[0].frame));
 
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 2u);
     EXPECT_EQ(frames[1].recordNumber, 2u);
     EXPECT_EQ(frames[1].toMac, relayMacArray(suite->fdnMac));
-    suite->deliverAcknowledgement(suite->fdnMac,
-                                  RecordRelayTests::acknowledgementFor(frames[1].frame));
+    suite->deliverAcknowledgement<CrashRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[1].frame));
 
     EXPECT_EQ(suite->crashSource.mark, 2u);
-    EXPECT_EQ(suite->crashFrames().size(), 2u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 2u);
 }
 
 inline void recordRelaySendsNothingWithNoFdnInReach(RecordRelayTests* suite) {
@@ -396,7 +403,7 @@ inline void recordRelaySendsNothingWithNoFdnInReach(RecordRelayTests* suite) {
         suite->pdnDevice.loop();
     }
 
-    EXPECT_TRUE(suite->crashFrames().empty());
+    EXPECT_TRUE(suite->framesOf<CrashRecordTraits>().empty());
     EXPECT_EQ(suite->crashSource.mark, 0u);
 }
 
@@ -407,23 +414,24 @@ inline void recordRelaySendsNothingWhenNoRecordIsPending(RecordRelayTests* suite
     suite->hearBeacon(suite->fdnMac);
     suite->connectPeer(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN, suite->fdnMac);
 
-    EXPECT_TRUE(suite->crashFrames().empty());
+    EXPECT_TRUE(suite->framesOf<CrashRecordTraits>().empty());
 }
 
 inline void recordRelaySendsAnUnacknowledgedRecordAgainOnTheNextBeacon(RecordRelayTests* suite) {
     suite->crashSource.newestNumber = 1;
 
     suite->hearBeacon(suite->fdnMac);
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
-    suite->reportDelivered(frames[0]);
+    suite->reportDelivered<CrashRecordTraits>(frames[0]);
 
     suite->fakeClock->advance(RECORD_RELAY_BEACON_INTERVAL_MS);
     suite->pdnDevice.loop();
-    EXPECT_EQ(suite->crashFrames().size(), 1u) << "nothing is sent between beacons";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u) << "nothing is sent between beacons";
 
     suite->hearBeacon(suite->fdnMac);
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 2u);
     EXPECT_EQ(frames[1].recordNumber, 1u);
     EXPECT_EQ(frames[1].toMac, relayMacArray(suite->fdnMac));
@@ -437,29 +445,32 @@ inline void recordRelayKeepsTheMarkOnADeliveryReportAlone(RecordRelayTests* suit
     suite->crashSource.newestNumber = 2;
 
     suite->hearBeacon(suite->fdnMac);
-    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
-    suite->reportDelivered(frames[0]);
+    suite->reportDelivered<CrashRecordTraits>(frames[0]);
     suite->pdnDevice.loop();
 
     EXPECT_EQ(suite->crashSource.mark, 0u);
     EXPECT_EQ(suite->crashSource.advanceCalls, 0u);
-    EXPECT_EQ(suite->crashFrames().size(), 1u) << "the next record waits for the acknowledgement";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u)
+    << "the next record waits for the acknowledgement";
 }
 
 inline void recordRelayIgnoresAnAcknowledgementFromAnotherDevice(RecordRelayTests* suite) {
     suite->crashSource.newestNumber = 2;
 
     suite->hearBeacon(suite->fdnMac);
-    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
-    suite->reportDelivered(frames[0]);
+    suite->reportDelivered<CrashRecordTraits>(frames[0]);
 
-    suite->deliverAcknowledgement(suite->strangerMac,
-                                  RecordRelayTests::acknowledgementFor(frames[0].frame));
+    suite->deliverAcknowledgement<CrashRecordTraits>(
+    suite->strangerMac, RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[0].frame));
 
     EXPECT_EQ(suite->crashSource.mark, 0u);
-    EXPECT_EQ(suite->crashFrames().size(), 1u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u);
 }
 
 inline void recordRelayIgnoresALateAcknowledgementFromAnEarlierFdn(RecordRelayTests* suite) {
@@ -467,27 +478,28 @@ inline void recordRelayIgnoresALateAcknowledgementFromAnEarlierFdn(RecordRelayTe
     suite->crashSource.mark = 1;
 
     suite->hearBeacon(suite->fdnMac);
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
     ASSERT_EQ(frames[0].recordNumber, 2u);
-    suite->reportDelivered(frames[0]);
+    suite->reportDelivered<CrashRecordTraits>(frames[0]);
 
     suite->hearBeacon(suite->otherFdnMac);
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 2u);
     EXPECT_EQ(frames[1].recordNumber, 2u);
     EXPECT_EQ(frames[1].toMac, relayMacArray(suite->otherFdnMac));
-    suite->reportDelivered(frames[1]);
+    suite->reportDelivered<CrashRecordTraits>(frames[1]);
 
-    suite->deliverAcknowledgement(suite->fdnMac,
-                                  RecordRelayTests::acknowledgementFor(frames[0].frame));
+    suite->deliverAcknowledgement<CrashRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[0].frame));
     EXPECT_EQ(suite->crashSource.mark, 1u) << "the earlier FDN's acknowledgement moved the mark";
-    EXPECT_EQ(suite->crashFrames().size(), 2u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 2u);
 
-    suite->deliverAcknowledgement(suite->otherFdnMac,
-                                  RecordRelayTests::acknowledgementFor(frames[1].frame));
+    suite->deliverAcknowledgement<CrashRecordTraits>(
+    suite->otherFdnMac, RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[1].frame));
     EXPECT_EQ(suite->crashSource.mark, 2u);
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 3u) << "crash record 3 is sent once";
     EXPECT_EQ(frames[2].recordNumber, 3u);
     EXPECT_EQ(frames[2].toMac, relayMacArray(suite->otherFdnMac));
@@ -499,37 +511,39 @@ recordRelayIgnoresAnAcknowledgementThatDoesNotMatchTheFrameItSent(RecordRelayTes
     suite->crashSource.mark = 2;
 
     suite->hearBeacon(suite->fdnMac);
-    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
     ASSERT_EQ(frames[0].recordNumber, 3u);
-    suite->reportDelivered(frames[0]);
-    const RecordAckPacket matching = RecordRelayTests::acknowledgementFor(frames[0].frame);
+    suite->reportDelivered<CrashRecordTraits>(frames[0]);
+    const RecordAckPacket matching =
+    RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[0].frame);
 
     // Same number, but the check of different bytes.
     RecordAckPacket wrongCheck = matching;
     wrongCheck.recordCheck[RECORD_CHECK_SIZE - 1] ^= 0x01;
-    suite->deliverAcknowledgement(suite->fdnMac, wrongCheck);
+    suite->deliverAcknowledgement<CrashRecordTraits>(suite->fdnMac, wrongCheck);
 
     RecordAckPacket wrongNumber = matching;
     wrongNumber.recordNumber = 4;
-    suite->deliverAcknowledgement(suite->fdnMac, wrongNumber);
+    suite->deliverAcknowledgement<CrashRecordTraits>(suite->fdnMac, wrongNumber);
 
     RecordAckPacket earlierNumber = matching;
     earlierNumber.recordNumber = 1;
-    suite->deliverAcknowledgement(suite->fdnMac, earlierNumber);
+    suite->deliverAcknowledgement<CrashRecordTraits>(suite->fdnMac, earlierNumber);
 
     RecordAckPacket wrongKind = matching;
     wrongKind.kind = static_cast<uint8_t>(RecordKind::MATCH);
-    suite->deliverAcknowledgement(suite->fdnMac, wrongKind);
+    suite->deliverAcknowledgement<CrashRecordTraits>(suite->fdnMac, wrongKind);
 
     // The right acknowledgement on the other kind's packet type.
-    suite->deliverAcknowledgement(suite->fdnMac, matching, PktType::kMatchRecordAck);
+    suite->deliverAcknowledgement<MatchRecordTraits>(suite->fdnMac, matching);
 
     EXPECT_EQ(suite->crashSource.mark, 2u);
     EXPECT_EQ(suite->crashSource.advanceCalls, 0u);
-    EXPECT_EQ(suite->crashFrames().size(), 1u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u);
 
-    suite->deliverAcknowledgement(suite->fdnMac, matching);
+    suite->deliverAcknowledgement<CrashRecordTraits>(suite->fdnMac, matching);
     EXPECT_EQ(suite->crashSource.mark, 3u) << "the record stayed pending, so its own "
                                               "acknowledgement still counts";
 }
@@ -539,14 +553,16 @@ recordRelayAdvancesTheMarkAndSendsTheNextRecordToTheFdnThatAcknowledged(RecordRe
     suite->crashSource.newestNumber = 2;
 
     suite->hearBeacon(suite->fdnMac);
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
-    const RecordAckPacket firstAck = RecordRelayTests::acknowledgementFor(frames[0].frame);
+    const RecordAckPacket firstAck =
+    RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[0].frame);
 
     // Before any delivery report: the acknowledgement is the evidence, not the radio.
-    suite->deliverAcknowledgement(suite->fdnMac, firstAck);
+    suite->deliverAcknowledgement<CrashRecordTraits>(suite->fdnMac, firstAck);
     EXPECT_EQ(suite->crashSource.mark, 1u);
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 2u);
     EXPECT_EQ(frames[1].recordNumber, 2u);
     EXPECT_EQ(frames[1].toMac, relayMacArray(suite->fdnMac));
@@ -554,22 +570,22 @@ recordRelayAdvancesTheMarkAndSendsTheNextRecordToTheFdnThatAcknowledged(RecordRe
     // The acknowledged frame is no longer retried.
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
     suite->pdnDevice.loop();
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 3u);
     EXPECT_EQ(frames[2].recordNumber, 2u) << "the retry was of the acknowledged record";
     EXPECT_EQ(frames[2].seqId, frames[1].seqId);
 
     // The FDN sends the first acknowledgement again: nothing is left for it to answer.
-    suite->deliverAcknowledgement(suite->fdnMac, firstAck);
+    suite->deliverAcknowledgement<CrashRecordTraits>(suite->fdnMac, firstAck);
     EXPECT_EQ(suite->crashSource.mark, 1u);
     EXPECT_EQ(suite->crashSource.advanceCalls, 1u);
 
-    suite->deliverAcknowledgement(suite->fdnMac,
-                                  RecordRelayTests::acknowledgementFor(frames[1].frame));
+    suite->deliverAcknowledgement<CrashRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[1].frame));
     EXPECT_EQ(suite->crashSource.mark, 2u);
 
     suite->hearBeacon(suite->fdnMac);
-    EXPECT_EQ(suite->crashFrames().size(), 3u) << "nothing is pending any more";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 3u) << "nothing is pending any more";
 }
 
 // ---- One record of each kind in flight ----
@@ -578,31 +594,32 @@ inline void recordRelayDoesNotMultiplySendsOnABurstOfBeacons(RecordRelayTests* s
     suite->crashSource.newestNumber = 2;
 
     suite->hearBeacon(suite->fdnMac);
-    ASSERT_EQ(suite->crashFrames().size(), 1u);
+    ASSERT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u);
 
     suite->hearBeacon(suite->fdnMac);
     suite->hearBeacon(suite->otherFdnMac);
     suite->hearBeacon(suite->fdnMac);
     suite->connectPeer(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN, suite->otherFdnMac);
-    EXPECT_EQ(suite->crashFrames().size(), 1u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u);
 
     // The transport is still retrying that one frame, to the FDN it was sent to.
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
     suite->pdnDevice.loop();
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 2u);
     EXPECT_EQ(frames[1].seqId, frames[0].seqId);
     EXPECT_EQ(frames[1].toMac, relayMacArray(suite->fdnMac));
 
     suite->hearBeacon(suite->fdnMac);
-    EXPECT_EQ(suite->crashFrames().size(), 2u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 2u);
 
     // Abandoned: the next beacon is a new chance.
     suite->fakeClock->advance(Resender::RETRANSMIT_SPAN_MS);
     suite->pdnDevice.loop();
-    ASSERT_EQ(suite->crashFrames().size(), 2u);
+    ASSERT_EQ(suite->framesOf<CrashRecordTraits>().size(), 2u);
     suite->hearBeacon(suite->otherFdnMac);
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 3u);
     EXPECT_EQ(frames[2].recordNumber, 1u);
     EXPECT_EQ(frames[2].toMac, relayMacArray(suite->otherFdnMac));
@@ -617,27 +634,30 @@ inline void recordRelaySendsNothingDuringAMatchOrAShootout(RecordRelayTests* sui
     suite->startMatch();
     suite->hearBeacon(suite->fdnMac);
     suite->connectPeer(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN, suite->fdnMac);
-    EXPECT_TRUE(suite->crashFrames().empty()) << "a record was sent during a match";
+    EXPECT_TRUE(suite->framesOf<CrashRecordTraits>().empty()) << "a record was sent during a match";
 
     suite->endMatch();
     suite->pdnDevice.loop();
-    EXPECT_TRUE(suite->crashFrames().empty()) << "the end of a match is not a trigger";
+    EXPECT_TRUE(suite->framesOf<CrashRecordTraits>().empty())
+    << "the end of a match is not a trigger";
 
     suite->hearBeacon(suite->fdnMac);
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
-    suite->reportDelivered(frames[0]);
+    suite->reportDelivered<CrashRecordTraits>(frames[0]);
 
     ShootoutManager* shootoutManager = suite->gameSession->getContext().shootoutManager;
     shootoutManager->startProposal();
     ASSERT_TRUE(shootoutManager->active());
     suite->hearBeacon(suite->fdnMac);
-    EXPECT_EQ(suite->crashFrames().size(), 1u) << "a record was sent during a shootout";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u)
+    << "a record was sent during a shootout";
 
     shootoutManager->resetToIdle();
     ASSERT_FALSE(shootoutManager->active());
     suite->hearBeacon(suite->fdnMac);
-    EXPECT_EQ(suite->crashFrames().size(), 2u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 2u);
     EXPECT_EQ(suite->crashSource.mark, 0u);
 }
 
@@ -645,27 +665,30 @@ inline void recordRelayCancelsASendInFlightWhenAMatchStarts(RecordRelayTests* su
     suite->crashSource.newestNumber = 1;
 
     suite->hearBeacon(suite->fdnMac);
-    ASSERT_EQ(suite->crashFrames().size(), 1u);
+    ASSERT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u);
 
     // Before the device loops at all: the transport's retry pass runs ahead of
     // the session's tick, so a cancel left to the tick would come one retry late.
     suite->startMatch();
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
     suite->pdnDevice.loop();
-    EXPECT_EQ(suite->crashFrames().size(), 1u) << "the frame was retried after the match started";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u)
+    << "the frame was retried after the match started";
     // Past every retry the transport would have made of that frame.
     for (int tick = 0; tick < 8; tick++) {
         suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
         suite->pdnDevice.loop();
     }
-    EXPECT_EQ(suite->crashFrames().size(), 1u) << "the frame was retried during the match";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u)
+    << "the frame was retried during the match";
     EXPECT_EQ(suite->crashSource.mark, 0u);
 
     // Still pending: it goes out again once the match is over.
     suite->endMatch();
     suite->pdnDevice.loop();
     suite->hearBeacon(suite->fdnMac);
-    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 2u);
     EXPECT_EQ(frames[1].recordNumber, 1u);
 }
@@ -674,13 +697,14 @@ inline void recordRelayCancelsASendInFlightWhenAShootoutStarts(RecordRelayTests*
     suite->crashSource.newestNumber = 1;
 
     suite->hearBeacon(suite->fdnMac);
-    ASSERT_EQ(suite->crashFrames().size(), 1u);
+    ASSERT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u);
 
     suite->gameSession->getContext().shootoutManager->startProposal();
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
     suite->pdnDevice.loop();
 
-    EXPECT_EQ(suite->crashFrames().size(), 1u) << "the frame was retried during the shootout";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u)
+    << "the frame was retried during the shootout";
     EXPECT_EQ(suite->crashSource.mark, 0u);
 
     // A device can also enter a shootout phase other than the first with a
@@ -688,12 +712,13 @@ inline void recordRelayCancelsASendInFlightWhenAShootoutStarts(RecordRelayTests*
     ShootoutManager* shootoutManager = suite->gameSession->getContext().shootoutManager;
     shootoutManager->resetToIdle();
     suite->hearBeacon(suite->fdnMac);
-    ASSERT_EQ(suite->crashFrames().size(), 2u);
+    ASSERT_EQ(suite->framesOf<CrashRecordTraits>().size(), 2u);
     shootoutManager->abortTournament();
     ASSERT_EQ(shootoutManager->getPhase(), ShootoutManager::Phase::ABORTED);
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
     suite->pdnDevice.loop();
-    EXPECT_EQ(suite->crashFrames().size(), 2u) << "the frame was retried after the abort";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 2u)
+    << "the frame was retried after the abort";
 }
 
 // A match the opponent starts arrives in a packet handler, between two ticks.
@@ -705,7 +730,7 @@ recordRelayCancelsASendInFlightWhenAnInboundCommandStartsAMatch(RecordRelayTests
                                                             suite->opponentMac);
 
     suite->hearBeacon(suite->fdnMac);
-    ASSERT_EQ(suite->crashFrames().size(), 1u);
+    ASSERT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u);
 
     MatchPacket command{};
     IdGenerator::copyId(command.matchId, "0f0f0f0f-0000-4000-8000-00000000000a");
@@ -720,7 +745,8 @@ recordRelayCancelsASendInFlightWhenAnInboundCommandStartsAMatch(RecordRelayTests
 
     suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
     suite->pdnDevice.loop();
-    EXPECT_EQ(suite->crashFrames().size(), 1u) << "the frame was retried after the match started";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u)
+    << "the frame was retried after the match started";
     EXPECT_EQ(suite->crashSource.mark, 0u);
 }
 
@@ -728,14 +754,15 @@ inline void recordRelayDeliversToAnotherFdnWhilePluggedIntoOne(RecordRelayTests*
     suite->crashSource.newestNumber = 1;
 
     suite->connectPeer(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN, suite->fdnMac);
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
     EXPECT_EQ(frames[0].toMac, relayMacArray(suite->fdnMac));
     // Delivered, but the Connected FDN never acknowledges: full, or busy.
-    suite->reportDelivered(frames[0]);
+    suite->reportDelivered<CrashRecordTraits>(frames[0]);
 
     suite->hearBeacon(suite->otherFdnMac);
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 2u);
     EXPECT_EQ(frames[1].toMac, relayMacArray(suite->otherFdnMac));
     EXPECT_EQ(frames[1].recordNumber, 1u);
@@ -746,21 +773,24 @@ recordRelayAdvancesTheMarkOnAnAcknowledgementMidMatchAndSendsNothing(RecordRelay
     suite->crashSource.newestNumber = 2;
 
     suite->hearBeacon(suite->fdnMac);
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
 
     suite->startMatch();
-    suite->deliverAcknowledgement(suite->fdnMac,
-                                  RecordRelayTests::acknowledgementFor(frames[0].frame));
+    suite->deliverAcknowledgement<CrashRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[0].frame));
     EXPECT_EQ(suite->crashSource.mark, 1u);
-    EXPECT_EQ(suite->crashFrames().size(), 1u) << "the next record was sent during the match";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u)
+    << "the next record was sent during the match";
 
     suite->endMatch();
     suite->pdnDevice.loop();
-    EXPECT_EQ(suite->crashFrames().size(), 1u) << "the next record waits for a trigger";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u)
+    << "the next record waits for a trigger";
 
     suite->hearBeacon(suite->fdnMac);
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 2u);
     EXPECT_EQ(frames[1].recordNumber, 2u);
 }
@@ -786,7 +816,8 @@ inline void recordRelayDeliversTwoCrashRecordsToAnFdnItIsNotConnectedTo(RecordRe
 
     EXPECT_EQ(suite->crashSource.mark, 2u);
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 2u);
-    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    const std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 2u) << "record 1 followed by record 2, each sent once";
     EXPECT_EQ(frames[0].recordNumber, 1u);
     EXPECT_EQ(frames[1].recordNumber, 2u);
@@ -797,7 +828,7 @@ inline void recordRelayDeliversTwoCrashRecordsToAnFdnItIsNotConnectedTo(RecordRe
     suite->fakeClock->advance(RECORD_RELAY_BEACON_INTERVAL_MS + 1);
     fdnBeacon.update();
     suite->pumpAir();
-    EXPECT_EQ(suite->crashFrames().size(), 2u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 2u);
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 2u);
 }
 
@@ -821,14 +852,14 @@ inline void recordRelayKeepsARecordPendingWhenTheFdnIsFull(RecordRelayTests* sui
     suite->hearBeacon(suite->fdnMac);
     suite->pumpAir();
 
-    EXPECT_EQ(suite->crashFrames().size(), 1u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u);
     EXPECT_EQ(suite->crashSource.mark, 0u) << "a record the FDN could not store was retired";
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), FDN_CRASH_RECORD_CAPACITY);
 
     // Delivered and unacknowledged, so it is offered again on the next beacon.
     suite->hearBeacon(suite->fdnMac);
     suite->pumpAir();
-    EXPECT_EQ(suite->crashFrames().size(), 2u);
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 2u);
     EXPECT_EQ(suite->crashSource.mark, 0u);
 }
 
@@ -840,35 +871,37 @@ inline void recordRelayWaitsForATriggerWhenTheMarkDoesNotMove(RecordRelayTests* 
     suite->crashSource.markWritesFail = true;
 
     suite->hearBeacon(suite->fdnMac);
-    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames = suite->crashFrames();
+    std::vector<SentRecordFrame<CrashRecordFramePacket>> frames =
+    suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
-    suite->reportDelivered(frames[0]);
-    suite->deliverAcknowledgement(suite->fdnMac,
-                                  RecordRelayTests::acknowledgementFor(frames[0].frame));
+    suite->reportDelivered<CrashRecordTraits>(frames[0]);
+    suite->deliverAcknowledgement<CrashRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[0].frame));
 
     EXPECT_EQ(suite->crashSource.advanceCalls, 1u);
     EXPECT_EQ(suite->crashSource.mark, 0u);
-    EXPECT_EQ(suite->crashFrames().size(), 1u) << "the acknowledged record was sent straight back";
+    EXPECT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u)
+    << "the acknowledged record was sent straight back";
 
     // The next beacon offers it again, and a mark that now moves releases the next record.
     suite->crashSource.markWritesFail = false;
     suite->hearBeacon(suite->fdnMac);
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 2u);
     EXPECT_EQ(frames[1].recordNumber, 1u);
-    suite->deliverAcknowledgement(suite->fdnMac,
-                                  RecordRelayTests::acknowledgementFor(frames[1].frame));
+    suite->deliverAcknowledgement<CrashRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<CrashRecordTraits>(frames[1].frame));
     EXPECT_EQ(suite->crashSource.mark, 1u);
-    frames = suite->crashFrames();
+    frames = suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 3u);
     EXPECT_EQ(frames[2].recordNumber, 2u);
 }
 
 // ---- Both kinds ----
 
-// The session registers only the crash source in this build, so the relay is
-// built directly here to give it a source of each kind. The caller owns the
-// clock, so a failed assertion returning from here cannot leave it dangling.
+// The relay is built directly here on a match manager whose storage the test
+// seeds, beside a fake crash source. The caller owns the clock, so a failed
+// assertion returning from here cannot leave it dangling.
 inline void recordRelayRelaysEachKindOnItsOwn() {
     {
         MockDevice device;
@@ -880,21 +913,34 @@ inline void recordRelayRelaysEachKindOnItsOwn() {
         RecordRelayRadioLog radio;
         radio.attach(*device.mockPeerComms);
 
+        // Matches 12 and 13 of 13 are stored and still to be collected. The
+        // storage is declared first: the match manager closes it on the way out.
+        NativePrefsDriver matchPrefs("relay-kinds-prefs", {MATCHES_PREFS_NAMESPACE});
+        matchPrefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, 13);
+        matchPrefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 11);
+        for (uint32_t number = 12; number <= 13; number++) {
+            char matchId[37];
+            snprintf(matchId, sizeof(matchId), "%08u-b0b0-4000-8000-000000000000", number);
+            const Match match(matchId);
+            uint8_t recordBytes[MATCH_BINARY_SIZE] = {};
+            match.serialize(recordBytes);
+            char key[16];
+            snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
+                     static_cast<unsigned>((number - 1) % MATCH_RING_CAPACITY));
+            matchPrefs.writeBytes(MATCHES_PREFS_NAMESPACE, key, recordBytes, sizeof(recordBytes));
+        }
+
         Player player;
-        MatchManager matchManager(&player, device.getStorage(), device.wirelessManager,
+        MatchManager matchManager(&player, &matchPrefs, device.wirelessManager,
                                   &device.fakeRemoteDeviceCoordinator);
         ShootoutManager shootoutManager(&player, device.wirelessManager,
                                         &device.fakeRemoteDeviceCoordinator, &matchManager);
         FakeRecordSource<CrashRecordTraits> crashSource;
         crashSource.newestNumber = 1;
-        FakeRecordSource<MatchRecordTraits> matchSource;
-        matchSource.newestNumber = 13;
-        matchSource.mark = 11;
         {
             RecordRelay recordRelay(device.wirelessManager, &device.fakeRemoteDeviceCoordinator,
                                     &matchManager, &shootoutManager);
             recordRelay.setCrashRecordSource(&crashSource);
-            recordRelay.setMatchRecordSource(&matchSource);
 
             PlayerInfoPkt beacon{};
             beacon.senderDeviceType = static_cast<uint8_t>(DeviceType::FDN);
@@ -922,7 +968,7 @@ inline void recordRelayRelaysEachKindOnItsOwn() {
             device.mockPeerComms->triggerPacketCallback(
             fdnMac, PktType::kMatchRecordAck, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
 
-            EXPECT_EQ(matchSource.mark, 12u);
+            EXPECT_EQ(matchManager.getCollectedHighWaterMark(), 12u);
             matchFrames = radio.framesOf<MatchRecordFramePacket>(PktType::kMatchRecord);
             ASSERT_EQ(matchFrames.size(), 2u);
             EXPECT_EQ(matchFrames[1].recordNumber, 13u);

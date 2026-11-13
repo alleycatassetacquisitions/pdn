@@ -145,8 +145,7 @@ static void setup() {
 
     symbolWirelessManager =
     new SymbolWirelessManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
-    fdnRecordStore = new FdnRecordStore(fdn->getWirelessManager(), fdn->getStorage(),
-                                        fdn->getRemoteDeviceCoordinator());
+    fdnRecordStore = new FdnRecordStore(fdn->getWirelessManager(), fdn->getStorage());
     fdnProvisioningManager =
     new FdnProvisioningManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
     // The beacon is pumped here rather than from a state: only the mounted app's

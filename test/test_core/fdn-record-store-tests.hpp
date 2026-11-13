@@ -86,7 +86,7 @@ public:
             return true;
         });
 
-        fdnRecordStore = new FdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+        fdnRecordStore = new FdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs);
     }
 
     /** Releases the store before the radio it is registered on. */
@@ -102,7 +102,7 @@ public:
     void restartStore() {
         delete fdnRecordStore;
         fdnRecordStore = nullptr;
-        fdnRecordStore = new FdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+        fdnRecordStore = new FdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs);
     }
 
     /** Uploads the stored match records, answers with success, and hands the radio back. */
@@ -183,22 +183,16 @@ public:
 
     FakePlatformClock* fakeClock = nullptr;
     MockDevice fdnDevice;
-    FakeRemoteDeviceCoordinator fdnRdc;
     RefusingPrefsDriver fdnPrefs{"fdn-record-prefs", {FDN_RECORD_STORE_NAMESPACE}};
     FdnRecordStore* fdnRecordStore = nullptr;
     uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x31};
     uint8_t otherPdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x32};
     std::vector<SentRecordAck> sentAcks;
     std::vector<HttpRequest> httpRequests;
-    size_t collectionAcksSent = 0;
     uint8_t nextSeqId = 0;
 
 private:
     void noteSentFrame(const uint8_t* toMac, PktType type, const uint8_t* data, size_t length) {
-        if (type == PktType::kMatchCollectionAck) {
-            collectionAcksSent++;
-            return;
-        }
         if (type != PktType::kCrashRecordAck && type != PktType::kMatchRecordAck) return;
 
         SentRecordAck sent{};
@@ -317,9 +311,18 @@ inline void fdnDropsARecordFrameOfTheWrongLength(FdnRecordStoreTests* suite) {
     matchAtCrashLength.kind = static_cast<uint8_t>(RecordKind::MATCH);
     suite->deliver(PktType::kMatchRecord, suite->pdnMac, matchAtCrashLength);
 
+    const MatchRecordFramePacket oneByteShort = FdnRecordStoreTests::uploadableMatchFrame(4);
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac, oneByteShort,
+                   sizeof(MatchRecordFramePacket) - 1);
+
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 0u);
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
     EXPECT_TRUE(suite->sentAcks.empty());
+
+    // The same frame at its full length is taken, so only the length was at fault.
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac, oneByteShort);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u);
+    EXPECT_EQ(suite->sentAcks.size(), 1u);
 }
 
 inline void fdnAcknowledgesAResentRecordAndStoresItOnce(FdnRecordStoreTests* suite) {
@@ -608,38 +611,64 @@ inline void fdnTreatsAResendAsNewWhenTheStoredBytesNoLongerMatch(FdnRecordStoreT
     EXPECT_EQ(suite->sentAcks.size(), 2u);
 }
 
-// The cabled kMatchCollection path, kept until the PDN sends record frames.
 inline void
-fdnStoresACabledMatchCollectionFrameWithItsSenderAndNoRecordKey(FdnRecordStoreTests* suite) {
-    const Match match("0badc0de-aaaa-4000-8000-bbbbbbbbbbbb");
-    MatchRecordPacket packet{};
-    packet.matchSeq = 6;
-    match.serialize(packet.matchData);
+fdnWithFullMatchStorageStillAcknowledgesAResendAndKnowsItAfterARestart(FdnRecordStoreTests* suite) {
+    // From a PDN that is not Connected on any of the FDN's jacks: intake has no cable check.
+    for (uint32_t number = 1; number <= 65; ++number) {
+        suite->deliver(PktType::kMatchRecord, suite->pdnMac,
+                       FdnRecordStoreTests::uploadableMatchFrame(number));
+    }
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 64u);
+    EXPECT_EQ(suite->sentAcks.size(), 64u)
+    << "65th match must not be ACKed while the store is full";
 
-    suite->fdnDevice.mockPeerComms->triggerPacketCallback(suite->pdnMac, PktType::kMatchCollection,
-                                                          reinterpret_cast<const uint8_t*>(&packet),
-                                                          sizeof(packet));
-    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u)
-    << "the cabled path took a frame from a PDN that is not Connected";
-    EXPECT_EQ(suite->collectionAcksSent, 0u);
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac,
+                   FdnRecordStoreTests::uploadableMatchFrame(64));
+    EXPECT_EQ(suite->sentAcks.size(), 65u)
+    << "a resend after a lost ack is re-acked even when full";
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 64u);
 
-    suite->fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
-    suite->fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
-    suite->fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, suite->pdnMac);
-    suite->fdnDevice.mockPeerComms->triggerPacketCallback(suite->pdnMac, PktType::kMatchCollection,
-                                                          reinterpret_cast<const uint8_t*>(&packet),
-                                                          sizeof(packet));
+    suite->restartStore();
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac,
+                   FdnRecordStoreTests::uploadableMatchFrame(1));
+    EXPECT_EQ(suite->sentAcks.size(), 66u) << "stored records are known again after a reboot";
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 64u);
+}
+
+inline void fdnDropsAnUnreadableHeadInsteadOfFailingEveryBatch(FdnRecordStoreTests* suite) {
+    for (uint32_t number = 1; number <= 2; ++number) {
+        suite->deliver(PktType::kMatchRecord, suite->pdnMac,
+                       FdnRecordStoreTests::uploadableMatchFrame(number));
+    }
+    ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u);
+    const uint8_t torn[3] = {1, 2, 3};
+    suite->fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_0", torn, sizeof(torn));
+
+    ASSERT_TRUE(suite->fdnRecordStore->uploadPendingBatch(nullptr));
+    ASSERT_EQ(suite->httpRequests.size(), 1u) << "the readable record still goes up";
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u);
-    EXPECT_EQ(suite->collectionAcksSent, 1u);
-    EXPECT_TRUE(suite->sentAcks.empty()) << "the cabled path answers on its own packet type";
+    suite->httpRequests[0].onSuccess("");
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
+}
 
-    // What it stored is the record frame this PDN would send with no record key:
-    // same sender, number and bytes, and a zero trailer.
-    MatchRecordFramePacket sameAsRecordFrame = FdnRecordStoreTests::matchFrame(6, 0);
-    memcpy(sameAsRecordFrame.recordBytes, packet.matchData, sizeof(packet.matchData));
-    EXPECT_TRUE(suite->isRecognisedAsHeld(PktType::kMatchRecord, RecordKind::MATCH, suite->pdnMac,
-                                          sameAsRecordFrame));
-    suite->deliver(PktType::kMatchRecord, suite->otherPdnMac, sameAsRecordFrame);
-    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u)
-    << "the cabled record was not stored under its sender's MAC";
+inline void fdnUploadStopsShortOfAnUnreadableRecord(FdnRecordStoreTests* suite) {
+    for (uint32_t number = 1; number <= 3; ++number) {
+        suite->deliver(PktType::kMatchRecord, suite->pdnMac,
+                       FdnRecordStoreTests::uploadableMatchFrame(number));
+    }
+    ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 3u);
+    const uint8_t torn[3] = {1, 2, 3};
+    suite->fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_1", torn, sizeof(torn));
+
+    ASSERT_TRUE(suite->fdnRecordStore->uploadPendingBatch(nullptr));
+    ASSERT_EQ(suite->httpRequests.size(), 1u) << "the record ahead of the torn one still goes up";
+    suite->httpRequests[0].onSuccess("");
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u);
+
+    ASSERT_TRUE(suite->fdnRecordStore->uploadPendingBatch(nullptr));
+    ASSERT_EQ(suite->httpRequests.size(), 2u);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u)
+    << "the torn record is dropped once it is the oldest";
+    suite->httpRequests[1].onSuccess("");
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
 }

@@ -15,7 +15,6 @@ MatchManager::MatchManager(Player* player, StorageInterface* storage,
     : player(player)
     , rdc(rdc)
     , storage(storage)
-    , wirelessManager(wirelessManager)
     , matchChannel(wirelessManager, PktType::kMatchCommand) {
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
         MatchCommand command(fromMac, p.command, p.matchId, p.playerDrawTime, p.isHunter,
@@ -40,14 +39,6 @@ MatchManager::MatchManager(Player* player, StorageInterface* storage,
         }
         clearCurrentMatch();
     });
-    if (this->wirelessManager) {
-        this->wirelessManager->setEspNowPacketHandler(
-        PktType::kMatchCollectionAck,
-        [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<MatchManager*>(ctx)->onMatchRecordAck(fromMac, data, dataLen);
-        },
-        this);
-    }
     initialize();
 }
 
@@ -67,9 +58,6 @@ uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* m
 }
 
 MatchManager::~MatchManager() {
-    if (wirelessManager) {
-        wirelessManager->clearEspNowPacketHandler(PktType::kMatchCollectionAck);
-    }
     if (storage) {
         storage->end();
     }
@@ -324,11 +312,6 @@ uint32_t MatchManager::getCollectedHighWaterMark() {
     return storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
 }
 
-uint32_t MatchManager::getOldestStoredSequence() {
-    const uint32_t seq = getMatchSequenceNumber();
-    return (seq > MATCH_RING_CAPACITY) ? (seq - MATCH_RING_CAPACITY + 1) : 1;
-}
-
 bool MatchManager::appendMatchToStorage(const Match* match) {
     if (!match || !storage) return false;
 
@@ -354,86 +337,41 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
     return true;
 }
 
-bool MatchManager::readMatchBySequence(uint32_t seq, Match& out) {
-    if (!storage || seq == 0 || seq > getMatchSequenceNumber() || seq < getOldestStoredSequence()) {
-        return false;
-    }
-
-    char key[16];
-    snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
-             static_cast<unsigned>((seq - 1) % MATCH_RING_CAPACITY));
-
+bool MatchManager::readLowestPending(uint32_t& recordNumber,
+                                     uint8_t (&recordBytes)[MatchRecordTraits::RECORD_SIZE]) {
+    // A scratch copy, so a short read leaves the caller's buffer untouched.
     uint8_t buffer[MATCH_BINARY_SIZE] = {};
-    if (storage->readBytes(MATCHES_PREFS_NAMESPACE, key, buffer, MATCH_BINARY_SIZE) !=
-        MATCH_BINARY_SIZE) {
+    // With no storage both numbers read 0, nothing is pending and nothing is loaded.
+    if (!findLowestReadableRecord(
+        getCollectedHighWaterMark(), getMatchSequenceNumber(), MATCH_RING_CAPACITY,
+        highestUnreadableReported, recordNumber,
+        [this, &buffer](uint32_t seq) {
+            char key[16];
+            snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
+                     static_cast<unsigned>((seq - 1) % MATCH_RING_CAPACITY));
+            return storage->readBytes(MATCHES_PREFS_NAMESPACE, key, buffer, MATCH_BINARY_SIZE) ==
+                   MATCH_BINARY_SIZE;
+        },
+        [](uint32_t seq) {
+            LOG_W(MATCH_MANAGER_TAG, "Stored match %u cannot be read", static_cast<unsigned>(seq));
+        })) {
         return false;
     }
-
-    out.deserialize(buffer);
+    memcpy(recordBytes, buffer, MATCH_BINARY_SIZE);
     return true;
 }
 
-void MatchManager::sync() {
-    if (!storage || !wirelessManager) return;
-
-    const uint8_t* fdnMac = rdc ? rdc->getConnectedPeerMac(DeviceType::FDN) : nullptr;
-    if (!fdnMac) {
-        transferWindowTimer.invalidate();
-        sentRecordSeq = 0;
-        return;
-    }
-    // NVS is polled and records sent at most once per window; an ack ends it early.
-    if (transferWindowTimer.isRunning() && !transferWindowTimer.expired()) return;
-    transferWindowTimer.setTimer(MATCH_TRANSFER_WINDOW_MS);
-
+void MatchManager::advanceMark(uint32_t recordNumber) {
     const uint32_t collected = getCollectedHighWaterMark();
-    if (collected >= getMatchSequenceNumber()) return;
-
-    // Matches the ring already overwrote are gone; resume from the oldest still held.
-    const uint32_t nextToSend = std::max(collected + 1, getOldestStoredSequence());
-
-    MatchRecordPacket pkt{};
-    pkt.matchSeq = nextToSend;
-    Match match{};
-    if (!readMatchBySequence(nextToSend, match)) {
-        // An unreadable record would hold back every record after it.
-        LOG_E(MATCH_MANAGER_TAG, "Skipping unreadable stored match %u", nextToSend);
-        if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, nextToSend) ==
-            sizeof(uint32_t)) {
-            transferWindowTimer.invalidate();
-        }
+    // With no storage both numbers read 0, so the mark never advances.
+    if (advancedRecordMark(collected, getMatchSequenceNumber(), recordNumber) == collected) {
         return;
     }
-    match.serialize(pkt.matchData);
-
-    sentRecordSeq = nextToSend;
-    wirelessManager->sendEspNowData(fdnMac, PktType::kMatchCollection,
-                                    reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
-}
-
-void MatchManager::onMatchRecordAck(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (!storage || !rdc || !rdc->isConnectedPeer(DeviceType::FDN, fromMac)) {
-        return;
-    }
-    if (!data || dataLen != sizeof(MatchRecordAckPacket)) {
-        LOG_W(MATCH_MANAGER_TAG, "Dropping match ack of %zu bytes", dataLen);
-        return;
-    }
-
-    MatchRecordAckPacket ack{};
-    memcpy(&ack, data, sizeof(ack));
-
-    // Only the record just sent can be acked; anything else would mark records
-    // the FDN was never given as collected.
-    if (sentRecordSeq == 0 || ack.matchSeq != sentRecordSeq) {
-        return;
-    }
-    if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, ack.matchSeq) !=
+    if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, recordNumber) !=
         sizeof(uint32_t)) {
-        return;
+        LOG_E(MATCH_MANAGER_TAG, "Failed to store collected mark %u",
+              static_cast<unsigned>(recordNumber));
     }
-    sentRecordSeq = 0;
-    transferWindowTimer.invalidate();
 }
 
 parameterizedCallbackFunction MatchManager::getButtonMasher() {

@@ -17,6 +17,7 @@
 #include "game/player.hpp"
 #include "wireless/mac-functions.hpp"
 #include "wireless/match-packet.hpp"
+#include "wireless/record-source.hpp"
 #include "wireless/reliable-channel.hpp"
 #include "utils/callback-list.hpp"
 #include "device/drivers/storage-interface.hpp"
@@ -28,7 +29,6 @@ inline constexpr const char PREF_SEQ_KEY[] = "seq";
 inline constexpr const char PREF_COLLECTED_SEQ_KEY[] = "collectedSeq";
 inline constexpr const char PREF_MATCH_KEY_PREFIX[] = "match_";
 inline constexpr uint8_t MATCH_RING_CAPACITY = 32;
-inline constexpr unsigned long MATCH_TRANSFER_WINDOW_MS = 100;
 
 struct LastMatchDisplay {
     // Effective draw times, as used for winner calc: raw minus boost, so a big
@@ -68,12 +68,11 @@ struct ActiveMatchState {
     };
 };
 
-class MatchManager {
+class MatchManager : public RecordSource<MatchRecordTraits> {
 public:
     /**
-     * Claims the kMatchCommand channel and the kMatchCollectionAck handler on
-     * wirelessManager. wirelessManager and rdc may be null in tests; with a null
-     * rdc every SEND_MATCH_ID is refused.
+     * Claims the kMatchCommand channel on wirelessManager. wirelessManager and
+     * rdc may be null in tests; with a null rdc every SEND_MATCH_ID is refused.
      */
     MatchManager(Player* player, StorageInterface* storage, WirelessManager* wirelessManager,
                  RemoteDeviceCoordinator* rdc);
@@ -137,11 +136,21 @@ public:
     /** Returns the sequence number of the newest stored match (0 when none stored). */
     uint32_t getMatchSequenceNumber();
 
-    /** Returns the highest match sequence number an FDN acked or the PDN skipped as unreadable. */
+    /** Returns the sequence number of the newest match record an FDN acknowledged storing. */
     uint32_t getCollectedHighWaterMark();
 
-    /** Reads the match for 1-based sequence number `seq` if still in the 32-slot ring buffer. */
-    bool readMatchBySequence(uint32_t seq, Match& out);
+    /**
+     * Offers the oldest uncollected match record still in the 32-slot ring,
+     * passing over any that cannot be read.
+     */
+    bool readLowestPending(uint32_t& recordNumber,
+                           uint8_t (&recordBytes)[MatchRecordTraits::RECORD_SIZE]) override;
+
+    /**
+     * Stores @p recordNumber as collected_high_water_mark; ignored at or below
+     * the mark or above the newest stored match.
+     */
+    void advanceMark(uint32_t recordNumber) override;
 
     /** Clears the active match and resets all per-match state flags. */
     void clearCurrentMatch();
@@ -177,8 +186,6 @@ public:
     /** Dispatches an inbound match command (handshake or active-match event). */
     void listenForMatchEvents(const MatchCommand& command);
 
-    /** Sends stored matches to a cabled FDN; call every tick. */
-    void sync();
     /** Button callback that records a valid match draw press and sends DRAW_RESULT. */
     parameterizedCallbackFunction getMatchButtonPush();
 
@@ -214,11 +221,7 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
-    WirelessManager* wirelessManager = nullptr;
     ReliableChannel<MatchPacket> matchChannel;
-    SimpleTimer transferWindowTimer;
-    // Sequence of the record sent and not yet acked; 0 when none is outstanding.
-    uint32_t sentRecordSeq = 0;
 
     void initialize();
     /** @return the seqId the frame went out under. */
@@ -230,8 +233,8 @@ private:
     /** Appends a match to the binary ring buffer and increments the sequence number. */
     bool appendMatchToStorage(const Match* match);
 
-    uint32_t getOldestStoredSequence();
-    void onMatchRecordAck(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    // Each unreadable stored match is logged once per boot, not on every beacon.
+    uint32_t highestUnreadableReported = 0;
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake match commands
@@ -248,7 +251,3 @@ private:
     void setOpponentIdentity(bool opponentIsHunter, const UUIDBytes& playerUuid,
                              const UUIDBytes& teamUuid);
 };
-
-
-
-

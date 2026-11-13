@@ -14,6 +14,7 @@ RecordRelay::RecordRelay(WirelessManager* wirelessManager,
     , shootoutManager(shootoutManager)
     , crashLane(wirelessManager, [this]() { return isPlayActive(); })
     , matchLane(wirelessManager, [this]() { return isPlayActive(); }) {
+    matchLane.setRecordSource(matchManager);
     wirelessManager->setEspNowPacketHandler(
     PktType::kPlayerInfoBroadcast,
     [](const uint8_t* fromMac, const uint8_t* data, const size_t length, void* ctx) {
@@ -43,10 +44,6 @@ RecordRelay::~RecordRelay() {
 
 void RecordRelay::setCrashRecordSource(RecordSource<CrashRecordTraits>* crashRecordSource) {
     crashLane.setRecordSource(crashRecordSource);
-}
-
-void RecordRelay::setMatchRecordSource(RecordSource<MatchRecordTraits>* matchRecordSource) {
-    matchLane.setRecordSource(matchRecordSource);
 }
 
 bool RecordRelay::isPlayActive() const {

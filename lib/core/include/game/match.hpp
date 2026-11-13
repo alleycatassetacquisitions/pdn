@@ -7,7 +7,7 @@
 #include "utils/uuid-bytes.hpp"
 
 /**
- * A Match as NVS stores it and kMatchCollection frames carry it. Field order is
+ * A Match as NVS stores it and a match record frame carries it. Field order is
  * the layout; packed so PDN and FDN builds agree on it.
  */
 struct MatchRecord {
@@ -23,19 +23,7 @@ struct MatchRecord {
 } __attribute__((packed));
 
 constexpr size_t MATCH_BINARY_SIZE = sizeof(MatchRecord);
-static_assert(MATCH_BINARY_SIZE == 112,
-              "stored records and kMatchCollection frames share this layout");
-
-/** PDN-to-FDN stored match over PktType::kMatchCollection. matchSeq is the PDN's ring sequence. */
-struct MatchRecordPacket {
-    uint32_t matchSeq;
-    uint8_t matchData[MATCH_BINARY_SIZE];
-} __attribute__((packed));
-
-/** FDN-to-PDN over PktType::kMatchCollectionAck: the record with matchSeq is persisted. */
-struct MatchRecordAckPacket {
-    uint32_t matchSeq;
-} __attribute__((packed));
+static_assert(MATCH_BINARY_SIZE == 112, "stored records and match record frames share this layout");
 
 /**
  * Represents a match between a hunter and bounty player.

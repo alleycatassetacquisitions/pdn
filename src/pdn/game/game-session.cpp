@@ -66,7 +66,6 @@ void GameSession::sync() {
         }
     }
     if (context.shootoutManager) context.shootoutManager->sync();
-    if (context.matchManager) context.matchManager->sync();
 
     logRetryStats();
 }
