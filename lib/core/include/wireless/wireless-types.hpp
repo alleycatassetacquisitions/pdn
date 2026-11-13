@@ -19,6 +19,10 @@ struct WirelessErrorInfo {
     std::string message;
 };
 
+// Largest legitimate reply is a fully rejected match batch (~9.8 KB; matches-api.hpp checks
+// it fits); 16 KiB leaves margin while capping what a bad server can make the device buffer.
+constexpr size_t MAX_HTTP_RESPONSE_BYTES = 16 * 1024;
+
 /**
  * Configuration struct for WiFi credentials and settings
  */

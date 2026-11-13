@@ -123,6 +123,10 @@ TEST_F(NativeHttpClientDriverTestSuite, UploadsEncodedCrashLog) {
     httpClientUploadsEncodedCrashLog(this);
 }
 
+TEST_F(NativeHttpClientDriverTestSuite, RejectsOversizedResponse) {
+    httpClientRejectsOversizedResponse(this);
+}
+
 // ============================================
 // NATIVE SERIAL DRIVER TESTS
 // ============================================

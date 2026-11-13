@@ -249,3 +249,28 @@ void httpClientDisconnectedFails(NativeHttpClientDriverTestSuite* suite) {
     ASSERT_EQ(suite->lastErrorCode, WirelessError::WIFI_NOT_CONNECTED);
     ASSERT_TRUE(suite->driver->getRequestHistory().empty());
 }
+
+// Test: a reply body over MAX_HTTP_RESPONSE_BYTES fails as INVALID_RESPONSE, never reaching
+// onSuccess
+void httpClientRejectsOversizedResponse(NativeHttpClientDriverTestSuite* suite) {
+    // The encoded body carries the whole name, so a name past the bound makes the body exceed it.
+    const std::string longName(MAX_HTTP_RESPONSE_BYTES + 1, 'x');
+    configurePinPlayer(&cli::MockHttpServer::getInstance(), "0011", longName.c_str());
+
+    HttpRequest request(
+    "/device/players/by-pin/0011", "GET", "", "",
+    [suite](const std::string&) { suite->successCallbackCalled = true; },
+    [suite](const WirelessErrorInfo& error) {
+        suite->errorCallbackCalled = true;
+        suite->lastErrorCode = error.code;
+    });
+
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
+    suite->driver->queueRequest(std::move(request));
+    suite->driver->exec();
+    cli::MockHttpServer::getInstance().removePlayer("0011");
+
+    EXPECT_FALSE(suite->successCallbackCalled);
+    EXPECT_TRUE(suite->errorCallbackCalled);
+    EXPECT_EQ(suite->lastErrorCode, WirelessError::INVALID_RESPONSE);
+}

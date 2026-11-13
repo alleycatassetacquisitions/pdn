@@ -4,9 +4,17 @@
 #include <functional>
 #include <string>
 #include <utility>
+#include "alleycat-server/device_api.pb.h"
 #include "alleycat-server/quickdraw-match-codec.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/wireless-types.hpp"
+
+// A full batch rejected record by record is the largest reply the server sends;
+// each rejection costs a tag and a length byte on top of its body.
+static_assert(QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH *
+              (alleycat_device_QuickdrawMatchRejection_size + 2) <=
+              MAX_HTTP_RESPONSE_BYTES,
+              "a fully rejected batch would not fit the HTTP response bound");
 
 namespace MatchesApi {
 
