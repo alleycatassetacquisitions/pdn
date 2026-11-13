@@ -14,6 +14,8 @@
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
+#include "state/state.hpp"
+#include "state/state-lifecycle.hpp"
 #include "wireless/match-packet.hpp"
 #include "game/posse-manager.hpp"
 #include <queue>
@@ -22,6 +24,17 @@
 #include <vector>
 
 using namespace std;
+
+// mount/dismount are private on State; StateMachine reaches them through
+// StateLifecycle, and so do tests. A ConnectState learns what is cabled from
+// the bracket around its mount hook, so calling onStateMounted directly leaves
+// it reading every jack as disconnected.
+inline void mountState(State* state, Device* device) {
+    static_cast<StateLifecycle*>(state)->mount(device);
+}
+inline void dismountState(State* state, Device* device) {
+    static_cast<StateLifecycle*>(state)->dismount(device);
+}
 
 class FakeHWSerialWrapper : public HWSerialWrapper {
     public:
@@ -273,10 +286,19 @@ public:
     }
     std::array<uint8_t, 6> ringHeadMac{};
 
-    /** Sets the stubbed status reported for `id`. */
+    /**
+     * Sets the stubbed status reported for `id` and, when that moves the jack
+     * into or out of CONNECTED, tells the jack observers. Seed the peer's type
+     * and profile first: they are read when the connect is delivered. Unlike
+     * the real coordinator, getJackStatus here has already moved by the time a
+     * disconnect is delivered.
+     */
     void setJackStatus(SerialIdentifier id, JackStatus status) {
+        const bool wasConnected = getJackStatus(id) == JackStatus::CONNECTED;
         if (id == SerialIdentifier::OUTPUT_JACK) outputStatus = status;
         else if (id == SerialIdentifier::INPUT_JACK) inputStatus = status;
+        const bool isConnected = getJackStatus(id) == JackStatus::CONNECTED;
+        if (isConnected != wasConnected) fireJackChange(id, isConnected);
     }
 
     /** Returns the stubbed status for `id`. */

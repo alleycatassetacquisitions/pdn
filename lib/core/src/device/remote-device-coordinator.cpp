@@ -277,7 +277,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
                 if (j == SerialIdentifier::INPUT_JACK) adoptUpstreamHead();
                 publishHelloState();
             }
-            jackChangeCallbacks.fire(j, connected);
+            fireJackChange(j, connected);
             // Connects only. A disconnect reaches here during the Connected
             // state's dismount, while this jack still names its departing peer
             // and still reads CONNECTED, so the chain state a subscriber would
