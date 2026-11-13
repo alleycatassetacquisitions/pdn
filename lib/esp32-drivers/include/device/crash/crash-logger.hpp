@@ -29,16 +29,6 @@ inline constexpr const char CRASH_LOG_NAMESPACE[] = "crashlog";
 /** USB serial command (line-terminated) to dump the crash log via flushToSerial(). */
 inline constexpr const char CRASH_LOG_SERIAL_COMMAND[] = "CRASHLOG";
 
-struct CrashPacket {
-    uint32_t crashNumber;
-    uint32_t timestamp;
-    uint8_t  resetReason;
-    uint32_t programCounter;
-    uint32_t exceptionCause;
-    char     taskName[TASK_NAME_LENGTH];
-    char     commitHash[COMMIT_HASH_LENGTH];
-} __attribute__((packed));
-
 /**
  * Captures and persists crash records across reboots, then transmits them.
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after

@@ -6,11 +6,11 @@
 #include "device/fdn.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "alleycat-server/fdn-provisioning-manager.hpp"
-#include "alleycat-server/fdn-match-spool.hpp"
+#include "alleycat-server/fdn-record-store.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "utils/simple-timer.hpp"
 
-/** How often idle checks the match spool for an upload. */
+/** How often idle checks the record store for match records to upload. */
 constexpr unsigned long UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 enum IdleStateId {
@@ -25,22 +25,21 @@ enum IdleStateId {
 // ---------------------------------------------------------------------------
 class IdleState : public FDNConnectState {
 public:
-    /** FDN home screen; also schedules match spool uploads. */
+    /** FDN home screen; also schedules match record uploads. */
     IdleState(RemotePlayerManager* remotePlayerManager,
-              RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool);
+              RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnRecordStore* fdnRecordStore);
 
     void onStateMounted(FDN* fdn) override;
-    void onStateLoop(FDN* fdn) override;
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToPlayerDetected();
-    /** @return true if matches are staged when the upload interval expires; that call restarts it.
-     */
+    /** @return true if match records are stored when the upload interval expires; that call
+     * restarts it. */
     bool transitionToUploadPending();
 
 private:
     RemotePlayerManager* remotePlayerManager;
-    FdnMatchSpool* fdnMatchSpool;
+    FdnRecordStore* fdnRecordStore;
     SimpleTimer uploadTimer;
 };
 
@@ -58,7 +57,6 @@ public:
                         RemoteDeviceCoordinator* remoteDeviceCoordinator);
 
     void onStateMounted(FDN* fdn) override;
-    void onStateLoop(FDN* fdn) override;
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToIdle();
@@ -117,8 +115,8 @@ private:
 // ---------------------------------------------------------------------------
 class UploadPendingState : public TypedState<FDN> {
 public:
-    /** Uploads the staged match spool records over Wi-Fi. */
-    explicit UploadPendingState(FdnMatchSpool* fdnMatchSpool);
+    /** Uploads the stored match records over Wi-Fi. */
+    explicit UploadPendingState(FdnRecordStore* fdnRecordStore);
 
     /** Queues one upload batch and shows the loading screen. */
     void onStateMounted(FDN* fdn) override;
@@ -131,7 +129,7 @@ public:
     bool transitionToIdle();
 
 private:
-    FdnMatchSpool* fdnMatchSpool;
+    FdnRecordStore* fdnRecordStore;
 
     SimpleTimer glyphTimer;
     SimpleTimer fallbackTimer;

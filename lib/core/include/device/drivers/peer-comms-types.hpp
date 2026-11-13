@@ -53,6 +53,17 @@ enum class PktType : uint8_t {
     kShootoutTournamentEnd = 33,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kShootoutAbort = 34,
+    // One PktType per record kind for the frame and its acknowledgement: a channel
+    // fixes one frame length per type, and a newer send to a peer on a type
+    // supersedes one still retrying.
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kCrashRecord = 35,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kMatchRecord = 36,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kCrashRecordAck = 37,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kMatchRecordAck = 38,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 

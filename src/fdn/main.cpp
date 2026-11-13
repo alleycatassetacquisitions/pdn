@@ -29,7 +29,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "apps/idle/idle.hpp"
 #include "apps/symbol-match/symbol-match.hpp"
 #include "apps/fdn-app-ids.hpp"
-#include "alleycat-server/fdn-match-spool.hpp"
+#include "alleycat-server/fdn-record-store.hpp"
 #include "alleycat-server/fdn-provisioning-manager.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
@@ -70,7 +70,7 @@ Player fdnPlayer = FDN_PLAYER;
 // Managers
 RemotePlayerManager* remotePlayerManager = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
-FdnMatchSpool* fdnMatchSpool = nullptr;
+FdnRecordStore* fdnRecordStore = nullptr;
 FdnProvisioningManager* fdnProvisioningManager = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
@@ -120,7 +120,7 @@ static void setup() {
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
     storageDriver =
-    new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_MATCH_SPOOL_NAMESPACE, CRASH_LOG_NAMESPACE});
+    new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_RECORD_STORE_NAMESPACE, CRASH_LOG_NAMESPACE});
 
     DriverConfig fdnConfig = {
         {DISPLAY_DRIVER_NAME,              displayDriver},
@@ -141,27 +141,32 @@ static void setup() {
     fdn->begin();
 
     // Managers — constructed after fdn->begin() so wireless is ready.
-    remotePlayerManager = new RemotePlayerManager(peerCommsDriver);
+    remotePlayerManager = new RemotePlayerManager(peerCommsDriver, DeviceType::FDN);
 
     symbolWirelessManager =
     new SymbolWirelessManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
-    fdnMatchSpool = new FdnMatchSpool(fdn->getWirelessManager(), fdn->getStorage(),
-                                      fdn->getRemoteDeviceCoordinator());
+    fdnRecordStore = new FdnRecordStore(fdn->getWirelessManager(), fdn->getStorage(),
+                                        fdn->getRemoteDeviceCoordinator());
     fdnProvisioningManager =
     new FdnProvisioningManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
-    fdn->setTickCallback([]() { fdnProvisioningManager->sync(); });
+    // The beacon is pumped here rather than from a state: only the mounted app's
+    // state loops, and the beacon has to run in every one of them.
+    fdn->setTickCallback([]() {
+        fdnProvisioningManager->sync();
+        remotePlayerManager->update();
+    });
 
     setupEspNow(peerCommsDriver);
 
     crashLogger = new CrashLogger(storageDriver, fdn->getWirelessManager());
     crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
-    // After transmitPending(): a broadcast in flight when ESP-NOW shuts down wedges its send queue.
-    remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
+    // After transmitPending(): a crash upload that takes the radio would drop the first beacon.
+    remotePlayerManager->startBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
 
     // Apps
     RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
-    auto* idleApp = new IdleApp(remotePlayerManager, rdc, fdnMatchSpool, fdnProvisioningManager);
+    auto* idleApp = new IdleApp(remotePlayerManager, rdc, fdnRecordStore, fdnProvisioningManager);
     auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager, fdnProvisioningManager);
 
     // Splash screen

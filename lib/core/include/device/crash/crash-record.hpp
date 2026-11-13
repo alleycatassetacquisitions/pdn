@@ -36,3 +36,15 @@ struct CrashRecord {
     std::optional<CoreDumpDetails> coreDumpDetails;
     char     commitHash[COMMIT_HASH_LENGTH];
 };
+
+// A crash record as it travels and is relayed: fixed layout, so it has no
+// presence flags (see CrashLogger for how absent details are marked).
+struct CrashPacket {
+    uint32_t crashNumber;
+    uint32_t timestamp;
+    uint8_t resetReason;
+    uint32_t programCounter;
+    uint32_t exceptionCause;
+    char taskName[TASK_NAME_LENGTH];
+    char commitHash[COMMIT_HASH_LENGTH];
+} __attribute__((packed));

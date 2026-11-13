@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include "alleycat-server/fdn-match-spool.hpp"
+#include "alleycat-server/fdn-record-store.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
@@ -1128,10 +1128,10 @@ TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
     EXPECT_EQ(sends, 2) << "an acked record is not resent";
 }
 
-TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
+TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndRecordStoreBatchUpload) {
     using ::testing::_;
     NativePrefsDriver& pdnPrefs = makeNativePrefs("pdn-prefs");
-    NativePrefsDriver fdnPrefs("fdn-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    NativePrefsDriver fdnPrefs("fdn-prefs", {FDN_RECORD_STORE_NAMESPACE});
     rebuildMatchManager(&pdnPrefs);
 
     MockDevice fdnDevice;
@@ -1140,7 +1140,7 @@ TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
     .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
     ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
     .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
-    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+    FdnRecordStore fdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
 
     const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
     const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x02};
@@ -1187,7 +1187,7 @@ TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
 
     matchManager->sync();
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 1u);
-    EXPECT_EQ(fdnSpool.getStagedCount(), 1u);
+    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 1u);
 
     std::vector<HttpRequest> httpRequests;
     ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
@@ -1198,32 +1198,33 @@ TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
 
     std::vector<bool> outcomes;
     auto onComplete = [&outcomes](bool uploaded) { outcomes.push_back(uploaded); };
-    ASSERT_TRUE(fdnSpool.uploadPendingBatch(onComplete));
+    ASSERT_TRUE(fdnRecordStore.uploadPendingBatch(onComplete));
     ASSERT_EQ(httpRequests.size(), 1u);
     EXPECT_EQ(httpRequests[0].path, "/quickdraw-matches");
     httpRequests[0].onError(WirelessErrorInfo{WirelessError::SERVER_ERROR, "HTTP 500"});
-    EXPECT_EQ(fdnSpool.getStagedCount(), 1u) << "5xx error must retain staged batch";
+    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 1u)
+    << "5xx error must retain stored batch";
 
     httpRequests.clear();
-    ASSERT_TRUE(fdnSpool.uploadPendingBatch(onComplete));
+    ASSERT_TRUE(fdnRecordStore.uploadPendingBatch(onComplete));
     ASSERT_EQ(httpRequests.size(), 1u);
     httpRequests[0].onSuccess("");
-    EXPECT_EQ(fdnSpool.getStagedCount(), 0u) << "HTTP 204 must retire uploaded batch";
+    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 0u)
+    << "HTTP 204 must retire uploaded batch";
     EXPECT_EQ(outcomes, (std::vector<bool>{false, true}));
-    uint8_t retired[MATCH_BINARY_SIZE] = {};
-    EXPECT_EQ(fdnPrefs.readBytes(FDN_MATCH_SPOOL_NAMESPACE, "spool_0", retired, sizeof(retired)),
-              0u)
+    uint8_t retired[256] = {};
+    EXPECT_EQ(fdnPrefs.readBytes(FDN_RECORD_STORE_NAMESPACE, "m_0", retired, sizeof(retired)), 0u)
     << "a retired record still holds its NVS entries";
 }
 
-TEST_F(MatchManagerTestSuite, fdnSpoolWithholdsAckWhenFullAt64Records) {
+TEST_F(MatchManagerTestSuite, fdnRecordStoreWithholdsAckWhenFullAt64MatchRecords) {
     using ::testing::_;
-    NativePrefsDriver fdnPrefs("fdn-full-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    NativePrefsDriver fdnPrefs("fdn-full-prefs", {FDN_RECORD_STORE_NAMESPACE});
     MockDevice fdnDevice;
     ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
     .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
     FakeRemoteDeviceCoordinator fdnRdc;
-    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+    auto* fdnRecordStore = new FdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
 
     const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02};
     fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
@@ -1238,38 +1239,41 @@ TEST_F(MatchManagerTestSuite, fdnSpoolWithholdsAckWhenFullAt64Records) {
         return 1;
     }));
 
-    auto send = [&pdnMac](FdnMatchSpool& spool, uint32_t seq) {
+    auto send = [&pdnMac](FdnRecordStore& recordStore, uint32_t seq) {
         char mid[37];
         snprintf(mid, sizeof(mid), "%08u-aaaa-4000-8000-bbbbbbbbbbbb", seq);
         Match m(mid);
         MatchRecordPacket pkt{};
         pkt.matchSeq = seq;
         m.serialize(pkt.matchData);
-        spool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+        recordStore.onMatchCollectionFrame(pdnMac, reinterpret_cast<const uint8_t*>(&pkt),
+                                           sizeof(pkt));
     };
     for (uint32_t seq = 1; seq <= 65; ++seq)
-        send(fdnSpool, seq);
+        send(*fdnRecordStore, seq);
 
-    EXPECT_EQ(fdnSpool.getStagedCount(), 64u);
-    EXPECT_EQ(acksSent, 64u) << "65th match must not be ACKed while spool is full";
+    EXPECT_EQ(fdnRecordStore->getStoredCount(RecordKind::MATCH), 64u);
+    EXPECT_EQ(acksSent, 64u) << "65th match must not be ACKed while the store is full";
 
-    send(fdnSpool, 64);
+    send(*fdnRecordStore, 64);
     EXPECT_EQ(acksSent, 65u) << "a resend after a lost ack is re-acked even when full";
-    EXPECT_EQ(fdnSpool.getStagedCount(), 64u);
+    EXPECT_EQ(fdnRecordStore->getStoredCount(RecordKind::MATCH), 64u);
 
-    FdnMatchSpool rebooted(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+    // Gone first, as on a reboot: the new store claims the same packet types.
+    delete fdnRecordStore;
+    FdnRecordStore rebooted(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
     send(rebooted, 1);
-    EXPECT_EQ(acksSent, 66u) << "staged records are known again after a reboot";
-    EXPECT_EQ(rebooted.getStagedCount(), 64u);
+    EXPECT_EQ(acksSent, 66u) << "stored records are known again after a reboot";
+    EXPECT_EQ(rebooted.getStoredCount(RecordKind::MATCH), 64u);
 }
 
 TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {
     NativePrefsDriver& pdnPrefs = makeNativePrefs("pdn-len-prefs");
-    NativePrefsDriver fdnPrefs("fdn-len-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    NativePrefsDriver fdnPrefs("fdn-len-prefs", {FDN_RECORD_STORE_NAMESPACE});
     rebuildMatchManager(&pdnPrefs);
     MockDevice fdnDevice;
     FakeRemoteDeviceCoordinator fdnRdc;
-    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+    FdnRecordStore fdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
 
     const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x04};
     const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x04};
@@ -1281,8 +1285,9 @@ TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {
     MatchRecordPacket pkt{};
     pkt.matchSeq = 1;
     m.serialize(pkt.matchData);
-    fdnSpool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt) - 1);
-    EXPECT_EQ(fdnSpool.getStagedCount(), 0u);
+    fdnRecordStore.onMatchCollectionFrame(pdnMac, reinterpret_cast<const uint8_t*>(&pkt),
+                                          sizeof(pkt) - 1);
+    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 0u);
 
     setupMatchAsBounty("22222222-2222-4000-8000-333333333333");
     matchManager->setHunterDrawTime(180);
@@ -1299,14 +1304,14 @@ TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
 }
 
-TEST_F(MatchManagerTestSuite, fdnSpoolDropsUnreadableHeadInsteadOfFailingEveryBatch) {
+TEST_F(MatchManagerTestSuite, fdnRecordStoreDropsUnreadableHeadInsteadOfFailingEveryBatch) {
     using ::testing::_;
-    NativePrefsDriver fdnPrefs("fdn-corrupt-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    NativePrefsDriver fdnPrefs("fdn-corrupt-prefs", {FDN_RECORD_STORE_NAMESPACE});
     MockDevice fdnDevice;
     ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
     .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
     FakeRemoteDeviceCoordinator fdnRdc;
-    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+    FdnRecordStore fdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
 
     const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x03};
     fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
@@ -1320,10 +1325,11 @@ TEST_F(MatchManagerTestSuite, fdnSpoolDropsUnreadableHeadInsteadOfFailingEveryBa
         MatchRecordPacket pkt{};
         pkt.matchSeq = seq;
         m.serialize(pkt.matchData);
-        fdnSpool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+        fdnRecordStore.onMatchCollectionFrame(pdnMac, reinterpret_cast<const uint8_t*>(&pkt),
+                                              sizeof(pkt));
     }
     const uint8_t torn[3] = {1, 2, 3};
-    fdnPrefs.writeBytes(FDN_MATCH_SPOOL_NAMESPACE, "spool_0", torn, sizeof(torn));
+    fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_0", torn, sizeof(torn));
 
     std::vector<HttpRequest> httpRequests;
     ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
@@ -1332,21 +1338,21 @@ TEST_F(MatchManagerTestSuite, fdnSpoolDropsUnreadableHeadInsteadOfFailingEveryBa
         return true;
     }));
 
-    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_TRUE(fdnRecordStore.uploadPendingBatch(nullptr));
     ASSERT_EQ(httpRequests.size(), 1u) << "the readable record still goes up";
-    EXPECT_EQ(fdnSpool.getStagedCount(), 1u);
+    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 1u);
     httpRequests[0].onSuccess("");
-    EXPECT_EQ(fdnSpool.getStagedCount(), 0u);
+    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 0u);
 }
 
-TEST_F(MatchManagerTestSuite, fdnSpoolUploadStopsShortOfAnUnreadableRecord) {
+TEST_F(MatchManagerTestSuite, fdnRecordStoreUploadStopsShortOfAnUnreadableRecord) {
     using ::testing::_;
-    NativePrefsDriver fdnPrefs("fdn-mid-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
+    NativePrefsDriver fdnPrefs("fdn-mid-prefs", {FDN_RECORD_STORE_NAMESPACE});
     MockDevice fdnDevice;
     ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
     .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
     FakeRemoteDeviceCoordinator fdnRdc;
-    FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
+    FdnRecordStore fdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
 
     const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x05};
     fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
@@ -1360,10 +1366,11 @@ TEST_F(MatchManagerTestSuite, fdnSpoolUploadStopsShortOfAnUnreadableRecord) {
         MatchRecordPacket pkt{};
         pkt.matchSeq = seq;
         m.serialize(pkt.matchData);
-        fdnSpool.onMatchRecord(pdnMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+        fdnRecordStore.onMatchCollectionFrame(pdnMac, reinterpret_cast<const uint8_t*>(&pkt),
+                                              sizeof(pkt));
     }
     const uint8_t torn[3] = {1, 2, 3};
-    fdnPrefs.writeBytes(FDN_MATCH_SPOOL_NAMESPACE, "spool_1", torn, sizeof(torn));
+    fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_1", torn, sizeof(torn));
 
     std::vector<HttpRequest> httpRequests;
     ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
@@ -1372,16 +1379,17 @@ TEST_F(MatchManagerTestSuite, fdnSpoolUploadStopsShortOfAnUnreadableRecord) {
         return true;
     }));
 
-    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_TRUE(fdnRecordStore.uploadPendingBatch(nullptr));
     ASSERT_EQ(httpRequests.size(), 1u) << "the record ahead of the torn one still goes up";
     httpRequests[0].onSuccess("");
-    EXPECT_EQ(fdnSpool.getStagedCount(), 2u);
+    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 2u);
 
-    ASSERT_TRUE(fdnSpool.uploadPendingBatch(nullptr));
+    ASSERT_TRUE(fdnRecordStore.uploadPendingBatch(nullptr));
     ASSERT_EQ(httpRequests.size(), 2u);
-    EXPECT_EQ(fdnSpool.getStagedCount(), 1u) << "the torn record is dropped once it is the oldest";
+    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 1u)
+    << "the torn record is dropped once it is the oldest";
     httpRequests[1].onSuccess("");
-    EXPECT_EQ(fdnSpool.getStagedCount(), 0u);
+    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 0u);
 }
 
 TEST(MatchesApiUpload, unqueuedRequestFailsClosed) {
