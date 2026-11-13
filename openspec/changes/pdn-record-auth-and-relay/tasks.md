@@ -1,11 +1,10 @@
 ## 1. Decisions and server contract
 
 - [ ] 1.1 Archive `pdn-pin-entry-fdn-registration` first; this change builds on its registration request
-- [ ] 1.2 Owner answers design.md's open question on who can be issued a key for a MAC address
-- [ ] 1.3 Agree with the server team: the lookup names the PDN's MAC address and returns a record key and key ID; each upload carries the MAC address, record kind, raw record bytes, key ID, record tag and the decoded fields
-- [ ] 1.4 Agree the server's key rules (design.md, "Server key rules")
-- [ ] 1.5 Agree the server's record rules (design.md, "Server check and responses")
-- [ ] 1.6 Write the crash-record and match-record byte layouts into the server API contract as signed formats
+- [ ] 1.2 Agree with the server team: the lookup names the PDN's MAC address and returns a record key and key ID; each upload carries the MAC address, record kind, raw record bytes, key ID, record tag and the decoded fields
+- [ ] 1.3 Agree the server's key rules (design.md, "Server key rules"); the accepted lookup risk depends on the lookup answering only the FDN network, the issue alert, and the drop and block actions
+- [ ] 1.4 Agree the server's record rules (design.md, "Server check and responses")
+- [ ] 1.5 Write the crash-record and match-record byte layouts into the server API contract as signed formats
 
 ## 2. Record key and tag on the PDN
 
@@ -47,7 +46,8 @@
 
 - [ ] 6.1 Roll out in order: server, then one firmware build on every FDN and PDN
 - [ ] 6.2 At archive, edit the Purpose paragraphs of `crash-reporting`, `match-collection` and `fdn-apps`, which still describe cabled collection and cannot be changed by a delta
-- [ ] 6.3 Owner updates the threat model, which is kept outside this repository: record intake from any MAC address, the beacon handler on the PDN, the jack key frame, record-key storage and re-keying, key issuance on the lookup and its forgeable log, a PDN's key pushed out by repeated issues, and unverified crash records accepted under any MAC address. Record the fake-FDN acknowledgement as a known, accepted risk to revisit
+- [ ] 6.3 Owner updates the threat model, which is kept outside this repository: record intake from any MAC address, the beacon handler on the PDN, the jack key frame, record-key storage and re-keying, key issuance on the lookup and its forgeable log, a PDN's key pushed out by repeated issues, and unverified crash records accepted under any MAC address. Record the fake-FDN acknowledgement as a known, accepted risk to revisit, and key issuance to anyone who can reach the lookup as accepted, with its reopen condition
+- [ ] 6.4 After PDN Wi-Fi is removed, change the Wi-Fi password and rebuild every FDN; until then anyone holding a PDN can reach the lookup
 
 ## 7. Verification
 
