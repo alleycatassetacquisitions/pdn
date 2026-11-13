@@ -118,6 +118,7 @@ void MatchManager::primeMatch(const char* matchId, const uint8_t* opponentMac,
         match.setBountyPlayerId(myPlayerUuid);
         match.setBountyTeamId(myTeamUuid);
     }
+    matchStartedCallbacks.fire();
 }
 
 void MatchManager::setOpponentIdentity(bool opponentIsHunter, const UUIDBytes& playerUuid,

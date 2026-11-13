@@ -22,11 +22,6 @@ enum class PktType : uint8_t {
     // their kFoo spelling rather than splitting the enum across two conventions.
     // NOLINTNEXTLINE(readability-identifier-naming)
     kChainJoin = 20,
-    // Was 15 on main, where this branch had already taken that slot. Nothing
-    // reads the number — one firmware version ships at a time — so it moves
-    // rather than renumbering the context types every handler already uses.
-    // NOLINTNEXTLINE(readability-identifier-naming)
-    kCrashLog = 21,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kFirmwareUpdate = 22,
     // NOLINTNEXTLINE(readability-identifier-naming)

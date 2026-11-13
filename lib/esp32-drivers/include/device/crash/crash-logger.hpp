@@ -8,14 +8,16 @@
 #include <strings.h>
 #include <cstdlib>
 #include <cstdarg>
+#include <cstdio>
 #include <esp_system.h>
 #include <esp_core_dump.h>
+#include <freertos/FreeRTOS.h>
 #include <driver/usb_serial_jtag.h>
 #include <ArduinoJson.h>
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
-#include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/crash/crash-record.hpp"
 #include "device/wireless-manager.hpp"
+#include "wireless/record-source.hpp"
 #include "utils/simple-timer.hpp"
 #include "alleycat-server/crash-api.hpp"
 
@@ -30,52 +32,26 @@ inline constexpr const char CRASH_LOG_NAMESPACE[] = "crashlog";
 inline constexpr const char CRASH_LOG_SERIAL_COMMAND[] = "CRASHLOG";
 
 /**
- * Captures and persists crash records across reboots, then transmits them.
+ * Captures and persists crash records across reboots, then reports them.
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
- * storage is initialized; poll serial and call transmitPending() in loop(), which waits
- * for the radio itself and offers each pending record once per boot.
+ * storage is initialized and poll serial in loop(). An FDN uploads its own records
+ * over HTTP with transmitPending(); a PDN hands this object to its record relay,
+ * which sends the pending records to an FDN through the RecordSource calls.
  */
-class CrashLogger {
+class CrashLogger : public RecordSource<CrashRecordTraits> {
 public:
     /** Reports over HTTP. Capture still works before the radio is up. */
     explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, WirelessManager* wirelessManager)
         : prefsDriver(prefsDriver)
         , wirelessManager(wirelessManager)
-        , espNowDriver(nullptr)
         , hasCaptured(false)
-        , useHttp(true)
         , serialCommandLength(0) {
         serialCommandBuffer[0] = '\0';
     }
 
-    /** Reports over ESP-NOW, for devices with no route to the server. */
-    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, EspNowDriver* espNowDriver)
-        : prefsDriver(prefsDriver)
-        , wirelessManager(nullptr)
-        , espNowDriver(espNowDriver)
-        , hasCaptured(false)
-        , useHttp(false)
-        , serialCommandLength(0) {
-        serialCommandBuffer[0] = '\0';
-        // A record counts as sent when the radio reports its frame, not when the
-        // frame is offered. A queued frame can still be discarded — a WiFi excursion
-        // drops the driver's queue — so marking records as they are queued would
-        // retire ones that never reached the air.
-        espNowDriver->setSendStatusHandler(
-            PktType::kCrashLog,
-            [](const uint8_t*, const uint8_t* data, const size_t length,
-               bool success, void* ctx) {
-                if (!success || ctx == nullptr || length != sizeof(CrashPacket)) return;
-                CrashPacket reported{};
-                memcpy(&reported, data, sizeof(reported));
-                CrashLogger* self = static_cast<CrashLogger*>(ctx);
-                // sentSeq is a high-water mark, so only ever move it forward.
-                if (reported.crashNumber > self->readSentSeq()) {
-                    self->writeSentSeq(reported.crashNumber);
-                }
-            },
-            this);
-    }
+    /** Reports through a record relay, for a device with no route to the server. */
+    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver)
+        : CrashLogger(prefsDriver, nullptr) {}
 
     /** Call first in setup(): returns the uptime the last boot noted, and clears it. */
     static uint32_t takeCrashedBootUptime();
@@ -114,7 +90,7 @@ public:
         // note pointing at the crashed task or skipped that task's TCB, and a fake PC
         // with an invalid cause when the crashed task's stack was unusable.
         if (hadCoreDumpSummary && summary.exc_task[0] != '\0' &&
-            summary.ex_info.exc_cause != CORE_DUMP_INVALID_CAUSE) {
+            summary.ex_info.exc_cause != CRASH_PACKET_NO_EXCEPTION_CAUSE) {
             CoreDumpDetails& details = rec.coreDumpDetails.emplace();
             details.programCounter = summary.exc_pc;
             // A task watchdog panic hands the core dump the running task's interrupt
@@ -142,23 +118,46 @@ public:
     }
 
     /**
-     * Offers every unreported record once per boot. Call each tick: nothing can
-     * add a record after capture(), so the first pass with the radio up is the
-     * only one that has anything to do. A record the radio never reports stays
-     * pending and goes out on the next boot, which is the retry.
+     * Writes the lowest-numbered crash record still to be sent that the ring
+     * holds readably. An unreadable one is passed over without moving the
+     * sent mark; the acknowledgement of a later record moves the mark past it,
+     * if one exists.
+     */
+    bool readLowestPending(uint32_t& recordNumber,
+                           uint8_t (&recordBytes)[CrashRecordTraits::RECORD_SIZE]) override {
+        CrashRecord rec{};
+        if (!findLowestReadableRecord(
+            readSentSeq(), readCrashSeq(), MAX_CRASH_ENTRIES, highestUnreadableReported,
+            recordNumber, [this, &rec](uint32_t number) { return loadRecordByNumber(number, rec); },
+            [](uint32_t number) {
+                LOG_W(CRASH_LOG_TAG, "Crash #%lu cannot be read from the ring buffer",
+                      static_cast<unsigned long>(number));
+            })) {
+            return false;
+        }
+        const CrashPacket packet = toCrashPacket(rec);
+        memcpy(recordBytes, &packet, sizeof(packet));
+        return true;
+    }
+
+    /** Moves the sent mark up to @p recordNumber; never down, never past the newest record. */
+    void advanceMark(uint32_t recordNumber) override {
+        const uint32_t sentSeq = readSentSeq();
+        const uint32_t advanced = advancedRecordMark(sentSeq, readCrashSeq(), recordNumber);
+        if (advanced != sentSeq) {
+            writeSentSeq(advanced);
+        }
+    }
+
+    /**
+     * Uploads every unreported record over HTTP; only the first call per boot
+     * does anything. A failed upload stays pending for the next boot.
      */
     void transmitPending() {
         if (offeredThisBoot) return;
-        // A send offered while ESP-NOW is down is accepted by the driver's queue and
-        // then dropped with no report, so the one pass has to wait for ESP-NOW rather
-        // than be spent against it.
-        if (!useHttp && espNowDriver != nullptr &&
-            espNowDriver->getPeerCommsState() != PeerCommsState::ENABLED) {
-            return;
-        }
         offeredThisBoot = true;
         if (!hasPending()) return;
-        useHttp ? transmitHttp() : transmitEspNow();
+        transmitHttp();
     }
 
     /**
@@ -345,11 +344,11 @@ private:
         trimSerialCommandBuffer(serialCommandBuffer, serialCommandLength);
     }
 
-    // IDF's COREDUMP_INVALID_CAUSE_VALUE, which espcoredump does not export.
-    static constexpr uint32_t CORE_DUMP_INVALID_CAUSE = 0xFFFF;
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
     bool offeredThisBoot = false;
+    // Each unreadable record is logged once per boot, not on every beacon.
+    uint32_t highestUnreadableReported = 0;
     SimpleTimer uploadTimer;
     // With no AP in range, a queued HTTP request never fails.
     static constexpr unsigned long UPLOAD_TIMEOUT_MS = 15000;
@@ -510,60 +509,14 @@ private:
         }
     }
 
-    void transmitEspNow() {
-        if (!espNowDriver) return;
-
-        const uint32_t crashSeq = readCrashSeq();
-        uint32_t sentSeq = readSentSeq();
-
-        for (uint32_t n = sentSeq + 1; n <= crashSeq; n++) {
-            CrashRecord rec{};
-            if (!loadRecordByNumber(n, rec)) {
-                LOG_W(CRASH_LOG_TAG, "Crash #%lu not in ring buffer — skipping", static_cast<unsigned long>(n));
-                writeSentSeq(n);
-                continue;
-            }
-
-            CrashPacket pkt{};
-            pkt.crashNumber    = rec.crashNumber;
-            pkt.timestamp      = rec.timestamp;
-            pkt.resetReason    = rec.resetReason;
-            // CrashPacket has no presence flags: an empty task name marks a record
-            // without details, and CORE_DUMP_INVALID_CAUSE one with details but no cause.
-            if (rec.coreDumpDetails) {
-                pkt.programCounter = rec.coreDumpDetails->programCounter;
-                pkt.exceptionCause = rec.coreDumpDetails->exceptionCause.value_or(CORE_DUMP_INVALID_CAUSE);
-                memcpy(pkt.taskName, rec.coreDumpDetails->taskName, TASK_NAME_LENGTH);
-            }
-            memcpy(pkt.commitHash, rec.commitHash, COMMIT_HASH_LENGTH);
-
-            const int result = espNowDriver->sendData(
-                PEER_BROADCAST_ADDR,
-                PktType::kCrashLog,
-                reinterpret_cast<const uint8_t*>(&pkt),
-                sizeof(CrashPacket)
-            );
-
-            if (result == 0) {
-                LOG_I(CRASH_LOG_TAG, "Queued crash #%lu for broadcast", static_cast<unsigned long>(n));
-            } else {
-                LOG_E(CRASH_LOG_TAG, "Failed to queue crash #%lu — will retry on next boot",
-                      static_cast<unsigned long>(n));
-                break;
-            }
-        }
-    }
-
     static bool isCrashLogSerialCommand(const char* line) {
         if (line == nullptr) return false;
         return strcasecmp(line, CRASH_LOG_SERIAL_COMMAND) == 0;
     }
 
     Esp32S3PrefsDriver* prefsDriver;
-    WirelessManager*    wirelessManager;
-    EspNowDriver*       espNowDriver;
-    bool                hasCaptured;
-    bool                useHttp;
+    WirelessManager* wirelessManager;
+    bool hasCaptured;
 
     char   serialCommandBuffer[32];
     size_t serialCommandLength;

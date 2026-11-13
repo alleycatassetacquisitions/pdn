@@ -18,6 +18,7 @@
 #include "wireless/mac-functions.hpp"
 #include "wireless/match-packet.hpp"
 #include "wireless/reliable-channel.hpp"
+#include "utils/callback-list.hpp"
 #include "device/drivers/storage-interface.hpp"
 
 class ShootoutManager;
@@ -154,6 +155,15 @@ public:
     void setBoostProvider(std::function<unsigned long()> provider);
 
     /**
+     * Registers `owner`'s observer of a match becoming current, by the cable
+     * handshake or a shootout; null removes it. It runs inside the call that
+     * primed the match and must not start or clear one.
+     */
+    void setOnMatchStarted(std::function<void()> callback, const void* owner) {
+        matchStartedCallbacks.set(std::move(callback), owner);
+    }
+
+    /**
      * Result-screen snapshot that outlives the match, taken whole by finalizeMatch.
      */
     const LastMatchDisplay& getLastMatchDisplay() const { return lastMatchDisplay; }
@@ -198,6 +208,7 @@ private:
 
     ActiveMatchState activeMatchState;
     LastMatchDisplay lastMatchDisplay;
+    CallbackList<std::function<void()>> matchStartedCallbacks;
 
     parameterizedCallbackFunction matchButtonPush;
     parameterizedCallbackFunction buttonMasher;
