@@ -49,7 +49,7 @@ Once the FDN decodes a valid player profile (or a lookup failure) for a Connecte
 - An unprovisioned PDN whose session has no registered profile SHALL advertise the unregistered sentinel identity (nil 16-byte UUID, mapping to `0xFFFF` on any 16-bit wire field and never `0`) in its outbound connection context until a profile is applied.
 - The PDN SHALL accept a provisioned profile or lookup-failure notification **only while mounted in the provisioning app** and **only when the wireless sender MAC address matches the verified MAC address of an FDN currently Connected on a physical serial jack** (ignoring wireless provisioning frames from any uncabled sender or after the PDN has entered gameplay).
 - When the FDN holds a record key for the Connected PDN, the FDN SHALL deliver the record key and its key ID to that PDN over the serial jack only, before it sends the profile, and SHALL NOT send a record key over the peer-to-peer radio.
-- The PDN SHALL accept a record key only over a serial jack on which an FDN is Connected, and only while mounted in the provisioning app after it has sent that FDN its own registration request. The PDN SHALL discard a record key that arrives damaged, is not exactly `32` bytes, or carries key ID `0`. An accepted record key replaces any the PDN holds (`record-authentication`).
+- The PDN SHALL accept a record key only over a serial jack on which an FDN is Connected, and only while mounted in the provisioning app after it has sent that FDN its PIN. The PDN SHALL discard a record key that arrives damaged, is not exactly `32` bytes, or carries key ID `0`. An accepted record key replaces any the PDN holds (`record-authentication`).
 - Once provisioned, the PDN's connection context and peer profile exchanged with cabled neighbors SHALL carry the player's 16-byte player UUID, 16-byte team UUID, standing role (`Hunter` or `Bounty`), and display name (truncated to fit the wire profile field).
 
 #### Scenario: Unprovisioned PDN advertises unregistered sentinel before profile delivery
@@ -69,11 +69,11 @@ Once the FDN decodes a valid player profile (or a lookup failure) for a Connecte
 - **THEN** the PDN ignores it and its key ID stays `0`
 
 #### Scenario: Record key arriving before the PDN has asked to be registered is ignored
-- **WHEN** a PDN mounted in the provisioning app receives a record key over a serial jack from a Connected FDN to which it has sent no registration request
+- **WHEN** a PDN mounted in the provisioning app receives a record key over a serial jack from a Connected FDN to which it has sent no PIN
 - **THEN** the PDN ignores it and keeps the record key it held, if any
 
 #### Scenario: Damaged record key is discarded by the PDN
-- **WHEN** a PDN that has sent its registration request receives over the serial jack a record key that arrives damaged, or is `31` bytes long, or carries key ID `0`
+- **WHEN** a PDN that has sent its PIN to a Connected FDN receives over the serial jack a record key that arrives damaged, or is `31` bytes long, or carries key ID `0`
 - **THEN** the PDN discards it and keeps the record key it held, if any
 
 #### Scenario: Registering again delivers a new record key

@@ -93,3 +93,22 @@ Collected PDN match records (`match-collection`) and local or relayed PDN crash 
 #### Scenario: Upload fallback timeout cancels in-flight HTTP, preserves pending records, and restores peer-to-peer radio
 - **WHEN** the upload state is mounted with pending match or crash records and Wi-Fi or the server does not respond within `15,000 ms`
 - **THEN** the `15,000 ms` fallback timer expires, any in-flight HTTP requests are cancelled, an upload failure indication is surfaced, unconfirmed records remain persisted for the next 5-minute cycle, the peer-to-peer radio is re-enabled, and the FDN returns to the idle state
+
+### Requirement: Registration screen for a cabled unprovisioned PDN
+
+When a PDN whose connection context shows no applied profile (unprovisioned, as distinct from a demo player) becomes Connected on an FDN serial jack while the FDN is in the idle or player-detected state, the FDN SHALL show a registration screen ahead of any other cabled flow:
+
+- While waiting for a lookup request, the FDN SHALL display `"REGISTER"` / `"ENTER CODE"`.
+- While a lookup for that PDN is in progress, the FDN SHALL display `"LOOKING"` / `"UP"`.
+- On a delivered profile, the FDN SHALL display `"WELCOME"` and the player's display name for `3000 ms`; on a lookup failure or timeout, `"UNABLE TO"` / `"LOCATE ASSET"` for `3000 ms`.
+- The FDN SHALL end a lookup that has not answered within `8000 ms` as a lookup failure.
+- Outside the registration screen, the FDN SHALL drop a lookup request while a registered PDN is Connected on an FDN jack, so a lookup's Wi-Fi excursion never interrupts that PDN's symbol-match game.
+- The FDN SHALL leave the registration screen for the idle state when the PDN is unplugged, when a result has been shown, or, while waiting for a request, when the cabled PDN's context shows an applied profile.
+
+#### Scenario: Unprovisioned PDN plugged in shows the registration screen
+- **WHEN** an unprovisioned PDN becomes Connected on an idle FDN
+- **THEN** the FDN displays `"REGISTER"` / `"ENTER CODE"` instead of entering the symbol-match flow
+
+#### Scenario: Successful lookup shows the player's name
+- **WHEN** the FDN delivers a profile named `"Ada"` to the cabled PDN
+- **THEN** the FDN displays `"WELCOME"` / `"Ada"` for `3000 ms` and returns to the idle state

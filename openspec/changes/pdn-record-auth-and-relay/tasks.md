@@ -1,6 +1,6 @@
 ## 1. Decisions and server contract
 
-- [ ] 1.1 Archive `pdn-pin-entry-fdn-registration` first; this change builds on its registration request
+- [x] 1.1 Archive `pdn-pin-entry-fdn-registration` first; this change builds on the PDN sending its PIN to the FDN
 - [ ] 1.2 Agree with the server team: the lookup names the PDN's MAC address and returns a record key and key ID; each upload carries the MAC address, record kind, raw record bytes, key ID, record tag and the decoded fields
 - [ ] 1.3 Agree the server's key rules (design.md, "Server key rules"); the accepted lookup risk depends on the lookup answering only the FDN network, the issue alert, and the drop and block actions
 - [ ] 1.4 Agree the server's record rules (design.md, "Server check and responses")
