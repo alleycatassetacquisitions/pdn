@@ -282,14 +282,7 @@ void peerBrokerPeerRegistration(NativePeerBrokerTestSuite* suite) {
 
 // Test: Unique MAC generation
 void peerBrokerUniqueMacGeneration(NativePeerBrokerTestSuite* suite) {
-    std::string macA = suite->peerA->getMacString();
-    std::string macB = suite->peerB->getMacString();
-
-    ASSERT_NE(macA, macB);
-    
-    // MAC should be in format XX:XX:XX:XX:XX:XX
-    ASSERT_EQ(macA.length(), 17);
-    ASSERT_EQ(macB.length(), 17);
+    ASSERT_NE(0, memcmp(suite->peerA->getMacAddress(), suite->peerB->getMacAddress(), 6));
 }
 
 // Test: Disabled peer doesn't receive

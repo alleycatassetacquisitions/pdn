@@ -381,8 +381,7 @@ private:
                 result.message = "Invalid destination device: " + tokens[2];
                 return result;
             }
-            std::string macStr = devices[dstDevice].peerCommsDriver->getMacString();
-            parseMacString(macStr, dstMac);
+            std::memcpy(dstMac, devices[dstDevice].peerCommsDriver->getMacAddress(), 6);
         }
         
         // Parse packet type
@@ -393,10 +392,8 @@ private:
         std::vector<uint8_t> data = parseHexData(tokens, 4);
         
         // Get source MAC and send
-        std::string srcMacStr = devices[srcDevice].peerCommsDriver->getMacString();
-        uint8_t srcMac[6];
-        parseMacString(srcMacStr, srcMac);
-        
+        const uint8_t* srcMac = devices[srcDevice].peerCommsDriver->getMacAddress();
+
         NativePeerBroker::getInstance().sendPacket(
             srcMac, dstMac, packetType,
             data.empty() ? nullptr : data.data(),
@@ -434,10 +431,8 @@ private:
         uint8_t externalMac[6] = {0xEE, 0xEE, 0xEE, 0x00, 0x00, 0x01};
         
         // Get destination MAC
-        std::string dstMacStr = devices[dstDevice].peerCommsDriver->getMacString();
-        uint8_t dstMac[6];
-        parseMacString(dstMacStr, dstMac);
-        
+        const uint8_t* dstMac = devices[dstDevice].peerCommsDriver->getMacAddress();
+
         NativePeerBroker::getInstance().sendPacket(
             externalMac, dstMac, packetType,
             data.empty() ? nullptr : data.data(),
@@ -675,19 +670,7 @@ private:
         }
         return defaultDevice;
     }
-    
-    /**
-     * Parse a MAC address string like "02:00:00:00:00:01" into bytes.
-     */
-    static void parseMacString(const std::string& macStr, uint8_t* macOut) {
-        unsigned int bytes[6];
-        sscanf(macStr.c_str(), "%02X:%02X:%02X:%02X:%02X:%02X",
-               &bytes[0], &bytes[1], &bytes[2], &bytes[3], &bytes[4], &bytes[5]);
-        for (int i = 0; i < 6; i++) {
-            macOut[i] = static_cast<uint8_t>(bytes[i]);
-        }
-    }
-    
+
     /**
      * Parse hex data from tokens starting at the given index.
      */

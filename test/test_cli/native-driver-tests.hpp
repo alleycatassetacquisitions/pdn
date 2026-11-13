@@ -66,21 +66,6 @@ void serialDriverAvailableForWrite(NativeSerialDriverTestSuite* suite) {
     ASSERT_LT(newCapacity, initialCapacity);
 }
 
-// Test: Message history is tracked
-void serialDriverTracksHistory(NativeSerialDriverTestSuite* suite) {
-    const char* msg = "TestMessage";
-    suite->driver_->println(const_cast<char*>(msg));
-    
-    const auto& sentHistory = suite->driver_->getSentHistory();
-    ASSERT_GE(sentHistory.size(), 1);
-    ASSERT_EQ(sentHistory.back(), "TestMessage");
-    
-    suite->driver_->injectInput("ReceivedMsg");
-    
-    const auto& receivedHistory = suite->driver_->getReceivedHistory();
-    ASSERT_GE(receivedHistory.size(), 1);
-}
-
 // Test: Clear output clears buffer
 void serialDriverClearOutput(NativeSerialDriverTestSuite* suite) {
     const char* msg = "TestMessage";
@@ -153,26 +138,18 @@ void peerCommsTracksHistory(NativePeerCommsDriverTestSuite* suite) {
     ASSERT_EQ(history.size(), 1);
     ASSERT_TRUE(history[0].isSent);
     ASSERT_EQ(history[0].packetType, PktType::kMatchCommand);
+    ASSERT_EQ(0, memcmp(history[0].srcMac, suite->driver->getMacAddress(), 6));
+    ASSERT_EQ(0, memcmp(history[0].dstMac, dstMac, 6));
 }
 
-// Test: State string returns correct values
-void peerCommsStateString(NativePeerCommsDriverTestSuite* suite) {
-    ASSERT_EQ(suite->driver->getStateString(), "ENABLED");
+// Test: the radio state follows enable() and disable()
+void peerCommsStateFollowsEnableDisable(NativePeerCommsDriverTestSuite* suite) {
+    ASSERT_EQ(suite->driver->getPeerCommsState(), PeerCommsState::ENABLED);
 
     suite->driver->disable();
-    ASSERT_EQ(suite->driver->getStateString(), "DISABLED");
+    ASSERT_EQ(suite->driver->getPeerCommsState(), PeerCommsState::DISABLED);
 
     suite->driver->enable();  // Re-enable for teardown
-}
-
-// Test: MAC string format
-void peerCommsMacString(NativePeerCommsDriverTestSuite* suite) {
-    std::string macStr = suite->driver->getMacString();
-
-    // Should be in XX:XX:XX:XX:XX:XX format
-    ASSERT_EQ(macStr.length(), 17);  // 6 hex pairs + 5 colons
-    ASSERT_EQ(macStr[2], ':');
-    ASSERT_EQ(macStr[5], ':');
 }
 
 // Test: Cannot send when disabled
