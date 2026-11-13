@@ -201,7 +201,7 @@ private:
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
     ReliableChannel<ChainConfirmPayload> chainConfirmChannel;
     ReliableChannel<ChainJoinPayload> chainJoinChannel;
-    ReliableChannel<ChainGameEventPayload> gameEventChannel;
+    FanOutChannel<ChainGameEventPayload> gameEventChannel;
     GameEventListener onGameEvent;
 
     void onGameEventFrame(const uint8_t* fromMac, const ChainGameEventPayload& payload);

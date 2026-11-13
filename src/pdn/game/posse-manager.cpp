@@ -14,7 +14,7 @@ PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager,
     , roleAnnounceChannel(wirelessManager, PktType::kRoleAnnounce)
     , chainConfirmChannel(wirelessManager, PktType::kChainConfirm)
     , chainJoinChannel(wirelessManager, PktType::kChainJoin)
-    , gameEventChannel(wirelessManager, PktType::kChainGameEvent, ChannelMode::FAN_OUT) {
+    , gameEventChannel(wirelessManager, PktType::kChainGameEvent) {
     chainConfirmChannel.onReceive([this](const uint8_t*, const ChainConfirmPayload& p) {
         onConfirmReceived(p.originatorMac);
     });

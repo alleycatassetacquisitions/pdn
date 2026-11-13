@@ -436,7 +436,7 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
     int abandonCount = 0;
     uint8_t abandonedSeqId = 0;
     ReliableChannel<TransportTestPayload> ch(&wm, PktType::kShootoutBracket,
-                                             ChannelMode::KEEP_DISTINCT);
+                                             Resender::SendMode::KEEP_DISTINCT);
     ch.setOnAbandon([&](uint8_t seqId, const uint8_t*, const TransportTestPayload&) {
         abandonCount++;
         abandonedSeqId = seqId;
@@ -584,7 +584,7 @@ TEST(ReliableTransportTest, fanOutIsClearedOneRecipientPerAckPacket) {
     ON_CALL(comms, getGlobalBroadcastAddress())
     .WillByDefault(::testing::Return(MockDevice::BROADCAST_MAC));
 
-    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent, ChannelMode::FAN_OUT);
+    FanOutChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
     std::vector<std::array<uint8_t, 6>> delivered;
     ch.setOnDelivered([&](uint8_t, const uint8_t* mac) {
         std::array<uint8_t, 6> m;
@@ -630,7 +630,7 @@ TEST(ReliableTransportTest, ackNamesTheChannelItAnswers) {
     radio.attach(comms);
     ON_CALL(comms, getPeerCommsState()).WillByDefault(::testing::Return(PeerCommsState::ENABLED));
 
-    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent, ChannelMode::FAN_OUT);
+    FanOutChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
     const uint8_t sender[6] = {0x02, 0, 0, 0, 0, 0x0A};
     ch.ack(sender, 42);
 
@@ -654,7 +654,7 @@ TEST(ReliableTransportTest, fanOutDeliversDuplicatesSoTheHandlerCanAnswerThem) {
     // a duplicate means; the channel must not hide it.
     ::testing::NiceMock<MockPeerComms> comms;
     WirelessManager wm{&comms, nullptr};
-    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent, ChannelMode::FAN_OUT);
+    FanOutChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
     int deliveries = 0;
     ch.onReceive([&](const uint8_t*, const TransportTestPayload&) { deliveries++; });
 
@@ -672,7 +672,7 @@ TEST(ReliableTransportTest, anAckForNothingIsIgnored) {
     // truncated frame, a seqId nobody owes. None may reach an observer or fault.
     ::testing::NiceMock<MockPeerComms> comms;
     WirelessManager wm{&comms, nullptr};
-    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent, ChannelMode::FAN_OUT);
+    FanOutChannel<TransportTestPayload> ch(&wm, PktType::kChainGameEvent);
     int delivered = 0;
     ch.setOnDelivered([&](uint8_t, const uint8_t*) { delivered++; });
     const uint8_t from[6] = {0x02, 0, 0, 0, 0, 0x0A};
@@ -706,20 +706,6 @@ TEST(ReliableTransportTest, aUnicastChannelIgnoresAckPackets) {
     ackPacket(wm.getReliableTransport(), peer, PktType::kMatchCommand, seq);
     EXPECT_TRUE(ch.isPending(peer));
     EXPECT_EQ(delivered, 0);
-}
-
-TEST(ReliableTransportTest, aUnicastChannelRefusesToFanOut) {
-    // Its acks would be refused, so the frame could only be abandoned.
-    ::testing::NiceMock<MockPeerComms> comms;
-    WirelessManager wm{&comms, nullptr};
-    ON_CALL(comms, getPeerCommsState()).WillByDefault(::testing::Return(PeerCommsState::ENABLED));
-    EXPECT_CALL(comms, sendData(::testing::_, ::testing::_, ::testing::_, ::testing::_)).Times(0);
-    ReliableChannel<TransportTestPayload> ch(&wm, PktType::kMatchCommand);
-
-    const std::array<uint8_t, 6> peer = {0x02, 0, 0, 0, 0, 0x0A};
-    TransportTestPayload p{};
-    EXPECT_EQ(ch.sendBroadcast({peer}, p), 0);
-    EXPECT_FALSE(ch.isPending(peer.data()));
 }
 
 TEST(ReliableTransportTest, theDeviceLoopPumpsEveryChannel) {

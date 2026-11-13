@@ -19,13 +19,15 @@ public:
     using ReliableChannelBase::nextSeqId;
     /** Probe on a null WirelessManager: no transport, so nothing is ever sent. */
     explicit ProbeChannel(PktType type)
-        : ReliableChannelBase(nullptr, type, ChannelMode::SUPERSEDE_PER_TARGET) {}
+        : ReliableChannelBase(nullptr, type) {}
     /** No-op body so the otherwise pure-virtual base becomes instantiable. */
     bool deliverBytes(const uint8_t*, const uint8_t*, size_t) override { return false; }
     /** No-op: this probe exercises only the base's seqId/dedup helpers. */
     void onSendResult(const uint8_t*, const uint8_t*, size_t, bool) override {}
     /** No-op: nothing is ever sent through this probe. */
     void onAbandon(uint8_t, const uint8_t*, const uint8_t*, size_t) override {}
+    /** No-op: nothing is ever sent through this probe, so no ack is owed to it. */
+    void onPacketAck(const uint8_t*, uint8_t) override {}
 };
 
 // The resender counts pending recipients per frame, so a case that sent several

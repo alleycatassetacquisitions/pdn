@@ -6,7 +6,7 @@
 #include "device/drivers/peer-comms-types.hpp"
 
 // Shootout wire payloads, one PktType per command, every one ridden on a
-// FAN_OUT channel owned by ShootoutManager. seqId is nonzero on a reliable
+// FanOutChannel owned by ShootoutManager. seqId is nonzero on a reliable
 // fan-out and 0 on a frame that is rebroadcast on a timer instead.
 
 // Fixed on-wire name length for CONFIRM. Local Player names are null-padded or

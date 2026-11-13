@@ -173,7 +173,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
         switch (op) {
             case 0: {
-                // Variable-length raw frame to exercise ReliableChannel::deliver length checks.
+                // Variable-length raw frame to exercise ReliableChannel::deliverBytes length
+                // checks.
                 if (size - pos < 2) {
                     pos = size;
                     break;
