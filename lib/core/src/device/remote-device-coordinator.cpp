@@ -123,8 +123,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
     // Only the newest report is tracked for the head-change re-send; an
     // older report's late delivery must not clear the newer pending one.
     disconnectReportChannel->setOnDelivered([this](uint8_t seqId, const uint8_t*) {
-        if (seqId != pendingReportSeqId) return;
-        clearPendingReport();
+        if (seqId == pendingReport.seqId) pendingReport = {};
     });
     headTransferChannel =
     new ReliableChannel<HeadTransferPayload>(wirelessManager, PktType::kHeadTransfer);
@@ -463,6 +462,7 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
                                                   ChainRole chainRole, uint16_t peerUserId,
                                                   const uint8_t* profile, size_t len) {
     bool appliedToConnectingJack = false;
+    bool upstreamResentContext = false;
     JackHelloLink* firstConnectedLink = nullptr;
     for (SerialIdentifier jack : HELLO_JACKS) {
         JackHelloLink& link = helloByJack[jackIndex(jack)];
@@ -475,6 +475,7 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
         } else if (state == HELLO_LINK_CONNECTED) {
             recordJackContext(jack, peerType, chainRole, peerUserId, profile, len);
             if (firstConnectedLink == nullptr) firstConnectedLink = &link;
+            if (jack == SerialIdentifier::INPUT_JACK) upstreamResentContext = true;
         }
     }
     if (firstConnectedLink == nullptr) return;
@@ -484,6 +485,14 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
                          firstConnectedLink->contextResendThrottleTimer.expired()) &&
                         !isContextSendPending(fromMac);
     if (resend) sendSelfContext(fromMac);
+
+    // An upstream context on a held link may follow a one-way drop the upstream
+    // has already reported to the head, and only a fresh announce undoes that.
+    // It also arrives on a role change or as a reply; the head ignores an
+    // announce it already agrees with. The report that removed this device took
+    // its descendants too, so the context goes on down the chain; it stops at
+    // a device that holds no head, such as a latched ring head.
+    if (upstreamResentContext && maybeAnnounceToHead()) passContextDownstream();
 
     for (SerialIdentifier jack : HELLO_JACKS) {
         JackHelloLink& link = helloByJack[jackIndex(jack)];
@@ -705,7 +714,7 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         chainHeadConfirmed = false;
         // Becoming our own head voids the pending report, or adoptUpstreamHead's
         // successor-chase would ship it to an unrelated new head and prune a live member.
-        clearPendingReport();
+        pendingReport = {};
         cancelHeadRosterTraffic(formingHead.data());
         publishHelloState();
         ringClosedCallbacks.fire();
@@ -752,9 +761,8 @@ void RemoteDeviceCoordinator::adoptUpstreamHead() {
     // nothing else re-triggers a report (the announce path re-announces, the
     // report path has no equivalent), so an undelivered report must chase the
     // successor head or its member stays a phantom in that roster.
-    if (MacToUInt64(pendingReportMac.data()) != 0) {
-        sendDisconnectReport(headMac, pendingReportMac.data());
-    }
+    if (MacToUInt64(pendingReport.disconnectedMac) != 0)
+        sendDisconnectReport(headMac, pendingReport);
 }
 
 void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier jack) {
@@ -778,7 +786,7 @@ void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier jack) {
         upstreamRingClosed = false;
         // Becoming our own head voids the pending report, or adoptUpstreamHead's
         // successor-chase would ship it to an unrelated new head and prune a live member.
-        clearPendingReport();
+        pendingReport = {};
         cancelHeadRosterTraffic(lostHead.data());
     }
     publishHelloState();
@@ -820,18 +828,31 @@ std::vector<std::array<uint8_t, 6>> RemoteDeviceCoordinator::getChainMembers() c
     return members;
 }
 
-void RemoteDeviceCoordinator::maybeAnnounceToHead() {
+bool RemoteDeviceCoordinator::maybeAnnounceToHead() {
     // No upstream head held: this device IS its chain's head (or standalone, or a
     // latched ring, which stores no head). Nothing to announce, no self-sends.
-    if (MacToUInt64(chainHeadMac.data()) == 0) return;
+    if (MacToUInt64(chainHeadMac.data()) == 0) return false;
     // The announce names the upstream neighbour, which is known because a head is
     // only ever held while that link is Connected (adoptUpstreamHead).
     const HelloLinkMachine* upstream =
         helloByJack[jackIndex(SerialIdentifier::INPUT_JACK)].machine;
-    if (upstream == nullptr) return;
+    if (upstream == nullptr) return false;
     ConnectionAnnouncePayload announce{};
     memcpy(announce.upstreamMac, upstream->peer().data(), 6);
     pendingAnnounceSeqId = connectionAnnounceChannel->sendReliable(chainHeadMac.data(), announce);
+    return true;
+}
+
+void RemoteDeviceCoordinator::passContextDownstream() {
+    if (!isChainLink(SerialIdentifier::OUTPUT_JACK)) return;
+    JackHelloLink& link = helloByJack[jackIndex(SerialIdentifier::OUTPUT_JACK)];
+    // One pass per throttle window: a role change's own resend has just reached
+    // this peer, and while two devices briefly hold each other as head an
+    // unthrottled pass would go round them lap after lap.
+    if (link.contextResendThrottleTimer.isRunning() && !link.contextResendThrottleTimer.expired())
+        return;
+    link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
+    sendSelfContext(link.machine->peer().data());
 }
 
 void RemoteDeviceCoordinator::reportDownstreamLoss(const uint8_t* lostMac) {
@@ -851,17 +872,17 @@ void RemoteDeviceCoordinator::reportDownstreamLoss(const uint8_t* lostMac) {
     // head-naming report here is the outer of two guards — it avoids dead
     // traffic; the head's own self-report reject is the trust boundary.
     if (memcmp(chainHeadMac.data(), lostMac, 6) == 0) return;
-    sendDisconnectReport(chainHeadMac.data(), lostMac);
+    DisconnectReportPayload report{};
+    memcpy(report.disconnectedMac, lostMac, 6);
+    memcpy(report.upstreamMac, selfMac.data(), 6);
+    sendDisconnectReport(chainHeadMac.data(), report);
 }
 
 void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
-                                                   const uint8_t* lostMac) {
-    DisconnectReportPayload report{};
-    memcpy(report.disconnectedMac, lostMac, 6);
-    pendingReportSeqId = disconnectReportChannel->sendReliable(headMac, report);
-    // memmove, not memcpy: the successor-chase re-send passes pendingReportMac
-    // back in as lostMac, so source and destination alias on that path.
-    memmove(pendingReportMac.data(), lostMac, 6);
+                                                   const DisconnectReportPayload& report) {
+    // The successor-chase passes pendingReport itself; self-assignment is a no-op.
+    pendingReport = report;
+    disconnectReportChannel->sendReliable(headMac, pendingReport);
 }
 
 void RemoteDeviceCoordinator::retractReportFor(const uint8_t* returnedMac) {
@@ -870,12 +891,7 @@ void RemoteDeviceCoordinator::retractReportFor(const uint8_t* returnedMac) {
     disconnectReportChannel->cancelMatching([returnedMac](const DisconnectReportPayload& report) {
         return memcmp(report.disconnectedMac, returnedMac, 6) == 0;
     });
-    if (memcmp(pendingReportMac.data(), returnedMac, 6) == 0) clearPendingReport();
-}
-
-void RemoteDeviceCoordinator::clearPendingReport() {
-    pendingReportMac.fill(0);
-    pendingReportSeqId = 0;
+    if (memcmp(pendingReport.disconnectedMac, returnedMac, 6) == 0) pendingReport = {};
 }
 
 void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {
@@ -997,7 +1013,18 @@ void RemoteDeviceCoordinator::onDisconnectReport(const uint8_t* fromMac,
         if (MacToUInt64(chainHeadMac.data()) == 0 || memcmp(chainHeadMac.data(), fromMac, 6) == 0) {
             return;
         }
-        sendDisconnectReport(chainHeadMac.data(), report.disconnectedMac);
+        sendDisconnectReport(chainHeadMac.data(), report);
+        return;
+    }
+    // A report whose upstream differs from the member's recorded one is about a
+    // link it has left; honoring it would erase a live member.
+    std::array<uint8_t, 6> disconnected;
+    memcpy(disconnected.data(), report.disconnectedMac, 6);
+    std::map<std::array<uint8_t, 6>, std::array<uint8_t, 6>>::const_iterator recorded =
+    chainRoster.find(disconnected);
+    if (recorded != chainRoster.end() &&
+        memcmp(recorded->second.data(), report.upstreamMac, 6) != 0) {
+        LOG_W("RDC", "dropping a disconnect report from an upstream the member has left");
         return;
     }
     removeChainMemberSubtree(report.disconnectedMac);

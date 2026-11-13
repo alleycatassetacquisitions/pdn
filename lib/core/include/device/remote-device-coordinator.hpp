@@ -455,27 +455,29 @@ private:
     // seqId of the announce most recently sent; delivery of any earlier one is
     // stale and must not raise the confirmed bit.
     uint8_t pendingAnnounceSeqId = 0;
-    // disconnectedMac of the report most recently sent whose delivery is not yet
-    // confirmed (all-zero = none). A head change cancels the in-flight report to
-    // the old head, and unlike the announce path nothing re-triggers it, so
-    // adoptUpstreamHead re-sends it to the successor — otherwise the departed
-    // member stays a phantom in the new head's roster.
-    std::array<uint8_t, 6> pendingReportMac{};
-    uint8_t pendingReportSeqId = 0;
+    // The report most recently sent whose delivery is not yet confirmed; an
+    // all-zero disconnectedMac means none. A head change cancels the in-flight
+    // report to the old head, and unlike the announce path nothing re-triggers
+    // it, so adoptUpstreamHead re-sends it to the successor — otherwise the
+    // departed member stays a phantom in the new head's roster.
+    DisconnectReportPayload pendingReport{};
     bool isRosterAuthority() const;
     // Send ConnectionAnnounce{INPUT peer} to the held head, once the upstream
-    // context exchange has completed. No-op for a head/ring/standalone device.
-    void maybeAnnounceToHead();
+    // context exchange has completed. No-op for a head/ring/standalone device;
+    // returns whether an announce went out.
+    bool maybeAnnounceToHead();
+    // Send this device's context to its Connected OUTPUT peer, so a member that
+    // was pruned along with this one hears its upstream again and re-announces.
+    void passContextDownstream();
     // OUTPUT (downstream) link death: report to the head (unless the lost link
     // IS the head), or clear the roster when this device is the head.
     void reportDownstreamLoss(const uint8_t* lostMac);
-    // Reliable-send a DisconnectReport naming `lostMac` to `headMac`, tracking
-    // it as the pending report until its delivery is confirmed.
-    void sendDisconnectReport(const uint8_t* headMac, const uint8_t* lostMac);
+    // Reliable-send `report` to `headMac`, keeping it as the pending report
+    // until its delivery is confirmed.
+    void sendDisconnectReport(const uint8_t* headMac, const DisconnectReportPayload& report);
     // Stop retrying every pending report that names `returnedMac`: delivered after
     // that peer re-announces, it would erase a live member.
     void retractReportFor(const uint8_t* returnedMac);
-    void clearPendingReport();
     // Drop `mac` and every member whose upstream chain passes through it.
     void removeChainMemberSubtree(const uint8_t* mac);
     // One OUTPUT jack means one downstream: when `member` announces `upstream`,
