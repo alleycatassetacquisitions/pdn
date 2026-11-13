@@ -10,11 +10,6 @@ IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
     , remotePlayerManager(remotePlayerManager)
     , fdnMatchSpool(fdnMatchSpool) {}
 
-IdleState::~IdleState() {
-    remotePlayerManager = nullptr;
-    fdnMatchSpool = nullptr;
-}
-
 void IdleState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted");
     fdn->getLightManager()->clear();

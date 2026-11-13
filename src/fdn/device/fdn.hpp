@@ -28,9 +28,6 @@ public:
     SerialManager* getSerialManager() override;
     RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override;
 
-    // Convenience accessor for the tertiary (third) button unique to FDN.
-    Button* getTertiaryButton();
-
 protected:
     FDN(DriverConfig& driverConfig);
 

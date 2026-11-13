@@ -28,7 +28,6 @@ public:
     /** FDN home screen; also schedules match spool uploads. */
     IdleState(RemotePlayerManager* remotePlayerManager,
               RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool);
-    ~IdleState();
 
     void onStateMounted(FDN* fdn) override;
     void onStateLoop(FDN* fdn) override;
@@ -48,10 +47,7 @@ private:
 // ---------------------------------------------------------------------------
 // PlayerDetectedState
 // ---------------------------------------------------------------------------
-enum class PlayerDetectedStrength { WEAK, MEDIUM, STRONG };
-
 struct PlayerDetectionConfig {
-    PlayerDetectedStrength strength;
     int timeout;
     uint8_t intensity;
 };
@@ -60,7 +56,6 @@ class PlayerDetectedState : public FDNConnectState {
 public:
     PlayerDetectedState(RemotePlayerManager* remotePlayerManager,
                         RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~PlayerDetectedState();
 
     void onStateMounted(FDN* fdn) override;
     void onStateLoop(FDN* fdn) override;
@@ -72,14 +67,13 @@ private:
     RemotePlayerManager* remotePlayerManager;
 
     SimpleTimer playerDetectedTimer;
-    const PlayerDetectionConfig* activeConfig = nullptr;
 
     static constexpr int STRONG_RSSI_THRESHOLD = -50;
     static constexpr int MEDIUM_RSSI_THRESHOLD = -65;
 
-    const PlayerDetectionConfig WEAK_CFG   = { PlayerDetectedStrength::WEAK,   2500,  80 };
-    const PlayerDetectionConfig MEDIUM_CFG = { PlayerDetectedStrength::MEDIUM, 2500, 150 };
-    const PlayerDetectionConfig STRONG_CFG = { PlayerDetectedStrength::STRONG, 5000, 255 };
+    static constexpr PlayerDetectionConfig WEAK_CFG = {2500, 80};
+    static constexpr PlayerDetectionConfig MEDIUM_CFG = {2500, 150};
+    static constexpr PlayerDetectionConfig STRONG_CFG = {5000, 255};
 };
 
 // ---------------------------------------------------------------------------
@@ -125,8 +119,6 @@ class UploadPendingState : public TypedState<FDN> {
 public:
     /** Uploads the staged match spool records over Wi-Fi. */
     explicit UploadPendingState(FdnMatchSpool* fdnMatchSpool);
-    /** Non-owning; nothing to release. */
-    ~UploadPendingState();
 
     /** Queues one upload batch and shows the loading screen. */
     void onStateMounted(FDN* fdn) override;

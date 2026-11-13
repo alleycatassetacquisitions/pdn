@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <cstring>
 #include "apps/symbol-match/symbol-match-states.hpp"
 #include "device/fdn-light-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
@@ -52,10 +51,6 @@ SymbolIdle::SymbolIdle(SymbolManager* symbolManager,
     : FDNConnectState(remoteDeviceCoordinator, SYMBOL_IDLE)
     , symbolManager(symbolManager)
     , symbolWirelessManager(symbolWirelessManager) {}
-
-SymbolIdle::~SymbolIdle() {
-    symbolWirelessManager = nullptr;
-}
 
 void SymbolIdle::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");

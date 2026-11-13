@@ -88,7 +88,7 @@ public:
     virtual FirmwareUpdateManager* getFirmwareUpdateManager() { return nullptr; }
 
     // Generic driver accessor — useful for device-specific peripherals not
-    // covered by the standard convenience wrappers (e.g. FDN tertiary button).
+    // covered by the standard convenience wrappers.
     // Uses abstractSelf() on each combined driver interface to perform the
     // sibling-base cross-cast at compile time, avoiding dynamic_cast/RTTI.
     template<typename T>

@@ -5,7 +5,6 @@
 inline const std::string DISPLAY_DRIVER_NAME              = "display";
 inline const std::string PRIMARY_BUTTON_DRIVER_NAME       = "primary_button";
 inline const std::string SECONDARY_BUTTON_DRIVER_NAME     = "secondary_button";
-inline const std::string TERTIARY_BUTTON_DRIVER_NAME      = "tertiary_button";
 inline const std::string LIGHT_DRIVER_NAME                = "light";
 inline const std::string HAPTICS_DRIVER_NAME              = "haptics";
 inline const std::string SERIAL_OUT_DRIVER_NAME           = "serial_out";

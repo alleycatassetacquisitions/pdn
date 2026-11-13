@@ -19,7 +19,6 @@ public:
     Selection(SymbolManager* symbolManager,
               RemoteDeviceCoordinator* remoteDeviceCoordinator,
               SymbolWirelessManager* symbolWirelessManager);
-    ~Selection();
 
     void onStateMounted(FDN* fdn) override;
     void onStateLoop(FDN* fdn) override;
@@ -41,7 +40,6 @@ public:
     SymbolIdle(SymbolManager* symbolManager,
                RemoteDeviceCoordinator* remoteDeviceCoordinator,
                SymbolWirelessManager* symbolWirelessManager);
-    ~SymbolIdle();
 
     void onStateMounted(FDN* fdn) override;
     void onStateLoop(FDN* fdn) override;
@@ -76,7 +74,6 @@ public:
     /** Shows FDN_CODEWORD and the win lights, and tells both PDNs the match was won. */
     MatchSuccess(RemoteDeviceCoordinator* remoteDeviceCoordinator,
                  SymbolWirelessManager* symbolWirelessManager);
-    ~MatchSuccess();
 
     void onStateMounted(FDN* fdn) override;
     void onStateLoop(FDN* fdn) override;

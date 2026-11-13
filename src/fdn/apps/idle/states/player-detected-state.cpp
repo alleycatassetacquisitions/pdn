@@ -10,15 +10,13 @@ PlayerDetectedState::PlayerDetectedState(RemotePlayerManager* remotePlayerManage
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::PLAYER_DETECTED)
     , remotePlayerManager(remotePlayerManager) {}
 
-PlayerDetectedState::~PlayerDetectedState() { remotePlayerManager = nullptr; }
-
 void PlayerDetectedState::onStateMounted(FDN* fdn) {
     int rssi = remotePlayerManager->getLastRssi();
-    if      (rssi > STRONG_RSSI_THRESHOLD) activeConfig = &STRONG_CFG;
-    else if (rssi > MEDIUM_RSSI_THRESHOLD) activeConfig = &MEDIUM_CFG;
-    else                                   activeConfig = &WEAK_CFG;
+    const PlayerDetectionConfig& config = rssi > STRONG_RSSI_THRESHOLD   ? STRONG_CFG
+                                          : rssi > MEDIUM_RSSI_THRESHOLD ? MEDIUM_CFG
+                                                                         : WEAK_CFG;
 
-    LOG_I(TAG, "Mounted — rssi %d, timeout %dms", rssi, activeConfig->timeout);
+    LOG_I(TAG, "Mounted — rssi %d, timeout %dms", rssi, config.timeout);
 
     fdn->getDisplay()
         ->invalidateScreen()
@@ -29,12 +27,12 @@ void PlayerDetectedState::onStateMounted(FDN* fdn) {
     LEDState initialState;
     static constexpr LEDColor kBlue(0, 150, 255);
     for (uint8_t i = 0; i < 9; ++i) {
-        initialState.leftLights[i]  = LEDState::SingleLEDState(kBlue, activeConfig->intensity);
-        initialState.rightLights[i] = LEDState::SingleLEDState(kBlue, activeConfig->intensity / 2);
+        initialState.leftLights[i] = LEDState::SingleLEDState(kBlue, config.intensity);
+        initialState.rightLights[i] = LEDState::SingleLEDState(kBlue, config.intensity / 2);
     }
 
-    uint8_t frameSpeed = static_cast<uint8_t>(
-        std::max(6, (255 - static_cast<int>(activeConfig->intensity)) / 7));
+    uint8_t frameSpeed =
+    static_cast<uint8_t>(std::max(6, (255 - static_cast<int>(config.intensity)) / 7));
 
     AnimationConfig cfg{};
     cfg.loop         = true;
@@ -43,7 +41,7 @@ void PlayerDetectedState::onStateMounted(FDN* fdn) {
     cfg.initialState = initialState;
     fdn->getLightManager()->startAnimation(new FDNPlayerDetectedAnimation(), cfg);
 
-    playerDetectedTimer.setTimer(activeConfig->timeout);
+    playerDetectedTimer.setTimer(config.timeout);
 }
 
 void PlayerDetectedState::onStateLoop(FDN* fdn) {
@@ -55,7 +53,6 @@ void PlayerDetectedState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
     fdn->getLightManager()->stopAnimation();
     playerDetectedTimer.invalidate();
-    activeConfig       = nullptr;
 }
 
 bool PlayerDetectedState::transitionToIdle() { return playerDetectedTimer.expired(); }

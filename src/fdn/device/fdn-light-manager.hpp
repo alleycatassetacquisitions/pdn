@@ -11,9 +11,6 @@
 //   Fin  (GRIP_LIGHTS) 0-8  → leftLights[0-8]
 //   Recess (DISPLAY_LIGHTS) 0-8  → rightLights[0-8]
 //   Recess 9-21 are held dark (not enough LEDState entries for all 22).
-//
-// For explicit half-screen effects (e.g. match-side lights) call the
-// stripSetLight() helpers below which write directly to the LightStrip.
 class FDNLightManager : public LightManager {
 public:
     explicit FDNLightManager(LightStrip& strip)

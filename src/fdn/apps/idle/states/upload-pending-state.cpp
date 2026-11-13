@@ -8,8 +8,6 @@ UploadPendingState::UploadPendingState(FdnMatchSpool* fdnMatchSpool)
     : TypedState<FDN>(IdleStateId::UPLOAD_PENDING)
     , fdnMatchSpool(fdnMatchSpool) {}
 
-UploadPendingState::~UploadPendingState() { fdnMatchSpool = nullptr; }
-
 void UploadPendingState::onStateMounted(FDN* fdn) {
     contentReady = false;
 
