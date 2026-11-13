@@ -145,7 +145,7 @@ void MatchManager::initializeMatch(uint8_t* opponentMac) {
                 activeMatchState.match->getMatchId(), 0, 0, activeMatchState.localIsHunter);
 }
 
-void MatchManager::initializeShootoutMatch(const char* matchId, uint8_t* opponentMac,
+void MatchManager::initializeShootoutMatch(const char* matchId, const uint8_t* opponentMac,
                                            bool localIsHunter) {
     // A repeat MATCH_START names a match that may already be mounted; the live one
     // wins, since re-priming would reset a draw already in progress.

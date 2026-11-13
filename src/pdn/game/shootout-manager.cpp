@@ -186,8 +186,11 @@ std::vector<std::array<uint8_t, 6>> ShootoutManager::peersExcludingSelf(
     return others;
 }
 
-std::array<uint8_t, 6> ShootoutManager::getOpponentMac() const {
-    return opponentMac;
+const uint8_t* ShootoutManager::getOpponentMac() const {
+    if (!isInCurrentMatch()) return nullptr;
+    const uint8_t* selfMac = wirelessManager->getMacAddress();
+    return memcmp(selfMac, currentPlayerA.data(), 6) == 0 ? currentPlayerB.data()
+                                                          : currentPlayerA.data();
 }
 
 std::array<uint8_t, 6> ShootoutManager::getTournamentWinner() const {
@@ -230,7 +233,6 @@ void ShootoutManager::resetTournamentState() {
     currentMatchIndex = -1;
     roundPairIndex = -1;
     memset(tournamentWinner.data(), 0, 6);
-    memset(opponentMac.data(), 0, 6);
     memset(currentPlayerA.data(), 0, 6);
     memset(currentPlayerB.data(), 0, 6);
 }
@@ -420,22 +422,21 @@ void ShootoutManager::generateBracket() {
 
 void ShootoutManager::primeMatchManagerForMatch() {
     if (!matchManager) return;
-    if (!isInCurrentMatch()) return;
+    const uint8_t* opponentMac = getOpponentMac();
+    if (opponentMac == nullptr) return;
 
     // Role-for-this-match from MAC ordering: both sides compute the same
     // ordering so the hunter_draw_time and bounty_time slots in MatchManager
     // are written by exactly one player each. It goes to the match, never to the
     // Player: the standing role outlives the match and answers other questions.
     const uint8_t* selfMac = wirelessManager->getMacAddress();
-    bool localIsHunterForMatch = selfMac != nullptr &&
-                                 memcmp(selfMac, opponentMac.data(), 6) < 0;
+    bool localIsHunterForMatch = memcmp(selfMac, opponentMac, 6) < 0;
 
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
     deriveShootoutMatchId(currentMatchIndex, matchId, sizeof(matchId));
     LOG_W(TAG, "primeMatchManagerForMatch matchIndex=%d localHunter=%d",
           currentMatchIndex, localIsHunterForMatch);
-    matchManager->initializeShootoutMatch(matchId, opponentMac.data(),
-                                          localIsHunterForMatch);
+    matchManager->initializeShootoutMatch(matchId, opponentMac, localIsHunterForMatch);
 }
 
 void ShootoutManager::advanceToBracketReveal() {
@@ -575,18 +576,13 @@ ShootoutManager::getCurrentMatchPair() const {
 }
 
 void ShootoutManager::sendMatchStartToPeers() {
-    const uint8_t* selfMac = wirelessManager->getMacAddress();
     const std::array<uint8_t, 6>& a = currentRound[roundPairIndex * 2];
     const std::array<uint8_t, 6>& b = currentRound[roundPairIndex * 2 + 1];
     currentPlayerA = a;
     currentPlayerB = b;
     currentMatchIndex++;
     reportedLocalWin = false;
-    if (isInCurrentMatch() && selfMac != nullptr) {
-        const uint8_t* opp = (memcmp(selfMac, a.data(), 6) == 0) ? b.data() : a.data();
-        memcpy(opponentMac.data(), opp, 6);
-        primeMatchManagerForMatch();
-    }
+    primeMatchManagerForMatch();
     ShootoutMatchStartPayload start{};
     memcpy(start.playerA, a.data(), 6);
     memcpy(start.playerB, b.data(), 6);
@@ -672,12 +668,7 @@ void ShootoutManager::onMatchStartReceived(const uint8_t* fromMac, const uint8_t
     memcpy(currentPlayerA.data(), playerA, 6);
     memcpy(currentPlayerB.data(), playerB, 6);
     reportedLocalWin = false;
-    const uint8_t* selfMac = wirelessManager->getMacAddress();
-    if (isInCurrentMatch() && selfMac != nullptr) {
-        const uint8_t* opp = (memcmp(selfMac, playerA, 6) == 0) ? playerB : playerA;
-        memcpy(opponentMac.data(), opp, 6);
-        primeMatchManagerForMatch();
-    }
+    primeMatchManagerForMatch();
     enterPhase(Phase::MATCH_IN_PROGRESS);
 }
 
@@ -716,12 +707,16 @@ void ShootoutManager::sendMatchResultToPeers(
 
 void ShootoutManager::reportLocalWin() {
     const uint8_t* selfMac = wirelessManager->getMacAddress();
-    if (selfMac == nullptr) return;
     if (reportedLocalWin) return;
+    const uint8_t* opponentMac = getOpponentMac();
+    if (opponentMac == nullptr) {
+        LOG_E(TAG, "reportLocalWin while not in the current match");
+        return;
+    }
     reportedLocalWin = true;
     LOG_W(TAG, "reportLocalWin matchIndex=%d", currentMatchIndex);
-    sendMatchResultToPeers(selfMac, opponentMac.data(), static_cast<uint8_t>(currentMatchIndex));
-    applyMatchResult(selfMac, opponentMac.data());
+    sendMatchResultToPeers(selfMac, opponentMac, static_cast<uint8_t>(currentMatchIndex));
+    applyMatchResult(selfMac, opponentMac);
     // The round advances on the next sync(), not from here. On the timeout path
     // this is called from MatchState::onStateLoop, and that state dismounts later in
     // the same tick through clearCurrentMatch() — anything primed for the next
