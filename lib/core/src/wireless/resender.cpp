@@ -174,8 +174,8 @@ bool Resender::transmit(const Group& g) {
     // fail either.
     if (wirelessManager == nullptr) return true;
     // A negative return means the local send path would not take the frame at all
-    // (a payload over the packet size, a failed allocation, a radio held out of
-    // ESP-NOW mode).
+    // (a payload over the packet size, a full send queue, a failed allocation, a
+    // radio held out of ESP-NOW mode).
     return wirelessManager->sendEspNowData(g.destination.data(), g.type,
                                            g.payload.data(), g.payload.size()) >= 0;
 }
