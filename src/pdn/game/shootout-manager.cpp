@@ -25,13 +25,13 @@ ShootoutManager::ShootoutManager(Player* player, WirelessManager* wirelessManage
     , wirelessManager(wirelessManager)
     , rdc(rdc)
     , matchManager(matchManager)
-    , ringClosedChannel(wirelessManager, PktType::kShootoutRingClosed, ChannelMode::FAN_OUT)
-    , confirmChannel(wirelessManager, PktType::kShootoutConfirm, ChannelMode::FAN_OUT)
-    , bracketChannel(wirelessManager, PktType::kShootoutBracket, ChannelMode::FAN_OUT)
-    , matchStartChannel(wirelessManager, PktType::kShootoutMatchStart, ChannelMode::FAN_OUT)
-    , matchResultChannel(wirelessManager, PktType::kShootoutMatchResult, ChannelMode::FAN_OUT)
-    , tournamentEndChannel(wirelessManager, PktType::kShootoutTournamentEnd, ChannelMode::FAN_OUT)
-    , abortChannel(wirelessManager, PktType::kShootoutAbort, ChannelMode::FAN_OUT) {
+    , ringClosedChannel(wirelessManager, PktType::kShootoutRingClosed)
+    , confirmChannel(wirelessManager, PktType::kShootoutConfirm)
+    , bracketChannel(wirelessManager, PktType::kShootoutBracket)
+    , matchStartChannel(wirelessManager, PktType::kShootoutMatchStart)
+    , matchResultChannel(wirelessManager, PktType::kShootoutMatchResult)
+    , tournamentEndChannel(wirelessManager, PktType::kShootoutTournamentEnd)
+    , abortChannel(wirelessManager, PktType::kShootoutAbort) {
     ringClosedChannel.onReceive([this](const uint8_t* fromMac, const ShootoutRosterPayload& p) {
         onRingClosedReceived(fromMac, unpackRoster(p));
     });
@@ -162,7 +162,7 @@ bool ShootoutManager::isRingMember(const uint8_t* mac) const {
 }
 
 template <class P>
-void ShootoutManager::broadcastToRing(ReliableChannel<P>& channel,
+void ShootoutManager::broadcastToRing(FanOutChannel<P>& channel,
                                       const std::vector<std::array<uint8_t, 6>>& peers,
                                       P& payload) {
     // A ring fan-out is one broadcast frame, not one unicast per member: the

@@ -23,12 +23,10 @@ uint8_t seedInitialSeqId() {
 }
 }
 
-ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager, PktType type,
-                                         ChannelMode mode)
+ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager, PktType type)
     : resender(nullptr)
     , packetType(type)
     , wirelessManager(wirelessManager)
-    , channelMode(mode)
     , lastSentSeqId(seedInitialSeqId()) {
     // Owning the PktType is the whole registration. This channel already holds
     // both things the wiring needs, and a channel whose send results never
@@ -92,12 +90,6 @@ void ReliableChannelBase::ack(const uint8_t* toMac, uint8_t seqId) {
                                     reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
 }
 
-void ReliableChannelBase::onPacketAck(const uint8_t* fromMac, uint8_t seqId) {
-    if (channelMode != ChannelMode::FAN_OUT || resender == nullptr) return;
-    if (!resender->onAck(packetType, seqId, fromMac)) return;
-    if (onDeliveredCallback) onDeliveredCallback(seqId, fromMac);
-}
-
 uint8_t ReliableChannelBase::nextSeqId() {
     // 0 is reserved for "no ack expected"; skip it on wrap.
     lastSentSeqId = lastSentSeqId == 255 ? 1 : lastSentSeqId + 1;
@@ -108,13 +100,6 @@ void ReliableChannelBase::sendUnsequencedBytes(const uint8_t* mac, const uint8_t
                                                size_t len) {
     if (wirelessManager == nullptr || mac == nullptr) return;
     wirelessManager->sendEspNowData(mac, packetType, data, len);
-}
-
-bool ReliableChannelBase::refusesFanOut() const {
-    if (channelMode == ChannelMode::FAN_OUT) return false;
-    LOG_E(RELIABLE_CHANNEL_TAG, "sendBroadcast on a non-fan-out channel type=%u",
-          (unsigned)packetType);
-    return true;
 }
 
 bool ReliableChannelBase::isDuplicateReliableRx(const uint8_t* fromMac, uint8_t seqId) {

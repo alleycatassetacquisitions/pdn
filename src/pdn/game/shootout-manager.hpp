@@ -262,23 +262,23 @@ private:
 
     uint8_t lastBracketSeqId = 0;
 
-    // One FAN_OUT channel per command, each frame one broadcast. RING_CLOSED
+    // One fan-out channel per command, each frame one broadcast. RING_CLOSED
     // and CONFIRM go unsequenced and unacked; the other five are acked per
     // recipient.
-    ReliableChannel<ShootoutRosterPayload> ringClosedChannel;
-    ReliableChannel<ShootoutConfirmPayload> confirmChannel;
-    ReliableChannel<ShootoutRosterPayload> bracketChannel;
-    ReliableChannel<ShootoutMatchStartPayload> matchStartChannel;
-    ReliableChannel<ShootoutMatchResultPayload> matchResultChannel;
-    ReliableChannel<ShootoutTournamentEndPayload> tournamentEndChannel;
-    ReliableChannel<ShootoutAbortPayload> abortChannel;
+    FanOutChannel<ShootoutRosterPayload> ringClosedChannel;
+    FanOutChannel<ShootoutConfirmPayload> confirmChannel;
+    FanOutChannel<ShootoutRosterPayload> bracketChannel;
+    FanOutChannel<ShootoutMatchStartPayload> matchStartChannel;
+    FanOutChannel<ShootoutMatchResultPayload> matchResultChannel;
+    FanOutChannel<ShootoutTournamentEndPayload> tournamentEndChannel;
+    FanOutChannel<ShootoutAbortPayload> abortChannel;
     // The RDC's 64-member roster plus self can reach 65, one past
     // ShootoutRosterPayload::macs; the last entry is dropped rather than overflowing.
     static ShootoutRosterPayload buildRoster(const std::vector<std::array<uint8_t, 6>>& macs);
     static std::vector<std::array<uint8_t, 6>> unpackRoster(const ShootoutRosterPayload& roster);
     /** Broadcasts an unsequenced frame only when `peers` names someone besides this device. */
     template <class P>
-    void broadcastToRing(ReliableChannel<P>& channel,
+    void broadcastToRing(FanOutChannel<P>& channel,
                          const std::vector<std::array<uint8_t, 6>>& peers, P& payload);
 
     void sendBracketToPeers();

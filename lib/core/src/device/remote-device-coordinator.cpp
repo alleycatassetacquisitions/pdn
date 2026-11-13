@@ -115,7 +115,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
     // demoted device routinely forwards two children's reports to the same head
     // in one tick; per-target supersede would erase the first one's retry slot.
     disconnectReportChannel = new ReliableChannel<DisconnectReportPayload>(
-    wirelessManager, PktType::kDisconnectReport, ChannelMode::KEEP_DISTINCT);
+    wirelessManager, PktType::kDisconnectReport, Resender::SendMode::KEEP_DISTINCT);
     disconnectReportChannel->onReceive(
     [this](const uint8_t* fromMac, const DisconnectReportPayload& report) {
         onDisconnectReport(fromMac, report);
