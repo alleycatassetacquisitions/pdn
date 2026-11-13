@@ -197,7 +197,6 @@ private:
         switch (type) {
             case PktType::kPlayerInfoBroadcast: return "INFO";
             case PktType::kMatchCommand: return "CMD";
-            case PktType::kDebugPacket: return "DBG";
             default: return "?" + std::to_string(static_cast<int>(type));
         }
     }

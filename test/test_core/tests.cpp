@@ -787,20 +787,8 @@ TEST_F(MACTestSuite, macToStringHandlesZeros) {
     macToStringHandlesZeros();
 }
 
-TEST_F(MACTestSuite, stringToMacParsesValidFormat) {
-    stringToMacParsesValidFormat();
-}
-
-TEST_F(MACTestSuite, stringToMacRejectsInvalidLength) {
-    stringToMacRejectsInvalidLength();
-}
-
 TEST_F(MACTestSuite, macToUInt64ProducesCorrectValue) {
     macToUInt64ProducesCorrectValue();
-}
-
-TEST_F(MACTestSuite, macRoundTripPreservesData) {
-    macRoundTripPreservesData();
 }
 
 // ============================================

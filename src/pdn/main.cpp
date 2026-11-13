@@ -31,9 +31,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
-#include "wireless/remote-debug-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
-#include "device/drivers/peer-comms-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
@@ -74,20 +72,7 @@ PlayerProvider* playerProvider = nullptr;
 // Shared game managers
 GameSession* gameSession = nullptr;
 
-// Remote player management
 SymbolWirelessManager* symbolWirelessManager = nullptr;
-RemoteDebugManager* remoteDebugManager = nullptr;
-
-void setupEspNow(RemoteDebugManager* remoteDebugManager,
-                 PeerCommsInterface* peerCommsDriver) {
-    // Register packet handlers
-    peerCommsDriver->setPacketHandler(
-        PktType::kDebugPacket,
-        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
-            ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr, data, len);
-        },
-        remoteDebugManager);
-}
 
 static void setup() {
     const uint32_t crashedBootUptimeMs = CrashLogger::takeCrashedBootUptime();
@@ -153,18 +138,9 @@ static void setup() {
     playerProvider = new PlayerProvider();
     playerProvider->getPlayer()->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
-    // Create wireless managers
     LOG_I("SETUP", "Creating SymbolWirelessManager...");
-    symbolWirelessManager = new SymbolWirelessManager(pdn->getWirelessManager(),
-                                                      pdn->getRemoteDeviceCoordinator());
-    LOG_I("SETUP", "Creating RemoteDebugManager...");
-    remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
-    
-    // WiFi credentials are compile-time constants from build flags
-    remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
-
-    // Register ESP-NOW packet handlers
-    setupEspNow(remoteDebugManager, peerCommsDriver);
+    symbolWirelessManager =
+    new SymbolWirelessManager(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
 
     crashLogger = new CrashLogger(storageDriver, pdn->getWirelessManager());
     crashLogger->capture(crashedBootUptimeMs);

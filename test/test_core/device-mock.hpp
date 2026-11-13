@@ -302,7 +302,7 @@ public:
     }
 
     /** Returns the stubbed status for `id`. */
-    JackStatus getJackStatus(SerialIdentifier id) override {
+    JackStatus getJackStatus(SerialIdentifier id) const override {
         if (id == SerialIdentifier::OUTPUT_JACK) return outputStatus;
         if (id == SerialIdentifier::INPUT_JACK) return inputStatus;
         return JackStatus::DISCONNECTED;
