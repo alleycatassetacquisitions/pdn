@@ -15,23 +15,23 @@ void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
     d->setGlyphMode(FontMode::TEXT_INVERTED_SMALL);
     d->drawCenteredText("ready...", 50);
     d->render();
-}
 
-void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
-    ShootoutManager::Phase p = shootoutManager->getPhase();
-    if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS) {
-        if (shootoutManager->isInCurrentMatch()) {
-            shouldGoToMatchCountdown = true;
-        } else {
-            shouldGoToSpectator_ = true;
-        }
-    }
+    phaseSubscription.open(shootoutManager, [this](ShootoutManager::Phase phase) {
+        const bool matchStarted = phase == ShootoutManager::Phase::MATCH_IN_PROGRESS;
+        const bool playing = matchStarted && shootoutManager->isInCurrentMatch();
+        transitionToMatchCountdownState = playing;
+        transitionToSpectatorState = matchStarted && !playing;
+    });
 }
 
 void ShootoutBracketReveal::onStateDismounted(PDN* pdn) {
-    shouldGoToMatchCountdown = false;
-    shouldGoToSpectator_ = false;
+    phaseSubscription.close();
+    transitionToMatchCountdownState = false;
+    transitionToSpectatorState = false;
 }
 
-bool ShootoutBracketReveal::transitionToMatchCountdown() const { return shouldGoToMatchCountdown; }
-bool ShootoutBracketReveal::transitionToSpectator() { return shouldGoToSpectator_; }
+bool ShootoutBracketReveal::transitionToMatchCountdown() const {
+    return transitionToMatchCountdownState;
+}
+
+bool ShootoutBracketReveal::transitionToSpectator() const { return transitionToSpectatorState; }

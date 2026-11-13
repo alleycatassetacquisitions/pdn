@@ -2,11 +2,13 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <vector>
 #include "game/player.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/wireless-manager.hpp"
+#include "utils/callback-list.hpp"
 #include "utils/debounced-condition.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/reliable-channel.hpp"
@@ -44,6 +46,20 @@ public:
     bool active() const;
     Phase getPhase() const;
 
+    /** Receives the phase the manager has just entered. */
+    using PhaseHandler = std::function<void(Phase phase)>;
+
+    /**
+     * Registers `owner`'s phase observer; null removes it. Called each time a
+     * phase is entered, once the tournament state that goes with it is in
+     * place, and again for a phase already held when a match starts over an
+     * unresolved one. It runs inside the call that moved the phase: it may read
+     * this manager but must not move the phase.
+     */
+    void setOnPhaseEntered(PhaseHandler handler, const void* owner) {
+        phaseEnteredCallbacks.set(std::move(handler), owner);
+    }
+
     /**
      * Participants in the current ring: live RDC roster + self on the ring head,
      * or the latched RING_CLOSED roster.
@@ -76,9 +92,10 @@ public:
 
     int getCurrentMatchIndex() const;
     /**
-     * The two devices of the current match index. Zero MACs only before the
-     * first match; the index is not cleared at a match boundary, so between
-     * matches and after the tournament ends this still names the last pair.
+     * The two devices of the current match index. Zero MACs before the first
+     * match and after a teardown; the index is not cleared at a match boundary,
+     * so between matches and after the tournament ends this still names the
+     * last pair.
      */
     std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> getCurrentMatchPair() const;
 
@@ -117,9 +134,10 @@ public:
     void onAbortReceived(const uint8_t* fromMac, uint8_t seqId);
     std::array<uint8_t, 6> getTournamentWinner() const;
 
-    // Reset all tournament state back to IDLE phase so a subsequent ring
-    // closure triggers a fresh proposal. Called when the physical ring is
-    // broken after TOURNAMENT_END or ABORTED.
+    /**
+     * Tears the tournament and the ring latch down into IDLE, the only phase
+     * shouldEnterProposal() accepts, so the next ring closure proposes afresh.
+     */
     void resetToIdle();
 
     /**
@@ -171,8 +189,21 @@ private:
     RemoteDeviceCoordinator* rdc;
     MatchManager* matchManager = nullptr;
     Phase phase = Phase::IDLE;
+    CallbackList<PhaseHandler> phaseEnteredCallbacks;
+
+    /** The one place the phase is written: stores it, then tells the observers. */
+    void enterPhase(Phase next);
+    /**
+     * Clears the tournament and the ring latch, then enters `next`, so an
+     * observer hears one phase per teardown and reads an emptied manager.
+     */
+    void teardownInto(Phase next);
 
     void primeMatchManagerForMatch();
+    /**
+     * Clears one tournament's roster, bracket, match and result state. The
+     * caller sets the phase.
+     */
     void resetTournamentState();
 
     static bool containsMac(const std::vector<std::array<uint8_t, 6>>& set,
@@ -288,4 +319,44 @@ private:
 
     std::array<uint8_t, 6> tournamentWinner{};
     void sendTournamentEndToPeers(const uint8_t* winner);
+};
+
+/**
+ * One state's hold on a ShootoutManager's phase notifications, opened at mount
+ * and closed at dismount. It closes itself when destroyed, so a state deleted
+ * while mounted leaves no handler behind. The manager must outlive it.
+ */
+class ShootoutPhaseSubscription {
+public:
+    /** Starts closed. */
+    ShootoutPhaseSubscription() = default;
+    /** Closes the subscription if it is still open. */
+    ~ShootoutPhaseSubscription() { close(); }
+    /** Not copyable: the manager holds a handler into this object by address. */
+    ShootoutPhaseSubscription(const ShootoutPhaseSubscription&) = delete;
+    /** Not assignable, for the same reason. */
+    ShootoutPhaseSubscription& operator=(const ShootoutPhaseSubscription&) = delete;
+
+    /**
+     * Registers `handler` with `manager` and calls it at once with the phase
+     * the manager is in, so the holder starts from the present and not from the
+     * next change. A null manager registers nothing and calls nothing.
+     */
+    void open(ShootoutManager* manager, ShootoutManager::PhaseHandler handler) {
+        close();
+        if (manager == nullptr) return;
+        shootoutManager = manager;
+        handler(manager->getPhase());
+        manager->setOnPhaseEntered(std::move(handler), this);
+    }
+
+    /** Removes the registration; does nothing when none is open. */
+    void close() {
+        if (shootoutManager == nullptr) return;
+        shootoutManager->setOnPhaseEntered(nullptr, this);
+        shootoutManager = nullptr;
+    }
+
+private:
+    ShootoutManager* shootoutManager = nullptr;
 };

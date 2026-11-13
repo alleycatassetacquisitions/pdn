@@ -20,17 +20,17 @@ void ShootoutProposal::onStateMounted(PDN* pdn) {
     };
     pdn->getPrimaryButton()->setButtonPress(confirmCb, this, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(confirmCb, this, ButtonInteraction::CLICK);
-}
 
-void ShootoutProposal::onStateLoop(PDN* pdn) {
-    ShootoutManager::Phase p = shootoutManager->getPhase();
-    if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;
+    phaseSubscription.open(shootoutManager, [this](ShootoutManager::Phase phase) {
+        transitionToBracketRevealState = phase == ShootoutManager::Phase::BRACKET_REVEAL;
+    });
 }
 
 void ShootoutProposal::onStateDismounted(PDN* pdn) {
+    phaseSubscription.close();
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
-    shouldGoToReveal_ = false;
+    transitionToBracketRevealState = false;
 }
 
-bool ShootoutProposal::transitionToBracketReveal() { return shouldGoToReveal_; }
+bool ShootoutProposal::transitionToBracketReveal() const { return transitionToBracketRevealState; }

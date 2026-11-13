@@ -303,6 +303,39 @@ inline void idleDismountClearsUnreadyMatch(IdleStateTests* suite) {
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
 }
 
+// A cabled hunter and bounty look like a match waiting to start. While a
+// tournament is live the bracket pairs the players, so Idle starts none of its
+// own, and it hears the tournament end without being remounted.
+inline void idleStartsNoMatchWhileATournamentIsLive(IdleStateTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
+    .Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
+    .Times(testing::AnyNumber());
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    uint8_t bountyMac[6] = {0x0B, 0x00, 0x00, 0x00, 0x00, 0x01};
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
+    rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, false);
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+
+    ShootoutManager shootout(suite->player, suite->device.wirelessManager, &rdc, nullptr);
+    suite->ctx.shootoutManager = &shootout;
+    Idle idleState(suite->ctx);
+    mountState(&idleState, &suite->device);
+
+    shootout.startProposal();
+    idleState.onStateLoop(&suite->device);
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value())
+    << "Idle started a match of its own inside a tournament";
+
+    shootout.resetToIdle();
+    idleState.onStateLoop(&suite->device);
+    EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
+    << "Idle went on refusing matches after the tournament was over";
+
+    dismountState(&idleState, &suite->device);
+    suite->ctx.shootoutManager = nullptr;
+}
+
 // ============================================
 // Countdown State Tests
 // ============================================

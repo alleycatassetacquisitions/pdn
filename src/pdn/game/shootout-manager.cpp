@@ -113,6 +113,11 @@ ShootoutManager::Phase ShootoutManager::getPhase() const {
     return phase;
 }
 
+void ShootoutManager::enterPhase(Phase next) {
+    phase = next;
+    phaseEnteredCallbacks.fire(next);
+}
+
 size_t ShootoutManager::getConfirmedCount() const {
     return confirmedSet.size();
 }
@@ -189,15 +194,17 @@ std::array<uint8_t, 6> ShootoutManager::getTournamentWinner() const {
     return tournamentWinner;
 }
 
-void ShootoutManager::resetToIdle() {
-    LOG_W(TAG, "resetToIdle from phase=%d", static_cast<int>(phase));
+void ShootoutManager::resetToIdle() { teardownInto(Phase::IDLE); }
+
+void ShootoutManager::teardownInto(Phase next) {
+    LOG_W(TAG, "teardown from phase=%d into %d", static_cast<int>(phase), static_cast<int>(next));
     resetTournamentState();
     ringMembers.clear();
     ringClosedRebroadcastTimer.invalidate();
+    enterPhase(next);
 }
 
 void ShootoutManager::resetTournamentState() {
-    phase = Phase::IDLE;
     // Retire a match this tournament primed: the match app's dismount is the only
     // other path and cannot run for a match abandoned before that app mounts,
     // and Idle mounts a match from whatever match is ready.
@@ -235,7 +242,7 @@ void ShootoutManager::startProposal() {
     if (ringMembers.empty() && headsRing()) {
         sendRingClosed();
     }
-    phase = Phase::PROPOSAL;
+    enterPhase(Phase::PROPOSAL);
 }
 
 void ShootoutManager::onRingClosed() {
@@ -434,11 +441,11 @@ void ShootoutManager::primeMatchManagerForMatch() {
 void ShootoutManager::advanceToBracketReveal() {
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     if (!headsRing() || selfMac == nullptr) return;
-    phase = Phase::BRACKET_REVEAL;
     bracketRevealTimer.setTimer(kBracketRevealMs);
     memcpy(coordinatorMac.data(), selfMac, 6);
     generateBracket();
     sendBracketToPeers();
+    enterPhase(Phase::BRACKET_REVEAL);
 }
 
 ShootoutRosterPayload
@@ -492,8 +499,7 @@ void ShootoutManager::abortTournament() {
     ShootoutAbortPayload abort{};
     abortChannel.sendBroadcast(peersExcludingSelf(bracket.empty() ? confirmedSet : bracket), abort);
 
-    resetToIdle();
-    phase = Phase::ABORTED;
+    teardownInto(Phase::ABORTED);
 }
 
 void ShootoutManager::sendLocalConfirm() {
@@ -621,7 +627,7 @@ void ShootoutManager::maybeStartNextMatch() {
         roundPairIndex = 0;
     }
     sendMatchStartToPeers();
-    phase = Phase::MATCH_IN_PROGRESS;
+    enterPhase(Phase::MATCH_IN_PROGRESS);
 }
 
 void ShootoutManager::onBracketReceived(
@@ -637,8 +643,8 @@ void ShootoutManager::onBracketReceived(
         bracket = offeredBracket;
         currentRound = offeredBracket;
         memcpy(coordinatorMac.data(), fromMac, 6);
-        phase = Phase::BRACKET_REVEAL;
         bracketRevealTimer.setTimer(kBracketRevealMs);
+        enterPhase(Phase::BRACKET_REVEAL);
     }
     // A repeat of the bracket already held still owes its ack.
     bracketChannel.ack(fromMac, seqId);
@@ -665,7 +671,6 @@ void ShootoutManager::onMatchStartReceived(const uint8_t* fromMac, const uint8_t
     currentMatchIndex = matchIndex;
     memcpy(currentPlayerA.data(), playerA, 6);
     memcpy(currentPlayerB.data(), playerB, 6);
-    phase = Phase::MATCH_IN_PROGRESS;
     reportedLocalWin = false;
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     if (isInCurrentMatch() && selfMac != nullptr) {
@@ -673,6 +678,7 @@ void ShootoutManager::onMatchStartReceived(const uint8_t* fromMac, const uint8_t
         memcpy(opponentMac.data(), opp, 6);
         primeMatchManagerForMatch();
     }
+    enterPhase(Phase::MATCH_IN_PROGRESS);
 }
 
 bool ShootoutManager::isEliminated(const uint8_t* mac) const {
@@ -693,7 +699,7 @@ void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* los
     // same tick and would then read false, stranding this device in a tournament
     // every other member has left.
     if (isTerminalPhase()) return;
-    phase = Phase::BETWEEN_MATCHES;
+    enterPhase(Phase::BETWEEN_MATCHES);
 }
 
 void ShootoutManager::sendMatchResultToPeers(
@@ -758,7 +764,7 @@ void ShootoutManager::sendTournamentEndToPeers(const uint8_t* winner) {
     // tournament-end transition or they stall in BETWEEN_MATCHES.
     tournamentEndChannel.sendBroadcast(peersExcludingSelf(confirmedSet), end);
     memcpy(tournamentWinner.data(), winner, 6);
-    phase = Phase::ENDED;
+    enterPhase(Phase::ENDED);
 }
 
 void ShootoutManager::onTournamentEndReceived(const uint8_t* fromMac,
@@ -771,7 +777,7 @@ void ShootoutManager::onTournamentEndReceived(const uint8_t* fromMac,
         return;
     }
     memcpy(tournamentWinner.data(), winner, 6);
-    phase = Phase::ENDED;
+    enterPhase(Phase::ENDED);
 }
 
 void ShootoutManager::onAbortReceived(const uint8_t* fromMac, uint8_t seqId) {
@@ -789,8 +795,7 @@ void ShootoutManager::onAbortReceived(const uint8_t* fromMac, uint8_t seqId) {
     // TOURNAMENT_END is still in BETWEEN_MATCHES, so a cable pulled after the
     // winner appears sends ABORT to devices already showing the result.
     if (isTerminalPhase() || phase == Phase::IDLE) return;
-    resetToIdle();
-    phase = Phase::ABORTED;
+    teardownInto(Phase::ABORTED);
 }
 
 std::vector<std::array<uint8_t, 6>> ShootoutManager::getRingMembers() const {
