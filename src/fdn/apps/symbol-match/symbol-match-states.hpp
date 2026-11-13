@@ -49,6 +49,7 @@ public:
     bool transitionToMatchSuccess();
 
 private:
+    void onInputJackState(SerialIdentifier jack, bool connected);
     void renderSymbolScreen(FDN* fdn);
     void updateMatchSideLights(FDN* fdn, bool leftOn, bool rightOn);
     void syncMatchSideLights(FDN* fdn);
@@ -58,8 +59,6 @@ private:
     FDN* mountedFdn = nullptr;
 
     bool transitionToSelectionState = false;
-    bool leftConnected  = false;
-    bool rightConnected = false;
     bool lastSideLightLeft_  = false;
     bool lastSideLightRight_ = false;
     bool blinkToggle   = true;

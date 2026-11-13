@@ -102,6 +102,13 @@ public:
 protected:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
 
+    /**
+     * True when `jack`'s last edge this tenure was a connect. Already updated when
+     * the jack-state handler runs; false outside a tenure and inside the
+     * subclass's own onStateMounted and onStateDismounted.
+     */
+    bool isJackConnected(SerialIdentifier jack) const { return jacks[jackSlot(jack)].connected; }
+
     virtual bool isPrimaryRequired() = 0;
     virtual bool isAuxRequired() = 0;
     // Override and return true to also consider INPUT_JACK_SECONDARY when
@@ -190,8 +197,6 @@ private:
         }
         return 0;
     }
-
-    bool isJackConnected(SerialIdentifier jack) const { return jacks[jackSlot(jack)].connected; }
 
     static constexpr size_t JACK_COUNT = 3;
     JackStateHandler jackStateHandler;
