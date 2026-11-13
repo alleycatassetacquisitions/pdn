@@ -5,7 +5,6 @@
 #include <cstring>
 #include <chrono>
 #include <string>
-#include <vector>
 #include <deque>
 
 struct LogEntry {
@@ -29,40 +28,17 @@ public:
 
     void exec() override {}
 
-    // Control whether logs are printed to stdout
-    void setSuppressOutput(bool suppress) {
-        suppressOutput_ = suppress;
-    }
-    
-    bool isSuppressed() const {
-        return suppressOutput_;
-    }
-    
-    // Get buffered logs (returns copy and clears buffer)
-    std::vector<LogEntry> getAndClearLogs() {
-        std::vector<LogEntry> result(logBuffer_.begin(), logBuffer_.end());
-        logBuffer_.clear();
-        return result;
-    }
-    
-    // Get recent logs without clearing (for display)
-    const std::deque<LogEntry>& getRecentLogs() const {
-        return logBuffer_;
-    }
-    
-    // Set max buffer size
-    void setMaxBufferSize(size_t size) {
-        maxBufferSize_ = size;
-        while (logBuffer_.size() > maxBufferSize_) {
-            logBuffer_.pop_front();
-        }
-    }
+    /** Entries are always buffered; this stops them being printed as well. */
+    void setSuppressOutput(bool suppress) { suppressOutput = suppress; }
+
+    /** The buffered entries, oldest first. */
+    const std::deque<LogEntry>& getRecentLogs() const { return logBuffer; }
 
     void vlog(LogLevel level, const char* tag, const char* file, int line, const char* format, va_list args) override {
         // Get timestamp in milliseconds since start
         auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - startTime_).count();
+        auto elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count();
 
         // Level prefix
         const char* levelStr;
@@ -95,14 +71,14 @@ public:
         entry.line = line;
         entry.message = msgBuffer;
         entry.timestamp = elapsed;
-        
-        logBuffer_.push_back(entry);
-        while (logBuffer_.size() > maxBufferSize_) {
-            logBuffer_.pop_front();
+
+        logBuffer.push_back(entry);
+        while (logBuffer.size() > MAX_BUFFER_SIZE) {
+            logBuffer.pop_front();
         }
 
         // Only print if not suppressed
-        if (!suppressOutput_) {
+        if (!suppressOutput) {
             FILE* out = stderr;
             static FILE* debugFile = nullptr;
             if (debugFile == nullptr) {
@@ -117,8 +93,8 @@ public:
     }
 
 private:
-    std::chrono::steady_clock::time_point startTime_ = std::chrono::steady_clock::now();
-    bool suppressOutput_ = false;
-    std::deque<LogEntry> logBuffer_;
-    size_t maxBufferSize_ = 100;  // Keep last 100 log entries
+    std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();
+    bool suppressOutput = false;
+    std::deque<LogEntry> logBuffer;
+    static constexpr size_t MAX_BUFFER_SIZE = 100;
 };

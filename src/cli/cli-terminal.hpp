@@ -77,13 +77,6 @@ public:
     }
 
     /**
-     * Clear from cursor position to end of screen.
-     */
-    static void clearFromCursor() {
-        printf("\033[J");
-    }
-
-    /**
      * Flush stdout.
      */
     static void flush() {
@@ -92,7 +85,7 @@ public:
 
     /**
      * Configure terminal for non-blocking, raw input.
-     * Returns the old termios settings for restoration later.
+     * Returns the old termios settings for restoreTerminal.
      */
     static struct termios enableRawMode() {
         struct termios oldTermios, newTermios;
@@ -100,15 +93,17 @@ public:
         newTermios = oldTermios;
         newTermios.c_lflag &= ~(ICANON | ECHO);
         tcsetattr(STDIN_FILENO, TCSANOW, &newTermios);
-        fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
+        fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL) | O_NONBLOCK);
         return oldTermios;
     }
 
     /**
-     * Restore terminal settings.
+     * Undoes enableRawMode: echo, canonical input, blocking stdin. Without this
+     * the shell that launched the simulator is left with no echo.
      */
     static void restoreTerminal(const struct termios& oldTermios) {
         tcsetattr(STDIN_FILENO, TCSANOW, &oldTermios);
+        fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL) & ~O_NONBLOCK);
     }
 
     /**

@@ -117,15 +117,6 @@ public:
     size_t getPendingPacketCount() const {
         return pendingPackets_.size();
     }
-    
-    /**
-     * Check if a MAC address is registered.
-     */
-    bool isPeerRegistered(const uint8_t* macAddress) const {
-        std::array<uint8_t, 6> mac;
-        std::memcpy(mac.data(), macAddress, 6);
-        return peers_.find(mac) != peers_.end();
-    }
 
 private:
     NativePeerBroker() : nextMacId_(1) {

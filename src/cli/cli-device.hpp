@@ -17,7 +17,6 @@
 #include "device/drivers/native/native-http-client-driver.hpp"
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
-#include "game/match-manager.hpp"
 
 // Core game components
 #include "device/pdn.hpp"
@@ -108,7 +107,6 @@ struct DeviceInstance {
 
     // State history (circular buffer, most recent at back)
     std::deque<int> stateHistory;
-    int lastStateId = -1;
 
     /**
      * State the device is actually running, from whichever app is mounted.
@@ -122,13 +120,22 @@ struct DeviceInstance {
      * Track state transitions for display in the UI.
      */
     void updateStateHistory(int currentStateId) {
-        if (currentStateId != lastStateId) {
+        if (currentStateId != (stateHistory.empty() ? -1 : stateHistory.back())) {
             stateHistory.push_back(currentStateId);
             while (stateHistory.size() > 4) {
                 stateHistory.pop_front();
             }
-            lastStateId = currentStateId;
         }
+    }
+
+    /**
+     * The `reboot` command: forget the UI's state history and remount
+     * provisioning at its fetch state, with the device id as the PIN.
+     */
+    void reboot() {
+        stateHistory.clear();
+        playerProvider->setRegistrationPin(deviceId.c_str());
+        pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID), StateId(PlayerFetchStateId::FETCH_USER));
     }
 };
 
@@ -164,7 +171,7 @@ public:
         instance.primaryButtonDriver = new NativeButtonDriver(PRIMARY_BUTTON_DRIVER_NAME + suffix, 0);
         instance.secondaryButtonDriver = new NativeButtonDriver(SECONDARY_BUTTON_DRIVER_NAME + suffix, 1);
         instance.lightDriver = new NativeLightStripDriver(LIGHT_DRIVER_NAME + suffix);
-        instance.hapticsDriver = new NativeHapticsDriver(HAPTICS_DRIVER_NAME + suffix, 0);
+        instance.hapticsDriver = new NativeHapticsDriver(HAPTICS_DRIVER_NAME + suffix);
         instance.serialOutDriver = new NativeSerialDriver(SERIAL_OUT_DRIVER_NAME + suffix);
         instance.serialInDriver = new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix);
         instance.httpClientDriver = new NativeHttpClientDriver(HTTP_CLIENT_DRIVER_NAME + suffix);
@@ -173,11 +180,7 @@ public:
         
         // Configure mock HTTP server with this device's player data
         MockPlayerConfig playerConfig;
-        playerConfig.id = instance.deviceId;
         playerConfig.name = (isHunter ? "Hunter" : "Bounty") + instance.deviceId;
-        playerConfig.isHunter = isHunter;
-        playerConfig.allegiance = 1;  // RESISTANCE
-        playerConfig.faction = isHunter ? "Guild" : "Rebels";
         UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", playerConfig.wirePlayerId);
         MockHttpServer::getInstance().configurePlayer(instance.deviceId, playerConfig);
         

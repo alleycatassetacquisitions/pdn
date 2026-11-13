@@ -535,15 +535,7 @@ private:
             return result;
         }
         auto& dev = devices[targetDevice];
-
-        // Clear UI state history
-        dev.stateHistory.clear();
-        dev.lastStateId = -1;
-
-        dev.playerProvider->setRegistrationPin(dev.deviceId.c_str());
-        dev.pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID),
-                              StateId(PlayerFetchStateId::FETCH_USER));
-
+        dev.reboot();
         result.message = "Rebooted " + dev.deviceId + " -> FetchUserData";
         return result;
     }

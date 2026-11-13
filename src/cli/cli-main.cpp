@@ -141,14 +141,10 @@ std::vector<cli::DeviceInstance> createDevices(int count) {
     printf("\n");
     printf("Press any key to start simulation...\n");
     fflush(stdout);
-    
+
     // Wait for keypress (blocking read)
-    #ifndef _WIN32
     getchar();
-    #else
-    _getch();
-    #endif
-    
+
     return devices;
 }
 
@@ -183,12 +179,9 @@ int main(int argc, char** argv) {
     
     // Create devices
     std::vector<cli::DeviceInstance> devices = createDevices(deviceCount);
-    
-    // Now configure terminal for non-blocking input (Unix only)
-    #ifndef _WIN32
-    struct termios oldTermios = cli::Terminal::enableRawMode();
-    #endif
-    
+
+    struct termios savedTerminal = cli::Terminal::enableRawMode();
+
     // Set up display for simulation
     cli::Terminal::clearScreen();
     cli::Terminal::hideCursor();
@@ -275,8 +268,8 @@ int main(int argc, char** argv) {
         // Sleep to maintain ~30 FPS update rate
         std::this_thread::sleep_for(std::chrono::milliseconds(33));
     }
-    
-    // Restore terminal settings and cursor
+
+    cli::Terminal::restoreTerminal(savedTerminal);
     cli::Terminal::showCursor();
     
     // Move cursor below the UI for clean shutdown message

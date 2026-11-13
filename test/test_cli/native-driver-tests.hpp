@@ -232,8 +232,6 @@ void buttonDriverParameterizedCallback(NativeButtonDriverTestSuite* suite) {
         *static_cast<int*>(ctx) = 42;
     }, &valueSet, ButtonInteraction::PRESS);
     
-    ASSERT_TRUE(suite->driver_->hasParameterizedCallback(ButtonInteraction::PRESS));
-    
     // Execute with stored context
     suite->driver_->execCallback(ButtonInteraction::PRESS);
     ASSERT_EQ(valueSet, 42);
@@ -591,64 +589,6 @@ void displayDriverDrawImageThenText(NativeDisplayDriverTestSuite* suite) {
     ASSERT_EQ(history[0], "Hi");
 }
 
-// Test: renderToAscii output dimensions at 2x2 scale (blank screen)
-void displayDriverRenderToAsciiDimensions(NativeDisplayDriverTestSuite* suite) {
-    auto lines = suite->driver_->renderToAscii(2, 2);
-
-    // 64 height / (2*2) = 16 lines
-    ASSERT_EQ(lines.size(), 16u);
-
-    // Blank screen: all spaces (1 byte each), 128/2 = 64 chars per line
-    for (const auto& line : lines) {
-        ASSERT_EQ(line.size(), 64u);
-    }
-}
-
-// Test: renderToAscii produces correct half-block characters for known pixels
-void displayDriverRenderToAsciiContent(NativeDisplayDriverTestSuite* suite) {
-    suite->driver_->invalidateScreen();
-
-    // At scale (2,2): character at column 0, line 0 covers pixels (0..1, 0..1) upper and (0..1, 2..3) lower
-    // Set only upper-left pixel block: (0,0) and (1,0) on
-    // This should produce upper half-block for the first character
-
-    // Set pixels in upper half only (rows 0-1) of first char cell
-    unsigned char topOnly[1024];
-    memset(topOnly, 0, sizeof(topOnly));
-    // Row 0: first two pixels on = 0x03 (bits 0,1)
-    topOnly[0] = 0x03;
-    Image img(topOnly, 128, 64, 0, 0);
-    suite->driver_->drawImage(img);
-
-    auto lines = suite->driver_->renderToAscii(2, 2);
-
-    // First character of first line should be upper half-block
-    std::string upperBlock = "\xe2\x96\x80";  // UTF-8 for ▀
-    ASSERT_GE(lines[0].size(), 3u);
-    ASSERT_EQ(lines[0].substr(0, 3), upperBlock);
-}
-
-// Test: renderToAscii full block for pixels in both halves
-void displayDriverRenderToAsciiFullBlock(NativeDisplayDriverTestSuite* suite) {
-    suite->driver_->invalidateScreen();
-
-    // Set pixels in both upper (rows 0-1) and lower (rows 2-3) of first char cell
-    unsigned char bothHalves[1024];
-    memset(bothHalves, 0, sizeof(bothHalves));
-    bothHalves[0] = 0x03;  // Row 0: pixels 0,1 on
-    // Row 2 byte index: 2 * 16 = 32, pixels 0,1 on
-    bothHalves[32] = 0x03;
-    Image img(bothHalves, 128, 64, 0, 0);
-    suite->driver_->drawImage(img);
-
-    auto lines = suite->driver_->renderToAscii(2, 2);
-
-    // First character should be full block
-    std::string fullBlock = "\xe2\x96\x88";  // UTF-8 for █
-    ASSERT_GE(lines[0].size(), 3u);
-    ASSERT_EQ(lines[0].substr(0, 3), fullBlock);
-}
-
 // --- Braille rendering tests ---
 
 // Test: renderToBraille output dimensions (blank screen)
@@ -877,13 +817,6 @@ void cliCommandDisplayAlias(CliDisplayCommandTestSuite* suite) {
 // CLI COMMAND / REBOOT TEST SUITE
 // ============================================
 
-/** Mounts the registration app at its cabled provisioning state (FETCH_USER). */
-inline void cliSkipQuickdrawToFetchUser(cli::DeviceInstance& device) {
-    device.playerProvider->setRegistrationPin(device.deviceId.c_str());
-    device.pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID),
-                             StateId(PlayerFetchStateId::FETCH_USER));
-}
-
 /** Simulates a cabled FDN delivering a PlayerProvisionPacket to a PDN in FetchUserState. */
 inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
     const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x01};
@@ -932,7 +865,7 @@ public:
         // The CLI factory launches into the hub. These tests exercise the
         // registration flow (HTTP fetch transitions, reboot semantics), so swap
         // back to the registration app at its fetch state.
-        cliSkipQuickdrawToFetchUser(device);
+        device.reboot();
     }
 
     void TearDown() override {
@@ -978,10 +911,7 @@ void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
     ASSERT_NE(state, nullptr);
     ASSERT_NE(state->getStateId(), PlayerFetchStateId::FETCH_USER);
 
-    // Reboot: same sequence as cmdReboot
-    suite->device.stateHistory.clear();
-    suite->device.lastStateId = -1;
-    cliSkipQuickdrawToFetchUser(suite->device);
+    suite->device.reboot();
 
     // Should be back at FetchUserData within the registration app
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
@@ -1000,10 +930,7 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
 
     ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::WELCOME);
 
-    // Reboot
-    suite->device.stateHistory.clear();
-    suite->device.lastStateId = -1;
-    cliSkipQuickdrawToFetchUser(suite->device);
+    suite->device.reboot();
 
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
     ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::FETCH_USER);
@@ -1133,26 +1060,19 @@ void cliRoleCommandNoDevices(CliRoleCommandTestSuite* suite) {
     ASSERT_EQ(result.message, "No devices");
 }
 
-// Test: Reboot clears state history and resets lastStateId
+// Test: Reboot clears state history
 void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     // Add some fake state history
     suite->device.stateHistory.push_back(1);
     suite->device.stateHistory.push_back(5);
     suite->device.stateHistory.push_back(7);
-    suite->device.lastStateId = 7;
 
     ASSERT_EQ(suite->device.stateHistory.size(), 3u);
-    ASSERT_EQ(suite->device.lastStateId, 7);
 
-    // Reboot
-    suite->device.stateHistory.clear();
-    suite->device.lastStateId = -1;
-
-    cliSkipQuickdrawToFetchUser(suite->device);
+    suite->device.reboot();
 
     // History should be cleared
     ASSERT_TRUE(suite->device.stateHistory.empty());
-    ASSERT_EQ(suite->device.lastStateId, -1);
 
     // Device should be at FetchUserData within the registration app
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);

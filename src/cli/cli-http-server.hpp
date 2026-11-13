@@ -5,7 +5,6 @@
 #include <string>
 #include <map>
 #include <functional>
-#include <deque>
 #include <cstdio>
 #include "cli/cli-device-player-response-encode.hpp"
 #include "utils/uuid-bytes.hpp"
@@ -13,26 +12,10 @@
 namespace cli {
 
 /**
- * HTTP request/response tracking for CLI display.
- */
-struct HttpHistoryEntry {
-    std::string method;
-    std::string path;
-    std::string requestBody;
-    int statusCode;
-    std::string responseBody;
-    bool success;
-};
-
-/**
  * Player configuration for mock responses.
  */
 struct MockPlayerConfig {
-    std::string id;
     std::string name;
-    bool isHunter;
-    int allegiance;  // 0 = NONE, 1 = RESISTANCE, 2 = HUNTERS_GUILD
-    std::string faction;
     UUIDBytes wirePlayerId;
 };
 
@@ -75,88 +58,35 @@ public:
      * @param responseBody Output: response body
      * @return HTTP status code (200, 404, 500, etc.)
      */
-    int handleRequest(const std::string& method, 
-                      const std::string& path, 
-                      const std::string& body,
+    int handleRequest(const std::string& method, const std::string& path, const std::string& body,
                       std::string& responseBody) {
-        
-        int statusCode = 500;
-        responseBody = R"({"errors":["Internal server error"]})";
-        
         if (method == "GET" && path.find("/device/players/by-pin/") == 0) {
-            statusCode = handleGetDevicePlayerByPin(path, responseBody);
-        } else if (method == "POST" && path == "/device-logs") {
-            statusCode = handlePostDeviceLogs(body, responseBody);
-        } else {
-            statusCode = 404;
-            responseBody = R"({"errors":["Not found"]})";
+            return handleGetDevicePlayerByPin(path, responseBody);
         }
+        if (method == "POST" && path == "/device-logs") {
+            return handlePostDeviceLogs(body, responseBody);
+        }
+        responseBody = R"({"errors":["Not found"]})";
+        return 404;
+    }
 
-        // Track in history
-        HttpHistoryEntry entry;
-        entry.method = method;
-        entry.path = path;
-        entry.requestBody = body;
-        entry.statusCode = statusCode;
-        entry.responseBody = responseBody;
-        entry.success = (statusCode >= 200 && statusCode < 300);
-        addToHistory(entry);
-        
-        return statusCode;
-    }
-    
-    /**
-     * Get recent request history for CLI display.
-     */
-    const std::deque<HttpHistoryEntry>& getHistory() const {
-        return history_;
-    }
-    
-    /**
-     * Clear request history.
-     */
-    void clearHistory() {
-        history_.clear();
-    }
-    
     /**
      * Set whether the server should simulate being offline.
      */
     void setOffline(bool offline) {
         isOffline_ = offline;
     }
-    
+
     bool isOffline() const {
         return isOffline_;
-    }
-    
-    /**
-     * Set simulated response delay in milliseconds.
-     */
-    void setResponseDelay(unsigned long delayMs) {
-        responseDelayMs_ = delayMs;
-    }
-    
-    unsigned long getResponseDelay() const {
-        return responseDelayMs_;
     }
 
 private:
     MockHttpServer() = default;
-    
+
     std::map<std::string, MockPlayerConfig> playerConfigs_;
-    std::deque<HttpHistoryEntry> history_;
-    static constexpr size_t MAX_HISTORY = 10;
     bool isOffline_ = false;
-    unsigned long responseDelayMs_ = 0;
-    
-    void addToHistory(const HttpHistoryEntry& entry) {
-        history_.push_back(entry);
-        while (history_.size() > MAX_HISTORY) {
-            history_.pop_front();
-        }
-    }
-    
+
     int handleGetDevicePlayerByPin(const std::string& path, std::string& responseBody) {
         const std::string prefix = "/device/players/by-pin/";
         if (path.find(prefix) != 0) {
