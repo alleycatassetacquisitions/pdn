@@ -9,7 +9,6 @@ PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager,
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
-    , wasInRing(rdc->isInRing())
     // No abandon handler: a role announce that ran out its span is repaired by the
     // backstop in sync(), not by a callback.
     , roleAnnounceChannel(wirelessManager, PktType::kRoleAnnounce)
@@ -57,12 +56,12 @@ PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager,
     // The ring latch moves with both cables still seated — applyUpstreamHead sets
     // and clears it off the HELLO parse, no jack edge — so a standing confirm has
     // to be re-sent from the role edge; no jack edge would carry it.
-    rdc->setOnChainRoleChange(
-    [this](ChainRole) {
-        if (this->rdc->isInRing() != wasInRing) onChainStateChanged();
-        resendConfirm();
-    },
-    this);
+    rdc->setOnChainRoleChange([this](ChainRole) { resendConfirm(); }, this);
+    // Non-latching members learn of a ring from HELLO with both jacks already
+    // connected, so neither the jack nor the role callback reports it.
+    // A cable edge that also flips the ring runs onChainStateChanged twice; the repeat only
+    // re-sends the supporter's join (superseded per target).
+    rdc->setOnRingMembershipChange([this](bool) { onChainStateChanged(); }, this);
     // Armed here because SimpleTimer::expired() is false while unarmed, so an
     // unarmed backstop never fires at all.
     roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);
@@ -72,6 +71,7 @@ PosseManager::~PosseManager() {
     rdc->setChainChangeCallback(nullptr, this);
     rdc->setOnContextReceived(nullptr, this);
     rdc->setOnChainRoleChange(nullptr, this);
+    rdc->setOnRingMembershipChange(nullptr, this);
 }
 
 SerialIdentifier PosseManager::opponentJack() const {
@@ -284,8 +284,6 @@ void PosseManager::announceToChallenger() {
 }
 
 void PosseManager::onChainStateChanged() {
-    wasInRing = rdc->isInRing();
-
     // Losing the supporter-jack cable strands the entire chain below it, however
     // deep, so both the roll call and the roster it is scored against go with it.
     size_t count = (rdc->getPeerMac(supporterJack()) != nullptr &&
@@ -442,12 +440,6 @@ void PosseManager::broadcastRoleAndChallenger() {
 }
 
 void PosseManager::sync() {
-    // Non-latching members learn of a ring from HELLO with both jacks already
-    // connected, so neither the jack nor the role callback fires.
-    if (rdc->isInRing() != wasInRing) {
-        onChainStateChanged();
-    }
-
     if (roleAnnounceBackstopTimer.expired()) {
         roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);
         broadcastRoleAndChallenger();

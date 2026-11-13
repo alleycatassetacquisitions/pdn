@@ -52,6 +52,8 @@ public:
      * coordinator claim point.
      */
     using RingClosedCallback = std::function<void()>;
+    /** Fires when isInRing() flips; `inRing` is the new value. */
+    using RingMembershipChangeCallback = std::function<void(bool inRing)>;
 
     /** Inert until initialize(). */
     RemoteDeviceCoordinator();
@@ -121,7 +123,8 @@ public:
     /**
      * True on EVERY device sitting on a closed ring, not just the one that
      * detected the closure. The detecting device latches locally; the rest
-     * learn it from the HELLO ring flag relayed down the chain.
+     * learn it from the HELLO ring flag relayed down the chain. Flips are
+     * reported through setOnRingMembershipChange.
      */
     virtual bool isInRing() const;
 
@@ -269,6 +272,12 @@ public:
         ringClosedCallbacks.set(std::move(callback), owner);
     }
 
+    /** Registers owner's isInRing() flip observer (null removes); never replays, so read isInRing()
+     * when subscribing. */
+    void setOnRingMembershipChange(RingMembershipChangeCallback callback, const void* owner) {
+        ringMembershipChangeCallbacks.set(std::move(callback), owner);
+    }
+
     /**
      * Registers `owner`'s observer for any jack connect/disconnect; null removes
      * it. Coarser than setOnJackChange: it says the chain moved, not which jack
@@ -285,6 +294,9 @@ protected:
         jackChangeCallbacks.fire(jack, connected);
     }
 
+    /** Tells every ring-membership observer that isInRing() is now inRing. */
+    void fireRingMembershipChange(bool inRing) { ringMembershipChangeCallbacks.fire(inRing); }
+
 private:
     static constexpr size_t NUM_JACKS = 3;
 
@@ -300,6 +312,7 @@ private:
     CallbackList<ChainRoleChangeCallback> chainRoleChangeCallbacks;
     CallbackList<MembershipChangeCallback> membershipChangeCallbacks;
     CallbackList<RingClosedCallback> ringClosedCallbacks;
+    CallbackList<RingMembershipChangeCallback> ringMembershipChangeCallbacks;
 
     // ---- HELLO connectivity internals ----
     struct JackHelloLink {
@@ -426,6 +439,8 @@ private:
     unsigned long lastSelfHeadReturnMs = 0;
     // Last role reported to chainRoleChangeCallback, for edge-triggered firing.
     ChainRole lastChainRole = ChainRole::STANDALONE;
+    // Last value reported to ringMembershipChangeCallbacks, for edge-triggered firing.
+    bool lastInRing = false;
     // The effective head the INPUT peer last advertised (all-zero = none), kept
     // apart from chainHeadMac: a HELLO can advertise a head long before the
     // link carrying it is established, and only the latter may be acted on.

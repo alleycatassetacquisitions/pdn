@@ -2682,6 +2682,46 @@ inline void rdcFdnOnTheOutputJackEndsRelayedRingMembership(RDCHelloTests* suite)
     << "a ring cannot run through an FDN, yet this PDN still relays the upstream's closure";
 }
 
+// A relayed member's ring flag clears off a HELLO while both links stay
+// Connected: no jack edge and no role change, so only the ring-membership event
+// carries it. A HELLO that changes nothing must not report a flip.
+inline void rdcRingMembershipEventReportsARelayedFlagClearing(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    std::vector<bool> flips;
+    suite->rdc.setOnRingMembershipChange([&](bool inRing) { flips.push_back(inRing); }, suite);
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head, HELLO_FLAG_RING_CLOSED));
+    ASSERT_TRUE(suite->rdc.isInRing());
+    ASSERT_EQ(flips, std::vector<bool>{true});
+
+    std::vector<ChainRole> roles;
+    suite->rdc.setOnChainRoleChange([&](ChainRole role) { roles.push_back(role); }, suite);
+    const int connectsBefore = suite->connectCount;
+    const int disconnectsBefore = suite->disconnectCount;
+
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head, HELLO_FLAG_RING_CLOSED));
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(flips.size(), 1u) << "a HELLO that changed nothing was reported as a flip";
+
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+    suite->rdc.sync(&suite->device);
+
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
+    ASSERT_FALSE(suite->rdc.isInRing());
+    EXPECT_TRUE(roles.empty());
+    EXPECT_EQ(suite->connectCount, connectsBefore);
+    EXPECT_EQ(suite->disconnectCount, disconnectsBefore);
+    EXPECT_EQ(flips, (std::vector<bool>{true, false}))
+    << "the relayed ring opening went unreported";
+
+    suite->rdc.setOnChainRoleChange(nullptr, suite);
+    suite->rdc.setOnRingMembershipChange(nullptr, suite);
+}
+
 inline void rdcFdnNeverAdoptsItsPdnsChainHead() {
     class MockFdnDevice : public MockDevice {
     public:

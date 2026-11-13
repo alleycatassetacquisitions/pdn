@@ -1984,6 +1984,9 @@ TEST_F(RDCHelloTests, contextOfAnotherKindDoesNotRetypeAConnectedPeer) {
 TEST_F(RDCHelloTests, fdnOnTheOutputJackEndsRelayedRingMembership) {
     rdcFdnOnTheOutputJackEndsRelayedRingMembership(this);
 }
+TEST_F(RDCHelloTests, ringMembershipEventReportsARelayedFlagClearing) {
+    rdcRingMembershipEventReportsARelayedFlagClearing(this);
+}
 TEST(RDCHelloStandalone, fdnNeverAdoptsItsPdnsChainHead) { rdcFdnNeverAdoptsItsPdnsChainHead(); }
 
 // ============================================

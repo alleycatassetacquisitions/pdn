@@ -281,7 +281,14 @@ public:
     const uint8_t* getHeadMac() const override {
         return ringHeadMac == std::array<uint8_t, 6>{} ? nullptr : ringHeadMac.data();
     }
-    std::array<uint8_t, 6> ringHeadMac{};
+
+    /** Sets the ring head (all-zero leaves the ring) and fires ring-membership observers on an
+     * isInRing() flip. */
+    void setRingHeadMac(const std::array<uint8_t, 6>& head) {
+        const bool wasInRing = isInRing();
+        ringHeadMac = head;
+        if (isInRing() != wasInRing) fireRingMembershipChange(isInRing());
+    }
 
     /**
      * Sets the stubbed status reported for `id` and, when that moves the jack
@@ -377,6 +384,7 @@ public:
     }
 
 private:
+    std::array<uint8_t, 6> ringHeadMac{};
     JackStatus outputStatus = JackStatus::DISCONNECTED;
     JackStatus inputStatus = JackStatus::DISCONNECTED;
     DeviceType outputDeviceType = DeviceType::UNKNOWN;

@@ -8,6 +8,10 @@ ShootoutFinalStandings::ShootoutFinalStandings(const GameContext& ctx)
     , shootout_(ctx.shootoutManager)
     , remoteDeviceCoordinator(ctx.remoteDeviceCoordinator) {}
 
+ShootoutFinalStandings::~ShootoutFinalStandings() {
+    if (remoteDeviceCoordinator) remoteDeviceCoordinator->setOnRingMembershipChange(nullptr, this);
+}
+
 void ShootoutFinalStandings::onStateMounted(PDN* pdn) {
     pdn->getLightManager()->stopAnimation();
     auto winner = shootout_->getTournamentWinner();
@@ -22,20 +26,21 @@ void ShootoutFinalStandings::onStateMounted(PDN* pdn) {
     d->drawCenteredText("winner:", 40);
     d->drawCenteredText(winnerName.c_str(), 55);
     d->render();
-}
 
-void ShootoutFinalStandings::onStateLoop(PDN* pdn) {
-    if (remoteDeviceCoordinator && !remoteDeviceCoordinator->isInRing()) {
-        shouldGoToSleep_ = true;
-    }
+    if (remoteDeviceCoordinator == nullptr) return;
+    remoteDeviceCoordinator->setOnRingMembershipChange(
+    [this](bool inRing) { transitionToSleepState = !inRing; }, this);
+    // The event reports flips only, so a ring that opened before this mount is read here.
+    transitionToSleepState = !remoteDeviceCoordinator->isInRing();
 }
 
 void ShootoutFinalStandings::onStateDismounted(PDN* pdn) {
+    if (remoteDeviceCoordinator) remoteDeviceCoordinator->setOnRingMembershipChange(nullptr, this);
     // Held until the screen is done with them: the winner's MAC and the name
     // table this screen reads outlive the final match, and shouldEnterProposal
     // refuses any phase but IDLE, so the next ring cannot propose until this runs.
     if (shootout_) shootout_->resetToIdle();
-    shouldGoToSleep_ = false;
+    transitionToSleepState = false;
 }
 
-bool ShootoutFinalStandings::transitionToSleep() { return shouldGoToSleep_; }
+bool ShootoutFinalStandings::transitionToSleep() const { return transitionToSleepState; }
