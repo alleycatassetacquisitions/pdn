@@ -7,6 +7,17 @@ Decided before this change and not reopened here:
 - Registration, symbol match and learning to play stay on the cable. A Connected FDN may still receive records; records never require the cable.
 - Each PDN authenticates its own records with a short tag, not a 64-byte signature. The firmware-update signing key is not reused.
 
+Decided by the owner on this proposal:
+
+- The tag is 16 bytes.
+- Every cable registration issues a fresh record key that replaces the one the PDN held.
+- A fake FDN being able to make PDNs retire records is a known risk, accepted for now.
+- Untagged crash records are accepted indefinitely and marked unverified. Match records are never sent untagged.
+- An upload carries the sender's MAC address, the record kind, the raw record bytes, the trailer and the decoded fields.
+- No eFuse key storage. Keys stay in ordinary flash.
+- An FDN holds up to `32` relayed crash records, and nothing is relayed during a match or a shootout.
+- The `Authorization: Bearer` wording is removed from the requirements this change touches.
+
 What the code does today (top of the comms-rewrite stack):
 
 - **Match records** go only to the FDN Connected on a jack. The PDN re-sends a `116`-byte frame (4-byte sequence number + `112`-byte match record) every 100 ms as a plain, unsequenced send until the FDN answers. The FDN checks the sender is Connected, writes the record to a 64-slot non-volatile spool, then acknowledges; the PDN advances its mark on that acknowledgement.
@@ -24,7 +35,7 @@ What the code does today (top of the comms-rewrite stack):
 **Goals:**
 
 - A PDN that is never plugged in still delivers its crash records and match records.
-- The server can tell that a record came from the holder of the record key issued for that MAC address, and that it was not altered on the way.
+- The server can tell that a record came from the holder of a record key issued for that MAC address, and that it was not altered on the way.
 - A record is never retired on the PDN because a frame was merely sent.
 - An FDN needs no secrets to relay.
 
@@ -33,28 +44,17 @@ What the code does today (top of the comms-rewrite stack):
 - Authenticating FDNs to the server.
 - Hiding record contents. Records travel in the clear as today.
 - Proving a match happened. The tag proves who submitted a record, not that the opponent agrees. The server can compare the two PDNs' copies of one match ID.
-- Proving a MAC address belongs to a particular physical PDN. A PDN has no identity from manufacturing; see "Enrolment" under Risks.
+- Proving a MAC address belongs to a particular physical PDN. A PDN has no identity from manufacturing; see "Whoever can reach the lookup" under Risks.
 - Authenticating the FDN's beacon or its acknowledgement (see Risks).
 - Removing PDN Wi-Fi itself. That is its own change; this one only stops depending on it.
 
 ## Decisions
 
-### Tag scheme: per-PDN HMAC-SHA-256, truncated to 8 bytes
+### Tag scheme: per-PDN HMAC-SHA-256, truncated to 16 bytes
 
-`tag = first 8 bytes of HMAC-SHA-256(record key, kind || PDN MAC || key ID || record bytes)`, with `kind` = `0x01` for a crash record and `0x02` for a match record. Every field has a fixed length for its kind, so the input is unambiguous. The record trailer is the key ID (1 byte) followed by the tag: `9` bytes per record.
+`tag = first 16 bytes of HMAC-SHA-256(record key, kind || PDN MAC || key ID || record bytes)`, with `kind` = `0x01` for a crash record and `0x02` for a match record. Every field has a fixed length for its kind, so the input is unambiguous. The record trailer is the key ID (1 byte) followed by the tag: `17` bytes per record.
 
-Why 8 bytes. A guess can only be tested by submitting a record to the server, through an FDN or directly by someone on the network. Per attempt the chance of success is:
-
-| Tag | Chance per forged record | A year of guessing at 1,000 per second | At 1,000,000 per second |
-|---|---|---|---|
-| 4 bytes | 2^-32 | certain; about 25 days on average | certain within hours |
-| 8 bytes | 2^-64 | about 2 in a billion | about 2 in a million |
-| 12 bytes | 2^-96 | negligible | negligible |
-| 16 bytes | 2^-128 | negligible | negligible |
-
-The rate is whatever the server allows. After a set number of failed verifications for a MAC address the server should stop verifying further records for it and quarantine them for an operator: a guesser gets a bounded number of tries, and a real PDN whose address is being abused has its records kept, not refused. With any such limit 8 bytes is far out of reach and 4 is not. RFC 2104 section 5 recommends a truncated HMAC be at least 80 bits and at least half the hash length (16 bytes here). That guidance covers uses where an attacker can collect many tags on messages of their choosing; here a PDN tags only its own records. If the owner prefers a length that needs no argument, 16 bytes costs 8 more bytes per record and nothing else in this design changes. The length is fixed once devices ship: changing it later is another wire change.
-
-Tag length does not decide whether a record fits in a frame (see Frame size). Its cost is bytes in the FDN's storage and in each upload.
+Why 16 bytes. A guess can only be tested by submitting a record to the server, and each guess succeeds with chance 2^-128, so guessing is not a practical attack at any rate the server could serve. 16 bytes also meets RFC 2104 section 5 (at least 80 bits and at least half the hash length). The cost is `17` trailer bytes per record in FDN storage and in each upload. The length is fixed once devices ship: changing it later is another wire change.
 
 Alternatives considered:
 
@@ -63,11 +63,9 @@ Alternatives considered:
 
 The trade-off, stated plainly:
 
-- **With HMAC, the server holds every PDN's record key.** A server breach lets the attacker forge records for every PDN, and recovery means an operator reset and a fresh registration for each one. The key also has to reach the PDN in secret: it crosses Wi-Fi inside TLS from the server to the FDN, sits in FDN memory for a moment, and crosses the serial jack.
-- **With a key pair, the server holds only public keys and nothing on it can forge.** Nothing secret leaves the PDN, so registration needs no secret channel. The cost is 64 bytes per record instead of 8 in FDN storage and uploads, a software signature per record, and for Ed25519 a new library. Frame size does not rule it out: with a 64-byte signature in place of the 8-byte tag, a crash frame would be `113` bytes and a match frame `183`, against a `1469`-byte limit.
-- **Neither fixes enrolment.** Either way the server has to decide which key belongs to a MAC address the first time it sees one.
-
-This design follows the owner's decision for a short tag.
+- **With HMAC, the server holds every PDN's record keys.** A server breach lets the attacker forge records for every PDN, and recovery means dropping every key on the server and registering each PDN again. The key also has to reach the PDN in secret, at every registration: it crosses Wi-Fi inside TLS from the server to the FDN, sits in FDN memory for a moment, and crosses the serial jack.
+- **With a key pair, the server holds only public keys and nothing on it can forge.** Nothing secret leaves the PDN, so registration needs no secret channel. The cost is 64 bytes per record instead of 16 in FDN storage and uploads, a software signature per record, and for Ed25519 a new library. Frame size does not rule it out: with a 64-byte signature in place of the 16-byte tag, a crash frame would be `113` bytes and a match frame `183`, against a `1469`-byte limit.
+- **Neither fixes enrolment.** Either way the server has to decide which key belongs to a MAC address when one registers.
 
 ### The firmware-update key is not reused
 
@@ -82,42 +80,41 @@ Neither is part of this change. Today a PDN checks an update against the key tha
 
 ### Key on the PDN
 
-- **Issue.** The server issues the record key during registration. The PDN does not generate it.
-- **Storage.** `32` bytes plus a 1-byte key ID in the PDN's non-volatile storage, in its own namespace, kept across boots. The player profile is discarded at every boot; the key cannot be, because crash records are offered before the PDN registers again.
-- **Never replaced.** A PDN that holds a key ignores any key offered to it. Only an operator with the PDN in hand clears it (a USB command, like the existing crash-log dump). Otherwise anything that poses as an FDN on the jack could overwrite a good key and lock the PDN out.
-- **Use.** Tags are computed when a record is sent, not when it is stored, so stored records need no extra bytes on the PDN.
+- **Issue.** The server issues a fresh record key at every registration. The PDN does not generate it.
+- **Storage.** `32` bytes plus a 1-byte key ID in the PDN's ordinary non-volatile storage, in its own namespace, kept across boots. The player profile is discarded at every boot; the key cannot be, because crash records are offered before the PDN registers again.
+- **Replaced at every registration.** A key accepted during registration replaces the stored one. This is how a lost, erased or damaged key is recovered: plug the PDN into an FDN and register; no operator is needed. The change is all-or-nothing, so a PDN that loses power during it still holds the old key or the new one. Who can cause a re-key is under Risks.
+- **Use.** A tag is computed each time a record is sent, not when it is stored, so stored records need no extra bytes on the PDN. A frame the transport is still retrying keeps the trailer it was built with.
 - **Match records wait for the key.** A PDN with no key holds its match records and sends them, tagged, once it has one. Otherwise a PDN would send them untagged on the first beacon after boot, seconds before registration hands it a key. Crash records are sent with or without a key: a crash before the first registration is still worth having.
-- **A stolen PDN, with flash encryption off.** Anyone with a USB cable can read the flash and find the record key. They can then forge records as that one PDN until the server retires its key. They learn nothing about any other PDN's key, and once PDN Wi-Fi is removed the image holds no network credential.
-- **Optional hardening: eFuse-keyed storage.** The ESP32-S3 has an HMAC peripheral keyed from an eFuse block that software can use but not read, and the IDF in this build offers NVS encryption with its keys protected that way. With it, a flash dump no longer yields the record key. Limits: burning the eFuse is permanent and per-device, so it is a manufacturing decision; and without secure boot someone holding the PDN can flash their own firmware and read the key back through the peripheral, so it raises the bar from "read the flash" to "run code on it", no further. Availability is taken from the SoC capability flags and the IDF option in the build tree. It has not been built or tried on a board.
+- **A stolen PDN.** Flash encryption is off, so anyone with a USB cable can read the flash and find the record key, and whoever holds the PDN can also register it and be given a new one. Either way they can submit records as that one PDN until an operator blocks its MAC address on the server (below). They learn nothing about any other PDN's key, and once PDN Wi-Fi is removed the image holds no network credential.
+- **No eFuse.** A record key burned into an eFuse block could never be replaced, so it cannot be combined with re-keying at registration. An eFuse key that only encrypts the storage holding a replaceable record key would still allow re-keying, but it is permanent per device and, without secure boot, only raises the bar from reading the flash to running code on the PDN.
 
 ### Registration: the key crosses the jack, not the radio
 
-1. The PDN's registration request (radio, as today) also reports its key ID, `0` if it has none.
-2. The FDN's lookup names the Connected PDN's MAC address and that key ID.
-3. The server returns the profile as today and, when this PDN needs a key, a 32-byte record key and its key ID.
-4. The FDN sends the profile over the radio as today and the record key in one new framed message on the serial jack. It accepts a key only from a lookup made over HTTPS with the server's certificate verified (so it must refuse a server address that is not `https`), holds it in volatile memory only, never logs or stores it, and erases it as soon as the frame is written to the jack or the PDN disconnects.
-5. The PDN accepts a record key only when it holds none, only from a jack on which an FDN is Connected, and only in the provisioning app while its own registration request to that FDN is outstanding. It discards a key that arrives damaged or malformed.
+1. The PDN's registration request (radio, as today) is unchanged.
+2. The FDN's lookup also names the Connected PDN's MAC address.
+3. The server returns the profile as today and a fresh 32-byte record key with its key ID.
+4. The FDN writes the record key to the serial jack in one new framed message, and then sends the profile over the radio as today. It accepts a key only from a lookup made over HTTPS with the server's certificate verified (so it must refuse a server address that is not `https`), holds it in volatile memory only, never logs or stores it, and erases it as soon as the frame is written to the jack or the PDN disconnects.
+5. The PDN accepts a record key only from a jack on which an FDN is Connected, and only in the provisioning app after it has sent that FDN its own registration request. It discards a key that arrives damaged or malformed. An accepted key replaces the one it held.
 
-What the FDN forwards to the server is only the PDN's MAC address and reported key ID. Nothing secret travels upward.
+What the FDN forwards to the server is only the PDN's MAC address. Nothing secret travels upward.
 
-There is no confirmation on the jack. If the key frame is lost, the PDN reports key ID `0` at its next registration and the server issues another (below); until then its match records wait. The jack already carries a HELLO frame every 20 ms from its own task, so the key frame has to be written without interleaving with one.
+There is no confirmation on the jack. If the key frame is lost the PDN keeps the key it had, which the server also still keeps (below), or stays without one, in which case its match records wait. The next registration issues another. A lookup response with no key, from a server that does not issue them yet or for a blocked MAC address, leaves the PDN's key as it was. The jack already carries a HELLO frame every 20 ms from its own task, so the key frame has to be written without interleaving with one.
 
 Why the jack: registration messages cross the radio unencrypted, so a key sent that way could be read by any radio nearby. The jack is the one link an eavesdropper cannot hear without touching the device. A 33-byte payload at 19200 baud takes about 20 ms. The serial framing belongs to the component that tracks jack connections; it should carry this as one opaque application frame, checked for length and CRC and handed up with the jack it arrived on, so the meaning of the bytes and the rules for accepting them stay with registration.
 
-Server behaviour this design assumes (the server's to confirm):
+### Server key rules (proposal to the server team)
 
-- **Issue** a key when the PDN reports key ID `0` and the server holds no confirmed key for that MAC address. Record which player's PIN and which FDN asked.
-- **Pending.** A key is pending until the first record verified under it. Several pending keys may exist for one MAC address (each lost delivery adds one), up to a small cap; all stay valid until one confirms, and then the rest are dropped. At the cap the server issues no more until one confirms or an operator resets the address.
-- **Confirmed.** Once a key is confirmed, never send it again and never issue another for that MAC address without an operator reset. Without this rule anyone on the network could ask for any PDN's key.
-- **Key IDs are never reused** for a MAC address, so a record tagged under a retired key cannot be mistaken for one under its successor. A MAC address that runs out of IDs needs an operator reset.
-- **Alert** when a MAC address with a confirmed key reports key ID `0`: it has been wiped, or something else is using its address.
-- **A PDN that reports a key ID the server does not hold** gets a profile and no key. Its records will fail verification until an operator clears the key on the PDN.
+- **Issue at every registration.** Each lookup that names a PDN's MAC address returns a fresh key under the next key ID for that address. IDs run `1` to `255` and then start again at `1`; `0` is never issued.
+- **Keep the key most recently issued under each key ID**, and verify a record under the key its key ID names. Earlier keys are still needed after a re-key: the key frame can be lost on the jack, so a PDN may still hold an earlier key; and records already stored on an FDN were tagged under the key the PDN held when it sent them. A key stops verifying when its ID comes round again, `255` issues later, or when an operator drops it.
+- **Records tagged under an old key.** A record still pending on the PDN is tagged under the new key when it is next sent. A record already on an FDN carries the old key ID and verifies under that key. A record sent under the old key and sent again under the new one takes two of the FDN's slots until it uploads, and reaches the server twice with the same record bytes; it is one record (Signed content and replay).
+- **Re-keying recovers; it does not revoke.** Earlier keys keep verifying, and anyone who can register a MAC address gets a new one. An operator has two tools. *Dropping* a MAC address's keys cuts off a copied key: the PDN, back with its owner, gets a working key at its next registration, the key IDs carry on from where they were, and records under the dropped keys fail their tags, both those still on FDNs and everything the PDN sends until it next registers. *Blocking* a MAC address stops the server issuing it keys and accepting its records; it is the only way to shut out a stolen PDN.
+- **Watch the issue rate.** Alert on a burst of issues for one MAC address, because `255` issues push out the key a PDN holds (Risks). A hard limit would let whoever can reach the lookup lock a PDN out of getting a key. The server can log the PIN and the source address behind each issue, but whoever asks chooses both, so the log is a hint and not proof.
 
 ### Signed content and replay
 
 - **Signed:** the record kind, the sending PDN's MAC address, the key ID, and the record bytes exactly as sent (`42` bytes for a crash record, `112` for a match record). The record number in the frame is transport bookkeeping and is not signed.
 - **The record identity is inside the signed bytes:** the crash number for a crash record, the match ID for a match record. With the MAC address in the tag, a record cannot be moved to another PDN; with the kind byte, a crash tag cannot be passed off as a match tag.
-- **Replay:** a replayed frame is byte-identical to one the server has. The server treats the same PDN and crash number, or the same PDN and match ID, with the same bytes, as one record, so a replay changes nothing. No counter or timestamp is needed on the device.
+- **Replay:** a replayed frame is byte-identical to one the server has. The server treats the same PDN and crash number, or the same PDN and match ID, with the same record bytes, as one record, so a replay changes nothing. No counter or timestamp is needed on the device.
 - **A consequence:** the two record layouts are now signed formats. Changing either means a new record kind, not an edit in place.
 - **Crash numbers restart** if a PDN's storage is erased, so a later crash can reuse a number. "Same number, different bytes" is a different record; both the FDN and the server keep both.
 
@@ -127,8 +124,8 @@ One record frame serves both kinds: the transport's sequence ID, the record kind
 
 | Frame | Today | With this change | Limit |
 |---|---|---|---|
-| Crash record | `42` bytes | `57` bytes (1 + 1 + 4 + 42 + 9) | `1469` bytes |
-| Match record | `116` bytes | `127` bytes (1 + 1 + 4 + 112 + 9) | `1469` bytes |
+| Crash record | `42` bytes | `65` bytes (1 + 1 + 4 + 42 + 17) | `1469` bytes |
+| Match record | `116` bytes | `135` bytes (1 + 1 + 4 + 112 + 17) | `1469` bytes |
 
 Both stay single frames with room to spare. The radio does not constrain the tag length.
 
@@ -140,7 +137,7 @@ Both stay single frames with room to spare. The radio does not constrain the tag
 - **Kinds are independent.** A crash record stuck behind a full FDN queue does not hold back match records.
 - **Transport.** Record frames go by the existing reliable unicast, which retries until the radio reports delivery or gives up. That covers a lost frame within a second or two; beacons cover everything longer. The match path moves onto it from its 100 ms re-send loop. Each kind gets its own packet type for the frame and for the acknowledgement, sharing one layout: the transport fixes one frame length per packet type, and a newer send to the same recipient on the same type replaces an older one that is still retrying.
 - **In flight.** At most one record of each kind. A beacon that arrives while one is still retrying does nothing for that kind.
-- **Acknowledgement.** An application message sent after the record is in non-volatile storage. It carries the kind, the number and a record check, the first 8 bytes of SHA-256 over the bytes and trailer the FDN stored, so an acknowledgement for some other frame under the same number does not count. Only an acknowledgement for the PDN's lowest pending record, from the FDN it was last sent to, moves the mark and releases the next record; anything else is ignored and a mark never moves backwards.
+- **Acknowledgement.** An application message sent after the record is in non-volatile storage. It carries the kind, the number and a record check, the first 8 bytes of SHA-256 over the bytes and trailer the FDN stored. The PDN compares it with the frame as it last sent it, so an acknowledgement for some other frame under the same number does not count. The check only identifies the stored frame; it is not keyed and proves nothing about who acknowledged. Only an acknowledgement for the PDN's lowest pending record, from the FDN it was last sent to, moves the mark and releases the next record; anything else is ignored and a mark never moves backwards.
 - **Not during play.** Nothing is sent while a match or a shootout is active, and a send still retrying when one starts is cancelled, so record traffic cannot disturb reaction timing. An acknowledgement that arrives mid-match still moves the mark; the next record waits for the next beacon.
 - **One owner on each side.** On the PDN, one relay component at the level of the game session owns the target, the triggers and the play gate; the crash log and the match store only answer "what is your next pending record" and "advance your mark". On the FDN, one record store generalised from the match spool holds both kinds, with a capacity per kind.
 
@@ -161,55 +158,47 @@ The FDN holds no record keys, so it cannot verify a tag and does not try. What i
 
 It does not rate-limit by sender: a MAC address is trivial to forge, so a per-sender limit would stop nobody and could be turned against a real PDN. Capacity is the limit.
 
-### Server check and responses
+### Server check and responses (proposal to the server team)
 
-For each record the server looks up the keys for the named MAC address and key ID, recomputes the tag over the kind, MAC address, key ID and record bytes, and compares in constant time. It takes the record's contents from the signed bytes and rejects an upload whose decoded fields disagree with them.
+Each upload of a relayed record carries the sender's MAC address, the record kind, the raw record bytes, the record trailer (key ID and tag), and the decoded fields the upload carries today. The server looks up the key for that MAC address and key ID, recomputes the tag over the kind, MAC address, key ID and raw bytes, and compares in constant time. It reads the record's contents from the decoded fields, and must reject an upload in which a decoded field, or a MAC address given anywhere else in the upload, disagrees with what the tag covers. The tag covers only the kind, the MAC address, the key ID and the raw bytes; anything not checked against them is unauthenticated.
+
+The server judges the trailer first and looks for a stored copy second.
 
 | Case | Crash record (`POST /device-logs`) | Match record (`POST /quickdraw-matches`) |
 |---|---|---|
-| Tag verifies | accept | accept |
-| Repeat of a stored record (same bytes) | accept, store nothing new | accept, store nothing new |
-| Verified record with the same identity as an unauthenticated one | the verified record replaces it | the verified record replaces it |
-| Bad tag, unknown key ID | `422`; keep the record in quarantine | per-entry rejection with a new error code; keep in quarantine |
-| Key ID `0` for a MAC address that has a confirmed key | `422` | per-entry rejection |
-| Key ID `0`, no confirmed key | accept, marked unauthenticated (see Open Questions) | per-entry rejection: a PDN never sends these |
-| No signed bytes or trailer at all | treat as key ID `0` | per-entry rejection |
-| More failed verifications for this MAC address than the limit | `422`; quarantine unverified | per-entry rejection; quarantine unverified |
+| Tag verifies under a kept key | accept as verified; it replaces an unverified copy of the same record bytes | accept |
+| Tag does not verify: bad tag, key ID not kept, key ID `0`, or no raw bytes or trailer | accept, marked unverified; it never replaces a verified record | per-entry rejection with a new error code; keep in quarantine |
+| Same record bytes as a stored record that is verified, or of the same standing | accept, store nothing new | accept, store nothing new |
+| A decoded field or MAC address disagrees with what the tag covers | `422`; keep in quarantine | per-entry rejection; keep in quarantine |
+| Blocked MAC address | `422` | per-entry rejection |
 
-An FDN's own crash records carry no trailer: an FDN has no record key, so they are unauthenticated like everything else an FDN says.
-
+- **Unverified crash records are accepted indefinitely.** They come from a PDN that crashed before its first registration, one used only in demo mode, one whose storage was erased, one holding a key the server does not keep, and from FDNs themselves, whose own crash records carry no trailer because an FDN has no record key. Anyone in radio range or on the network can also create them under any MAC address. So the server must keep unverified records out of anything that counts or alerts per PDN. It should bound its unverified and quarantined stores in total, discard the oldest when one is full, and still answer success; a flood can then displace real unverified or quarantined records. A cap per MAC address would not help, for the reason given under FDN behaviour.
+- **A crash record with a bad tag is kept as unverified, not rejected.** Rejecting it would stop no forger, who would send key ID `0` instead, and would lose real crash records from a PDN whose key is not one the server keeps.
+- **A match record without a valid tag is rejected** and quarantined. A key can be issued for any MAC address, including one no PDN has, so the server should also flag for review a verified match record whose MAC address was not last registered by one of its two players. Flag, not reject: a PDN keeps pending matches across a change of player.
 - **`422` matters** because the FDN stops its upload on an error and keeps the failed record. Without a "this will never succeed" answer one bad record would block the queue for good. Match uploads already retire a batch that comes back with per-entry rejections, and unknown error codes already map to a placeholder.
-- **Quarantine matters** because by then the PDN has advanced its mark. A record rejected for its tag is gone from the devices; the server's copy is the only one an operator could recover after sorting out a key problem.
-- **The decoded fields are transitional.** Today's uploads carry decoded fields; this change adds the signed bytes beside them so the current server shape keeps working. The server should treat the signed bytes as the only source and the fields as a check. Dropping the fields for relayed records is the cleaner end state and is the server team's call.
+- **Quarantine matters** because by then the PDN has advanced its mark. A rejected record is gone from the devices; the server's copy is the only one an operator could recover.
 
 ## Risks / Trade-offs
 
-- **A fake FDN can swallow records.** Any device in range can broadcast a beacon and send stored acknowledgements; the PDN advances its mark and never resends. This is new: before, only a Connected FDN could acknowledge. The records stay in the PDN's ring buffers until overwritten and crash records can still be dumped over USB, but nothing rewinds a mark. → Needs the owner's sign-off (Open Questions).
-- **Enrolment: the first claimant of a MAC address owns its key.** A MAC address is self-asserted on the jack and the radio. Someone with modified firmware who cables to an FDN under a victim's MAC address, with any valid PIN, before the victim has a confirmed key, is issued a key for it. At rollout no PDN has one. → The server records the player and FDN behind every issue and can flag a second MAC address for one player, or a keyed MAC address later reporting key ID `0`. It is attributable, not prevented. A hijacked address also leaves the real PDN without a key, so its match records wait unsent until an operator resets the address.
-- **A stolen FDN reaches key issuance.** FDN flash is unencrypted and holds the Wi-Fi password, and the network has no device authentication. → Same limit as above: only MAC addresses without a confirmed key. Encrypting FDN flash is a separate decision.
-- **A fake FDN on the jack can plant a key** in a PDN that has none. The server does not hold that key, so the PDN's records fail until an operator clears it. A PDN cannot tell a real FDN from a device that claims to be one.
-- **Junk can keep an FDN's storage full.** Rejected junk is retired at each upload and can be refilled at once, so one radio can hold an FDN full for as long as it transmits while PDN ring buffers overwrite. Each acknowledgement to a new MAC address also takes a slot in the FDN's radio peer table, and each beacon from a new address takes one in the PDN's. → Bounded by capacity and the driver's eviction rule; not prevented.
+- **A fake FDN can swallow records. Known, accepted for now, to be revisited.** Any device in range can broadcast a beacon and send stored acknowledgements; the PDN advances its mark and never resends. This is new: before, only a Connected FDN could acknowledge. The records stay in the PDN's ring buffers until overwritten and crash records can still be dumped over USB, but nothing rewinds a mark. Two ways to close it later: give each FDN a secret or signed identity a PDN can check; or have the server answer each record with a receipt tagged under that PDN's record key, relayed back by any FDN, with the PDN keeping the record until the receipt arrives. The second needs no FDN secret but does nothing for a PDN without a key. Revisit if records go missing in the field.
+- **Whoever can reach the lookup can be issued a key for any MAC address.** Someone with a PDN in hand and an FDN to plug it into can re-key it; that is the intended recovery. The same door is open wider. The lookup takes the MAC address on the FDN's word and the network has no device authentication. So a modified device on an FDN's jack claiming another PDN's MAC address, a stolen FDN (its flash is unencrypted and holds the Wi-Fi password), or anything else on the FDN network can, with any valid PIN (four digits, sent over the radio in the clear), be issued a key for any PDN without touching it. With that key they can submit records that verify as that PDN. By causing `255` issues they can also push out the key the real PDN holds, after which its match records are rejected and its crash records arrive unverified until it registers again. A rule that a stored key is never replaced would protect a PDN that already holds one; re-keying at every registration gives that up. The tag therefore holds against someone who has only a radio, and not against someone who can reach the lookup. A radio alone can spoof a plugged-in PDN's registration request and cause an issue, but the key goes to the jack, not to the radio. → Not prevented; the server alerts on a burst of issues for one MAC address. The choice is under Open Questions.
+- **A fake FDN on the jack can replace a PDN's key** with one the server does not hold. Until the PDN registers at a real FDN its match records are rejected and its crash records arrive unverified. A PDN cannot tell a real FDN from a device that claims to be one.
+- **Junk can keep an FDN's storage full.** Junk leaves the FDN at each upload (junk match records are rejected, junk crash records are accepted as unverified) and can be refilled at once, so one radio can hold an FDN full for as long as it transmits while PDN ring buffers overwrite. Each acknowledgement to a new MAC address also takes a slot in the FDN's radio peer table, and each beacon from a new address takes one in the PDN's. → Bounded on the devices by capacity and the driver's eviction rule, and on the server by the total bounds above.
 - **Every PDN in range answers the same beacon.** Replies can collide; the transport retries and the next beacon is another chance.
-- **A rejected record is lost to the devices.** The PDN advanced its mark when the FDN stored it. → Server quarantine, above.
-- **A lost key needs an operator**, on the server and on the PDN. → The price of never replacing a key on request.
+- **A rejected match record is lost to the devices.** The PDN advanced its mark when the FDN stored it. → Server quarantine, above.
 - **A PDN used only in demo mode never gets a key**, because the demo PIN never contacts the server. Its crash records stay untagged. A demo player's matches are not stored (`match-records-nil-player`), so no match records are held back.
-- **The FDN handles each key once.** A compromised FDN firmware could copy keys as they pass.
+- **The FDN handles a key at every registration.** A compromised FDN firmware could copy keys as they pass.
 
 ## Migration Plan
 
 1. **Server first.** Accept the new fields on both uploads and the lookup, issue keys, and verify tags.
 2. **Firmware together.** Frame formats change, so every FDN and PDN takes the same build, as with the other wire changes in the comms rewrite.
-3. **PDNs registered before keys existed** need nothing done to them. A PDN registers on every boot, so each one receives a key the first time it registers at an upgraded FDN. Match records it was already holding wait for that key and are sent tagged.
-4. **The untagged window** applies to crash records only. The server accepts key ID `0` crash records from MAC addresses that have no confirmed key and marks them unauthenticated; that covers crashes before a PDN's first keyed registration. Match records need no window because a PDN never sends one untagged.
+3. **PDNs registered before keys existed** need nothing done to them. A PDN registers on every boot, so each one receives a key the first time it registers at an upgraded FDN, and a fresh one at every registration after. Match records it was already holding wait for the first key and are sent tagged.
+4. **Untagged crash records** are accepted indefinitely and marked unverified, so there is no cut-over date. Match records need no such allowance because a PDN never sends one untagged.
 5. **Rollback.** The server can go back to ignoring the trailer at any time. Firmware rollback means reflashing every device.
 
 ## Open Questions
 
-1. **Tag length.** 8 bytes is recommended. Confirm, or choose 16.
-2. **Fake FDN.** Accept that a device posing as an FDN can make nearby PDNs retire records, or ask for a way to authenticate the acknowledgement (which needs the FDN to hold something the PDN can check)?
-3. **Lost keys.** Operator reset on the server plus a clear on the PDN, as designed?
-4. **Untagged crash records.** Accept them as unauthenticated from PDNs with no confirmed key for good (demo-only and never-registered PDNs have no other way to report), or stop at some date?
-5. **Upload shape.** Signed bytes beside the decoded fields (this design), or signed bytes only? The server team's call.
-6. **eFuse hardening.** A manufacturing decision; not needed for the rest of this change.
-7. **Limits chosen here:** `32` relayed crash records on the FDN, and no relay during a match or shootout. Confirm or change.
-8. **`Authorization: Bearer` wording.** Three of the requirements this change modifies said FDN requests are "authenticated HTTPS (`Authorization: Bearer <token>`)". The deltas drop that, following the decision that the network has no device authentication. Confirm.
+1. **Who can be issued a key for a MAC address.** Today's answer is anyone who can reach the lookup (Risks). Choose one:
+   - (a) Accept it, relying on the FDN network staying closed.
+   - (b) The server issues a key for a MAC address it already keeps keys for only when the request proves the PDN holds one of them. That shuts the door, and brings back an operator reset for a PDN that has lost its key.

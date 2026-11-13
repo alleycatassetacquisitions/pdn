@@ -66,7 +66,11 @@ A PDN SHALL send record frames by reliable unicast (`wireless-transport`) and SH
 
 ### Requirement: Stored acknowledgement
 
-An FDN's stored acknowledgement SHALL carry the record kind, the record number and a record check: the first `8` bytes of SHA-256 over the record bytes and record trailer as the FDN stored them. A PDN SHALL treat a stored acknowledgement as answering a record only when its kind, number and record check all match the record the PDN sent.
+An FDN's stored acknowledgement SHALL carry the record kind, the record number and a record check: the first `8` bytes of SHA-256 over the record bytes and record trailer as the FDN stored them. A PDN SHALL treat a stored acknowledgement as answering a record only when its kind, number and record check all match the record frame as the PDN last sent it.
+
+#### Scenario: An acknowledgement for a frame sent under an earlier key does not count
+- **WHEN** a PDN sends crash record 3 under key ID 1, accepts a record key with key ID 2, sends crash record 3 again to the same FDN, and that FDN's stored acknowledgement for the first frame then arrives
+- **THEN** its record check does not match the frame the PDN last sent, and the record stays pending until the stored acknowledgement for the second frame arrives
 
 #### Scenario: An acknowledgement for different bytes under the same number does not count
 - **WHEN** a PDN that sent crash record 3 receives a stored acknowledgement for crash record 3 whose record check does not match the bytes and trailer it sent
@@ -141,5 +145,5 @@ An FDN SHALL NOT verify record tags and SHALL NOT hold a record key except in vo
 - **THEN** the FDN stores, acknowledges and uploads it unchanged, leaving the decision to the server
 
 #### Scenario: A record with key ID 0 is still relayed
-- **WHEN** an FDN receives a crash record frame whose record trailer carries key ID `0` and `8` zero bytes
+- **WHEN** an FDN receives a crash record frame whose record trailer carries key ID `0` and `16` zero bytes
 - **THEN** the FDN stores, acknowledges and uploads it with key ID `0`
