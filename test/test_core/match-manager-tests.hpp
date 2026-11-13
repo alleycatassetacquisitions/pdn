@@ -23,11 +23,10 @@ public:
         using ::testing::_;
         radioTap.attach(device.mockPeerComms);
 
-        matchManager = new MatchManager(device.wirelessManager);
         player = new Player();
         char playerId[] = "test";
         player->setUserID(playerId);
-        matchManager->initialize(player, &mockStorage);
+        rebuildMatchManager(&mockStorage);
         ON_CALL(mockStorage, write(_, _, _))
             .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
                 return value.size();
@@ -40,16 +39,34 @@ public:
         // direct peer so the MAC-peering gate passes.
         uint8_t defaultHunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
         fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, defaultHunterMac);
-        matchManager->setRemoteDeviceCoordinator(&fakeRdc);
-        matchManager->clearCurrentMatch();
+    }
+
+    /**
+     * Replaces the manager with a fresh one on `storage`, which must outlive it
+     * (~MatchManager calls storage->end()). No active match or boost provider
+     * carries over.
+     */
+    void rebuildMatchManager(StorageInterface* storage) {
+        // Old manager first: a match channel built while it stands is refused the
+        // kMatchCommand type.
+        delete matchManager;
+        matchManager = new MatchManager(player, storage, device.wirelessManager, &fakeRdc);
+    }
+
+    /**
+     * Allocates the in-memory prefs a test keeps real match records in. One per
+     * test; the fixture frees it once the manager built on it is gone.
+     */
+    NativePrefsDriver& makeNativePrefs(const char* name) {
+        nativePrefs = new NativePrefsDriver(name, {MATCHES_PREFS_NAMESPACE});
+        return *nativePrefs;
     }
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
-        // Tests point the manager at a NativePrefsDriver local to their body;
-        // its destructor must not reach for one that is already gone.
-        matchManager->initialize(player, &mockStorage);
         delete matchManager;
+        // After the manager, whose destructor closes the storage it was built on.
+        delete nativePrefs;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -80,10 +97,11 @@ public:
         radioTap.confirmLastSend();
     }
 
-    MatchManager* matchManager;
+    MatchManager* matchManager = nullptr;
     Player* player;
     MockDevice device;
     MockStorage mockStorage;
+    NativePrefsDriver* nativePrefs = nullptr;
     FakeRemoteDeviceCoordinator fakeRdc;
     FakePlatformClock* fakeClock;
     QuickdrawRadioTap radioTap;
@@ -668,8 +686,8 @@ TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
 }
 
 TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
-    NativePrefsDriver prefs("ring-prefs", {MATCHES_PREFS_NAMESPACE});
-    matchManager->initialize(player, &prefs);
+    NativePrefsDriver& prefs = makeNativePrefs("ring-prefs");
+    rebuildMatchManager(&prefs);
 
     for (uint32_t i = 1; i <= 33; ++i) {
         char mid[37];
@@ -700,19 +718,19 @@ TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
 }
 
 TEST_F(MatchManagerTestSuite, initializeDropsRecordsFromBeforeTheRing) {
-    NativePrefsDriver prefs("legacy-prefs", {MATCHES_PREFS_NAMESPACE});
+    NativePrefsDriver& prefs = makeNativePrefs("legacy-prefs");
     prefs.write(MATCHES_PREFS_NAMESPACE, "match_40", R"({"match_id":"old"})");
     prefs.writeUChar(MATCHES_PREFS_NAMESPACE, "count", 41);
 
-    matchManager->initialize(player, &prefs);
+    rebuildMatchManager(&prefs);
 
     EXPECT_EQ(prefs.read(MATCHES_PREFS_NAMESPACE, "match_40", ""), "");
     EXPECT_EQ(prefs.readUChar(MATCHES_PREFS_NAMESPACE, "count", 0), 0);
 }
 
 TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOpponent) {
-    NativePrefsDriver prefs("demo-prefs", {MATCHES_PREFS_NAMESPACE});
-    matchManager->initialize(player, &prefs);
+    NativePrefsDriver& prefs = makeNativePrefs("demo-prefs");
+    rebuildMatchManager(&prefs);
     UUIDBytes selfId{};
     UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", selfId);
     Team team{};
@@ -750,8 +768,8 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOppo
 
 // didWin() cannot supply the record's winner: on a tie it is false on both devices.
 TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
-    NativePrefsDriver prefs("winner-prefs", {MATCHES_PREFS_NAMESPACE});
-    matchManager->initialize(player, &prefs);
+    NativePrefsDriver& prefs = makeNativePrefs("winner-prefs");
+    rebuildMatchManager(&prefs);
     UUIDBytes hunterUuid{};
     UUIDBytes::parse("0a0a0a0a-0000-4000-8000-000000000002", hunterUuid);
     UUIDBytes bountyUuid{};
@@ -802,8 +820,8 @@ TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
 // A presser slowed past the pity time still beat an opponent who never drew, and
 // both result screens said so; the record must name the same winner.
 TEST_F(MatchManagerTestSuite, recordedWinnerRanksNeverPressedAboveTimes) {
-    NativePrefsDriver prefs("never-prefs", {MATCHES_PREFS_NAMESPACE});
-    matchManager->initialize(player, &prefs);
+    NativePrefsDriver& prefs = makeNativePrefs("never-prefs");
+    rebuildMatchManager(&prefs);
     static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     Match stored{};
 
@@ -839,10 +857,10 @@ TEST_F(MatchManagerTestSuite, recordedWinnerRanksNeverPressedAboveTimes) {
 }
 
 TEST_F(MatchManagerTestSuite, collectedHighWaterMarkClampsWhenCorruptedAboveSeq) {
-    NativePrefsDriver prefs("clamp-prefs", {MATCHES_PREFS_NAMESPACE});
+    NativePrefsDriver& prefs = makeNativePrefs("clamp-prefs");
     prefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, 5u);
     prefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 99u);
-    matchManager->initialize(player, &prefs);
+    rebuildMatchManager(&prefs);
 
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 5u);
     EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 5u)
@@ -850,8 +868,8 @@ TEST_F(MatchManagerTestSuite, collectedHighWaterMarkClampsWhenCorruptedAboveSeq)
 }
 
 TEST_F(MatchManagerTestSuite, unreadableStoredMatchIsSkippedNotRetriedForever) {
-    NativePrefsDriver pdnPrefs("pdn-torn-prefs", {MATCHES_PREFS_NAMESPACE});
-    matchManager->initialize(player, &pdnPrefs);
+    NativePrefsDriver& pdnPrefs = makeNativePrefs("pdn-torn-prefs");
+    rebuildMatchManager(&pdnPrefs);
     for (int i = 0; i < 2; ++i) {
         setupMatchAsBounty(i == 0 ? "33333333-2222-4000-8000-333333333333"
                                   : "44444444-2222-4000-8000-333333333333");
@@ -888,8 +906,8 @@ TEST_F(MatchManagerTestSuite, unreadableStoredMatchIsSkippedNotRetriedForever) {
 }
 
 TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
-    NativePrefsDriver pdnPrefs("pdn-window-prefs", {MATCHES_PREFS_NAMESPACE});
-    matchManager->initialize(player, &pdnPrefs);
+    NativePrefsDriver& pdnPrefs = makeNativePrefs("pdn-window-prefs");
+    rebuildMatchManager(&pdnPrefs);
     setupMatchAsBounty("55555555-2222-4000-8000-333333333333");
     matchManager->setHunterDrawTime(180);
     matchManager->setBountyDrawTime(120);
@@ -933,9 +951,9 @@ TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
 
 TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndSpoolBatchUpload) {
     using ::testing::_;
-    NativePrefsDriver pdnPrefs("pdn-prefs", {MATCHES_PREFS_NAMESPACE});
+    NativePrefsDriver& pdnPrefs = makeNativePrefs("pdn-prefs");
     NativePrefsDriver fdnPrefs("fdn-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
-    matchManager->initialize(player, &pdnPrefs);
+    rebuildMatchManager(&pdnPrefs);
 
     MockDevice fdnDevice;
     FakeRemoteDeviceCoordinator fdnRdc;
@@ -1067,9 +1085,9 @@ TEST_F(MatchManagerTestSuite, fdnSpoolWithholdsAckWhenFullAt64Records) {
 }
 
 TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {
-    NativePrefsDriver pdnPrefs("pdn-len-prefs", {MATCHES_PREFS_NAMESPACE});
+    NativePrefsDriver& pdnPrefs = makeNativePrefs("pdn-len-prefs");
     NativePrefsDriver fdnPrefs("fdn-len-prefs", {FDN_MATCH_SPOOL_NAMESPACE});
-    matchManager->initialize(player, &pdnPrefs);
+    rebuildMatchManager(&pdnPrefs);
     MockDevice fdnDevice;
     FakeRemoteDeviceCoordinator fdnRdc;
     FdnMatchSpool fdnSpool(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);

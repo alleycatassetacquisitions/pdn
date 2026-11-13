@@ -30,24 +30,16 @@ public:
     };
 
     /**
-     * Claims the seven shootout PktTypes on wirelessManager's transport and
-     * subscribes to the coordinator's ring-closed edge when given one. That
-     * callback is a single slot, so at most one ShootoutManager per coordinator:
-     * a second built on the same one takes the slot over, and whichever is
-     * destroyed first empties it for both.
+     * Claims the seven shootout PktTypes on wirelessManager's transport (so one
+     * manager per device) and subscribes to the coordinator's ring-closed edge
+     * when given one. A non-null matchManager is told this manager exists, so
+     * it can tell a tournament is live, and is primed with the player pair on
+     * each MATCH_START.
      */
-    ShootoutManager(Player* player,
-                    WirelessManager* wirelessManager,
-                    RemoteDeviceCoordinator* rdc);
-    /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
+    ShootoutManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc,
+                    MatchManager* matchManager);
+    /** Drops the registrations the constructor took, which hold `this`. */
     ~ShootoutManager();
-
-    /**
-     * Optional MatchManager injection. When set, Shootout primes the
-     * MatchManager with the player pair on each MATCH_START so match
-     * states find a ready match. Tests leave this unset.
-     */
-    void setMatchManager(MatchManager* manager) { matchManager = manager; }
 
     bool active() const;
     Phase getPhase() const;

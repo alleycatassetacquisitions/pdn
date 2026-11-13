@@ -103,10 +103,7 @@ struct DeviceInstance {
     Player* player = nullptr;
     GameSession* gameSession = nullptr;
     PlayerFetchApp* playerFetchApp = nullptr;
-    HubApp* hubApp = nullptr;
-    MatchApp* matchApp = nullptr;
-    ShootoutApp* shootoutApp = nullptr;
-    SymbolApp* symbolApp = nullptr;
+    AppConfig apps;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
 
     // State history (circular buffer, most recent at back)
@@ -225,27 +222,16 @@ public:
             instance.pdn,
             instance.symbolWirelessManager);
 
-        GameContext gameContext = instance.gameSession->getContext();
         instance.playerFetchApp = new PlayerFetchApp(
             instance.pdn->getWirelessManager(),
             instance.pdn->getFirmwareUpdateManager(),
             instance.playerProvider);
-        instance.hubApp = new HubApp(gameContext);
-        instance.matchApp = new MatchApp(gameContext);
-        instance.shootoutApp = new ShootoutApp(gameContext);
-        instance.symbolApp = new SymbolApp(gameContext);
-
-        AppConfig apps = {
-        {StateId(PLAYER_FETCH_APP_ID), instance.playerFetchApp},
-        {StateId(HUB_APP_ID), instance.hubApp},
-        {StateId(MATCH_APP_ID), instance.matchApp},
-        {StateId(SHOOTOUT_APP_ID), instance.shootoutApp},
-        {StateId(SYMBOL_APP_ID), instance.symbolApp},
-        };
+        instance.apps = makeGameplayApps(instance.gameSession->getContext());
+        instance.apps[StateId(PLAYER_FETCH_APP_ID)] = instance.playerFetchApp;
         // Skip the entire registration flow: launch straight into the hub's first
         // state (AwakenSequence). The player is already configured with ID, role,
         // and allegiance from DeviceFactory.
-        instance.pdn->loadAppConfig(apps, StateId(HUB_APP_ID));
+        instance.pdn->loadAppConfig(instance.apps, StateId(HUB_APP_ID));
         // Register with SerialCableBroker for cable simulation
         SerialCableBroker::getInstance().registerDevice(
             deviceIndex, instance.serialOutDriver, instance.serialInDriver, isHunter);
@@ -264,13 +250,10 @@ public:
         MockHttpServer::getInstance().removePlayer(device.deviceId);
 
         // Apps before the session, which owns the managers their GameContext
-        // copies point at. No state destructor dereferences one today, so this is
-        // ordering hygiene rather than a fix for a live use-after-free.
-        delete device.playerFetchApp;
-        delete device.hubApp;
-        delete device.matchApp;
-        delete device.shootoutApp;
-        delete device.symbolApp;
+        // copies point at: ~SupporterReady dereferences one when destroyed mounted.
+        for (const std::pair<const StateId, StateMachine*>& entry : device.apps) {
+            delete entry.second;
+        }
         delete device.gameSession;
         delete device.symbolWirelessManager;
         delete device.playerProvider;

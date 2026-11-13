@@ -94,3 +94,9 @@ public:
 private:
     GameContext context;
 };
+
+/**
+ * Builds the four gameplay apps, keyed by app id. The caller owns them; the
+ * context's managers are not owned and must outlive the apps.
+ */
+AppConfig makeGameplayApps(const GameContext& context);
