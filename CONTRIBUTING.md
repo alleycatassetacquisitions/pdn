@@ -23,9 +23,9 @@ Before contributing, please ensure that you follow these steps:
 
 ### Architecture in Practice
 
-- **`AppConfig` only contains Quickdraw.** Chain Duel, Shootout, and Symbol-Match are sub-states of Quickdraw, not sibling apps. See `Quickdraw::populateStateMap()`.
-- **RDC owns physical-connection detection on serial.** A `HandshakeApp` per jack (`src/apps/handshake/`) exchanges MAC + `DeviceType`. Use `getPeerMac()` / `getPeerDeviceType()`; don't write your own serial protocol.
-- **`SerialManager` callbacks are single-slot per jack, owned by RDC.** `setOnStringReceivedCallback()` overwrites. Calling it from game code breaks the handshake; use ESP-NOW for application messages.
+- **Gameplay is four sibling apps.** `makeGameplayApps()` (`src/pdn/game/quickdraw-apps.cpp`) builds `HubApp`, `MatchApp`, `ShootoutApp` and `SymbolApp`; `src/pdn/main.cpp` adds `PlayerFetchApp` for provisioning.
+- **RDC owns physical-connection detection on serial.** RDC exchanges MAC + `DeviceType` in HELLO frames on every jack, with a per-jack `HelloLinkMachine` (`lib/core/include/device/hello-link-machine.hpp`) tracking link state. Use `getPeerMac()` / `getPeerDeviceType()`; don't write your own serial protocol.
+- **Serial RX on each jack is owned by RDC.** RDC installs `setByteCallback()` to parse HELLO frames; while it is set the driver skips string assembly, so `SerialManager::setOnStringReceivedCallback()` never fires. Use ESP-NOW for application messages.
 
 ### Contribution Workflow
 

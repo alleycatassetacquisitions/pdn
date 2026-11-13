@@ -112,11 +112,11 @@ pio run -e esp32-s3_pdn_release
 
 ## Usage
 
-1. **Power on the PDN**: Once powered, the PDN will ask for your player registration code. This is a 4 digit code that is transmitted to the server to fetch player details. The **top button** cycles through digits, 0 through 9, while the **bottom button** functions as a confirm operation.
+1. **Power on the PDN**: Once powered, the PDN will ask for your 4-digit player registration code. The **top button** cycles through digits, 0 through 9, while the **bottom button** functions as a confirm operation.
 
-2. **Log in to Device**: After entering the code, the device will attempt to fetch data from the server. If there is no server running, it will default to offline mode. You will need to **confirm the player code**, **select a role - Hunter/Bounty** and then confirm. The device will launch into the idle state and you will then be able to practice quickdraw duels with another device.
+2. **Log in to Device**: When cabled to an FDN, the PDN fetches your profile by PIN. Enter `0000` to open the demo Hunter/Bounty role picker; the device will launch into the idle state and you will then be able to practice quickdraw duels with another device.
 
-3. **For Simulated Development**: See CLI_README.md for development without a hardware device.
+3. **For Simulated Development**: See `src/cli/CLI_README.md` for development without a hardware device.
 
 ## Development
 
@@ -153,14 +153,14 @@ If you want to contribute to the PDN Project, follow these steps to set up your 
 
 ### Code Structure
 
-#### `libraries`
+#### `lib`
 - `core/`: Fundamental architecture for Alleycat embedded devices. This library is platform agnostic.
-- `esp32-drivers/`: drivers for the esp32-s3 family of chips. Relies on `core/device/drivers/`
+- `esp32-drivers/`: drivers for the esp32-s3 family of chips. Relies on `lib/core/include/device/drivers/`
 - `native-drivers/`: drivers that simulate the hardware of the pdn for our testing and simulator platform.
 - `alleycat-server/`: api's for the alleycat-rs backend.
 
 #### `src`
-- `cli`: `core/` + `native-drivers` TUI app for simulating up to 16 pdn's.
+- `cli`: `core/` + `native-drivers` TUI app for simulating up to 8 pdn's.
 - `fdn`: `core/` + `esp32-drivers` Game & Application Logic for the Alleycat Fixed Data Node.
 - `pdn`: `core/` + `esp32-drivers` Game & Application Logic for the Alleycat Portable Data Node.
 

@@ -16,8 +16,7 @@ These change runtime behavior or API contracts.
 
 ### Generic peripheral accessor on `Device`
 
-- Removed per-type virtual getters (`getDisplay()`, `getButton()`, etc.) from the `Device` base class
-- Replaced with a single `getPeripheral<T>()` template method
+- Added a single `getPeripheral<T>()` template method; the per-type virtual getters (`getDisplay()`, `getPrimaryButton()`, etc.) stay on `Device` as wrappers over it
 - Added `virtual void* abstractSelf() = 0` to `DriverInterface` and implemented it in each combined interface (`DisplayDriverInterface`, etc.) to enable RTTI-less cross-casting under `-fno-rtti`
 
 ---
@@ -33,14 +32,13 @@ These change runtime behavior or API contracts.
 
 - `LightManager` previously imported and hardcoded specific animation classes
 - Refactored to accept an `AnimationBase*` — animations are now injectable
-- Animation factory / hardcoded wiring commented out pending a follow-up refactor commit
 
 ---
 
-### `WS2812BFastLEDDriver` pin templating
+### `WS2812BLedStripDriver` (historical FastLED note)
 
-- Changed from runtime pin parameters to `template<uint8_t DISPLAY_PIN, uint8_t GRIP_PIN>`
-- Required because FastLED's `addLeds<>()` requires compile-time constant pin values
+- `WS2812BFastLEDDriver` took its pins as template parameters because FastLED's `addLeds<>()` needs compile-time constant pins
+- Later replaced by `WS2812BLedStripDriver`, which takes them as runtime constructor arguments
 - `numDisplayLights` and `numGripLights` remain runtime constructor parameters
 
 ---
@@ -68,9 +66,9 @@ These change runtime behavior or API contracts.
 | Hardware pin constants | `src/pdn/pdn-constants.hpp` |
 | Protocol / comms constants | `lib/core/include/protocol-constants.hpp` |
 | ESP32-specific (`ESPNOW_CHANNEL`, baud rates, GPIO) | `lib/esp32-drivers/include/esp32-driver-constants.hpp` |
-| Game string resources (`TEST_BOUNTY_ID`, etc.) | `src/pdn/game/quickdraw-resources.hpp` as `inline const` |
-| Match prefs keys (`PREF_COUNT_KEY`, etc.) | File-local `static constexpr` in `match-manager.cpp` |
-| NVS namespace | `PREF_NAMESPACE` in `src/pdn/pdn-constants.hpp` |
+| Game string resources (`alleycatImageCollection`, etc.) | `src/pdn/game/quickdraw-resources.hpp` as `inline const` |
+| Match prefs keys (`PREF_SEQ_KEY`, etc.) | `inline constexpr` in `src/pdn/game/match-manager.hpp` |
+| NVS namespace | `MATCHES_PREFS_NAMESPACE` in `src/pdn/game/match-manager.hpp` |
 
 ---
 
@@ -117,7 +115,7 @@ Not behavior changes — fix build errors that were latent or newly exposed by t
 | `src/game/` | `src/pdn/game/` |
 | `src/apps/` | `src/pdn/apps/` |
 | `src/wireless/` | `src/pdn/wireless/` |
-| `src/symbol-match/` | `src/pdn/symbol-match/` |
+| `src/symbol-match/` | `src/pdn/symbol-match/` (removed in #326; FDN counterpart lives in `src/fdn/apps/symbol-match/`) |
 | `src/main.cpp` | `src/pdn/main.cpp` |
 | _(new)_ | `src/pdn/pdn-constants.hpp` |
 
@@ -143,7 +141,7 @@ Not behavior changes — fix build errors that were latent or newly exposed by t
 ### `platformio.ini`
 
 - ESP32 environment renames: `esp32-s3_release/debug` → `esp32-s3_pdn_release/debug`
-- `esp32-s3_base`: added `-I src/pdn`; `build_src_filter` simplified to `-<cli/*>`
+- `esp32-s3_base`: added `-I src/pdn`; `build_src_filter` simplified to `-<cli/*>` (later replaced by `framework = espidf` with `board_build.cmake_extra_args = -DPDN_DEVICE=pdn` in #284)
 - All native envs: build flags updated to `-I src/pdn -I src`; `build_src_filter` updated to use new `pdn/main.cpp` and `cli/*` paths
 - `googletest` removed from `lib_deps` in test envs — `test_framework = googletest` already owns it (having both caused PlatformIO to cycle/remove it during the build)
 
