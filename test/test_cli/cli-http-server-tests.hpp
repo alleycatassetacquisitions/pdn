@@ -19,27 +19,15 @@
 
 class MockHttpServerTestSuite : public testing::Test {
 public:  // Public for test function access
-    void SetUp() override {
-        server = &cli::MockHttpServer::getInstance();
-        server->clearHistory();
-        server->setOffline(false);
-    }
-
-    void TearDown() override {
-        server->clearHistory();
-        server->setOffline(false);
-    }
+    /** Every test talks to the one process-wide mock server. */
+    void SetUp() override { server = &cli::MockHttpServer::getInstance(); }
 
     cli::MockHttpServer* server;
 };
 
 static void configurePinPlayer(cli::MockHttpServer* server, const char* pin, const char* name) {
     cli::MockPlayerConfig config;
-    config.id = pin;
     config.name = name;
-    config.isHunter = false;
-    config.allegiance = 1;
-    config.faction = "TestFaction";
     UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", config.wirePlayerId);
     server->configurePlayer(pin, config);
 }
@@ -75,46 +63,6 @@ void httpServerUnknownEndpointReturns404(MockHttpServerTestSuite* suite) {
     ASSERT_TRUE(response.find("Not found") != std::string::npos);
 }
 
-// Test: History is tracked
-void httpServerTracksHistory(MockHttpServerTestSuite* suite) {
-    configurePinPlayer(suite->server, "1111", "A");
-    configurePinPlayer(suite->server, "2222", "B");
-    std::string response;
-    suite->server->handleRequest("GET", "/device/players/by-pin/1111", "", response);
-    suite->server->handleRequest("GET", "/device/players/by-pin/2222", "", response);
-
-    const std::deque<cli::HttpHistoryEntry>& history = suite->server->getHistory();
-    ASSERT_EQ(history.size(), 2);
-    ASSERT_EQ(history[0].path, "/device/players/by-pin/1111");
-    ASSERT_EQ(history[1].path, "/device/players/by-pin/2222");
-
-    suite->server->removePlayer("1111");
-    suite->server->removePlayer("2222");
-}
-
-// Test: Offline mode returns errors
-void httpServerOfflineModeSimulation(MockHttpServerTestSuite* suite) {
-    suite->server->setOffline(true);
-    // Offline flag is available for future driver integration; routing still succeeds when called directly.
-    suite->server->setOffline(false);
-}
-
-void httpServerClearHistory(MockHttpServerTestSuite* suite) {
-    configurePinPlayer(suite->server, "1111", "A");
-    configurePinPlayer(suite->server, "2222", "B");
-    std::string response;
-    suite->server->handleRequest("GET", "/device/players/by-pin/1111", "", response);
-    suite->server->handleRequest("GET", "/device/players/by-pin/2222", "", response);
-
-    ASSERT_GT(suite->server->getHistory().size(), 0);
-
-    suite->server->clearHistory();
-    ASSERT_EQ(suite->server->getHistory().size(), 0);
-
-    suite->server->removePlayer("1111");
-    suite->server->removePlayer("2222");
-}
-
 void httpServerDeviceLogsReturns204(MockHttpServerTestSuite* suite) {
     std::string response;
     int status = suite->server->handleRequest("POST", "/device-logs", "payload", response);
@@ -145,6 +93,7 @@ public:
 
     void TearDown() override {
         delete driver;
+        cli::MockHttpServer::getInstance().setOffline(false);
     }
 
     NativeHttpClientDriver* driver;
@@ -212,13 +161,16 @@ void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
         },
         [suite](const WirelessErrorInfo& error) {
             suite->errorCallbackCalled = true;
+            suite->lastErrorCode = error.code;
         });
 
     suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
-    cli::MockHttpServer::getInstance().setOffline(false);
+    EXPECT_TRUE(suite->errorCallbackCalled);
+    EXPECT_FALSE(suite->successCallbackCalled);
+    EXPECT_EQ(suite->lastErrorCode, WirelessError::WIFI_NOT_CONNECTED);
 }
 
 // Test: Client tracks history

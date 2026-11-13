@@ -168,23 +168,19 @@ private:
     /**
      * Helper to render LED as colored block.
      */
-    static std::string renderLEDStr(const LEDState::SingleLEDState& led, bool showRGB = false) {
+    static std::string renderLEDStr(const LEDState::SingleLEDState& led) {
         char buf[64];
         if (led.brightness > 0 && (led.color.red > 0 || led.color.green > 0 || led.color.blue > 0)) {
             int r = (led.color.red * led.brightness) / 255;
             int g = (led.color.green * led.brightness) / 255;
             int b = (led.color.blue * led.brightness) / 255;
-            if (showRGB) {
-                snprintf(buf, sizeof(buf), "\033[38;2;%d;%d;%dm#\033[0m", r, g, b);
-            } else {
-                snprintf(buf, sizeof(buf), "\033[48;2;%d;%d;%dm \033[0m", r, g, b);
-            }
+            snprintf(buf, sizeof(buf), "\033[48;2;%d;%d;%dm \033[0m", r, g, b);
         } else {
             snprintf(buf, sizeof(buf), "\033[90m.\033[0m");  // Dim dot for off
         }
         return std::string(buf);
     }
-    
+
     /**
      * Helper to truncate string for display.
      */

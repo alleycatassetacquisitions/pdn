@@ -53,10 +53,6 @@ class NativeButtonDriver : public ButtonDriverInterface {
                buttonParameterizedCallbacks.find(interactionType) != buttonParameterizedCallbacks.end();
     }
 
-    bool hasParameterizedCallback(ButtonInteraction interactionType) {
-        return buttonParameterizedCallbacks.find(interactionType) != buttonParameterizedCallbacks.end();
-    }
-
     /**
      * Execute any registered callback for the given interaction type.
      * This checks both non-parameterized and parameterized callbacks.
@@ -76,13 +72,6 @@ class NativeButtonDriver : public ButtonDriverInterface {
         }
     }
 
-    void execParameterizedCallback(ButtonInteraction interactionType, void* parameter) {
-        auto it = buttonParameterizedCallbacks.find(interactionType);
-        if (it != buttonParameterizedCallbacks.end() && it->second.callback) {
-            it->second.callback(parameter);
-        }
-    }
-    
     private:
     ButtonCallbackMap buttonCallbacks = ButtonCallbackMap();
     ButtonParameterizedCallbackMap buttonParameterizedCallbacks = ButtonParameterizedCallbackMap();

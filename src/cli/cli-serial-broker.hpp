@@ -206,19 +206,6 @@ public:
      */
     size_t getConnectionCount() const { return connections.size(); }
 
-    /**
-     * Get a string describing a connection for display.
-     */
-    std::string getConnectionDescription(const CableConnection& conn) const {
-        std::string jackAStr = (conn.jackA == JackType::OUTPUT_JACK) ? "out" : "in";
-        std::string jackBStr = (conn.jackB == JackType::OUTPUT_JACK) ? "out" : "in";
-        std::string typeStr = conn.sameRole ? "P-to-A" : "P-to-P";
-        return std::to_string(conn.deviceA) + "." + jackAStr + 
-               " <-> " + 
-               std::to_string(conn.deviceB) + "." + jackBStr +
-               " (" + typeStr + ")";
-    }
-
 private:
     SerialCableBroker() = default;
     

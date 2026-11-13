@@ -731,21 +731,15 @@ TEST_F(MatchTestSuite, withLargeDrawTimes) {
 // UUID TESTS
 // ============================================
 
-TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
+TEST(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
     uuidStringToBytesProducesCorrectOutput();
 }
 
-TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
-    uuidBytesToStringProducesValidFormat();
-}
+TEST(UUIDTestSuite, bytesToStringProducesValidFormat) { uuidBytesToStringProducesValidFormat(); }
 
-TEST_F(UUIDTestSuite, roundTripPreservesData) {
-    uuidRoundTripPreservesData();
-}
+TEST(UUIDTestSuite, roundTripPreservesData) { uuidRoundTripPreservesData(); }
 
-TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
-    uuidGeneratorProducesValidFormat();
-}
+TEST(UUIDTestSuite, generatorProducesValidFormat) { uuidGeneratorProducesValidFormat(); }
 
 TEST(UUIDBytes, parsesKnownValue) {
     uuidBytesParsesKnownValue();

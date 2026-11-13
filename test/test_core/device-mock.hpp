@@ -105,9 +105,6 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
     SerialByteCallback byteCallback;
 };
 
-class FakeDevice : public Device {
-};
-
 // Mock classes for each interface
 class MockDisplay : public Display {
 public:

@@ -136,7 +136,6 @@ public:
 
     Display* drawText(const char *text) override {
         if (text) {
-            lastText_ = text;
             addToTextHistory(text);
             drawTextToBuffer(text, 0, 0);
         }
@@ -152,7 +151,6 @@ public:
         // Track the glyph unicode value for CLI display
         if (unicodeForGlyph) {
             std::string glyphText = std::string("[glyph: ") + unicodeForGlyph + "]";
-            lastText_ = glyphText;
             addToTextHistory(glyphText);
             drawRect(xStart, yStart, 16, 16);
         }
@@ -162,7 +160,6 @@ public:
     Display* drawButton(const char *text, int xCenter, int yCenter) override {
         if (text) {
             std::string btnText = std::string("[") + text + "]";
-            lastText_ = btnText;
             addToTextHistory(btnText);
             int textWidth = btnText.length() * 6;
             drawTextToBuffer(btnText.c_str(), xCenter - textWidth/2, yCenter - 4);
@@ -172,7 +169,6 @@ public:
 
     Display* drawText(const char *text, int xStart, int yStart) override {
         if (text) {
-            lastText_ = text;
             addToTextHistory(text);
             drawTextToBuffer(text, xStart, yStart);
         }
@@ -180,13 +176,11 @@ public:
     }
 
     Display* drawImage(Image image) override {
-        currentImage_ = image;
         drawImage(image, -1, -1);
         return this;
     }
 
     Display* drawImage(Image image, int xStart, int yStart) override {
-        currentImage_ = image;
         int x = image.defaultStartX;
         int y = image.defaultStartY;
         if (xStart != -1) x = xStart;
@@ -223,11 +217,7 @@ public:
         fillRect(WIDTH / 2, 0, WIDTH / 2, HEIGHT);
         return this;
     }
-    
-    // CLI access methods
-    const std::string& getLastText() const { return lastText_; }
-    FontMode getCurrentFontMode() const { return currentFontMode_; }
-    
+
     std::string getFontModeName() const {
         switch (currentFontMode_) {
             case FontMode::TEXT: return "TEXT";
@@ -253,56 +243,10 @@ public:
         if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return false;
         return screenBuffer_[y][x];
     }
-    
-    // Render display as ASCII art using half-block characters
-    // Scale: 2 horizontal pixels per char, 2 vertical pixels per char (using half blocks)
-    // Result: 64 chars wide, 32 lines tall
-    std::vector<std::string> renderToAscii(int scaleX = 2, int scaleY = 2) const {
-        std::vector<std::string> lines;
-        
-        // Use half-block characters: ▀ (upper), ▄ (lower), █ (both), space (none)
-        for (int y = 0; y < HEIGHT; y += scaleY * 2) {
-            std::string line;
-            for (int x = 0; x < WIDTH; x += scaleX) {
-                // Sample pixels for this character cell
-                bool upper = false, lower = false;
-                
-                // Check upper half (first scaleY rows)
-                for (int dy = 0; dy < scaleY && !upper; dy++) {
-                    for (int dx = 0; dx < scaleX && !upper; dx++) {
-                        if (getPixel(x + dx, y + dy)) upper = true;
-                    }
-                }
-                
-                // Check lower half (next scaleY rows)
-                for (int dy = scaleY; dy < scaleY * 2 && !lower; dy++) {
-                    for (int dx = 0; dx < scaleX && !lower; dx++) {
-                        if (getPixel(x + dx, y + dy)) lower = true;
-                    }
-                }
-                
-                // Select character based on which halves are filled
-                if (upper && lower) {
-                    line += "█";
-                } else if (upper) {
-                    line += "▀";
-                } else if (lower) {
-                    line += "▄";
-                } else {
-                    line += " ";
-                }
-            }
-            lines.push_back(line);
-        }
-        
-        return lines;
-    }
 
     /*
-     * Render display as braille art (U+2800-U+28FF).
-     * Each braille character encodes a 2x4 pixel grid with 8 bits of detail,
-     * vs 2 bits for half-block characters. Same 64x16 terminal footprint
-     * but dramatically better text legibility.
+     * Render display as braille art (U+2800-U+28FF): one character per 2x4
+     * pixel cell, 64x16 characters.
      *
      * Braille dot layout:
      *   (0,0)=0x01  (1,0)=0x08
@@ -341,8 +285,6 @@ public:
 private:
     bool screenBuffer_[HEIGHT][WIDTH];
     FontMode currentFontMode_ = FontMode::TEXT;
-    Image currentImage_;
-    std::string lastText_;
     std::deque<std::string> textHistory_;
     static const size_t MAX_TEXT_HISTORY = 4;
     

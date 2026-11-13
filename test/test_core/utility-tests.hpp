@@ -49,13 +49,6 @@ private:
 // UUID Tests
 // ============================================
 
-class UUIDTestSuite : public testing::Test {
-protected:
-    void SetUp() override {
-        IdGenerator idGenerator = IdGenerator(42);
-    }
-};
-
 inline void uuidStringToBytesProducesCorrectOutput() {
     // Standard UUID format: 8-4-4-4-12 hex chars
     std::string uuid = "12345678-abcd-ef01-2345-6789abcdef01";

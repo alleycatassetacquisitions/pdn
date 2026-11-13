@@ -4,9 +4,11 @@
 
 class NativeHapticsDriver : public HapticsMotorDriverInterface {
 public:
-    NativeHapticsDriver(const std::string& name, int pin) 
-        : HapticsMotorDriverInterface(name), pinNumber(pin), intensity(0), active(false) {
-    }
+    /** A motor that records its intensity and on/off state and drives nothing. */
+    explicit NativeHapticsDriver(const std::string& name)
+        : HapticsMotorDriverInterface(name)
+        , intensity(0)
+        , active(false) {}
 
     ~NativeHapticsDriver() override = default;
 
@@ -41,7 +43,6 @@ public:
     }
 
 private:
-    int pinNumber;
     int intensity;
     bool active;
 };

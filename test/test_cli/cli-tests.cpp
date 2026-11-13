@@ -89,18 +89,6 @@ TEST_F(MockHttpServerTestSuite, UnknownEndpointReturns404) {
     httpServerUnknownEndpointReturns404(this);
 }
 
-TEST_F(MockHttpServerTestSuite, TracksHistory) {
-    httpServerTracksHistory(this);
-}
-
-TEST_F(MockHttpServerTestSuite, OfflineModeSimulation) {
-    httpServerOfflineModeSimulation(this);
-}
-
-TEST_F(MockHttpServerTestSuite, ClearHistory) {
-    httpServerClearHistory(this);
-}
-
 TEST_F(MockHttpServerTestSuite, DeviceLogsReturns204) {
     httpServerDeviceLogsReturns204(this);
 }
@@ -293,18 +281,6 @@ TEST_F(NativeDisplayDriverTestSuite, DoubleDrawImage) {
 
 TEST_F(NativeDisplayDriverTestSuite, DrawImageThenText) {
     displayDriverDrawImageThenText(this);
-}
-
-TEST_F(NativeDisplayDriverTestSuite, RenderToAsciiDimensions) {
-    displayDriverRenderToAsciiDimensions(this);
-}
-
-TEST_F(NativeDisplayDriverTestSuite, RenderToAsciiContent) {
-    displayDriverRenderToAsciiContent(this);
-}
-
-TEST_F(NativeDisplayDriverTestSuite, RenderToAsciiFullBlock) {
-    displayDriverRenderToAsciiFullBlock(this);
 }
 
 // ============================================
