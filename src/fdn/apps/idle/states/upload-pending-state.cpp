@@ -4,15 +4,15 @@
 
 #define TAG "UPLOAD_PENDING"
 
-UploadPendingState::UploadPendingState(FdnMatchSpool* fdnMatchSpool)
+UploadPendingState::UploadPendingState(FdnRecordStore* fdnRecordStore)
     : TypedState<FDN>(IdleStateId::UPLOAD_PENDING)
-    , fdnMatchSpool(fdnMatchSpool) {}
+    , fdnRecordStore(fdnRecordStore) {}
 
 void UploadPendingState::onStateMounted(FDN* fdn) {
     contentReady = false;
 
-    LOG_I(TAG, "Mounted — %u staged match(es)",
-          static_cast<unsigned>(fdnMatchSpool->getStagedCount()));
+    LOG_I(TAG, "Mounted — %u stored match record(s)",
+          static_cast<unsigned>(fdnRecordStore->getStoredCount(RecordKind::MATCH)));
 
     // Drawn first: queuing the request switches the radio to Wi-Fi and blocks while it joins.
     fallbackTimer.setTimer(FALLBACK_TIMEOUT_MS);
@@ -22,7 +22,7 @@ void UploadPendingState::onStateMounted(FDN* fdn) {
     // UPLOADING is set first because a request that fails to queue completes inside
     // uploadPendingBatch; a completion after the fallback timeout or dismount is ignored.
     phase = Phase::UPLOADING;
-    if (!fdnMatchSpool->uploadPendingBatch([this](bool uploaded) {
+    if (!fdnRecordStore->uploadPendingBatch([this](bool uploaded) {
             if (phase == Phase::UPLOADING) phase = uploaded ? Phase::UPLOADED : Phase::FAILED;
         })) {
         phase = Phase::NOT_STARTED;

@@ -36,6 +36,9 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
+#include "sha256-tests.hpp"
+#include "fdn-record-store-tests.hpp"
+#include "fdn-beacon-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1132,6 +1135,108 @@ TEST_F(FdnProvisioningTests, dropsLookupsWhileRegisteredPdnPlays) {
 
 TEST_F(FdnProvisioningTests, reportsLookupResultAndResendsUnconfirmedReply) {
     fdnReportsLookupResultAndResendsUnconfirmedReply(this);
+}
+
+// ============================================
+// SHA-256 AND RECORD CHECK TESTS
+// ============================================
+
+TEST(Sha256, matchesPublishedVectors) { sha256MatchesPublishedVectors(); }
+
+TEST(Sha256, matchesTheMillionAVector) { sha256MatchesTheMillionAVector(); }
+
+TEST(Sha256, matchesDigestsAtThePaddingBoundaries) { sha256MatchesDigestsAtThePaddingBoundaries(); }
+
+TEST(Sha256, padsOverABufferThatWasFilledBefore) { sha256PadsOverABufferThatWasFilledBefore(); }
+
+TEST(Sha256, isTheSameHoweverTheMessageIsSplit) { sha256IsTheSameHoweverTheMessageIsSplit(); }
+
+TEST(RecordCheck, isFirstEightBytesOfSha256OverRecordThenTrailer) {
+    recordCheckIsFirstEightBytesOfSha256OverRecordThenTrailer();
+}
+
+TEST(RecordCheck, changesWithTheTrailer) { recordCheckChangesWithTheTrailer(); }
+
+// ============================================
+// FDN RECORD STORE AND INTAKE TESTS
+// ============================================
+
+TEST_F(FdnRecordStoreTests, keepsBothKindsAcrossARestart) { fdnKeepsBothKindsAcrossARestart(this); }
+
+TEST_F(FdnRecordStoreTests, storesThenAcknowledgesARecordFromAPdnThatIsNotConnected) {
+    fdnStoresThenAcknowledgesARecordFromAPdnThatIsNotConnected(this);
+}
+
+TEST_F(FdnRecordStoreTests, asksRefusingStorageOnlyOnceUntilASlotIsFreed) {
+    fdnAsksRefusingStorageOnlyOnceUntilASlotIsFreed(this);
+}
+
+TEST_F(FdnRecordStoreTests, leavesNoOrphanWhenTheRecordIsWrittenButNotCommitted) {
+    fdnLeavesNoOrphanWhenTheRecordIsWrittenButNotCommitted(this);
+}
+
+TEST_F(FdnRecordStoreTests, erasesAnUploadedBatchEvenWhenTheHeadCannotAdvance) {
+    fdnErasesAnUploadedBatchEvenWhenTheHeadCannotAdvance(this);
+}
+
+TEST_F(FdnRecordStoreTests, matchUploadThatFreesSlotsRestoresCrashIntake) {
+    fdnMatchUploadThatFreesSlotsRestoresCrashIntake(this);
+}
+
+TEST_F(FdnRecordStoreTests, treatsAResendAsNewWhenTheStoredBytesNoLongerMatch) {
+    fdnTreatsAResendAsNewWhenTheStoredBytesNoLongerMatch(this);
+}
+
+TEST_F(FdnRecordStoreTests, dropsARecordFrameWhoseKindIsNotTheChannels) {
+    fdnDropsARecordFrameWhoseKindIsNotTheChannels(this);
+}
+
+TEST_F(FdnRecordStoreTests, dropsARecordFrameOfTheWrongLength) {
+    fdnDropsARecordFrameOfTheWrongLength(this);
+}
+
+TEST_F(FdnRecordStoreTests, acknowledgesAResentRecordAndStoresItOnce) {
+    fdnAcknowledgesAResentRecordAndStoresItOnce(this);
+}
+
+TEST_F(FdnRecordStoreTests, storesADifferentRecordUnderAHeldNumberSeparately) {
+    fdnStoresADifferentRecordUnderAHeldNumberSeparately(this);
+}
+
+TEST_F(FdnRecordStoreTests, fullCrashStorageAcknowledgesOnlyWhatItAlreadyHolds) {
+    fdnWithFullCrashStorageAcknowledgesOnlyWhatItAlreadyHolds(this);
+}
+
+TEST_F(FdnRecordStoreTests, fullMatchStorageSendsNoAcknowledgement) {
+    fdnWithFullMatchStorageSendsNoAcknowledgement(this);
+}
+
+TEST_F(FdnRecordStoreTests, storesAndAcknowledgesARecordWithNoRecordKey) {
+    fdnStoresAndAcknowledgesARecordWithNoRecordKey(this);
+}
+
+TEST_F(FdnRecordStoreTests, storesARecordWithABadTagUnchanged) {
+    fdnStoresARecordWithABadTagUnchanged(this);
+}
+
+TEST_F(FdnRecordStoreTests, storesACabledMatchCollectionFrameWithItsSenderAndNoRecordKey) {
+    fdnStoresACabledMatchCollectionFrameWithItsSenderAndNoRecordKey(this);
+}
+
+// ============================================
+// FDN BEACON TESTS
+// ============================================
+
+TEST_F(FdnBeaconTests, identifiesItsSenderAsAnFdn) { fdnBeaconIdentifiesItsSenderAsAnFdn(this); }
+
+TEST_F(FdnBeaconTests, repeatsEvery12000Ms) { fdnBeaconRepeatsEvery12000Ms(this); }
+
+TEST_F(FdnBeaconTests, refusedWhileTheRadioIsDisabledGoesOutOnceItIsEnabled) {
+    fdnBeaconRefusedWhileTheRadioIsDisabledGoesOutOnceItIsEnabled(this);
+}
+
+TEST_F(AppSwapTestSuite, fdnBeaconRunsWhicheverAppIsMounted) {
+    fdnBeaconRunsWhicheverAppIsMounted(this);
 }
 
 // ============================================

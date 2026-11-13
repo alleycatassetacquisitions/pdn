@@ -1,33 +1,19 @@
-#include "device/drivers/logger.hpp"
 #include "wireless/remote-player-manager.hpp"
+#include "device/drivers/logger.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
-#include "id-generator.hpp"
 #include "utils/simple-timer.hpp"
 
 #define DEBUG_REMOTE_PLAYER_MANAGER 0
 
-struct PlayerInfoPkt
-{
-    char id[IdGenerator::UUID_BUFFER_SIZE];  // UUID string + null terminator
-    Allegiance allegiance;
-    uint8_t hunter;
-} __attribute__((packed));
+RemotePlayerManager::RemotePlayerManager(PeerCommsInterface* peerComms, DeviceType deviceType)
+    : peerComms(peerComms)
+    , deviceType(deviceType)
+    , broadcastInterval(5000) {}
 
-RemotePlayerManager::RemotePlayerManager(PeerCommsInterface* peerComms)
-    : broadcastInterval(5000)
-    , lastBroadcastTime(0) {
-    this->peerComms = peerComms;
-}
-
-void RemotePlayerManager::Update()
-{
-    unsigned long now = SimpleTimer::getPlatformClock()->milliseconds();
-
-    //Broadcast if we need to
-    if( (lastBroadcastTime != 0) && (now - lastBroadcastTime >= broadcastInterval))
-    {
-        BroadcastPlayerInfo();
-    }
+void RemotePlayerManager::update() {
+    if (localPlayerInfo == nullptr) return;
+    if (broadcastTimer.isRunning() && !broadcastTimer.expired()) return;
+    BroadcastPlayerInfo();
 }
 
 int RemotePlayerManager::BroadcastPlayerInfo()
@@ -36,6 +22,7 @@ int RemotePlayerManager::BroadcastPlayerInfo()
     IdGenerator::copyId(broadcastPkt.id, localPlayerInfo->getUserID().c_str());
     broadcastPkt.allegiance = localPlayerInfo->getAllegiance();
     broadcastPkt.hunter = localPlayerInfo->isHunter();
+    broadcastPkt.senderDeviceType = static_cast<uint8_t>(deviceType);
 
 #if DEBUG_REMOTE_PLAYER_MANAGER
     LOG_D("RPM", "Broadcasting player info. ID: %s Allegiance: %u %s (pktsize: %lu)\n",
@@ -49,15 +36,19 @@ int RemotePlayerManager::BroadcastPlayerInfo()
                                                      PktType::kPlayerInfoBroadcast,
                                                      (uint8_t*)&broadcastPkt,
                                                      sizeof(broadcastPkt));
-    lastBroadcastTime = SimpleTimer::getPlatformClock()->milliseconds();
+    // The driver refuses while the FDN has handed the radio to Wi-Fi and while
+    // its send queue is full. A refused beacon is offered again after a short
+    // wait rather than every tick, and is not counted as sent.
+    broadcastTimer.setTimer(ret >= 0 ? broadcastInterval : BEACON_RETRY_AFTER_REFUSAL_MS);
     return ret;
 }
 
-void RemotePlayerManager::StartBroadcastingPlayerInfo(Player *playerInfo, unsigned long broadcastIntervalMillis)
-{
+void RemotePlayerManager::startBroadcastingPlayerInfo(Player* playerInfo,
+                                                      unsigned long broadcastIntervalMillis) {
     localPlayerInfo = playerInfo;
     broadcastInterval = broadcastIntervalMillis;
-    BroadcastPlayerInfo();
+    broadcastTimer.invalidate();
+    update();
 }
 
 int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const uint8_t *data, const size_t dataLen)

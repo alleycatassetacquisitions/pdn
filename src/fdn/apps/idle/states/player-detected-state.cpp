@@ -44,11 +44,6 @@ void PlayerDetectedState::onStateMounted(FDN* fdn) {
     playerDetectedTimer.setTimer(config.timeout);
 }
 
-void PlayerDetectedState::onStateLoop(FDN* fdn) {
-    (void)fdn;
-    remotePlayerManager->Update();
-}
-
 void PlayerDetectedState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
     fdn->getLightManager()->stopAnimation();

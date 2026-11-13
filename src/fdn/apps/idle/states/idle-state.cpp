@@ -5,10 +5,11 @@
 #define TAG "IDLE_STATE"
 
 IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
-                     RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool)
+                     RemoteDeviceCoordinator* remoteDeviceCoordinator,
+                     FdnRecordStore* fdnRecordStore)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::IDLE)
     , remotePlayerManager(remotePlayerManager)
-    , fdnMatchSpool(fdnMatchSpool) {}
+    , fdnRecordStore(fdnRecordStore) {}
 
 void IdleState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted");
@@ -26,11 +27,6 @@ void IdleState::onStateMounted(FDN* fdn) {
         ->render();
 }
 
-void IdleState::onStateLoop(FDN* fdn) {
-    (void)fdn;
-    remotePlayerManager->Update();
-}
-
 void IdleState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
     (void)fdn;
@@ -45,5 +41,5 @@ bool IdleState::transitionToUploadPending() {
     // Consumes the cycle, so this must stay idle's last edge: an expiry a cabled PDN
     // outranks is then never asked about, and waits until idle is next free.
     uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
-    return fdnMatchSpool->getStagedCount() > 0;
+    return fdnRecordStore->getStoredCount(RecordKind::MATCH) > 0;
 }

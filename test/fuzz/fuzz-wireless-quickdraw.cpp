@@ -147,9 +147,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     WirelessManager wirelessManager(&peerComms, nullptr);
     MatchManager matchManager(&player, &storage, &wirelessManager, &rdc);
     SymbolWirelessManager symbolWirelessManager(&wirelessManager, &rdc);
-    RemotePlayerManager remotePlayerManager(&peerComms);
+    RemotePlayerManager remotePlayerManager(&peerComms, DeviceType::PDN);
 
-    remotePlayerManager.StartBroadcastingPlayerInfo(&player, 5000);
+    remotePlayerManager.startBroadcastingPlayerInfo(&player, 5000);
     wirelessManager.setEspNowPacketHandler(
         PktType::kPlayerInfoBroadcast,
         [](const uint8_t* srcMac, const uint8_t* pktData, const size_t pktLen, void* ctx) {
@@ -275,7 +275,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                     clock.advance(delta);
                 }
                 wirelessManager.sync();
-                remotePlayerManager.Update();
+                remotePlayerManager.update();
                 break;
             }
             case 10: {
