@@ -22,6 +22,7 @@
 #include "posse-manager-tests.hpp"
 #include "posse-multi-device-fixture.hpp"
 #include "shootout-manager-tests.hpp"
+#include "shootout-phase-tests.hpp"
 #include "match-manager-concurrent.hpp"
 #include "serial-frame-parser-tests.hpp"
 #include "reliable-channel-tests.hpp"
@@ -1287,6 +1288,10 @@ TEST_F(IdleStateTests, dismountClearsUnreadyMatch) {
     idleDismountClearsUnreadyMatch(this);
 }
 
+TEST_F(IdleStateTests, startsNoMatchWhileATournamentIsLive) {
+    idleStartsNoMatchWhileATournamentIsLive(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - COUNTDOWN
 // ============================================
@@ -2220,7 +2225,36 @@ TEST_F(ShootoutManagerTests, staleResultDoesNotEndTheCurrentMatch) { staleResult
 TEST_F(ShootoutManagerTests, coordinatorMissingOurResultIsRecoveredBySender) { coordinatorMissingOurResultIsRecoveredBySender(this); }
 TEST_F(ShootoutManagerTests, matchStartRetriesToSilentMemberThenAborts) { matchStartRetriesToSilentMemberThenAborts(this); }
 TEST_F(ShootoutManagerTests, resetCancelsInFlightFanOuts) { resetCancelsInFlightFanOuts(this); }
-TEST_F(ShootoutManagerTests, spectatorDoesNotRepaintATornDownMatch) { spectatorDoesNotRepaintATornDownMatch(this); }
+TEST_F(ShootoutManagerTests, phaseObserverHearsATournamentInOrder) {
+    phaseObserverHearsATournamentInOrder(this);
+}
+TEST_F(ShootoutManagerTests, abortIsHeardAsOnePhaseFromAnEmptiedManager) {
+    abortIsHeardAsOnePhaseFromAnEmptiedManager(this);
+}
+TEST_F(ShootoutManagerTests, matchStartIsHeardOnceTheMatchIsPrimed) {
+    matchStartIsHeardOnceTheMatchIsPrimed(this);
+}
+TEST_F(ShootoutManagerTests, proposalFollowsTheBracketOnlyWhileMounted) {
+    proposalFollowsTheBracketOnlyWhileMounted(this);
+}
+TEST_F(ShootoutManagerTests, bracketRevealSendsPlayersAndSpectatorsDifferentWays) {
+    bracketRevealSendsPlayersAndSpectatorsDifferentWays(this);
+}
+TEST_F(ShootoutManagerTests, spectatorIsCalledUpByAMatchStartedOverAnUnresolvedOne) {
+    spectatorIsCalledUpByAMatchStartedOverAnUnresolvedOne(this);
+}
+TEST_F(ShootoutManagerTests, eliminatedLeavesForTheStandingsWhenTheTournamentEnds) {
+    eliminatedLeavesForTheStandingsWhenTheTournamentEnds(this);
+}
+TEST_F(ShootoutManagerTests, spectatorRepaintsOnceWhenTheNextMatchStarts) {
+    spectatorRepaintsOnceWhenTheNextMatchStarts(this);
+}
+TEST_F(ShootoutManagerTests, spectatorDoesNotRepaintATornDownMatch) {
+    spectatorDoesNotRepaintATornDownMatch(this);
+}
+TEST_F(ShootoutManagerTests, phaseSubscriptionClosesItselfWhenDestroyed) {
+    phaseSubscriptionClosesItselfWhenDestroyed(this);
+}
 TEST_F(ShootoutManagerTests, ackNamingNoLiveFrameClearsNobody) {
     ackNamingNoLiveFrameClearsNobody(this);
 }

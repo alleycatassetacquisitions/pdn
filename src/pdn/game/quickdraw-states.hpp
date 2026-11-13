@@ -430,68 +430,77 @@ private:
 
 class ShootoutProposal : public TypedState<PDN> {
 public:
+    /** Constructs the confirm-to-join screen of a tournament. */
     explicit ShootoutProposal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
-    void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
 
-    bool transitionToBracketReveal();
+    /** True while the tournament is revealing its bracket. */
+    bool transitionToBracketReveal() const;
 
 private:
     ShootoutManager* shootoutManager = nullptr;
-
-    bool shouldGoToReveal_ = false;
+    ShootoutPhaseSubscription phaseSubscription;
+    bool transitionToBracketRevealState = false;
 };
 
 class ShootoutBracketReveal : public TypedState<PDN> {
 public:
+    /** Constructs the bracket-reveal screen. */
     explicit ShootoutBracketReveal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
-    void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
 
-    /** True when MATCH_START names this device as one of the two players. */
+    /** True when the match that has started names this device as a player. */
     bool transitionToMatchCountdown() const;
-    bool transitionToSpectator();
+    /** True when the match that has started is between two other devices. */
+    bool transitionToSpectator() const;
 
 private:
     ShootoutManager* shootoutManager = nullptr;
-
-    bool shouldGoToMatchCountdown = false;
-    bool shouldGoToSpectator_ = false;
+    ShootoutPhaseSubscription phaseSubscription;
+    bool transitionToMatchCountdownState = false;
+    bool transitionToSpectatorState = false;
 };
 
 class ShootoutSpectator : public TypedState<PDN> {
 public:
+    /** Constructs the screen a surviving player watches other matches from. */
     explicit ShootoutSpectator(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
 
-    /** True when the next MATCH_START names this device as one of the two players. */
+    /** True when the match that has started names this device as a player. */
     bool transitionToMatchCountdown() const;
-    bool transitionToFinalStandings();
+    /** True once the tournament has a winner. */
+    bool transitionToFinalStandings() const;
 
 private:
-    ShootoutManager* shootout;
-    bool shouldGoToMatchCountdown = false;
-    bool shouldGoToFinalStandings_ = false;
-    std::array<uint8_t, 6> lastDisplayedA_{};
-    std::array<uint8_t, 6> lastDisplayedB_{};
+    void onPhaseEntered(ShootoutManager::Phase phase);
+    void renderMatchPair(PDN* pdn);
+
+    ShootoutManager* shootoutManager = nullptr;
+    ShootoutPhaseSubscription phaseSubscription;
+    bool transitionToMatchCountdownState = false;
+    bool transitionToFinalStandingsState = false;
+    bool displayIsDirty = false;
 };
 
 class ShootoutEliminated : public TypedState<PDN> {
 public:
+    /** Constructs the screen a knocked-out player waits on. */
     explicit ShootoutEliminated(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
-    void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
 
-    bool transitionToFinalStandings();
+    /** True once the tournament has a winner. */
+    bool transitionToFinalStandings() const;
 
 private:
-    ShootoutManager* shootout_;
-    bool shouldGoToFinalStandings_ = false;
+    ShootoutManager* shootoutManager = nullptr;
+    ShootoutPhaseSubscription phaseSubscription;
+    bool transitionToFinalStandingsState = false;
 };
 
 class ShootoutFinalStandings : public TypedState<PDN> {

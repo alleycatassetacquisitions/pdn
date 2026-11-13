@@ -1246,35 +1246,6 @@ inline void resetCancelsInFlightFanOuts(ShootoutManagerTests* suite) {
         << "the ABORT was not retried, so a member that missed it stays in the tournament";
 }
 
-// A teardown zeroes the current pair, and the spectator repaints whenever the
-// pair changes. Those two together put WATCHING over two blank names on screen
-// for the tick between the abort and the transition off this state.
-inline void spectatorDoesNotRepaintATornDownMatch(ShootoutManagerTests* suite) {
-    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
-    // drawCenteredText chains off these, so a default-constructed nullptr return
-    // dereferences on the first draw.
-    MockDisplay* display = suite->device.mockDisplay;
-    ON_CALL(*display, invalidateScreen()).WillByDefault(testing::Return(display));
-    ON_CALL(*display, setGlyphMode(testing::_)).WillByDefault(testing::Return(display));
-    ON_CALL(*display, drawText(testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(display));
-    ON_CALL(*display, getWidth()).WillByDefault(testing::Return(128));
-    ON_CALL(*display, getTextWidth(testing::_)).WillByDefault(testing::Return(40));
-
-    suite->driveToFirstMatch({{0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}, {0x03, 0, 0, 0, 0, 0}});
-    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
-
-    GameContext ctx;
-    ctx.shootoutManager = suite->shootout;
-    ShootoutSpectator state(ctx);
-    state.onStateMounted(&suite->device);
-
-    suite->shootout->abortTournament();
-    EXPECT_CALL(*display, render()).Times(0);
-    state.onStateLoop(&suite->device);
-}
-
 inline void ackNamingNoLiveFrameClearsNobody(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};

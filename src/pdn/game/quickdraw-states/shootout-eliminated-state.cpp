@@ -3,7 +3,7 @@
 
 ShootoutEliminated::ShootoutEliminated(const GameContext& ctx)
     : TypedState<PDN>(SHOOTOUT_ELIMINATED)
-    , shootout_(ctx.shootoutManager) {}
+    , shootoutManager(ctx.shootoutManager) {}
 
 void ShootoutEliminated::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();
@@ -15,15 +15,17 @@ void ShootoutEliminated::onStateMounted(PDN* pdn) {
     d->setGlyphMode(FontMode::TEXT_INVERTED_SMALL);
     d->drawCenteredText("spectating", 50);
     d->render();
-}
 
-void ShootoutEliminated::onStateLoop(PDN* pdn) {
-    auto p = shootout_->getPhase();
-    if (p == ShootoutManager::Phase::ENDED) shouldGoToFinalStandings_ = true;
+    phaseSubscription.open(shootoutManager, [this](ShootoutManager::Phase phase) {
+        transitionToFinalStandingsState = phase == ShootoutManager::Phase::ENDED;
+    });
 }
 
 void ShootoutEliminated::onStateDismounted(PDN* pdn) {
-    shouldGoToFinalStandings_ = false;
+    phaseSubscription.close();
+    transitionToFinalStandingsState = false;
 }
 
-bool ShootoutEliminated::transitionToFinalStandings() { return shouldGoToFinalStandings_; }
+bool ShootoutEliminated::transitionToFinalStandings() const {
+    return transitionToFinalStandingsState;
+}
