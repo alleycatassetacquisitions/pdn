@@ -96,13 +96,13 @@ ShootoutManager::ShootoutManager(Player* player, WirelessManager* wirelessManage
     if (rdc == nullptr) return;
     // Subscribed here rather than by whoever builds this manager: see
     // PosseManager's constructor for the reasoning.
-    rdc->setOnRingClosed([this]() { onRingClosed(); });
+    rdc->setOnRingClosed([this]() { onRingClosed(); }, this);
 }
 
 ShootoutManager::~ShootoutManager() {
     if (matchManager != nullptr) matchManager->setShootoutManager(nullptr);
     if (rdc == nullptr) return;
-    rdc->setOnRingClosed(nullptr);
+    rdc->setOnRingClosed(nullptr, this);
 }
 
 bool ShootoutManager::active() const {

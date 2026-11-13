@@ -42,16 +42,17 @@
  * reachable via virtual dispatch from StateMachine.
  */
 
-class StateMachine : public TypedState<Device> {
+class StateMachine {
 public:
     /**
      * @param stateId This app's id, the same value as its AppConfig key.
      */
     explicit StateMachine(int stateId)
-        : TypedState<Device>(stateId) {}
+        : appId(stateId) {}
 
-    ~StateMachine() override {
-        for (auto state: stateMap) {
+    /** Frees every state registered in the state map. */
+    virtual ~StateMachine() {
+        for (State* state : stateMap) {
             delete state;
         }
     };
@@ -131,19 +132,19 @@ public:
         return currentState;
     }
 
-    void onStateMounted(Device *PDN) override {
-        initialize(PDN);
-    }
+    /** Mounts this app, populating its state map on first launch. */
+    virtual void onStateMounted(Device* pdn) { initialize(pdn); }
 
-    void onStateLoop(Device *PDN) override {
-        asLifecycle(currentState)->loop(PDN);
+    /** Steps the mounted state, then follows whichever of its edges holds. */
+    virtual void onStateLoop(Device* pdn) {
+        asLifecycle(currentState)->loop(pdn);
         checkStateTransitions();
         if (pendingTransition == nullptr) {
             return;
         }
         // A null next state is what marks the winning edge as a hand-off.
         if (pendingTransition->getNextState() != nullptr) {
-            commitState(PDN);
+            commitState(pdn);
             return;
         }
 
@@ -152,11 +153,12 @@ public:
         // returns without dismounting, and the same edge wins again next tick.
         StateId nextApp = pendingTransition->getTargetAppId();
         StateId entryState = pendingTransition->getEntryStateId();
-        PDN->setActiveApp(nextApp, entryState);
+        pdn->setActiveApp(nextApp, entryState);
     }
 
-    void onStateDismounted(Device *PDN) override {
-        asLifecycle(currentState)->dismount(PDN);
+    /** Dismounts the mounted state when this app leaves the device. */
+    virtual void onStateDismounted(Device* pdn) {
+        asLifecycle(currentState)->dismount(pdn);
         currentState = nullptr;
         pendingTransition = nullptr;
     }
@@ -196,11 +198,12 @@ private:
                 return state;
             }
         }
-        LOG_E("StateMachine", "app %d has no state %d; entering boot state",
-              getStateId(), entryStateId.id);
+        LOG_E("StateMachine", "app %d has no state %d; entering boot state", appId.id,
+              entryStateId.id);
         return stateMap[0];
     }
 
     bool launched = false;
+    StateId appId;
     StateId entryStateId = StateId(-1);
 };

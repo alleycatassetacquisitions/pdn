@@ -13,9 +13,7 @@
 // ============================================
 //
 // A mounted ConnectState subscribes itself to the coordinator's jack observer
-// and releases it on dismount. StateMachine dismounts the outgoing state before
-// mounting the incoming one, so the single observer slot is handed from state to
-// state without arbitration.
+// and removes its registration on dismount.
 //
 // These run on RDCHelloTests' fixture. The link machine is the only emitter of
 // jack edges, and the mount replay reads the same link state.
@@ -114,20 +112,9 @@ inline void dismountState(State* state, Device* device) {
     static_cast<StateLifecycle*>(state)->dismount(device);
 }
 
-/**
- * RDCHelloTests::SetUp installs its own jack observer for connectCount /
- * disconnectCount. The slot is single and the setter overwrites it without
- * complaint, so a mounting ConnectState would silently detach the fixture's
- * counters; these tests hand the slot over deliberately instead.
- */
-class ConnectStateTests : public RDCHelloTests {
-public:
-    /** Builds the HELLO fixture, then hands the jack observer slot back. */
-    void SetUp() override {
-        RDCHelloTests::SetUp();
-        rdc.setOnJackChange(nullptr);
-    }
-};
+// The fixture keeps its own jack observer for connectCount / disconnectCount;
+// a mounted ConnectState registers beside it under its own key.
+class ConnectStateTests : public RDCHelloTests {};
 
 // Drives the OUT jack through the real HELLO + context path to CONNECTED.
 // A re-link needs a fresh seqId: the reliable channel drops a repeat of the last
@@ -220,8 +207,9 @@ inline void connectStateReceivesDisconnect(RDCHelloTests* suite) {
     EXPECT_FALSE(state.events[1].connected);
 }
 
-// Dismount releases the slot, so a dismounted state hears nothing further. This
-// is what keeps a `this`-bound lambda from outliving the state's tenure.
+// Dismount removes the registration, so a dismounted state hears nothing
+// further. This is what keeps a `this`-bound lambda from outliving the state's
+// tenure.
 inline void connectStateDismountedStopsReceiving(RDCHelloTests* suite) {
     RecordingConnectState state(&suite->rdc, /*stateId=*/1);
     mountState(&state, &suite->device);
@@ -376,4 +364,25 @@ inline void connectStateDestructorReleasesSlot(RDCHelloTests* suite) {
 
     connectOutJack(suite, ChainRole::CHILD, /*userId=*/4242);
     SUCCEED();
+}
+
+// Two subscribers on one coordinator.
+inline void connectStateTwoMountedStatesKeepTheirOwnSubscription(RDCHelloTests* suite) {
+    RecordingConnectState first(&suite->rdc, /*stateId=*/1);
+    RecordingConnectState second(&suite->rdc, /*stateId=*/2);
+    mountState(&first, &suite->device);
+    mountState(&second, &suite->device);
+
+    connectOutJack(suite, ChainRole::CHILD, /*userId=*/4242);
+    EXPECT_EQ(first.events.size(), 1u) << "the second mount displaced the first";
+    EXPECT_EQ(second.events.size(), 1u);
+    EXPECT_EQ(suite->connectCount, 1) << "the fixture's own observer was displaced";
+
+    dismountState(&second, &suite->device);
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(first.events.size(), 2u) << "one state's dismount unsubscribed the other";
+    EXPECT_FALSE(first.events[1].connected);
+    EXPECT_EQ(second.events.size(), 1u);
+    dismountState(&first, &suite->device);
 }

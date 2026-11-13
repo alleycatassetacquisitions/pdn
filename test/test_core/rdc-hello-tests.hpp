@@ -70,7 +70,8 @@ public:
 
         rdc.setExternalConnectivityTask(true);
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
-        rdc.setOnJackChange([this](SerialIdentifier jack, bool connected) {
+        rdc.setOnJackChange(
+        [this](SerialIdentifier jack, bool connected) {
             if (connected) {
                 connectCount++;
                 lastConnectJack = jack;
@@ -78,7 +79,8 @@ public:
                 disconnectCount++;
                 lastDisconnectJack = jack;
             }
-        });
+        },
+        this);
     }
 
     /** Restores the real platform clock. */
@@ -338,15 +340,16 @@ inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
     uint16_t cbUserId = 0;
     int cbCount = 0;
     suite->rdc.setOnContextReceived(
-        [&](SerialIdentifier jack, DeviceType type, const uint8_t* profile, size_t len) {
-            cbCount++;
-            cbJack = jack;
-            cbType = type;
-            ASSERT_EQ(len, sizeof(PlayerProfile));
-            PlayerProfile p{};
-            memcpy(&p, profile, len);
-            cbUserId = p.userId;
-        });
+    [&](SerialIdentifier jack, DeviceType type, const uint8_t* profile, size_t len) {
+        cbCount++;
+        cbJack = jack;
+        cbType = type;
+        ASSERT_EQ(len, sizeof(PlayerProfile));
+        PlayerProfile p{};
+        memcpy(&p, profile, len);
+        cbUserId = p.userId;
+    },
+    suite);
 
     // The OUT jack must already know the peer MAC (from its HELLO) for the
     // received context to match a jack.
@@ -503,12 +506,13 @@ inline void rdcCachedContextCompletesBoth2NodeRingJacks(RDCHelloTests* suite) {
     int outCb = 0;
     int inCb = 0;
     suite->rdc.setOnContextReceived(
-        [&](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
-            if (jack == SerialIdentifier::OUTPUT_JACK)
-                outCb++;
-            else if (jack == SerialIdentifier::INPUT_JACK)
-                inCb++;
-        });
+    [&](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
+        if (jack == SerialIdentifier::OUTPUT_JACK)
+            outCb++;
+        else if (jack == SerialIdentifier::INPUT_JACK)
+            inCb++;
+    },
+    suite);
 
     // Context arrives before EITHER jack is CONNECTING: both are Idle, so it is cached.
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
@@ -810,7 +814,7 @@ inline void rdcDuplicateContextSameTickFiresCallbackOnce(RDCHelloTests* suite) {
 
     int callbacks = 0;
     suite->rdc.setOnContextReceived(
-        [&](SerialIdentifier, DeviceType, const uint8_t*, size_t) { callbacks++; });
+    [&](SerialIdentifier, DeviceType, const uint8_t*, size_t) { callbacks++; }, suite);
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
@@ -934,7 +938,7 @@ inline void rdcChainInheritsAndReadvertisesHead(RDCHelloTests* suite) {
 // inheritance carries its own MAC around the ring unchallenged.
 inline void rdcChainNonLowestHeadDetectsRing(RDCHelloTests* suite) {
     int ringClosedCount = 0;
-    suite->rdc.setOnRingClosed([&]() { ringClosedCount++; });
+    suite->rdc.setOnRingClosed([&]() { ringClosedCount++; }, suite);
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
                 suite->helloFrame(0xB1));
@@ -1203,7 +1207,7 @@ struct ChainRingNode {
         device.serialManager->setInputJack(&in);
         rdc.setExternalConnectivityTask(true);
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
-        rdc.setOnRingClosed([this]() { ringClosedCount++; });
+        rdc.setOnRingClosed([this]() { ringClosedCount++; }, this);
     }
 
     MockDevice device;
@@ -1659,7 +1663,7 @@ inline void rdcHeadBuildsAndPrunesRoster(RDCHelloTests* suite) {
     const uint8_t c3[6] = {0xC3, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     int membershipChanges = 0;
-    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; }, suite);
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
@@ -1698,7 +1702,7 @@ inline void rdcChildReportsDownstreamLossToHead(RDCHelloTests* suite) {
     RosterSendCapture report;
     captureSends(suite, PktType::kDisconnectReport, report);
     int membershipChanges = 0;
-    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; }, suite);
 
     connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
                 chainHelloFrame(upstream, head));
@@ -1739,7 +1743,7 @@ inline void rdcRingLatchedNeverAnnouncesOrReportsToSelf(RDCHelloTests* suite) {
     captureSends(suite, PktType::kConnectionAnnounce, announce);
     captureSends(suite, PktType::kDisconnectReport, report);
     int membershipChanges = 0;
-    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; }, suite);
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     suite->deliverHello(suite->inJack, chainHelloFrame(lowNeighbour, suite->localMac));
@@ -1780,7 +1784,7 @@ inline void rdcDemotedHeadTransfersRoster(RDCHelloTests* suite) {
     RosterSendCapture transfer;
     captureSends(suite, PktType::kHeadTransfer, transfer);
     int membershipChanges = 0;
-    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; }, suite);
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
@@ -1846,7 +1850,7 @@ inline void rdcHeadIgnoresSelfDisconnectReport(RDCHelloTests* suite) {
     const uint8_t c2[6] = {0xC2, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     int membershipChanges = 0;
-    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; }, suite);
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
@@ -1936,7 +1940,7 @@ inline void rdcStandaloneIgnoresLateRosterTraffic(RDCHelloTests* suite) {
     const uint8_t oldHead[6] = {0x77, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     int membershipChanges = 0;
-    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; }, suite);
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::STANDALONE);
 
     std::vector<uint8_t> late = announceBytes(oldHead, 3);
@@ -2302,7 +2306,7 @@ inline void rdcHeadTransferReceiveMergesAndPrunes(RDCHelloTests* suite) {
     const uint8_t memberC[6] = {0xC3, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     int membershipChanges = 0;
-    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; }, suite);
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
@@ -2410,7 +2414,7 @@ inline void rdcDuplicateReannounceDoesNotEvict(RDCHelloTests* suite) {
     const uint8_t memberE[6] = {0xE1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     int membershipChanges = 0;
-    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; }, suite);
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
@@ -2547,7 +2551,7 @@ inline void rdcPeerUserIdAbsentForFdnContext(RDCHelloTests* suite) {
 // from this callback — a missed edge leaves it acting as a chain member forever.
 inline void rdcChainRoleChangeFiresOnConnectAndLinkDeath(RDCHelloTests* suite) {
     std::vector<ChainRole> roles;
-    suite->rdc.setOnChainRoleChange([&](ChainRole role) { roles.push_back(role); });
+    suite->rdc.setOnChainRoleChange([&](ChainRole role) { roles.push_back(role); }, suite);
 
     connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK, suite->helloFrame(0xA1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
@@ -2571,9 +2575,9 @@ inline void rdcChainRoleChangeFiresOnConnectAndLinkDeath(RDCHelloTests* suite) {
 // broken ring reports the fallback role.
 inline void rdcChainRoleChangeReportsRingLatch(RDCHelloTests* suite) {
     std::vector<ChainRole> roles;
-    suite->rdc.setOnChainRoleChange([&](ChainRole role) { roles.push_back(role); });
+    suite->rdc.setOnChainRoleChange([&](ChainRole role) { roles.push_back(role); }, suite);
     int ringClosedCount = 0;
-    suite->rdc.setOnRingClosed([&]() { ringClosedCount++; });
+    suite->rdc.setOnRingClosed([&]() { ringClosedCount++; }, suite);
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(roles.size(), 1u);
@@ -2967,10 +2971,11 @@ inline void rdcConnectedJackUpdatesPeerContextOnResend(RDCHelloTests* suite) {
     int outCallbacks = 0;
     int inCallbacks = 0;
     suite->rdc.setOnContextReceived(
-        [&](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
-            if (jack == SerialIdentifier::OUTPUT_JACK) outCallbacks++;
-            if (jack == SerialIdentifier::INPUT_JACK) inCallbacks++;
-        });
+    [&](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
+        if (jack == SerialIdentifier::OUTPUT_JACK) outCallbacks++;
+        if (jack == SerialIdentifier::INPUT_JACK) inCallbacks++;
+    },
+    suite);
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
     suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));

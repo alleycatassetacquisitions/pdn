@@ -160,12 +160,6 @@ protected:
     std::vector<StateTransition*> transitions;
 
 private:
-    struct AppTransitionEntry {
-        std::function<bool()> condition;
-        StateId targetAppId;
-    };
-    std::vector<AppTransitionEntry> appTransitions;
-
     StateId name;
 
     void mount(Device* device) override = 0;
