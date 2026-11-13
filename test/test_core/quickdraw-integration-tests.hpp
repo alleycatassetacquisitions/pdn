@@ -335,8 +335,11 @@ inline void listenForMatchResultsSetsOpponentTimeHunter(PacketParsingTests* suit
 }
 
 inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suite) {
-    // Switch to bounty perspective
+    // The draw slot is fixed when the match is primed, so prime one as bounty.
+    suite->matchManager->clearCurrentMatch();
     suite->player->setIsHunter(false);
+    uint8_t hunterMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->matchManager->receiveMatch("a1111111-2222-4000-8000-333333333333", true, hunterMac);
 
     MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 200, 0);
     suite->processPacket(packet);
@@ -572,6 +575,27 @@ inline void stateFlowThroughMatchResultToWin(StateFlowIntegrationTests* suite) {
 
     EXPECT_TRUE(resultState.transitionToWin());
     EXPECT_FALSE(resultState.transitionToLose());
+}
+
+// Spec: a press in the same tick a grace period expires takes precedence over
+// the timeout.
+inline void stateFlowPressInTheGraceExpiryPassStands(StateFlowIntegrationTests* suite) {
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 0, 900);
+    suite->processPacket(packet);
+    MatchReceivedResult receivedResult(suite->ctx);
+    receivedResult.onStateMounted(&suite->device);
+
+    suite->fakeClock->advance(800);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
+    receivedResult.onStateLoop(&suite->device);
+
+    ASSERT_NE(suite->wirelessManager->lastFrame(), nullptr);
+    EXPECT_EQ(suite->wirelessManager->lastFrame()->command, MatchCmd::DRAW_RESULT);
+    EXPECT_TRUE(receivedResult.transitionToMatchResult());
+    EXPECT_TRUE(suite->matchManager->didWin()) << "800 ms lost to 900 ms";
+    receivedResult.onStateDismounted(&suite->device);
 }
 
 inline void stateFlowThroughMatchResultToLose(StateFlowIntegrationTests* suite) {

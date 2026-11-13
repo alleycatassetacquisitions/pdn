@@ -30,8 +30,10 @@ inline constexpr uint8_t MATCH_RING_CAPACITY = 32;
 inline constexpr unsigned long MATCH_TRANSFER_WINDOW_MS = 100;
 
 struct LastMatchDisplay {
-    unsigned long myTimeMs = 0;       // boosted draw time, as used for winner calc
-    unsigned long opponentTimeMs = 0;
+    // Effective draw times, as used for winner calc: raw minus boost, so a big
+    // enough posse behind a fast draw puts them below zero.
+    long myTimeMs = 0;
+    long opponentTimeMs = 0;
     unsigned long boostMs = 0;        // boost applied at own button press
     unsigned long penaltyMs = 0;      // early-press penalty applied at own button press
     bool hasData = false;
@@ -48,9 +50,12 @@ struct ActiveMatchState {
     bool opponentNeverPressed = false;
     // Bounty: seqId of the MATCH_ID_ACK whose delivery report is awaited (0 = none).
     uint8_t pendingAckSeqId = 0;
-    // Earned at the local button press; shown on the result screen.
+    // Earned at the local button press: taken off the raw time when the two
+    // draws are compared, and shown on the result screen.
     unsigned long boostMs = 0;
     unsigned long penaltyMs = 0;
+    // From the opponent's draw result, held to PosseManager::getMaxBoostMs().
+    unsigned long opponentBoostMs = 0;
     unsigned long matchLocalStartTime = 0;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
@@ -187,7 +192,7 @@ private:
 
     Player* player;
 
-    std::function<unsigned long()> boostProvider_;
+    std::function<unsigned long()> boostProvider;
     RemoteDeviceCoordinator* rdc = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
 
@@ -207,7 +212,10 @@ private:
     void initialize();
     /** @return the seqId the frame went out under. */
     uint8_t sendCommand(const uint8_t* mac, int command, const char* matchId, long drawTime,
-                        bool isHunter);
+                        unsigned long boostMs, bool isHunter);
+    // The slot's raw draw time minus its player's posse boost; below zero when
+    // the boost is the larger. Needs an active match.
+    long getEffectiveDrawTime(bool hunterSlot) const;
     /** Appends a match to the binary ring buffer and increments the sequence number. */
     bool appendMatchToStorage(const Match* match);
 
