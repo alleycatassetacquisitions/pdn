@@ -448,16 +448,18 @@ private:
 class ShootoutFinalStandings : public TypedState<PDN> {
 public:
     explicit ShootoutFinalStandings(const GameContext& ctx);
+    /** Drops the ring-membership handler if destroyed while mounted, since it holds `this`. */
+    ~ShootoutFinalStandings() override;
     void onStateMounted(PDN* pdn) override;
-    void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
 
-    bool transitionToSleep();
+    /** True once this device is no longer in the ring. */
+    bool transitionToSleep() const;
 
 private:
     ShootoutManager* shootout_;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
-    bool shouldGoToSleep_ = false;
+    bool transitionToSleepState = false;
 };
 
 class ShootoutAborted : public TypedState<PDN> {

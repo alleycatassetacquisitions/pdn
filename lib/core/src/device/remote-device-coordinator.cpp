@@ -619,10 +619,16 @@ void RemoteDeviceCoordinator::unpackMac(uint64_t value, uint8_t* out) {
 }
 
 void RemoteDeviceCoordinator::publishHelloState() {
+    const bool inRing = isInRing();
     uint64_t snapshot = MacToUInt64(chainHeadMac.data()) & HEAD_MAC_MASK;
     if (chainHeadConfirmed) snapshot |= CONFIRMED_BIT;
-    if (isInRing()) snapshot |= RING_CLOSED_BIT;
+    if (inRing) snapshot |= RING_CLOSED_BIT;
     publishedHelloState.store(snapshot);
+    // Every isInRing() input writer republishes here; recorded before firing so a republishing
+    // handler cannot report one flip twice.
+    if (inRing == lastInRing) return;
+    lastInRing = inRing;
+    fireRingMembershipChange(inRing);
 }
 
 bool RemoteDeviceCoordinator::isInRing() const {
