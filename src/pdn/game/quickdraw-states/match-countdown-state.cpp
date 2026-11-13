@@ -7,7 +7,7 @@
 #include "device/drivers/logger.hpp"
 
 MatchCountdown::MatchCountdown(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, MATCH_COUNTDOWN)
+    : TypedState<PDN>(MATCH_COUNTDOWN)
     , player(ctx.player)
     , matchManager(ctx.matchManager)
     , posseManager(ctx.posseManager) {}
@@ -100,7 +100,3 @@ void MatchCountdown::onStateDismounted(PDN* pdn) {
 }
 
 bool MatchCountdown::shallWeBattle() const { return doBattle; }
-
-bool MatchCountdown::isPrimaryRequired() { return player->isHunter(); }
-
-bool MatchCountdown::isAuxRequired() { return !player->isHunter(); }

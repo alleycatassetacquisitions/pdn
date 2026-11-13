@@ -1472,18 +1472,13 @@ inline void cleanupMatchStateInvalidatesTimer(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
 
-    // Player is hunter, so OUTPUT_JACK must be connected for isConnected() to return true.
-    // Without this, onStateLoop would transition to idle due to disconnection, not the timer.
-    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
-        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-
     MatchState matchState(suite->ctx);
 
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    mountState(&matchState, &suite->device);
+    matchState.onStateMounted(&suite->device);
 
     // Advance time but not enough to timeout
     suite->fakeClock->advance(2000);
@@ -1493,7 +1488,7 @@ inline void cleanupMatchStateInvalidatesTimer(StateCleanupTests* suite) {
     EXPECT_FALSE(matchState.transitionToIdle());
 
     // Dismount (timer should be invalidated)
-    dismountState(&matchState, &suite->device);
+    matchState.onStateDismounted(&suite->device);
 
     // Transition flags should be reset
     EXPECT_FALSE(matchState.transitionToIdle());
@@ -1501,30 +1496,24 @@ inline void cleanupMatchStateInvalidatesTimer(StateCleanupTests* suite) {
     EXPECT_FALSE(matchState.transitionToMatchReceivedResult());
 }
 
-// The jack edge reaches a mounted MatchState: it stays in the draw window while
-// cabled and leaves on the tick after the cable comes out.
-inline void matchStateLeavesOnTheDisconnectEdge(StateCleanupTests* suite) {
+// The draw window's own loop does not read the cable; the app's abandon edge does.
+inline void matchStateLoopIgnoresTheCable(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
-    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
-    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
     .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
     .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
+    // The fixture's cable is out throughout.
     MatchState matchState(suite->ctx);
-    mountState(&matchState, &suite->device);
+    matchState.onStateMounted(&suite->device);
     suite->fakeClock->advance(1000);
     matchState.onStateLoop(&suite->device);
-    ASSERT_FALSE(matchState.transitionToIdle()) << "left with the cable still in";
+    EXPECT_FALSE(matchState.transitionToIdle()) << "a disconnected tick ended the draw";
 
-    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    matchState.onStateLoop(&suite->device);
-    EXPECT_TRUE(matchState.transitionToIdle());
-
-    dismountState(&matchState, &suite->device);
+    matchState.onStateDismounted(&suite->device);
 }
 
 // Test: Countdown state invalidates timer on dismount
@@ -1661,7 +1650,7 @@ inline void pushedLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) 
 
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
 
-    // FakeRemoteDeviceCoordinator reports DISCONNECTED, so isConnected() == false
+    // The fixture's cable is out throughout.
     MatchPushed pushedState(suite->ctx);
     pushedState.onStateMounted(&suite->device);
     pushedState.onStateDismounted(&suite->device);
@@ -1670,10 +1659,11 @@ inline void pushedLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) 
         << "the state cleared a match the app had not finished with";
 }
 
-// A one-tick cable blip must not abort a match: in a shootout it orphans the
-// player and the spectators wait forever for a MATCH_RESULT.
-inline void expectDisconnectDebounce(StateCleanupTests* suite, ConnectState<PDN>& state) {
-    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+/**
+ * Mounts a MatchApp at its countdown on a primed match. The caller sets the
+ * cable first and dismounts after.
+ */
+inline void mountMatchApp(StateCleanupTests* suite, MatchApp& app) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
     .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
@@ -1684,134 +1674,167 @@ inline void expectDisconnectDebounce(StateCleanupTests* suite, ConnectState<PDN>
     .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    mountState(&state, &suite->device);
-
-    // Cabled for far longer than the window. A state that had not heard the
-    // connect would call this a persistent loss.
-    suite->fakeClock->advance(2000);
-    EXPECT_FALSE(matchReturnsToIdle(state, suite->ctx.shootoutManager));
-
-    // Single-tick blip: absorbed by the debounce.
-    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(matchReturnsToIdle(state, suite->ctx.shootoutManager));
-
-    // Recovery within the window closes it for good.
-    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    suite->fakeClock->advance(2000);
-    EXPECT_FALSE(matchReturnsToIdle(state, suite->ctx.shootoutManager));
-
-    // The window opens on the edge, not on the first tick that asks after it.
-    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    suite->fakeClock->advance(2000);
-    EXPECT_TRUE(matchReturnsToIdle(state, suite->ctx.shootoutManager));
-
-    dismountState(&state, &suite->device);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->matchManager->initializeMatch(dummyMac);
+    app.onStateMounted(&suite->device);
 }
 
-inline void countdownDebouncesTransientDisconnect(StateCleanupTests* suite) {
-    MatchCountdown countdown(suite->ctx);
-    expectDisconnectDebounce(suite, countdown);
-}
-
-// Same debounce contract on MatchPushed (between BATTLE press and result
-// arrival). A blip here threw away the match before the grace period could
-// resolve it.
-inline void matchPushedDebouncesTransientDisconnect(StateCleanupTests* suite) {
-    MatchPushed pushed(suite->ctx);
-    expectDisconnectDebounce(suite, pushed);
-}
-
-// Same debounce contract on MatchReceivedResult.
-inline void matchReceivedResultDebouncesTransientDisconnect(StateCleanupTests* suite) {
-    MatchReceivedResult received(suite->ctx);
-    expectDisconnectDebounce(suite, received);
-}
-
-// A window left open by one tenure must not be read by the next: the state
-// object outlives its mounts, and an old window would read as long expired.
-inline void disconnectWindowDoesNotCarryIntoTheNextTenure(StateCleanupTests* suite) {
+// A cable re-seated inside the window is forgotten; one out past it abandons.
+inline void matchAppAbandonsOnlyALastingDisconnect(StateCleanupTests* suite) {
     FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
-    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks())
-    .Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks())
-    .Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
-
-    MatchPushed pushed(suite->ctx);
     rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    mountState(&pushed, &suite->device);
-    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    ASSERT_FALSE(matchReturnsToIdle(pushed, suite->ctx.shootoutManager));
-    dismountState(&pushed, &suite->device);
+    MatchApp app(suite->ctx);
+    mountMatchApp(suite, app);
 
-    // Long after, mounted again with nothing cabled: the window starts over at
-    // this mount.
-    suite->fakeClock->advance(60000);
-    mountState(&pushed, &suite->device);
-    EXPECT_FALSE(matchReturnsToIdle(pushed, suite->ctx.shootoutManager));
+    // Cabled for far longer than the window.
     suite->fakeClock->advance(2000);
-    EXPECT_TRUE(matchReturnsToIdle(pushed, suite->ctx.shootoutManager));
+    EXPECT_FALSE(app.isMatchAbandoned());
 
-    dismountState(&pushed, &suite->device);
+    // A blip, re-seated inside the window, is forgotten.
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
+    EXPECT_FALSE(app.isMatchAbandoned());
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    suite->fakeClock->advance(2000);
+    EXPECT_FALSE(app.isMatchAbandoned());
+
+    // The window is measured from the edge, not from whichever tick next asks.
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
+    suite->fakeClock->advance(MatchApp::DISCONNECT_DEBOUNCE_MS - 1);
+    EXPECT_FALSE(app.isMatchAbandoned());
+    suite->fakeClock->advance(2);
+    EXPECT_TRUE(app.isMatchAbandoned());
+
+    app.onStateDismounted(&suite->device);
 }
 
-// Regression: while a shootout is live, matchReturnsToIdle must suppress the
-// idle-return AND reset the disconnect debounce. The debounce ages on wall
-// clock even when unsampled, so a run started before or during the tournament
-// would otherwise fire the instant the shootout ends; a fresh full window
-// must be required instead.
-inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* suite) {
-    ShootoutManager shootout(suite->player, suite->device.wirelessManager,
-                             &suite->device.fakeRemoteDeviceCoordinator, nullptr);
+// The window belongs to the match, not to whichever state is on screen.
+inline void matchAppDisconnectWindowSpansItsStates(StateCleanupTests* suite) {
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    MatchApp app(suite->ctx);
+    mountMatchApp(suite, app);
+    ASSERT_EQ(app.getCurrentState()->getStateId(), MATCH_COUNTDOWN);
+
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
+    suite->fakeClock->advance(300);
+    ASSERT_FALSE(app.isMatchAbandoned());
+
+    // Countdown hands over to the draw window with the cable still out.
+    ASSERT_TRUE(app.skipToState(&suite->device, 1));
+    ASSERT_EQ(app.getCurrentState()->getStateId(), MATCH);
+    suite->fakeClock->advance(300);
+    EXPECT_TRUE(app.isMatchAbandoned());
+
+    app.onStateDismounted(&suite->device);
+}
+
+// A cable that came out before the app mounted fired its edge at nobody.
+inline void matchAppMountedUncabledAbandonsAfterOneWindow(StateCleanupTests* suite) {
+    MatchApp app(suite->ctx);
+    mountMatchApp(suite, app);
+    EXPECT_FALSE(app.isMatchAbandoned());
+    suite->fakeClock->advance(MatchApp::DISCONNECT_DEBOUNCE_MS + 1);
+    EXPECT_TRUE(app.isMatchAbandoned());
+
+    app.onStateDismounted(&suite->device);
+}
+
+// An outage left over from one match must not be read by the next.
+inline void matchAppForgetsAnOutageBetweenMatches(StateCleanupTests* suite) {
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    MatchApp app(suite->ctx);
+    mountMatchApp(suite, app);
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
+    app.onStateDismounted(&suite->device);
+
+    suite->fakeClock->advance(60000);
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    mountMatchApp(suite, app);
+    EXPECT_FALSE(app.isMatchAbandoned());
+
+    app.onStateDismounted(&suite->device);
+}
+
+// A bounty's opponent is on its input jack; its output jack carries supporters.
+inline void matchAppWatchesTheJackItsRoleFaces(StateCleanupTests* suite) {
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    suite->player->setIsHunter(false);
+    rdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    MatchApp app(suite->ctx);
+    mountMatchApp(suite, app);
+
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
+    suite->fakeClock->advance(2000);
+    EXPECT_FALSE(app.isMatchAbandoned()) << "a supporter unplugging ended the match";
+
+    rdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::DISCONNECTED);
+    suite->fakeClock->advance(MatchApp::DISCONNECT_DEBOUNCE_MS + 1);
+    EXPECT_TRUE(app.isMatchAbandoned());
+
+    app.onStateDismounted(&suite->device);
+}
+
+// While a tournament is live a lost cable is the tournament's to deal with.
+inline void matchAppLeavesALostCableToTheTournament(StateCleanupTests* suite) {
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    ShootoutManager shootout(suite->player, suite->device.wirelessManager, &rdc, nullptr);
     shootout.startProposal();
     ASSERT_TRUE(shootout.active());
     suite->ctx.shootoutManager = &shootout;
 
-    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
-        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    MatchCountdown countdown(suite->ctx);
-    mountState(&countdown, &suite->device);
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    MatchApp app(suite->ctx);
+    mountMatchApp(suite, app);
 
-    // Persistent loss during the tournament: suppressed, and the debounce must
-    // not age even as wall-clock time passes.
-    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
-        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
     suite->fakeClock->advance(2000);
-    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    EXPECT_FALSE(app.isMatchAbandoned());
 
-    // Tournament ends. One tick does not bail; a fresh full window is still
-    // required.
-    shootout.resetToIdle();
-    ASSERT_FALSE(shootout.active());
-    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
-    suite->fakeClock->advance(2000);
-    EXPECT_TRUE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
-
-    // Ordering 2: the debounce starts BEFORE the tournament activates and
-    // expires on wall clock while it is live. Without the in-flight reset the
-    // first sample after the shootout ends snaps straight to Idle.
-    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
-        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
-    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
-        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
-    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));  // start debounce
-    suite->fakeClock->advance(2000);
-
-    shootout.startProposal();
-    ASSERT_TRUE(shootout.active());
-    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
-
-    shootout.resetToIdle();
-    ASSERT_FALSE(shootout.active());
-    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
-    suite->fakeClock->advance(2000);
-    EXPECT_TRUE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
-
-    dismountState(&countdown, &suite->device);
+    app.onStateDismounted(&suite->device);
     suite->ctx.shootoutManager = nullptr;
+}
+
+// Each of the four states of a live match carries the rule as an edge to Idle.
+inline void matchAppWiresTheRuleToEveryLiveMatchState(StateCleanupTests* suite) {
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    MatchApp app(suite->ctx);
+    mountMatchApp(suite, app);
+
+    // (state, position of its abandon edge), in registration order.
+    const std::vector<std::pair<int, size_t>> abandonEdges = {
+    {MATCH_COUNTDOWN, 2}, {MATCH, 1}, {MATCH_PUSHED, 1}, {MATCH_RECEIVED_RESULT, 1}};
+    for (size_t i = 0; i < abandonEdges.size(); i++) {
+        State* state = app.getStateMap()[i];
+        ASSERT_EQ(state->getStateId(), abandonEdges[i].first);
+        EXPECT_FALSE(state->getTransitions()[abandonEdges[i].second]->isConditionMet())
+        << "state " << abandonEdges[i].first << " abandons with the cable in";
+    }
+
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
+    suite->fakeClock->advance(MatchApp::DISCONNECT_DEBOUNCE_MS + 1);
+    for (size_t i = 0; i < abandonEdges.size(); i++) {
+        EXPECT_TRUE(
+        app.getStateMap()[i]->getTransitions()[abandonEdges[i].second]->isConditionMet())
+        << "state " << abandonEdges[i].first << " does not abandon a lost cable";
+    }
+
+    app.onStateDismounted(&suite->device);
+}
+
+// Device teardown deletes apps without dismounting them. The coordinator
+// outlives the app, so a handler left behind would run into freed memory; only
+// the ASan build can see that.
+inline void matchAppDeletedWhileMountedStopsWatching(StateCleanupTests* suite) {
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    MatchApp* app = new MatchApp(suite->ctx);
+    mountMatchApp(suite, *app);
+    delete app;
+
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
 }
 
 inline void receivedResultLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) {

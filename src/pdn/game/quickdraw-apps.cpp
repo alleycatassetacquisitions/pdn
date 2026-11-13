@@ -9,14 +9,6 @@ std::function<bool()> tournamentAbortedCondition(ShootoutManager* shootoutManage
         return shootoutManager && shootoutManager->getPhase() == ShootoutManager::Phase::ABORTED;
     };
 }
-
-// The abandoned-match rule the three interruptible match states share, in the same
-// shape as the abort rule above so neither can fork.
-std::function<bool()> matchAbandonedCondition(ConnectState<PDN>& matchState,
-                                              ShootoutManager* shootoutManager) {
-    return
-    [&matchState, shootoutManager]() { return matchReturnsToIdle(matchState, shootoutManager); };
-}
 }  // namespace
 
 HubApp::HubApp(const GameContext& context)
@@ -77,10 +69,48 @@ MatchApp::MatchApp(const GameContext& context)
     : StateMachine(MATCH_APP_ID)
     , context(context) {}
 
+MatchApp::~MatchApp() { stopWatchingOpponentJack(); }
+
+void MatchApp::onStateMounted(Device* device) {
+    RemoteDeviceCoordinator* remoteDeviceCoordinator = context.remoteDeviceCoordinator;
+    // By standing role, not the match's draw slot: it is a fact of where this
+    // device sits, tournament match or not.
+    const SerialIdentifier opponentJack = context.posseManager->opponentJack();
+    remoteDeviceCoordinator->setOnJackChange(
+    [this, opponentJack](SerialIdentifier jack, bool connected) {
+        if (jack != opponentJack) return;
+        if (connected) {
+            disconnectTimer.invalidate();
+        } else {
+            disconnectTimer.setTimer(DISCONNECT_DEBOUNCE_MS);
+        }
+    },
+    this);
+    watchingOpponentJack = true;
+    // A cable that came out before this mount fired its edge at nobody.
+    if (remoteDeviceCoordinator->getJackStatus(opponentJack) != JackStatus::CONNECTED) {
+        disconnectTimer.setTimer(DISCONNECT_DEBOUNCE_MS);
+    }
+    StateMachine::onStateMounted(device);
+}
+
 void MatchApp::onStateDismounted(Device* device) {
     StateMachine::onStateDismounted(device);
+    stopWatchingOpponentJack();
     device->getHaptics()->off();
     context.matchManager->clearCurrentMatch();
+}
+
+void MatchApp::stopWatchingOpponentJack() {
+    if (!watchingOpponentJack) return;
+    context.remoteDeviceCoordinator->setOnJackChange(nullptr, this);
+    watchingOpponentJack = false;
+    disconnectTimer.invalidate();
+}
+
+bool MatchApp::isMatchAbandoned() {
+    const bool tournamentActive = context.shootoutManager && context.shootoutManager->active();
+    return !tournamentActive && disconnectTimer.expired();
 }
 
 void MatchApp::populateStateMap() {
@@ -95,6 +125,7 @@ void MatchApp::populateStateMap() {
     ShootoutManager* shootoutManager = context.shootoutManager;
 
     std::function<bool()> phaseIsAborted = tournamentAbortedCondition(shootoutManager);
+    std::function<bool()> matchAbandoned = [this]() { return isMatchAbandoned(); };
 
     matchCountdown->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID),
                                      StateId(SHOOTOUT_ABORTED));
@@ -102,11 +133,12 @@ void MatchApp::populateStateMap() {
     matchCountdown->addTransition([matchCountdown]() { return matchCountdown->shallWeBattle(); },
                                   matchState);
 
-    matchCountdown->addAppTransition(matchAbandonedCondition(*matchCountdown, shootoutManager),
-                                     StateId(HUB_APP_ID), StateId(IDLE));
+    matchCountdown->addAppTransition(matchAbandoned, StateId(HUB_APP_ID), StateId(IDLE));
 
     matchState->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID),
                                  StateId(SHOOTOUT_ABORTED));
+
+    matchState->addAppTransition(matchAbandoned, StateId(HUB_APP_ID), StateId(IDLE));
 
     matchState->addAppTransition(
     [matchState]() { return matchState->transitionToShootoutSpectator(); },
@@ -128,8 +160,7 @@ void MatchApp::populateStateMap() {
     matchPushed->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID),
                                   StateId(SHOOTOUT_ABORTED));
 
-    matchPushed->addAppTransition(matchAbandonedCondition(*matchPushed, shootoutManager),
-                                  StateId(HUB_APP_ID), StateId(IDLE));
+    matchPushed->addAppTransition(matchAbandoned, StateId(HUB_APP_ID), StateId(IDLE));
 
     matchPushed->addTransition([matchPushed]() { return matchPushed->transitionToMatchResult(); },
                                matchResult);
@@ -137,9 +168,7 @@ void MatchApp::populateStateMap() {
     matchReceivedResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID),
                                           StateId(SHOOTOUT_ABORTED));
 
-    matchReceivedResult->addAppTransition(
-    matchAbandonedCondition(*matchReceivedResult, shootoutManager), StateId(HUB_APP_ID),
-    StateId(IDLE));
+    matchReceivedResult->addAppTransition(matchAbandoned, StateId(HUB_APP_ID), StateId(IDLE));
 
     matchReceivedResult->addTransition(
     [matchReceivedResult]() { return matchReceivedResult->transitionToMatchResult(); },

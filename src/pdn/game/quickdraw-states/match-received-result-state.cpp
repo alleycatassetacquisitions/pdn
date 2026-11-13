@@ -7,13 +7,11 @@
 #define MATCH_RECEIVED_RESULT_TAG "MATCH_RECEIVED_RESULT"
 
 MatchReceivedResult::MatchReceivedResult(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, MATCH_RECEIVED_RESULT)
-    , player(ctx.player)
+    : TypedState<PDN>(MATCH_RECEIVED_RESULT)
     , matchManager(ctx.matchManager) {}
 
 MatchReceivedResult::~MatchReceivedResult() {
     LOG_I(MATCH_RECEIVED_RESULT_TAG, "Match received result state destroyed");
-    this->player = nullptr;
     this->matchManager = nullptr;
 }
 
@@ -62,7 +60,3 @@ void MatchReceivedResult::onStateDismounted(PDN* pdn) {
 bool MatchReceivedResult::transitionToMatchResult() {
     return matchManager->matchResultsAreIn() || transitionToMatchResultState;
 }
-
-bool MatchReceivedResult::isPrimaryRequired() { return player->isHunter(); }
-
-bool MatchReceivedResult::isAuxRequired() { return !player->isHunter(); }

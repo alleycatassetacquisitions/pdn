@@ -36,17 +36,26 @@ private:
  * and from the shootout's bracket reveal or spectator for a tournament match.
  * Leaves to the hub's Idle on an abandoned match, to the hub's Sleep from Win
  * or Lose, and to the shootout on abort or a bracket outcome.
+ *
+ * The app, not its states, watches the opponent's cable: a match is abandoned
+ * when that cable has been out for one debounce window, however many of the
+ * states the outage spans.
  */
 class MatchApp : public StateMachine {
 public:
     /** Non-owning: the context's managers belong to the GameSession above it. */
     explicit MatchApp(const GameContext& context);
+    /** Drops the jack registration a mounted app holds on the coordinator. */
+    ~MatchApp() override;
 
     /**
      * Allocates the match states and wires every edge leaving one, cross-app
      * edges included, in the priority order checkTransitions walks.
      */
     void populateStateMap() override;
+
+    /** Starts watching the opponent's cable, then mounts the entry state. */
+    void onStateMounted(Device* device) override;
 
     /**
      * Ends the match. Runs only when the device leaves the match app entirely, which
@@ -55,8 +64,26 @@ public:
      */
     void onStateDismounted(Device* device) override;
 
+    /**
+     * True when the opponent's jack has been reported disconnected for the
+     * whole debounce window and no tournament is running. A tournament ends
+     * its own matches, through its ring-break abort.
+     */
+    bool isMatchAbandoned();
+
+    /**
+     * How long the opponent's jack may be reported disconnected before the
+     * match is abandoned. A nudged cable flickers for less.
+     */
+    static constexpr unsigned long DISCONNECT_DEBOUNCE_MS = 500;
+
 private:
+    void stopWatchingOpponentJack();
+
     GameContext context;
+    // Runs while the opponent's jack is disconnected.
+    SimpleTimer disconnectTimer;
+    bool watchingOpponentJack = false;
 };
 
 /**
