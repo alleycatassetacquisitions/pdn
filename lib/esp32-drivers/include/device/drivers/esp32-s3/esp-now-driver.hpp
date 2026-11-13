@@ -249,7 +249,9 @@ public:
 
     /**
      * Queues the frame and offers it to the radio; a frame behind a busy slot
-     * waits for a later exec().
+     * waits for a later exec(). Returns -1 without queuing when the radio is
+     * down, the payload is oversize, SEND_QUEUE_MAX_FRAMES frames are already
+     * waiting, or allocation fails.
      */
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
         // Refused rather than queued while the radio is down. A queued frame
@@ -265,11 +267,23 @@ public:
             return -1;
         }
 
+        // Checked and pushed in one critical section so the bound holds even for
+        // a caller off the main loop; the check precedes the allocation so a full
+        // queue costs nothing.
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        if (sendQueue.size() >= SEND_QUEUE_MAX_FRAMES) {
+            xSemaphoreGive(sendMutex);
+            LOG_W("ENC", "ESP-NOW: Send queue full (%u frames), refusing send\n",
+                  static_cast<unsigned>(SEND_QUEUE_MAX_FRAMES));
+            return -1;
+        }
+
         // One frame carries the whole payload (ESP-NOW v2.0). Build header +
         // data in a single buffer and queue it.
         uint8_t* buf = static_cast<uint8_t*>(
             heap_caps_malloc(sizeof(DataPktHdr) + length, MALLOC_CAP_SPIRAM));
         if (!buf) {
+            xSemaphoreGive(sendMutex);
             LOG_E("ENC", "Failed to allocate %lu byte buffer for ESP-NOW send\n",
                   sizeof(DataPktHdr) + length);
             return -1;
@@ -284,7 +298,6 @@ public:
         buffer.ptr = buf;
         buffer.len = sizeof(DataPktHdr) + length;
 
-        xSemaphoreTake(sendMutex, portMAX_DELAY);
         sendQueue.push(buffer);
         xSemaphoreGive(sendMutex);
 
@@ -772,6 +785,9 @@ private:
     // the main loop could reach, so the queue takes a lock even though every
     // caller today is on it.
     std::queue<DataSendBuffer> sendQueue;
+    // Room for one unicast to every peer-table slot plus a tick's other traffic;
+    // an estimate, the spec gives no number.
+    static constexpr size_t SEND_QUEUE_MAX_FRAMES = ESP_NOW_MAX_TOTAL_PEER_NUM + 12;
 
     // Storage for rssi, filled from each ESP-NOW receive callback (rx_ctrl).
     // Written on the WiFi task and read from the main loop, so it shares
