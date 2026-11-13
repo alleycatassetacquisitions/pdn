@@ -1795,6 +1795,15 @@ TEST_F(RDCHelloTests, headChangeDropsConfirmedAndReannounces) {
 TEST_F(RDCHelloTests, headBuildsAndPrunesRoster) {
     rdcHeadBuildsAndPrunesRoster(this);
 }
+TEST_F(RDCHelloTests, upstreamContextOnAHeldLinkReannouncesToHead) {
+    rdcUpstreamContextOnAHeldLinkReannouncesToHead(this);
+}
+TEST_F(RDCHelloTests, reportFromAFormerUpstreamLeavesTheMemberAlone) {
+    rdcReportFromAFormerUpstreamLeavesTheMemberAlone(this);
+}
+TEST_F(RDCHelloTests, reportNamingAnUnannouncedMemberPrunesItsDescendants) {
+    rdcReportNamingAnUnannouncedMemberPrunesItsDescendants(this);
+}
 TEST_F(RDCHelloTests, childReportsDownstreamLossToHead) {
     rdcChildReportsDownstreamLossToHead(this);
 }

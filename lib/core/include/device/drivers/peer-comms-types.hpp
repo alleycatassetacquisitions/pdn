@@ -169,9 +169,12 @@ struct ConnectionAnnouncePayload {
 
 // Sent to the head by the upstream neighbour of a departed member — the only
 // node that observes the HELLO timeout of a non-adjacent (to the head) link.
+// upstreamMac is that original reporter, kept across forwards, so the head can
+// reject a report about a link the member has since left.
 struct DisconnectReportPayload {
     uint8_t seqId;
     uint8_t disconnectedMac[6];
+    uint8_t upstreamMac[6];
 } __attribute__((packed));
 
 // Sent once by a demoted head to its successor; the only place a member list
