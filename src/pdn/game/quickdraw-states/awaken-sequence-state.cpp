@@ -8,7 +8,6 @@ AwakenSequence::AwakenSequence(const GameContext& ctx)
 
 void AwakenSequence::onStateMounted(PDN* pdn) {
     activationSequenceTimer.setTimer(activationStepDuration);
-    activateMotor = true;
     pdn->getHaptics()->setIntensity(125);
 
     pdn->getDisplay()
@@ -19,20 +18,13 @@ void AwakenSequence::onStateMounted(PDN* pdn) {
 }
 
 void AwakenSequence::onStateLoop(PDN* pdn) {
+    // No step past the last: transitionToIdle holds as soon as the count
+    // reaches the threshold, and leaving turns the motor off.
     if (activationSequenceTimer.expired()) {
-        if (activateMotorCount <= AWAKEN_THRESHOLD) {
-            if (activateMotor) {
-                pdn->getHaptics()->setIntensity(VIBRATION_MAX);
-            } else {
-                pdn->getHaptics()->setIntensity(VIBRATION_OFF);
-            }
-
-            activationSequenceTimer.setTimer(activationStepDuration);
-            activateMotorCount++;
-            activateMotor = !activateMotor;
-        } else {
-            pdn->getHaptics()->setIntensity(VIBRATION_OFF);
-        }
+        pdn->getHaptics()->setIntensity(activateMotorCount % 2 == 0 ? VIBRATION_MAX
+                                                                    : VIBRATION_OFF);
+        activationSequenceTimer.setTimer(activationStepDuration);
+        activateMotorCount++;
     }
 }
 
@@ -40,7 +32,6 @@ void AwakenSequence::onStateDismounted(PDN* pdn) {
     activationSequenceTimer.invalidate();
     pdn->getHaptics()->setIntensity(VIBRATION_OFF);
     activateMotorCount = 0;
-    activateMotor = false;
 }
 
-bool AwakenSequence::transitionToIdle() { return activateMotorCount > AWAKEN_THRESHOLD; }
+bool AwakenSequence::transitionToIdle() const { return activateMotorCount >= AWAKEN_THRESHOLD; }

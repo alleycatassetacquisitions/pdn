@@ -737,6 +737,10 @@ void ShootoutManager::onMatchResultReceived(
     // and a unicast takes a slot in the radio's 20-entry peer table, evicting
     // whatever sat there longest.
     if (!containsMac(bracket, fromMac)) return;
+    // A result names a match, and none has started during the bracket reveal.
+    // Ignored without an ack, so the sender keeps retrying. The bracket check
+    // above already turns away every phase that has no bracket.
+    if (phase == Phase::BRACKET_REVEAL) return;
     // Always ack so the sender stops retrying, even when this is a duplicate.
     matchResultChannel.ack(fromMac, seqId);
     if (!containsMac(bracket, winner) || !containsMac(bracket, loser)) {
@@ -751,8 +755,7 @@ void ShootoutManager::onMatchResultReceived(
     LOG_W(TAG, "onMatchResultReceived matchIndex=%u", matchIndex);
     // Late sender retries for an older match still record the elimination but
     // must not end the current match.
-    const bool namesCurrentMatch =
-        currentMatchIndex < 0 || static_cast<int>(matchIndex) == currentMatchIndex;
+    const bool namesCurrentMatch = static_cast<int>(matchIndex) == currentMatchIndex;
     applyMatchResult(winner, loser, namesCurrentMatch);
 }
 

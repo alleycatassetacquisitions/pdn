@@ -236,6 +236,35 @@ inline void eliminatedLeavesForTheStandingsWhenTheTournamentEnds(ShootoutManager
     state.onStateDismounted(&suite->device);
 }
 
+// Before the first match starts nothing has been played, so a result that turns
+// up then is a stray. It is neither applied nor acknowledged.
+inline void resultBeforeTheFirstMatchStartsIsIgnored(ShootoutManagerTests* suite) {
+    FollowerInBracket follower(suite);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, PktType::kReliableAck, ackFor(PktType::kShootoutMatchResult),
+                         sizeof(ReliableAckPayload)))
+    .Times(0);
+
+    suite->shootout->onMatchResultReceived(follower.playerA.data(), follower.playerB.data(), 0, 7,
+                                           follower.playerA.data());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    EXPECT_FALSE(suite->shootout->isEliminated(follower.playerB.data()));
+    testing::Mock::VerifyAndClearExpectations(suite->device.mockPeerComms);
+
+    // The same result is taken once the match it names has started.
+    suite->shootout->onMatchStartReceived(follower.coord.data(), follower.playerA.data(),
+                                          follower.playerB.data(), 0, 2);
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, PktType::kReliableAck, ackFor(PktType::kShootoutMatchResult),
+                         sizeof(ReliableAckPayload)))
+    .Times(1)
+    .WillOnce(testing::Return(1));
+    suite->shootout->onMatchResultReceived(follower.playerA.data(), follower.playerB.data(), 0, 7,
+                                           follower.playerA.data());
+    EXPECT_TRUE(suite->shootout->isEliminated(follower.playerB.data()));
+}
+
 /**
  * This device as coordinator of a four-member tournament, watching match 0
  * through a mounted spectator, with every screen render counted.

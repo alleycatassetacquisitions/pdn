@@ -336,6 +336,32 @@ inline void idleStartsNoMatchWhileATournamentIsLive(IdleStateTests* suite) {
     suite->ctx.shootoutManager = nullptr;
 }
 
+// The awaken buzz is twenty 100 ms steps alternating full and off, starting
+// full, and Idle follows the twentieth.
+inline void awakenSequenceRunsTwentySteps(IdleStateTests* suite) {
+    std::vector<int> intensities;
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_))
+    .WillRepeatedly(testing::Invoke([&intensities](int value) { intensities.push_back(value); }));
+    AwakenSequence awaken(suite->ctx);
+    awaken.onStateMounted(&suite->device);
+    intensities.clear();
+
+    for (int step = 1; step <= 20; step++) {
+        EXPECT_FALSE(awaken.transitionToIdle()) << "left for Idle after " << (step - 1) << " steps";
+        // SimpleTimer expires strictly after its duration.
+        suite->fakeClock->advance(101);
+        awaken.onStateLoop(&suite->device);
+    }
+    EXPECT_TRUE(awaken.transitionToIdle());
+    ASSERT_EQ(intensities.size(), 20u);
+    for (size_t step = 0; step < intensities.size(); step++) {
+        EXPECT_EQ(intensities[step], step % 2 == 0 ? VIBRATION_MAX : VIBRATION_OFF)
+        << "step " << step;
+    }
+
+    awaken.onStateDismounted(&suite->device);
+}
+
 // ============================================
 // Countdown State Tests
 // ============================================

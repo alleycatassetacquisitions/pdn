@@ -2165,12 +2165,16 @@ inline void admittedFrameWithBadContentIsStillAcked(ShootoutManagerTests* suite)
 
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(testing::_, PktType::kReliableAck, testing::_, testing::_))
-    .Times(3)
+    .Times(4)
     .WillRepeatedly(testing::Return(1));
 
     suite->shootout->onMatchStartReceived(coord.data(), me.data(), stranger.data(), 0, 2);
     EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), -1)
         << "a pair naming a device outside the bracket started a match";
+
+    // A result is only admitted once match play has begun, so start a real one.
+    suite->shootout->onMatchStartReceived(coord.data(), me.data(), other.data(), 0, 5);
+    ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), 0);
 
     suite->shootout->onMatchResultReceived(stranger.data(), other.data(), 0, 3, coord.data());
     EXPECT_FALSE(suite->shootout->isEliminated(other.data()))

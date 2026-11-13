@@ -75,13 +75,13 @@ public:
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    bool transitionToIdle();
+    /** True once the last of the AWAKEN_THRESHOLD steps has run. */
+    bool transitionToIdle() const;
 
 private:
     static constexpr int AWAKEN_THRESHOLD = 20;
     SimpleTimer activationSequenceTimer;
     int activateMotorCount = 0;
-    bool activateMotor = false;
     const int activationStepDuration = 100;
     Player* player = nullptr;
 };

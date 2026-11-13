@@ -1275,6 +1275,7 @@ TEST_F(IdleStateTests, dismountClearsUnreadyMatch) {
 TEST_F(IdleStateTests, startsNoMatchWhileATournamentIsLive) {
     idleStartsNoMatchWhileATournamentIsLive(this);
 }
+TEST_F(IdleStateTests, awakenSequenceRunsTwentySteps) { awakenSequenceRunsTwentySteps(this); }
 
 // ============================================
 // QUICKDRAW STATE TESTS - COUNTDOWN
@@ -2253,6 +2254,9 @@ TEST_F(ShootoutManagerTests, spectatorIsCalledUpByAMatchStartedOverAnUnresolvedO
 }
 TEST_F(ShootoutManagerTests, eliminatedLeavesForTheStandingsWhenTheTournamentEnds) {
     eliminatedLeavesForTheStandingsWhenTheTournamentEnds(this);
+}
+TEST_F(ShootoutManagerTests, resultBeforeTheFirstMatchStartsIsIgnored) {
+    resultBeforeTheFirstMatchStartsIsIgnored(this);
 }
 TEST_F(ShootoutManagerTests, spectatorRepaintsOnceWhenTheNextMatchStarts) {
     spectatorRepaintsOnceWhenTheNextMatchStarts(this);
