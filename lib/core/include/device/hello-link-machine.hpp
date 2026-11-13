@@ -21,7 +21,6 @@
 // inputs and read by the transition predicates.
 
 enum HelloLinkStateId {
-    HELLO_LINK_MACHINE = 89,
     HELLO_LINK_IDLE = 90,
     HELLO_LINK_CONNECTING = 91,
     HELLO_LINK_CONNECTED = 92,
@@ -143,7 +142,7 @@ private:
 class HelloLinkMachine : public StateMachine {
 public:
     explicit HelloLinkMachine(HelloLinkContext context)
-        : StateMachine(HELLO_LINK_MACHINE), context(std::move(context)) {}
+        : context(std::move(context)) {}
 
     void populateStateMap() override {
         auto* idle = new HelloIdleState(&context);

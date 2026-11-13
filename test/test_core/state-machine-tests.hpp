@@ -192,10 +192,6 @@ public:
 
 class TestStateMachine : public StateMachine {
 public:
-
-    TestStateMachine() : StateMachine(0) {
-    }
-
     ~TestStateMachine() {
     }
 

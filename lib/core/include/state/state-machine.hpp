@@ -14,8 +14,8 @@
  *
  * The basic control flow for a StateMachine looks like this:
  *
- * StateMachine initialized -> populates the state map, sets the current state and invokes
- * the first state's onStateMounted method.
+ * StateMachine mounted (onStateMounted) -> populates the state map on first mount, sets
+ * the current state and invokes the first state's onStateMounted method.
  *
  * The device's loop() drives the active app's onStateLoop on every pass of the
  * main loop.
@@ -44,12 +44,6 @@
 
 class StateMachine {
 public:
-    /**
-     * @param stateId This app's id, the same value as its AppConfig key.
-     */
-    explicit StateMachine(int stateId)
-        : appId(stateId) {}
-
     /** Frees every state registered in the state map. */
     virtual ~StateMachine() {
         for (State* state : stateMap) {
@@ -57,23 +51,12 @@ public:
         }
     };
 
-    void initialize(Device *PDN) {
-        // Populate once: onStateMounted lands here on every swap back to this
-        // app, and a second populateStateMap would append a duplicate state set
-        // that is never mounted.
-        if (stateMap.empty()) {
-            populateStateMap();
-        }
-        currentState = findEntryState();
-        asLifecycle(currentState)->mount(PDN);
-    }
-
     /**
      * The state the next mount enters at, or unset for the boot state. Both paths
      * on Device write it before mounting — setActiveApp from the app transition
      * that named one, loadAppConfig with unset — so neither inherits an earlier
      * mount's value. A StateMachine driven outside an AppConfig never writes it at
-     * all (HelloLinkMachine calls initialize() directly), and rides the unset
+     * all (HelloLinkMachine calls onStateMounted() directly), and rides the unset
      * default, so that default is load-bearing and not redundant.
      */
     void setEntryState(StateId stateId) {
@@ -131,7 +114,16 @@ public:
     }
 
     /** Mounts this app, populating its state map on first launch. */
-    virtual void onStateMounted(Device* pdn) { initialize(pdn); }
+    virtual void onStateMounted(Device* pdn) {
+        // Populate once: onStateMounted lands here on every swap back to this
+        // app, and a second populateStateMap would append a duplicate state set
+        // that is never mounted.
+        if (stateMap.empty()) {
+            populateStateMap();
+        }
+        currentState = findEntryState();
+        asLifecycle(currentState)->mount(pdn);
+    }
 
     /** Steps the mounted state, then follows whichever of its edges holds. */
     virtual void onStateLoop(Device* pdn) {
@@ -192,11 +184,9 @@ private:
                 return state;
             }
         }
-        LOG_E("StateMachine", "app %d has no state %d; entering boot state", appId.id,
-              entryStateId.id);
+        LOG_E("StateMachine", "no state %d in this app; entering boot state", entryStateId.id);
         return stateMap[0];
     }
 
-    StateId appId;
     StateId entryStateId = StateId(-1);
 };
