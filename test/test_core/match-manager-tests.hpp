@@ -6,6 +6,7 @@
 #include "device/drivers/native/native-prefs-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
+#include "game/shootout-manager.hpp"
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
 
@@ -586,6 +587,39 @@ inline void matchManagerBountyIgnoresDeliveryOfAnotherFrame(MatchManagerTestSuit
 
     suite->radioTap.confirmSend(suite->radioTap.sentFrames[1]);
     EXPECT_TRUE(suite->matchManager->isMatchReady());
+}
+
+// One match at a time. An initiation that arrives during a match gets nothing
+// back, not even the role-mismatch a same-role sender would otherwise be owed.
+inline void matchManagerIgnoresAnInitiationDuringAMatch(MatchManagerTestSuite* suite) {
+    suite->setupMatchAsHunter();
+    const size_t sentBefore = suite->radioTap.sentFrames.size();
+
+    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    MatchCommand second(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-xyz", 0, true);
+    suite->matchManager->listenForMatchEvents(second);
+
+    EXPECT_EQ(suite->radioTap.sentFrames.size(), sentBefore)
+    << "answered an initiation while already in a match";
+}
+
+// A tournament pairs its own players.
+inline void matchManagerIgnoresAnInitiationDuringATournament(MatchManagerTestSuite* suite) {
+    suite->player->setIsHunter(false);
+    ShootoutManager shootout(suite->player, suite->device.wirelessManager, &suite->fakeRdc,
+                             suite->matchManager);
+    shootout.startProposal();
+    ASSERT_TRUE(shootout.active());
+
+    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    MatchCommand cmd(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", 0, true);
+    suite->matchManager->listenForMatchEvents(cmd);
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+
+    // And accepted again once the tournament is over.
+    shootout.resetToIdle();
+    suite->matchManager->listenForMatchEvents(cmd);
+    EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value());
 }
 
 // No delivery report ever came, so the hunter may never have heard the ack.

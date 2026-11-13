@@ -970,6 +970,14 @@ TEST_F(MatchManagerTestSuite, bountyIgnoresDeliveryOfAnotherFrame) {
     matchManagerBountyIgnoresDeliveryOfAnotherFrame(this);
 }
 
+TEST_F(MatchManagerTestSuite, ignoresAnInitiationDuringAMatch) {
+    matchManagerIgnoresAnInitiationDuringAMatch(this);
+}
+
+TEST_F(MatchManagerTestSuite, ignoresAnInitiationDuringATournament) {
+    matchManagerIgnoresAnInitiationDuringATournament(this);
+}
+
 TEST_F(MatchManagerTestSuite, bountyDropsTheMatchWhenItsAckIsAbandoned) {
     matchManagerBountyDropsTheMatchWhenItsAckIsAbandoned(this);
 }

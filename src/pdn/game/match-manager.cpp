@@ -79,9 +79,7 @@ void MatchManager::setBoostProvider(std::function<unsigned long()> provider) {
     boostProvider = std::move(provider);
 }
 
-void MatchManager::setShootoutManager(ShootoutManager* shootoutManager) {
-    shootoutManager_ = shootoutManager;
-}
+void MatchManager::setShootoutManager(ShootoutManager* manager) { shootoutManager = manager; }
 
 bool MatchManager::currentMatchIsShootout() const {
     return activeMatchState.match.has_value() &&
@@ -164,10 +162,6 @@ void MatchManager::initializeShootoutMatch(const char* matchId, uint8_t* opponen
 void MatchManager::receiveMatch(const char* matchId, bool opponentIsHunter, uint8_t* opponentMac,
                                 const UUIDBytes& opponentPlayerUuid,
                                 const UUIDBytes& opponentTeamUuid) {
-    if (activeMatchState.match.has_value()) {
-        return;
-    }
-
     primeMatch(matchId, opponentMac, player->isHunter());
     setOpponentIdentity(opponentIsHunter, opponentPlayerUuid, opponentTeamUuid);
 
@@ -547,9 +541,12 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
     LOG_I(MATCH_MANAGER_TAG, "Received command: %d", command.command);
 
     if (command.command == MatchCmd::SEND_MATCH_ID) {
+        LOG_I(MATCH_MANAGER_TAG, "Received SEND_MATCH_ID command from opponent");
+        // One match at a time, and a tournament pairs its own players.
+        if (activeMatchState.match.has_value()) return;
+        if (shootoutManager && shootoutManager->active()) return;
         // Gate on RDC peering — no active match exists yet, so the sender
         // must be authenticated via the cable-established direct peer.
-        LOG_I(MATCH_MANAGER_TAG, "Received SEND_MATCH_ID command from opponent");
         if (!rdc || !rdc->isDirectPeer(command.wifiMacAddr)) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
             return;
@@ -559,17 +556,14 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: self playerUuid");
             return;
         }
-        bool shootoutActive = shootoutManager_ && shootoutManager_->active();
-        if(!shootoutActive && player->isHunter() == command.isHunter) {
+        if (player->isHunter() == command.isHunter) {
             // Echo the sender's matchId/MAC: activeMatchState.match is still empty.
             sendCommand(command.wifiMacAddr, MatchCmd::MATCH_ROLE_MISMATCH, command.matchId, 0, 0,
                         player->isHunter());
             return;
-        } else {
-            receiveMatch(command.matchId, command.isHunter,
-                         const_cast<uint8_t*>(command.wifiMacAddr), command.playerUuid,
-                         command.teamUuid);
         }
+        receiveMatch(command.matchId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr),
+                     command.playerUuid, command.teamUuid);
     } else if (command.command == MatchCmd::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
