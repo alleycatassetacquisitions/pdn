@@ -12,11 +12,6 @@ Lose::Lose(const GameContext& ctx)
     , matchManager(ctx.matchManager) {
 }
 
-Lose::~Lose() {
-    player = nullptr;
-    matchManager = nullptr;
-}
-
 void Lose::onStateMounted(PDN* pdn) {
     posseManager->sendGameEventToSupporters(ChainGameEventType::LOSS);
 

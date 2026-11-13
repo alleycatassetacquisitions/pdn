@@ -14,8 +14,6 @@ public:
     /** @p firmwareUpdateManager may be null to skip the hold-to-update state. */
     PlayerFetchApp(WirelessManager* wirelessManager, FirmwareUpdateManager* firmwareUpdateManager,
                    PlayerProvider* playerProvider);
-    /** @copydoc StateMachine::~StateMachine */
-    ~PlayerFetchApp() override;
 
     /** Registers PlayerFetch states and transitions. */
     void populateStateMap() override;

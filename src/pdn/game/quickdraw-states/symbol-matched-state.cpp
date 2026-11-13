@@ -12,10 +12,6 @@ SymbolMatched::SymbolMatched(const GameContext& ctx)
     this->symbolWirelessManager = ctx.symbolWirelessManager;
 }
 
-SymbolMatched::~SymbolMatched() {
-    this->player = nullptr;
-}
-
 void SymbolMatched::onStateMounted(PDN* pdn) {
     LOG_W(TAG, "mounted");
     transitionToSymbolState = false;

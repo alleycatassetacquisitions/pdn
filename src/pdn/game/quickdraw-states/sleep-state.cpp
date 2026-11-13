@@ -15,10 +15,6 @@ Sleep::Sleep(const GameContext& ctx)
     this->player = ctx.player;
 }
 
-Sleep::~Sleep() {
-    this->player = nullptr;
-}
-
 void Sleep::onStateMounted(PDN* pdn) {
     pdn->getDisplay()->
         invalidateScreen()->

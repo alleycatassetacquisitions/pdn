@@ -10,15 +10,13 @@
 #define TAG "SupporterReady"
 
 SupporterReady::SupporterReady(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, SUPPORTER_READY)
+    : TypedState<PDN>(SUPPORTER_READY)
     , player(ctx.player)
-    , posseManager(ctx.posseManager) {
-}
+    , posseManager(ctx.posseManager) {}
 
 SupporterReady::~SupporterReady() {
     // Destroyed while mounted: the listener slot still holds this state.
     if (cachedPDN != nullptr && posseManager != nullptr) posseManager->setOnGameEvent(nullptr);
-    player = nullptr;
 }
 
 void SupporterReady::startLEDs(PDN* pdn, bool armed, bool confirmed) {
@@ -172,9 +170,4 @@ void SupporterReady::onChainGameEventReceived(uint8_t eventType) {
     }
 }
 
-bool SupporterReady::transitionToIdle() {
-    return transitionToIdleFlag;
-}
-
-bool SupporterReady::isPrimaryRequired() { return false; }
-bool SupporterReady::isAuxRequired() { return true; }
+bool SupporterReady::transitionToIdle() const { return transitionToIdleFlag; }

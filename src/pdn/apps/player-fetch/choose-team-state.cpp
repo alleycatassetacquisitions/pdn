@@ -6,8 +6,6 @@ ChooseTeamState::ChooseTeamState(PlayerProvider* playerProvider)
     : TypedState<PDN>(PlayerFetchStateId::CHOOSE_TEAM)
     , playerProvider(playerProvider) {}
 
-ChooseTeamState::~ChooseTeamState() { playerProvider = nullptr; }
-
 void ChooseTeamState::onStateMounted(PDN* pdn) {
     renderUi(pdn);
 

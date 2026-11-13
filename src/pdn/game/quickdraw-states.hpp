@@ -3,19 +3,12 @@
 #include "device/pdn.hpp"
 #include "game/player.hpp"
 #include "utils/simple-timer.hpp"
-#include "utils/debounced-condition.hpp"
 #include "state/state.hpp"
 #include "state/connect-state.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "game/match-manager.hpp"
-#include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
-#include <array>
 #include <cstdio>
-#include <cstddef>
-#include <cstdlib>
-#include <queue>
-#include <string>
 #include "device/remote-device-coordinator.hpp"
 #include "game/posse-manager.hpp"
 #include "game/shootout-manager.hpp"
@@ -63,7 +56,6 @@ enum QuickdrawStateId {
 class Sleep : public TypedState<PDN> {
 public:
     explicit Sleep(const GameContext& ctx);
-    ~Sleep();
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -80,7 +72,6 @@ private:
 class AwakenSequence : public TypedState<PDN> {
 public:
     explicit AwakenSequence(const GameContext& ctx);
-    ~AwakenSequence() override;
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
@@ -98,7 +89,6 @@ private:
 class Idle : public ConnectState<PDN> {
 public:
     explicit Idle(const GameContext& ctx);
-    ~Idle();
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -118,7 +108,6 @@ private:
     bool displayIsDirty = false;
     int statsIndex = 0;
     int statsCount = 7;
-    size_t lastPosseCount = 0;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -129,11 +118,9 @@ private:
     // ack lands after the hunter gave up would count down alone.
     static constexpr int MATCH_INITIALIZATION_TIMEOUT =
     2 * static_cast<int>(Resender::RETRANSMIT_SPAN_MS) + 250;
-
-    // void serialEventCallbacks(const std::string& message);
 };
 
-class SupporterReady : public ConnectState<PDN> {
+class SupporterReady : public TypedState<PDN> {
 public:
     explicit SupporterReady(const GameContext& ctx);
     ~SupporterReady();
@@ -141,7 +128,8 @@ public:
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    bool transitionToIdle();
+    /** True once this device is no longer a supporter in a posse. */
+    bool transitionToIdle() const;
 
     /** A chain game event from the challenger this device follows, via
      * PosseManager::setOnGameEvent. */
@@ -166,9 +154,6 @@ private:
 
     PosseManager* posseManager;
     bool transitionToIdleFlag = false;
-
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
 };
 
 /** Draws the stats card over a Win or Lose screen: own time, boost and penalty if any, opponent
@@ -199,8 +184,6 @@ class MatchCountdown : public TypedState<PDN> {
 public:
     /** Constructs the pre-match 3-2-1 countdown state. */
     explicit MatchCountdown(const GameContext& ctx);
-    /** Destroys the countdown state. */
-    ~MatchCountdown() override;
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -263,8 +246,6 @@ class MatchState : public TypedState<PDN> {
 public:
     /** Constructs the active match draw-window state. */
     explicit MatchState(const GameContext& ctx);
-    /** Destroys the active match state. */
-    ~MatchState() override;
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -298,8 +279,6 @@ class MatchPushed : public TypedState<PDN> {
 public:
     /** Constructs the post-press grace-period state. */
     explicit MatchPushed(const GameContext& ctx);
-    /** Destroys the post-press grace-period state. */
-    ~MatchPushed() override;
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -320,8 +299,6 @@ class MatchReceivedResult : public TypedState<PDN> {
 public:
     /** Constructs the state waiting for a local counter-press after receiving peer result. */
     explicit MatchReceivedResult(const GameContext& ctx);
-    /** Destroys the received-result grace-period state. */
-    ~MatchReceivedResult() override;
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -340,11 +317,8 @@ class MatchResult : public TypedState<PDN> {
 public:
     /** Constructs the match outcome evaluation state. */
     explicit MatchResult(const GameContext& ctx);
-    /** Destroys the match outcome evaluation state. */
-    ~MatchResult() override;
 
     void onStateMounted(PDN* pdn) override;
-    void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToWin();
     bool transitionToLose();
@@ -365,7 +339,6 @@ private:
 class Win : public TypedState<PDN> {
 public:
     explicit Win(const GameContext& ctx);
-    ~Win();
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -383,7 +356,6 @@ private:
 class Lose : public TypedState<PDN> {
 public:
     explicit Lose(const GameContext& ctx);
-    ~Lose();
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -507,7 +479,6 @@ private:
 class SymbolState : public ConnectState<PDN> {
 public:
     explicit SymbolState(const GameContext& ctx);
-    ~SymbolState();
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -521,7 +492,6 @@ public:
 
 private:
     Player* player;
-    MatchManager* matchManager;
     SymbolWirelessManager* symbolWirelessManager;
     PDN* mountedPdn = nullptr;
     uint8_t* fdnMac = nullptr;
@@ -543,7 +513,6 @@ private:
 
     AnimationConfig cfg{};
 
-    void renderSymbolScreen(PDN* pdn);
     void advanceSymbolRender(PDN* pdn);
     void sendSymbolToFDN();
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
@@ -552,7 +521,6 @@ private:
 class SymbolMatched : public ConnectState<PDN> {
 public:
     explicit SymbolMatched(const GameContext& ctx);
-    ~SymbolMatched();
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;

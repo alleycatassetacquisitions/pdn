@@ -8,10 +8,6 @@ MatchPushed::MatchPushed(const GameContext& ctx)
     : TypedState<PDN>(MATCH_PUSHED)
     , matchManager(ctx.matchManager) {}
 
-MatchPushed::~MatchPushed() {
-    LOG_I(MATCH_PUSHED_TAG, "MatchPushed state destroyed");
-    this->matchManager = nullptr;
-}
 
 void MatchPushed::onStateMounted(PDN* pdn) {
     LOG_I(MATCH_PUSHED_TAG, "MatchPushed state mounted");

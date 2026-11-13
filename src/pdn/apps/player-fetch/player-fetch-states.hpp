@@ -28,8 +28,6 @@ class PinEntryState : public TypedState<PDN> {
 public:
     /** Pairing-code entry for PlayerFetch. */
     explicit PinEntryState(PlayerProvider* playerProvider);
-    /** @copydoc TypedState::~TypedState */
-    ~PinEntryState() override;
 
     /** @copydoc TypedState::onStateMounted */
     void onStateMounted(PDN* pdn) override;
@@ -62,8 +60,6 @@ class FetchUserState : public TypedState<PDN> {
 public:
     /** Asks the cabled FDN to look up the entered PIN, then waits for its PlayerProvisionPacket. */
     FetchUserState(PdnProvisioningClient* provisioningClient, PlayerProvider* playerProvider);
-    /** @copydoc TypedState::~TypedState */
-    ~FetchUserState() override;
 
     /** @return true when the fetched profile was stored and welcome should mount. */
     bool transitionToWelcome() const;
@@ -99,8 +95,6 @@ class ChooseTeamState : public TypedState<PDN> {
 public:
     /** Demo Hunter/Bounty picker for @ref DEMO_PIN. */
     explicit ChooseTeamState(PlayerProvider* playerProvider);
-    /** @copydoc TypedState::~TypedState */
-    ~ChooseTeamState() override;
 
     /** @copydoc TypedState::onStateMounted */
     void onStateMounted(PDN* pdn) override;
@@ -124,8 +118,6 @@ class PlayerFetchWelcome : public TypedState<PDN> {
 public:
     /** Short welcome screen before awaken. */
     explicit PlayerFetchWelcome(PlayerProvider* playerProvider);
-    /** @copydoc TypedState::~TypedState */
-    ~PlayerFetchWelcome() override;
 
     /** @copydoc TypedState::onStateMounted */
     void onStateMounted(PDN* pdn) override;

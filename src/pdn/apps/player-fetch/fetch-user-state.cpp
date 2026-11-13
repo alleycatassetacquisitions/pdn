@@ -14,12 +14,6 @@ FetchUserState::FetchUserState(PdnProvisioningClient* provisioningClient,
     , provisioningClient(provisioningClient)
     , playerProvider(playerProvider) {}
 
-FetchUserState::~FetchUserState() {
-    provisioningClient = nullptr;
-    playerProvider = nullptr;
-    remoteDeviceCoordinator = nullptr;
-}
-
 void FetchUserState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - requesting provisioning for PIN %s",
           playerProvider->getRegistrationPin());

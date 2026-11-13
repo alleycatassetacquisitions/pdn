@@ -64,8 +64,6 @@ public:
 
     void setName(const std::string& name);
 
-    std::string getFaction() const;
-
     void setFaction(const std::string& faction);
 
     /** Soon to be deprecated */
@@ -75,8 +73,6 @@ public:
     void applyRngSeedFromDecimalString(const char* decimalString);
 
     std::string getUserID() const;
-
-    void clearUserID();
 
     /** @return Milliseconds for the most recent match reaction sample. */
     unsigned long getLastReactionTime() const;

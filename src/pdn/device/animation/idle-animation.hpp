@@ -2,7 +2,6 @@
 
 #include "device/animation/animation-base.hpp"
 #include "utils/simple-timer.hpp"
-#include <algorithm> // For std::min
 
 class IdleAnimation : public AnimationBase {
 public:

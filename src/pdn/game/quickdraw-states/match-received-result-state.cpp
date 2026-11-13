@@ -10,10 +10,6 @@ MatchReceivedResult::MatchReceivedResult(const GameContext& ctx)
     : TypedState<PDN>(MATCH_RECEIVED_RESULT)
     , matchManager(ctx.matchManager) {}
 
-MatchReceivedResult::~MatchReceivedResult() {
-    LOG_I(MATCH_RECEIVED_RESULT_TAG, "Match received result state destroyed");
-    this->matchManager = nullptr;
-}
 
 void MatchReceivedResult::onStateMounted(PDN* pdn) {
     LOG_I(MATCH_RECEIVED_RESULT_TAG, "Match received result state mounted");

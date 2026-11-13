@@ -10,14 +10,7 @@ static const char* TAG = "SymbolState";
 SymbolState::SymbolState(const GameContext& ctx)
     : ConnectState<PDN>(ctx.remoteDeviceCoordinator, SYMBOL) {
     this->player = ctx.player;
-    this->matchManager = ctx.matchManager;
     this->symbolWirelessManager = ctx.symbolWirelessManager;
-}
-
-SymbolState::~SymbolState() {
-    this->player = nullptr;
-    this->matchManager = nullptr;
-    this->symbolWirelessManager = nullptr;
 }
 
 void SymbolState::onStateMounted(PDN* pdn) {
@@ -144,11 +137,6 @@ bool SymbolState::transitionToIdle() {
 
 bool SymbolState::transitionToSymbolMatched() {
     return transitionToSymbolMatchedState;
-}
-
-void SymbolState::renderSymbolScreen(PDN* pdn) {
-    
-    
 }
 
 void SymbolState::advanceSymbolRender(PDN* pdn) {

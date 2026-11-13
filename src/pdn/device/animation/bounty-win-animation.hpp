@@ -1,28 +1,15 @@
 #pragma once
 
 #include "device/animation/animation-base.hpp"
-#include "utils/simple-timer.hpp"
-#include <algorithm> // For std::min
 #include <random>
 
 class BountyWinAnimation : public AnimationBase {
-public:
-    BountyWinAnimation() : 
-        AnimationBase(),
-        lastFrameTime_(0) {
-    }
-
 protected:
     void onInit() override {
-        // Reset animation state
-        lastFrameTime_ = 0;
-        
-        // Set default frame rate for smooth animation (16ms per frame)
         if (config_.speed == 0) {
             frameTimer_.setTimer(16);
         }
-        
-        // Initialize with clear state
+
         currentState_ = config_.initialState;
         currentState_.clear();
         currentState_.leftLights[0].color = gripColors[0];
@@ -71,7 +58,6 @@ private:
         return dist(gen);
     }
 
-    uint32_t lastFrameTime_;   // Last frame time for timing calculations
     LEDColor twinkleColor = LEDColor(222, 97, 7);
     LEDColor gripColors[6] = {
         bountyIdleLEDColors[0],
@@ -81,4 +67,4 @@ private:
         bountyIdleLEDColors[4],
         bountyIdleLEDColors[5]
     };
-}; 
+};

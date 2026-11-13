@@ -6,8 +6,6 @@ AwakenSequence::AwakenSequence(const GameContext& ctx)
     : TypedState<PDN>(AWAKEN_SEQUENCE)
     , player(ctx.player) {}
 
-AwakenSequence::~AwakenSequence() { player = nullptr; }
-
 void AwakenSequence::onStateMounted(PDN* pdn) {
     activationSequenceTimer.setTimer(activationStepDuration);
     activateMotor = true;
