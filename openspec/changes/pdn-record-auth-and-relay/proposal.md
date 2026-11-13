@@ -29,7 +29,7 @@ Once any PDN in radio range can hand records to an FDN, the server has no way to
 
 ## Impact
 
-- **Prerequisite**: the open change `pdn-pin-entry-fdn-registration`, which defines the PDN's registration request; a record key is accepted only after the PDN has sent that request. Archive it first.
+- **Builds on** `pdn-pin-entry-fdn-registration` (archived), which has the PDN send its PIN to the FDN; a record key is accepted only after the PDN has sent it.
 - **PDN firmware**: record key storage, tag computation, beacon listening, one relay sender for both record kinds, a serial-jack frame for the key, and the crash reporter moved off Wi-Fi onto the relay.
 - **FDN firmware**: one record store for both kinds with sender and trailer, the cable check on record intake removed, crash records on the periodic uplink, the beacon kept running while a PDN is Connected, key relay over the jack, new upload fields, `422` handling.
 - **Server (outside this repository)**: the two sections of design.md marked as proposals to the server team: key rules (a fresh key at every player lookup, earlier keys kept, dropping and blocking) and record rules (tag verification on `POST /device-logs` and `POST /quickdraw-matches`, repeats, rejections, unverified crash records). Nothing here can ship before that contract is agreed.
