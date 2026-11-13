@@ -11,6 +11,9 @@ SymbolState::SymbolState(const GameContext& ctx)
     : ConnectState<PDN>(ctx.remoteDeviceCoordinator, SYMBOL) {
     this->player = ctx.player;
     this->symbolWirelessManager = ctx.symbolWirelessManager;
+    setOnJackState([this](SerialIdentifier jack, const JackConnectionState& state) {
+        onOutputJackState(jack, state.connected);
+    });
 }
 
 void SymbolState::onStateMounted(PDN* pdn) {
@@ -23,14 +26,9 @@ void SymbolState::onStateMounted(PDN* pdn) {
     hapticPulseActive = false;
     toggleSymbol = true;
 
-    if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
-        fdnMac = const_cast<uint8_t*>(remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK));
-    }
-
-    if (fdnMac != nullptr) {
-        bufferTimer.setTimer(BUFFER_TIMEOUT);
-        symbolWirelessManager->setMacPeer(fdnMac);
-    } else {
+    // The mount replay reports only connected jacks, so an empty output jack would go unheard.
+    if (remoteDeviceCoordinator->getJackStatus(SerialIdentifier::OUTPUT_JACK) !=
+        JackStatus::CONNECTED) {
         transitionToIdleState = true;
     }
 
@@ -94,16 +92,11 @@ void SymbolState::onStateLoop(PDN* pdn) {
     if (renderTimer.expired()) {
         advanceSymbolRender(pdn);
     }
-
-    if (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) != DeviceType::FDN) {
-        transitionToIdleState = true;
-    }
 }
 
 void SymbolState::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "dismounted");
     mountedPdn = nullptr;
-    fdnMac = nullptr;
     transitionToIdleState = false;
     transitionToSymbolMatchedState = false;
     symbolSent = false;
@@ -137,6 +130,20 @@ bool SymbolState::transitionToIdle() {
 
 bool SymbolState::transitionToSymbolMatched() {
     return transitionToSymbolMatchedState;
+}
+
+void SymbolState::onOutputJackState(SerialIdentifier jack, bool connected) {
+    if (jack != SerialIdentifier::OUTPUT_JACK) return;
+    const uint8_t* peerMac = nullptr;
+    if (connected && getPeerDeviceType(jack) == DeviceType::FDN) {
+        peerMac = remoteDeviceCoordinator->getPeerMac(jack);
+    }
+    if (peerMac == nullptr) {
+        transitionToIdleState = true;
+        return;
+    }
+    bufferTimer.setTimer(BUFFER_TIMEOUT);
+    symbolWirelessManager->setMacPeer(peerMac);
 }
 
 void SymbolState::advanceSymbolRender(PDN* pdn) {

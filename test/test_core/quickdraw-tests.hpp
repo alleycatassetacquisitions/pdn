@@ -1936,8 +1936,7 @@ inline void symbolStateLeavesForIdleWithoutBlocking(StateCleanupTests* suite) {
 
     SymbolState symbolState(suite->ctx);
     mountState(&symbolState, &suite->device);
-    // The loop does not look at the cable until the half-second loading
-    // animation has run.
+    // The cable, not the loop, decides; a tick past the loading animation must not leave.
     suite->fakeClock->advance(501);
     symbolState.onStateLoop(&suite->device);
     ASSERT_FALSE(symbolState.transitionToIdle()) << "left with the FDN still cabled";

@@ -50,42 +50,34 @@ SymbolIdle::SymbolIdle(SymbolManager* symbolManager,
                        SymbolWirelessManager* symbolWirelessManager)
     : FDNConnectState(remoteDeviceCoordinator, SYMBOL_IDLE)
     , symbolManager(symbolManager)
-    , symbolWirelessManager(symbolWirelessManager) {}
+    , symbolWirelessManager(symbolWirelessManager) {
+    setOnJackState([this](SerialIdentifier jack, const JackConnectionState& state) {
+        onInputJackState(jack, state.connected);
+    });
+}
 
 void SymbolIdle::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
     mountedFdn = fdn;
     renderSymbolScreen(fdn);
 
-    symbolWirelessManager->setPacketReceivedCallback(
-        [this](const SymbolMatchCommand& command) {
-            if (command.command != SMCommand::SEND_SYMBOL) return;
-            const SymbolId local = symbolManager->getSymbol(SerialIdentifier::INPUT_JACK)->getSymbolId();
-            symbolManager->setMatched(SerialIdentifier::INPUT_JACK, command.symbolId == local);
-            if (mountedFdn) { renderSymbolScreen(mountedFdn); syncMatchSideLights(mountedFdn); }
-        }, SerialIdentifier::INPUT_JACK);
-
-    symbolWirelessManager->setPacketReceivedCallback(
-        [this](const SymbolMatchCommand& command) {
-            if (command.command != SMCommand::SEND_SYMBOL) return;
-            const SymbolId local = symbolManager->getSymbol(SerialIdentifier::INPUT_JACK_SECONDARY)->getSymbolId();
-            symbolManager->setMatched(SerialIdentifier::INPUT_JACK_SECONDARY, command.symbolId == local);
-            if (mountedFdn) { renderSymbolScreen(mountedFdn); syncMatchSideLights(mountedFdn); }
-        }, SerialIdentifier::INPUT_JACK_SECONDARY);
-
-    for (SerialIdentifier jack : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(jack);
-        if (peerMac) {
-            symbolWirelessManager->setMacPeer(peerMac);
-            symbolWirelessManager->sendPacket(
-                SMCommand::SEND_SYMBOL,
-                symbolManager->getSymbol(jack)->getSymbolId(),
-                jack);
-        }
+    for (SerialIdentifier jack :
+         {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
+        symbolWirelessManager->setPacketReceivedCallback(
+        [this, jack](const SymbolMatchCommand& command) {
+            const bool sideConnected = isJackConnected(jack);
+            // A straggler from a departed peer must not light a side nobody is cabled to.
+            if (command.command != SMCommand::SEND_SYMBOL || !sideConnected) return;
+            const SymbolId local = symbolManager->getSymbol(jack)->getSymbolId();
+            symbolManager->setMatched(jack, command.symbolId == local);
+            if (mountedFdn) {
+                renderSymbolScreen(mountedFdn);
+                syncMatchSideLights(mountedFdn);
+            }
+        },
+        jack);
     }
 
-    leftConnected = remoteDeviceCoordinator->getJackStatus(SerialIdentifier::INPUT_JACK) == JackStatus::CONNECTED;
-    rightConnected = remoteDeviceCoordinator->getJackStatus(SerialIdentifier::INPUT_JACK_SECONDARY) == JackStatus::CONNECTED;
     bool leftLeds  = symbolManager->isMatched(SerialIdentifier::INPUT_JACK) && symbolSentLeft;
     bool rightLeds = symbolManager->isMatched(SerialIdentifier::INPUT_JACK_SECONDARY) && symbolSentRight;
     lastSideLightLeft_  = leftLeds;
@@ -99,44 +91,6 @@ void SymbolIdle::onStateLoop(FDN* fdn) {
         return;
     }
 
-    leftConnected = remoteDeviceCoordinator->getJackStatus(SerialIdentifier::INPUT_JACK) == JackStatus::CONNECTED;
-    rightConnected = remoteDeviceCoordinator->getJackStatus(SerialIdentifier::INPUT_JACK_SECONDARY) == JackStatus::CONNECTED;
-
-    if (!leftConnected) {
-        symbolManager->setMatched(SerialIdentifier::INPUT_JACK, false);
-        if (mountedFdn) { renderSymbolScreen(mountedFdn); syncMatchSideLights(mountedFdn); }
-    }
-    if (!rightConnected) {
-        symbolManager->setMatched(SerialIdentifier::INPUT_JACK_SECONDARY, false);
-        if (mountedFdn) { renderSymbolScreen(mountedFdn); syncMatchSideLights(mountedFdn); }
-    }
-
-    if (!symbolSentLeft && leftConnected) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::INPUT_JACK);
-        if (peerMac) {
-            symbolWirelessManager->setMacPeer(peerMac);
-            symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL,
-                symbolManager->getSymbol(SerialIdentifier::INPUT_JACK)->getSymbolId(),
-                SerialIdentifier::INPUT_JACK);
-            symbolSentLeft = true;
-        }
-    } else if (!leftConnected) {
-        symbolSentLeft = false;
-    }
-
-    if (!symbolSentRight && rightConnected) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::INPUT_JACK_SECONDARY);
-        if (peerMac) {
-            symbolWirelessManager->setMacPeer(peerMac);
-            symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL,
-                symbolManager->getSymbol(SerialIdentifier::INPUT_JACK_SECONDARY)->getSymbolId(),
-                SerialIdentifier::INPUT_JACK_SECONDARY);
-            symbolSentRight = true;
-        }
-    } else if (!rightConnected) {
-        symbolSentRight = false;
-    }
-
     if (symbolManager->getRefreshTimer()->isRunning()) {
         int elapsed = symbolManager->getRefreshTimer()->getElapsedTime();
         if (elapsed - lastTimeRendered >= 500) {
@@ -145,8 +99,31 @@ void SymbolIdle::onStateLoop(FDN* fdn) {
             blinkToggle = !blinkToggle;
         }
     }
+}
 
-    syncMatchSideLights(fdn);
+void SymbolIdle::onInputJackState(SerialIdentifier jack, bool connected) {
+    if (jack != SerialIdentifier::INPUT_JACK && jack != SerialIdentifier::INPUT_JACK_SECONDARY)
+        return;
+    const bool isLeft = jack == SerialIdentifier::INPUT_JACK;
+    bool& symbolSent = isLeft ? symbolSentLeft : symbolSentRight;
+
+    if (connected) {
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(jack);
+        if (peerMac == nullptr) {
+            LOG_E(TAG, "No peer MAC on connected jack %d", static_cast<int>(jack));
+            return;
+        }
+        symbolWirelessManager->setMacPeer(peerMac);
+        symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL,
+                                          symbolManager->getSymbol(jack)->getSymbolId(), jack);
+        symbolSent = true;
+    } else {
+        symbolManager->setMatched(jack, false);
+        symbolSent = false;
+        if (mountedFdn) renderSymbolScreen(mountedFdn);
+    }
+
+    if (mountedFdn) syncMatchSideLights(mountedFdn);
 }
 
 void SymbolIdle::onStateDismounted(FDN* fdn) {
@@ -154,7 +131,7 @@ void SymbolIdle::onStateDismounted(FDN* fdn) {
     mountedFdn                 = nullptr;
     lastTimeRendered           = 0;
     symbolSentLeft             = false;
-    symbolSentRight            = false;
+    symbolSentRight = false;
 
     symbolWirelessManager->clearCallback();
     symbolManager->setMatched(SerialIdentifier::INPUT_JACK, false);
@@ -188,10 +165,12 @@ void SymbolIdle::renderSymbolScreen(FDN* fdn) {
 
     d->setGlyphMode(FontMode::SYMBOL_GLYPH);
 
-    if (symbolManager->isMatched(SerialIdentifier::INPUT_JACK) || !leftConnected || blinkToggle)
+    if (symbolManager->isMatched(SerialIdentifier::INPUT_JACK) ||
+        !isJackConnected(SerialIdentifier::INPUT_JACK) || blinkToggle)
         d->renderGlyph(symbolManager->getSymbolGlyph(SerialIdentifier::INPUT_JACK), 24, 40);
 
-    if (symbolManager->isMatched(SerialIdentifier::INPUT_JACK_SECONDARY) || !rightConnected || blinkToggle)
+    if (symbolManager->isMatched(SerialIdentifier::INPUT_JACK_SECONDARY) ||
+        !isJackConnected(SerialIdentifier::INPUT_JACK_SECONDARY) || blinkToggle)
         d->renderGlyph(symbolManager->getSymbolGlyph(SerialIdentifier::INPUT_JACK_SECONDARY), 72, 40);
 
     d->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);

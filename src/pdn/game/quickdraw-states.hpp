@@ -494,7 +494,6 @@ private:
     Player* player;
     SymbolWirelessManager* symbolWirelessManager;
     PDN* mountedPdn = nullptr;
-    uint8_t* fdnMac = nullptr;
     SymbolId fdnSymbol;
 
     SimpleTimer renderTimer;
@@ -513,6 +512,7 @@ private:
 
     AnimationConfig cfg{};
 
+    void onOutputJackState(SerialIdentifier jack, bool connected);
     void advanceSymbolRender(PDN* pdn);
     void sendSymbolToFDN();
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
