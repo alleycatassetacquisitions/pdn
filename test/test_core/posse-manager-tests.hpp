@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "device-mock.hpp"
-#include "rdc-hello-tests.hpp"
+#include "rdc-test-harness.hpp"
 #include "utility-tests.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "game/posse-manager.hpp"
@@ -13,23 +13,11 @@ using ::testing::_;
 using ::testing::NiceMock;
 using ::testing::Return;
 
-// Physical connectivity here is the production HELLO path: framed HELLO bytes
-// pushed into a native jack driver, drained by its exec() pump into the RDC's
-// parser, then the ESP-NOW context exchange completed to commit the link.
-class PosseManagerTests : public testing::Test {
+class PosseManagerTests : public RdcTestHarness {
 public:
+    /** The harness's device, plus what the posse cases read off the radio. */
     void SetUp() override {
-        fakeClock = new FakePlatformClock();
-        SimpleTimer::setPlatformClock(fakeClock);
-        fakeClock->setTime(1000);
-
-        wireRadioDefaults(device, localMac);
-        device.serialManager->setOutputJack(&outJack);
-        device.serialManager->setInputJack(&inJack);
-        ON_CALL(*device.mockPeerComms,
-                setPacketHandler(testing::Eq(PktType::kPdnConnectionContext), _, _))
-        .WillByDefault(
-        testing::DoAll(testing::SaveArg<1>(&contextHandler), testing::SaveArg<2>(&contextCtx)));
+        RdcTestHarness::SetUp();
         // Role announces have no reply packet: the radio's send result is the
         // delivery signal, so tests drive it through this captured handler.
         ON_CALL(*device.mockPeerComms,
@@ -37,38 +25,11 @@ public:
         .WillByDefault(testing::DoAll(testing::SaveArg<1>(&roleAnnounceSendStatus),
                                       testing::SaveArg<2>(&roleAnnounceSendStatusCtx)));
 
-        rdc.setExternalConnectivityTask(true);
-        rdc.initialize(device.wirelessManager, device.serialManager, &device);
-
         // RDC traffic (context exchange, roster announces) shares this mock with
         // the per-test game-packet expectations. A catch-all declared here keeps
         // those sends from reading as unexpected; gmock still prefers the
         // narrower expectations a test declares afterwards.
         EXPECT_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
-    }
-
-    void TearDown() override {
-        SimpleTimer::setPlatformClock(nullptr);
-        delete fakeClock;
-    }
-
-    /**
-     * Feeds a peer's PdnConnectionContext in through the handler the RDC's
-     * context channel registered with the radio driver — the production receive path.
-     */
-    void deliverPdnContext(const uint8_t* peerMac, bool isHunter = false) {
-        if (contextHandler == nullptr) return;
-        std::vector<uint8_t> bytes =
-        pdnContextBytes(ChainRole::STANDALONE, /*userId=*/4242, ++contextSeqId, isHunter ? 1 : 0);
-        contextHandler(peerMac, bytes.data(), bytes.size(), contextCtx);
-    }
-
-    void connectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac,
-                       const uint8_t* advertisedHead = nullptr, bool isHunter = false) {
-        deliverFrame(jack, chainHelloFrame(peerMac, advertisedHead));
-        rdc.sync(&device);
-        deliverPdnContext(peerMac, isHunter);
-        rdc.sync(&device);
     }
 
     /**
@@ -107,13 +68,6 @@ public:
         connectJackTo(inJack, supporterMac, localMac, true);
     }
 
-    MockDevice device;
-    NativeSerialDriver outJack{"posse-out"};
-    NativeSerialDriver inJack{"posse-in"};
-    // Declared after the jacks so it is destroyed first; its dtor clears their
-    // byte callbacks, mirroring production where the drivers outlive the RDC.
-    RemoteDeviceCoordinator rdc;
-    FakePlatformClock* fakeClock;
     Player player;
 
     /**
@@ -141,12 +95,8 @@ public:
         PktType::kReliableAck, fromMac, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
     }
 
-    PeerCommsInterface::PacketCallback contextHandler = nullptr;
-    void* contextCtx = nullptr;
     PeerCommsInterface::SendStatusCallback roleAnnounceSendStatus = nullptr;
     void* roleAnnounceSendStatusCtx = nullptr;
-    uint8_t contextSeqId = 0;
-    uint8_t localMac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     uint8_t supporterMac[6] = {0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11};
 };

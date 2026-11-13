@@ -50,9 +50,6 @@ public:
      */
     std::vector<std::array<uint8_t, 6>> getRingMembers() const;
 
-    /** Overrides the ring member roster for tests (empty clears). */
-    void setRingMembersForTest(const std::vector<std::array<uint8_t, 6>>& members);
-
     void onRingClosed();
     void onRingClosedReceived(const uint8_t* fromMac,
                               const std::vector<std::array<uint8_t, 6>>& members);
@@ -193,8 +190,6 @@ private:
     /** The peers a ring fan-out is addressed to: `peers` without this device. */
     std::vector<std::array<uint8_t, 6>>
     peersExcludingSelf(const std::vector<std::array<uint8_t, 6>>& peers) const;
-    std::vector<std::array<uint8_t, 6>> testRingMembers;
-    bool testRingMembersOverride = false;
     std::vector<std::array<uint8_t, 6>> confirmedSet;
 
     // The ring roster as of closure. Read live from the RDC on the head that
@@ -212,7 +207,6 @@ private:
 
     bool headsRing() const;
     const uint8_t* ringHead() const;
-    std::vector<std::array<uint8_t, 6>> buildRingMemberSet() const;
     void sendLocalConfirm();
     bool allMembersConfirmed() const;
     /**

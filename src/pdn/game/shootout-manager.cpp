@@ -189,16 +189,6 @@ std::array<uint8_t, 6> ShootoutManager::getTournamentWinner() const {
     return tournamentWinner;
 }
 
-void ShootoutManager::setRingMembersForTest(const std::vector<std::array<uint8_t, 6>>& members) {
-    testRingMembers = members;
-    testRingMembersOverride = !members.empty();
-}
-
-std::vector<std::array<uint8_t, 6>> ShootoutManager::getRingMembers() const {
-    if (testRingMembersOverride) return testRingMembers;
-    return buildRingMemberSet();
-}
-
 void ShootoutManager::resetToIdle() {
     LOG_W(TAG, "resetToIdle from phase=%d", static_cast<int>(phase));
     resetTournamentState();
@@ -803,7 +793,7 @@ void ShootoutManager::onAbortReceived(const uint8_t* fromMac, uint8_t seqId) {
     phase = Phase::ABORTED;
 }
 
-std::vector<std::array<uint8_t, 6>> ShootoutManager::buildRingMemberSet() const {
+std::vector<std::array<uint8_t, 6>> ShootoutManager::getRingMembers() const {
     // The RDC serves a roster only where it is the authority, which inside a ring
     // is the head that latched it. Every other member holds the copy that head
     // sent with RING_CLOSED.

@@ -161,15 +161,6 @@ public:
     /** Drives retransmits and abandonment. Must be called every loop tick. */
     void sync();
 
-    /** Recipients on this channel that still owe an ack, across all frames. */
-    size_t pendingCount(PktType type) const {
-        size_t count = 0;
-        for (const Group& g : groups) {
-            if (g.type == type) count += g.recipients.size();
-        }
-        return count;
-    }
-
     /**
      * Recipients of the frame sent under `seqId` that still owe an ack. Zero
      * once every one of them has answered or been given up on.
