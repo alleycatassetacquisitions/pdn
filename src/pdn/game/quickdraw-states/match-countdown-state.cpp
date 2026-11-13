@@ -12,11 +12,6 @@ MatchCountdown::MatchCountdown(const GameContext& ctx)
     , matchManager(ctx.matchManager)
     , posseManager(ctx.posseManager) {}
 
-MatchCountdown::~MatchCountdown() {
-    player = nullptr;
-    matchManager = nullptr;
-}
-
 void MatchCountdown::onStateMounted(PDN* pdn) {
     // If this device is a challenger, tell its supporter chain that the
     // match is starting so they can arm their confirmation window.

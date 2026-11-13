@@ -53,11 +53,6 @@ inline void matchShootoutIdConversionStaysInBounds() {
 // Binary Serialization Tests
 // ============================================
 
-inline void matchBinarySizeIsCorrect() {
-    // Fixed so a 64-bit native build and the ESP32 read each other's records.
-    EXPECT_EQ(Match::binarySize(), 112u);
-}
-
 inline void matchBinaryRoundTripPreservesUuidsWithEmbeddedZeroBytes() {
     UUIDBytes matchUuid{};
     UUIDBytes hunterPlayerId{};

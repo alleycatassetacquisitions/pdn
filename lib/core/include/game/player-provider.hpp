@@ -22,9 +22,6 @@ public:
     /** Stores the four-digit pairing PIN entered before fetch. */
     void setRegistrationPin(const char* pin);
 
-    /** @return true when a registration PIN is stored. */
-    bool hasRegistrationPin() const;
-
     /** @return the stored registration PIN, or an empty string when none is stored. */
     const char* getRegistrationPin() const;
 
@@ -34,5 +31,4 @@ public:
 private:
     Player player;
     char registrationPin[REGISTRATION_PIN_BUFFER_SIZE] = {};
-    bool pinStored = false;
 };

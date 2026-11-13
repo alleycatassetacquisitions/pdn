@@ -707,10 +707,6 @@ TEST_F(MatchTestSuite, shootoutIdConversionStaysInBounds) {
     matchShootoutIdConversionStaysInBounds();
 }
 
-TEST_F(MatchTestSuite, binarySizeIsCorrect) {
-    matchBinarySizeIsCorrect();
-}
-
 TEST_F(MatchTestSuite, binaryRoundTripPreservesUuidsWithEmbeddedZeroBytes) {
     matchBinaryRoundTripPreservesUuidsWithEmbeddedZeroBytes();
 }

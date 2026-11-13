@@ -20,13 +20,6 @@ Idle::Idle(const GameContext& ctx)
     , posseManager(ctx.posseManager)
     , shootoutManager(ctx.shootoutManager) {}
 
-Idle::~Idle() {
-    player = nullptr;
-    matchManager = nullptr;
-    posseManager = nullptr;
-    shootoutManager = nullptr;
-}
-
 void Idle::onStateMounted(PDN* pdn) {
     pdn->getWirelessManager()->enablePeerCommsMode();
 

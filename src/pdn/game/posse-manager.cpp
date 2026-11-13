@@ -97,13 +97,12 @@ bool PosseManager::containsMac(const MacSlots& slots, size_t count, const uint8_
     return false;
 }
 
-void PosseManager::recordMac(MacSlots& slots, std::atomic<size_t>& count,
-                             size_t& writeIndex, const uint8_t* mac) {
-    size_t used = count.load();
-    if (containsMac(slots, used, mac)) return;
-    if (used < MAX_CHAIN_SUPPORTERS) {
-        memcpy(slots[used].data(), mac, 6);
-        count.store(used + 1);
+void PosseManager::recordMac(MacSlots& slots, size_t& count, size_t& writeIndex,
+                             const uint8_t* mac) {
+    if (containsMac(slots, count, mac)) return;
+    if (count < MAX_CHAIN_SUPPORTERS) {
+        memcpy(slots[count].data(), mac, 6);
+        count++;
         return;
     }
     memcpy(slots[writeIndex].data(), mac, 6);
@@ -146,8 +145,7 @@ std::vector<std::array<uint8_t, 6>> PosseManager::getSupporterChainPeers() const
     std::array<uint8_t, 6> mac;
     memcpy(mac.data(), directPeer, 6);
     peers.push_back(mac);
-    size_t joined = supporterRosterCount.load();
-    for (size_t i = 0; i < joined; i++) {
+    for (size_t i = 0; i < supporterRosterCount; i++) {
         if (memcmp(supporterRoster[i].data(), directPeer, 6) == 0) continue;
         peers.push_back(supporterRoster[i]);
     }
@@ -296,7 +294,7 @@ void PosseManager::onChainStateChanged() {
                        : 0u;
     if (lastSupporterChainCount > 0 && count == 0) {
         clearSupporterConfirms();
-        supporterRosterCount.store(0);
+        supporterRosterCount = 0;
         supporterRosterWrite = 0;
     }
     lastSupporterChainCount = count;
@@ -340,9 +338,8 @@ unsigned long PosseManager::getBoostMs() const {
 size_t PosseManager::getConfirmedSupporterCount() const {
     if (!isChallenger()) return 0;
     std::vector<std::array<uint8_t, 6>> peers = getSupporterChainPeers();
-    size_t count = receivedConfirmCount.load();
     size_t confirmed = 0;
-    for (size_t i = 0; i < count; i++) {
+    for (size_t i = 0; i < receivedConfirmCount; i++) {
         for (const std::array<uint8_t, 6>& peer : peers) {
             if (memcmp(peer.data(), receivedConfirms[i].data(), 6) == 0) {
                 confirmed++;
@@ -359,7 +356,7 @@ const uint8_t* PosseManager::getChallengerMac() const {
 }
 
 void PosseManager::clearSupporterConfirms() {
-    receivedConfirmCount.store(0);
+    receivedConfirmCount = 0;
     receivedConfirmWrite = 0;
 }
 

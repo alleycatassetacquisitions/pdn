@@ -13,8 +13,6 @@ PinEntryState::PinEntryState(PlayerProvider* playerProvider)
     : TypedState<PDN>(PlayerFetchStateId::PIN_ENTRY)
     , playerProvider(playerProvider) {}
 
-PinEntryState::~PinEntryState() { playerProvider = nullptr; }
-
 void PinEntryState::onStateMounted(PDN* pdn) {
     playerProvider->clear();
     sinceMount.setTimer(0);

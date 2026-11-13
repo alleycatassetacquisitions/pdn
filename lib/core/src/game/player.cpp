@@ -109,11 +109,6 @@ PlayerProfile Player::toProfile() const {
     return profile;
 }
 
-void Player::clearUserID() {
-    id = "9998";
-    symbol.updateFromUserIdString(id);
-}
-
 bool Player::isHunter() const { return hunter; }
 
 Allegiance Player::getAllegiance() const { return allegiance; }
@@ -168,8 +163,6 @@ std::string Player::getAllegianceString() const { return allegianceStr; }
 std::string Player::getName() const { return name; }
 
 void Player::setName(const std::string& name) { this->name = name; }
-
-std::string Player::getFaction() const { return faction; }
 
 void Player::setFaction(const std::string& faction) { this->faction = faction; }
 

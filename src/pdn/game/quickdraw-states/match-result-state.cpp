@@ -12,13 +12,6 @@ MatchResult::MatchResult(const GameContext& ctx)
     this->shootoutManager = ctx.shootoutManager;
 }
 
-MatchResult::~MatchResult() {
-    LOG_I(MATCH_RESULT_TAG, "Match result state destroyed");
-    this->player = nullptr;
-    this->matchManager = nullptr;
-    this->shootoutManager = nullptr;
-}
-
 void MatchResult::onStateMounted(PDN* pdn) {
     LOG_I(MATCH_RESULT_TAG, "Match result state mounted");
 
@@ -39,10 +32,6 @@ void MatchResult::onStateMounted(PDN* pdn) {
     matchManager->finalizeMatch();
 
     pdn->getDisplay()->invalidateScreen()->render();
-}
-
-void MatchResult::onStateLoop(PDN* pdn) {
-    // No loop processing needed for result state
 }
 
 void MatchResult::onStateDismounted(PDN* pdn) {

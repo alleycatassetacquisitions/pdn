@@ -5,8 +5,6 @@ PlayerFetchWelcome::PlayerFetchWelcome(PlayerProvider* playerProvider)
     : TypedState<PDN>(PlayerFetchStateId::WELCOME)
     , playerProvider(playerProvider) {}
 
-PlayerFetchWelcome::~PlayerFetchWelcome() { playerProvider = nullptr; }
-
 void PlayerFetchWelcome::onStateMounted(PDN* pdn) {
     const char* name = "";
     Player* player = playerProvider->getPlayer();

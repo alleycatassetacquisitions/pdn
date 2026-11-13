@@ -58,16 +58,14 @@ public:
     };
 
     void initialize(Device *PDN) {
-        // Populate once. onStateMounted lands here on every swap back to this
-        // app, and a second populateStateMap appends a whole duplicate state set
-        // that is never mounted (currentState addresses the original slots) and
-        // is only freed by ~StateMachine.
+        // Populate once: onStateMounted lands here on every swap back to this
+        // app, and a second populateStateMap would append a duplicate state set
+        // that is never mounted.
         if (stateMap.empty()) {
             populateStateMap();
         }
         currentState = findEntryState();
         asLifecycle(currentState)->mount(PDN);
-        launched = true;
     }
 
     /**
@@ -199,7 +197,6 @@ private:
         return stateMap[0];
     }
 
-    bool launched = false;
     StateId appId;
     StateId entryStateId = StateId(-1);
 };

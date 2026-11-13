@@ -16,12 +16,6 @@ MatchState::MatchState(const GameContext& ctx)
     , posseManager(ctx.posseManager)
     , shootoutManager(ctx.shootoutManager) {}
 
-MatchState::~MatchState() {
-    LOG_I(MATCH_TAG, "Match state destroyed");
-    this->player = nullptr;
-    this->matchManager = nullptr;
-}
-
 void MatchState::onStateMounted(PDN* pdn) {
     LOG_I(MATCH_TAG, "Match state mounted");
 

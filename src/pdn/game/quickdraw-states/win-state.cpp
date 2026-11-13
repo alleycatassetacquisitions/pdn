@@ -13,11 +13,6 @@ Win::Win(const GameContext& ctx)
     , matchManager(ctx.matchManager) {
 }
 
-Win::~Win() {
-    player = nullptr;
-    matchManager = nullptr;
-}
-
 void Win::onStateMounted(PDN* pdn) {
     // Propagate the outcome to the supporter chain (no-op for non-challenger).
     posseManager->sendGameEventToSupporters(ChainGameEventType::WIN);

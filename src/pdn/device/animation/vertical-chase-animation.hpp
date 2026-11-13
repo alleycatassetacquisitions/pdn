@@ -139,6 +139,4 @@ private:
     uint8_t progress;
     bool isWaitingForPause_;
     SimpleTimer pauseTimer_;
-    uint8_t leadingBrightness = 255;
-    float trailingBrightnessFactor = .2;
 }; 

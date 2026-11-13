@@ -9,11 +9,6 @@ PlayerFetchApp::PlayerFetchApp(WirelessManager* wirelessManager,
     , firmwareUpdateManager(firmwareUpdateManager)
     , playerProvider(playerProvider) {}
 
-PlayerFetchApp::~PlayerFetchApp() {
-    firmwareUpdateManager = nullptr;
-    playerProvider = nullptr;
-}
-
 void PlayerFetchApp::populateStateMap() {
     PinEntryState* pinEntry = new PinEntryState(playerProvider);
     FetchUserState* fetchUser = new FetchUserState(&provisioningClient, playerProvider);

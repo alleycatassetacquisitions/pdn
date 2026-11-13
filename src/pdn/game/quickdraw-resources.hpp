@@ -65,19 +65,6 @@ inline const ImageCollection resistanceImageCollection = {
 {ImageType::LOSE, Image(image_resistance_loser, 64, 64, 64, 0)},
 };
 
-// Equivalent LEDColor palettes (derived from FastLED HTML colors in crgb.h):
-// - CRGB::Red       = #FF0000 = (255, 0, 0)
-// - CRGB::Orange    = #FFA500 = (255, 165, 0)
-// - CRGB::DarkGreen = #006400 = (0, 100, 0)
-// - CRGB::DarkBlue  = #00008B = (0, 0, 139)
-// - CRGB::Yellow    = #FFFF00 = (255, 255, 0)
-inline const LEDColor bountyColors[16] = {
-    LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 165, 0),
-    LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 165, 0),
-    LEDColor(255, 165, 0), LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),
-    LEDColor(255, 165, 0), LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),
-};
-
 // LED color constants converted from CRGB to LEDColor
 inline const LEDColor bountyIdleLEDColors[8] = {
     LEDColor(255, 2, 1),     // Color 1
@@ -124,26 +111,6 @@ LEDColor(255, 51, 0),  // Color 3
 LEDColor(222, 97, 7),  // Color 4 (13% dimmer)
 LEDColor(0, 0, 0),
 };
-
-inline const LEDState HUNTER_IDLE_STATE = [](){
-    LEDState state;
-    // Initialize with default values (all black)
-    for (int i = 0; i < 9; i++) {
-        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
-        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
-    }
-    state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
-    
-    // Set the first 4 LEDs with hunter colors at full brightness
-    for (int i = 0; i < 4; i++) {
-        if (i < 4) {
-            state.leftLights[i] = LEDState::SingleLEDState(hunterIdleLEDColors[i], 255);
-            state.rightLights[i] = LEDState::SingleLEDState(hunterIdleLEDColors[i], 255);
-        }
-    }
-    
-    return state;
-}();
 
 inline const LEDState HUNTER_IDLE_STATE_ALTERNATE = [](){
     LEDState state;

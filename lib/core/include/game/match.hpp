@@ -91,11 +91,6 @@ public:
      */
     size_t deserialize(const uint8_t* buffer);
 
-    /**
-     * @return Size of serialized match data in bytes
-     */
-    static size_t binarySize() { return MATCH_BINARY_SIZE; }
-
     /** @return Null-terminated match ID string. */
     const char* getMatchId() const { return matchId; }
     /** @return Hunter draw time in milliseconds. */
