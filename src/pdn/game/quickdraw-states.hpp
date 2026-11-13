@@ -172,21 +172,6 @@ private:
     bool isAuxRequired() override;
 };
 
-/**
- * A match state returns to Idle on a persistent disconnect, but never while a
- * tournament is live — the shootout's own ring-break/ABORT teardown owns that
- * path. The debounce ages on wall clock even when unsampled, so a run started
- * before the tournament went live would fire the instant the shootout ends;
- * reset it while active so a fresh full window is always required afterward.
- */
-inline bool matchReturnsToIdle(ConnectState<PDN>& matchState, ShootoutManager* shootout) {
-    if (shootout && shootout->active()) {
-        matchState.resetDisconnectDebounce();
-        return false;
-    }
-    return matchState.isPersistentlyDisconnected();
-}
-
 /** Draws the stats card over a Win or Lose screen: own time, boost and penalty if any, opponent
  * time. */
 inline void renderLastMatchStats(Display* display, const LastMatchDisplay& stats) {
@@ -211,7 +196,7 @@ inline void renderLastMatchStats(Display* display, const LastMatchDisplay& stats
     display->drawText(line, 2, (hasBoost && hasPenalty) ? 48 : 44);
 }
 
-class MatchCountdown : public ConnectState<PDN> {
+class MatchCountdown : public TypedState<PDN> {
 public:
     /** Constructs the pre-match 3-2-1 countdown state. */
     explicit MatchCountdown(const GameContext& ctx);
@@ -223,9 +208,6 @@ public:
     void onStateDismounted(PDN* pdn) override;
     /** True once the countdown has reached BATTLE. */
     bool shallWeBattle() const;
-
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
 
 private:
     enum class CountdownStep {
@@ -278,7 +260,7 @@ private:
 
 class ShootoutManager;
 
-class MatchState : public ConnectState<PDN> {
+class MatchState : public TypedState<PDN> {
 public:
     /** Constructs the active match draw-window state. */
     explicit MatchState(const GameContext& ctx);
@@ -299,9 +281,6 @@ public:
     /** True when the active shootout match forfeits against this device on timeout. */
     bool transitionToShootoutEliminated() const;
 
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
-
 private:
     Player* player;
     MatchManager* matchManager;
@@ -316,7 +295,7 @@ private:
     static constexpr int MATCH_TIMEOUT = 4000;
 };
 
-class MatchPushed : public ConnectState<PDN> {
+class MatchPushed : public TypedState<PDN> {
 public:
     /** Constructs the post-press grace-period state. */
     explicit MatchPushed(const GameContext& ctx);
@@ -329,11 +308,7 @@ public:
     /** True once both results are present or the post-press grace period expires. */
     bool transitionToMatchResult();
 
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
-
 private:
-    Player* player;
     MatchManager* matchManager;
     SimpleTimer gracePeriodTimer;
     // Covers the opponent's 750ms BUTTON_PUSH_GRACE_PERIOD in MatchReceivedResult,
@@ -342,7 +317,7 @@ private:
     static constexpr int MATCH_RESULT_GRACE_PERIOD = 2500;
 };
 
-class MatchReceivedResult : public ConnectState<PDN> {
+class MatchReceivedResult : public TypedState<PDN> {
 public:
     /** Constructs the state waiting for a local counter-press after receiving peer result. */
     explicit MatchReceivedResult(const GameContext& ctx);
@@ -355,14 +330,10 @@ public:
     /** True once the counter-press arrives or the grace period expires. */
     bool transitionToMatchResult();
 
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
-
 private:
     SimpleTimer buttonPushGraceTimer;
     bool transitionToMatchResultState = false;
     const int BUTTON_PUSH_GRACE_PERIOD = 750;
-    Player* player;
     MatchManager* matchManager;
 };
 

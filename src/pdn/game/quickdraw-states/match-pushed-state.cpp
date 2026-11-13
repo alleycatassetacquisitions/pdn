@@ -5,13 +5,11 @@
 #define MATCH_PUSHED_TAG "MATCH_PUSHED"
 
 MatchPushed::MatchPushed(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, MATCH_PUSHED)
-    , player(ctx.player)
+    : TypedState<PDN>(MATCH_PUSHED)
     , matchManager(ctx.matchManager) {}
 
 MatchPushed::~MatchPushed() {
     LOG_I(MATCH_PUSHED_TAG, "MatchPushed state destroyed");
-    this->player = nullptr;
     this->matchManager = nullptr;
 }
 
@@ -33,10 +31,6 @@ void MatchPushed::onStateDismounted(PDN* pdn) {
 
     gracePeriodTimer.invalidate();
 }
-
-bool MatchPushed::isPrimaryRequired() { return player->isHunter(); }
-
-bool MatchPushed::isAuxRequired() { return !player->isHunter(); }
 
 bool MatchPushed::transitionToMatchResult() {
     return matchManager->matchResultsAreIn() || gracePeriodTimer.expired();

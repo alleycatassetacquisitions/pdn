@@ -10,7 +10,7 @@
 #define MATCH_TAG "MATCH_STATE"
 
 MatchState::MatchState(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, MATCH)
+    : TypedState<PDN>(MATCH)
     , player(ctx.player)
     , matchManager(ctx.matchManager)
     , posseManager(ctx.posseManager)
@@ -73,10 +73,9 @@ void MatchState::onStateLoop(PDN* pdn) {
         return;
     }
 
-    if (!matchTimer.expired() && isConnected()) return;
+    if (!matchTimer.expired()) return;
 
-    bool shootoutTimeout = matchTimer.expired() && shootoutManager && shootoutManager->active();
-    if (!shootoutTimeout) {
+    if (!shootoutManager || !shootoutManager->active()) {
         transitionToIdleState = true;
         return;
     }
@@ -133,10 +132,3 @@ void MatchState::onStateDismounted(PDN* pdn) {
     transitionToShootoutSpectatorState = false;
     transitionToShootoutEliminatedState = false;
 }
-
-// The standing role, not the match's draw slot: which jack must be cabled is a
-// physical fact of this device's place in the chain, and the same one the whole
-// tournament through.
-bool MatchState::isPrimaryRequired() { return player->isHunter(); }
-
-bool MatchState::isAuxRequired() { return !player->isHunter(); }

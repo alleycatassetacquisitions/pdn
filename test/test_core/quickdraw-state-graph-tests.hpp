@@ -59,13 +59,13 @@ SYMBOL_MATCHED,
 };
 
 // Per-state transition targets, in the order they were added.
-inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_EDGES = {
+inline const std::vector<std::pair<int, std::vector<int>>> GAMEPLAY_EDGES = {
 {AWAKEN_SEQUENCE, {IDLE}},
 {IDLE, {SHOOTOUT_PROPOSAL, MATCH_COUNTDOWN, SUPPORTER_READY, SHOOTOUT_ABORTED, SYMBOL}},
 {SUPPORTER_READY, {IDLE}},
 {MATCH_COUNTDOWN, {SHOOTOUT_ABORTED, MATCH, IDLE}},
 {MATCH,
- {SHOOTOUT_ABORTED, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED, IDLE, MATCH_RECEIVED_RESULT,
+ {SHOOTOUT_ABORTED, IDLE, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED, IDLE, MATCH_RECEIVED_RESULT,
   MATCH_PUSHED}},
 {MATCH_PUSHED, {SHOOTOUT_ABORTED, IDLE, MATCH_RESULT}},
 {MATCH_RECEIVED_RESULT, {SHOOTOUT_ABORTED, IDLE, MATCH_RESULT}},
@@ -83,10 +83,10 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 {SYMBOL_MATCHED, {SYMBOL, IDLE}},
 };
 
-// The edges the split turned into hand-offs, as (source state, position in that
-// state's list) -> (target app, entry state). Every other edge in the table above
-// stays inside its app. Pinned separately because the equivalence check reads
-// through a hand-off to the state it lands on and so cannot tell the two apart.
+// The edges that are hand-offs, as (source state, position in that state's
+// list) -> (target app, entry state). Every other edge in the table above stays
+// inside its app. Pinned separately because the edge check below reads through
+// a hand-off to the state it lands on and so cannot tell the two apart.
 inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> CROSS_APP_EDGES = {
 {{IDLE, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_PROPOSAL}},
 {{IDLE, 1}, {MATCH_APP_ID, MATCH_COUNTDOWN}},
@@ -95,9 +95,10 @@ inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>>
 {{MATCH_COUNTDOWN, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
 {{MATCH_COUNTDOWN, 2}, {HUB_APP_ID, IDLE}},
 {{MATCH, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
-{{MATCH, 1}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
-{{MATCH, 2}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
-{{MATCH, 3}, {HUB_APP_ID, IDLE}},
+{{MATCH, 1}, {HUB_APP_ID, IDLE}},
+{{MATCH, 2}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
+{{MATCH, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
+{{MATCH, 4}, {HUB_APP_ID, IDLE}},
 {{MATCH_PUSHED, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
 {{MATCH_PUSHED, 1}, {HUB_APP_ID, IDLE}},
 {{MATCH_RECEIVED_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
@@ -212,13 +213,13 @@ inline void quickdrawAppsRegisterStatesInDeclaredOrder() {
 // state it enters. Transition position is priority: checkTransitions returns the
 // first condition that holds, so demoting an edge below a sibling that can be
 // true at the same moment silently disables it.
-inline void quickdrawAppEdgesMatchPreSplitGraph() {
+inline void quickdrawAppEdgesMatchDeclaredGraph() {
     QuickdrawAppsForTest apps;
     std::map<int, State*> byId = apps.statesById();
 
     size_t totalEdges = 0;
     for (const std::pair<int, std::vector<int>>& expected :
-         quickdraw_state_graph_expectations::PRE_SPLIT_GAMEPLAY_EDGES) {
+         quickdraw_state_graph_expectations::GAMEPLAY_EDGES) {
         State* source = byId.count(expected.first) ? byId[expected.first] : nullptr;
         ASSERT_NE(source, nullptr) << "state " << expected.first << " missing";
 
@@ -234,7 +235,7 @@ inline void quickdrawAppEdgesMatchPreSplitGraph() {
         }
         totalEdges += expected.second.size();
     }
-    EXPECT_EQ(totalEdges, 46u);
+    EXPECT_EQ(totalEdges, 47u);
 }
 
 // Which of those edges became hand-offs, and the app plus entry state each names.

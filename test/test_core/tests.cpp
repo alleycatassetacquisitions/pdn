@@ -633,9 +633,7 @@ TEST(QuickdrawStateGraph, appsRegisterStatesInDeclaredOrder) {
     quickdrawAppsRegisterStatesInDeclaredOrder();
 }
 
-TEST(QuickdrawStateGraph, appEdgesMatchPreSplitGraph) {
-    quickdrawAppEdgesMatchPreSplitGraph();
-}
+TEST(QuickdrawStateGraph, appEdgesMatchDeclaredGraph) { quickdrawAppEdgesMatchDeclaredGraph(); }
 
 TEST(QuickdrawStateGraph, crossAppEdgesAreAppTransitions) {
     quickdrawCrossAppEdgesAreAppTransitions();
@@ -1446,9 +1444,7 @@ TEST_F(StateCleanupTests, matchReceivedResultClearsButtonCallbacks) {
 }
 
 TEST_F(StateCleanupTests, matchStateInvalidatesTimer) { cleanupMatchStateInvalidatesTimer(this); }
-TEST_F(StateCleanupTests, matchStateLeavesOnTheDisconnectEdge) {
-    matchStateLeavesOnTheDisconnectEdge(this);
-}
+TEST_F(StateCleanupTests, matchStateLoopIgnoresTheCable) { matchStateLoopIgnoresTheCable(this); }
 
 TEST_F(StateCleanupTests, countdownStateInvalidatesTimer) {
     cleanupCountdownStateInvalidatesTimer(this);
@@ -1494,23 +1490,36 @@ TEST_F(StateCleanupTests, symbolMatchedLeavesForIdleWithoutBlocking) {
     symbolMatchedLeavesForIdleWithoutBlocking(this);
 }
 
-TEST_F(StateCleanupTests, countdownDebouncesTransientDisconnect) {
-    countdownDebouncesTransientDisconnect(this);
+TEST_F(StateCleanupTests, matchAppAbandonsOnlyALastingDisconnect) {
+    matchAppAbandonsOnlyALastingDisconnect(this);
 }
 
-TEST_F(StateCleanupTests, matchPushedDebouncesTransientDisconnect) {
-    matchPushedDebouncesTransientDisconnect(this);
+TEST_F(StateCleanupTests, matchAppDisconnectWindowSpansItsStates) {
+    matchAppDisconnectWindowSpansItsStates(this);
 }
 
-TEST_F(StateCleanupTests, matchReceivedResultDebouncesTransientDisconnect) {
-    matchReceivedResultDebouncesTransientDisconnect(this);
-}
-TEST_F(StateCleanupTests, disconnectWindowDoesNotCarryIntoTheNextTenure) {
-    disconnectWindowDoesNotCarryIntoTheNextTenure(this);
+TEST_F(StateCleanupTests, matchAppMountedUncabledAbandonsAfterOneWindow) {
+    matchAppMountedUncabledAbandonsAfterOneWindow(this);
 }
 
-TEST_F(StateCleanupTests, countdownFreezesDisconnectDebounceDuringShootout) {
-    countdownFreezesDisconnectDebounceDuringShootout(this);
+TEST_F(StateCleanupTests, matchAppForgetsAnOutageBetweenMatches) {
+    matchAppForgetsAnOutageBetweenMatches(this);
+}
+
+TEST_F(StateCleanupTests, matchAppWatchesTheJackItsRoleFaces) {
+    matchAppWatchesTheJackItsRoleFaces(this);
+}
+
+TEST_F(StateCleanupTests, matchAppLeavesALostCableToTheTournament) {
+    matchAppLeavesALostCableToTheTournament(this);
+}
+
+TEST_F(StateCleanupTests, matchAppWiresTheRuleToEveryLiveMatchState) {
+    matchAppWiresTheRuleToEveryLiveMatchState(this);
+}
+
+TEST_F(StateCleanupTests, matchAppDeletedWhileMountedStopsWatching) {
+    matchAppDeletedWhileMountedStopsWatching(this);
 }
 
 // ============================================

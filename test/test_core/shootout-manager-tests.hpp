@@ -2469,7 +2469,7 @@ inline void abortRuleReachesEveryStateThatDeclaresIt(ShootoutManagerTests* suite
     shootoutApp.populateStateMap();
 
     // (state id, index of that state's abort edge) for every state carrying one.
-    // Positions are pinned independently by quickdrawAppEdgesMatchPreSplitGraph, so
+    // Positions are pinned independently by quickdrawAppEdgesMatchDeclaredGraph, so
     // an edge inserted ahead of one of these fails there too, not only here.
     const std::vector<std::pair<int, size_t>> abortEdges = {
     {IDLE, 3},

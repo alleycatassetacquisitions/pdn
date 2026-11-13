@@ -51,6 +51,11 @@ public:
     bool isSupporter() const;
     bool canInitiateMatch() const;
     /**
+     * The jack this device's opponent cables to: output for a standing hunter,
+     * input for a standing bounty. The other one carries its supporters.
+     */
+    SerialIdentifier opponentJack() const;
+    /**
      * This challenger's supporter chain at any depth: the direct supporter-jack
      * peer, which a cable proves, plus every device that named this one as its
      * challenger in a kChainJoin. Empty inside a ring, which has no challenger.
@@ -132,7 +137,6 @@ private:
     WirelessManager* wirelessManager;
     RemoteDeviceCoordinator* rdc;
 
-    SerialIdentifier opponentJack() const;
     SerialIdentifier supporterJack() const;
 
     // Tells the challenger this device follows that it exists. The challenger cannot

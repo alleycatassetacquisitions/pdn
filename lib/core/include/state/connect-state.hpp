@@ -2,7 +2,6 @@
 
 #include "state/state.hpp"
 #include "device/remote-device-coordinator.hpp"
-#include "utils/simple-timer.hpp"
 
 #include <array>
 #include <cstring>
@@ -100,22 +99,6 @@ public:
                (isSecondaryRequired() && isJackConnected(SerialIdentifier::INPUT_JACK_SECONDARY));
     }
 
-    /**
-     * No required jack has been connected for the full debounce window. The
-     * window opens on the disconnect edge, or at mount for a state mounted with
-     * nothing cabled, and closes on the next connect.
-     */
-    bool isPersistentlyDisconnected() { return disconnectWindow.expired(); }
-
-    /**
-     * Restarts the disconnect window, so a loss already under way has to last a
-     * fresh full window from now.
-     */
-    void resetDisconnectDebounce() {
-        disconnectWindow.invalidate();
-        syncDisconnectWindow();
-    }
-
 protected:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
 
@@ -137,8 +120,6 @@ private:
     void afterMount(DeviceT* device) final {
         subscribe();
         replayConnectedJacks();
-        // A state mounted with nothing cabled gets no edge to open its window on.
-        syncDisconnectWindow();
     }
 
     // Edges between tenures are not delivered, so what this tenure learned is
@@ -146,7 +127,6 @@ private:
     void beforeDismount(DeviceT* device) final {
         if (subscribed) unsubscribe();
         jacks.fill(JackRecord{});
-        disconnectWindow.invalidate();
     }
 
     void subscribe() {
@@ -162,18 +142,7 @@ private:
         // On a disconnect the coordinator still names the peer that just left.
         record.peerType =
         connected ? remoteDeviceCoordinator->getPeerDeviceType(jack) : DeviceType::UNKNOWN;
-        syncDisconnectWindow();
         if (jackStateHandler) jackStateHandler(jack, buildJackState(jack, connected));
-    }
-
-    // Opens the window when the last required jack goes and closes it when one
-    // comes back. A window already open keeps its start.
-    void syncDisconnectWindow() {
-        if (isConnected()) {
-            disconnectWindow.invalidate();
-            return;
-        }
-        if (!disconnectWindow.isRunning()) disconnectWindow.setTimer(DISCONNECT_DEBOUNCE_MS);
     }
 
     // On a disconnect the link is mid-teardown, so the peer facts still describe
@@ -224,9 +193,7 @@ private:
 
     bool isJackConnected(SerialIdentifier jack) const { return jacks[jackSlot(jack)].connected; }
 
-    static constexpr unsigned long DISCONNECT_DEBOUNCE_MS = 500;
     static constexpr size_t JACK_COUNT = 3;
-    SimpleTimer disconnectWindow;
     JackStateHandler jackStateHandler;
     std::array<JackRecord, JACK_COUNT> jacks{};
     bool subscribed = false;
