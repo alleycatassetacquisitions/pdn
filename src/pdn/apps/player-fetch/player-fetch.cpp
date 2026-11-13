@@ -4,8 +4,7 @@
 PlayerFetchApp::PlayerFetchApp(WirelessManager* wirelessManager,
                                FirmwareUpdateManager* firmwareUpdateManager,
                                PlayerProvider* playerProvider)
-    : StateMachine(PLAYER_FETCH_APP_ID)
-    , provisioningClient(wirelessManager)
+    : provisioningClient(wirelessManager)
     , firmwareUpdateManager(firmwareUpdateManager)
     , playerProvider(playerProvider) {}
 

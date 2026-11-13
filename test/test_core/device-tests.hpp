@@ -28,8 +28,7 @@ public:
 class IndexedStateMachine : public StateMachine {
 public:
     /** Registers nothing until the first mount, like every real app. */
-    explicit IndexedStateMachine(int appId)
-        : StateMachine(appId) {}
+    IndexedStateMachine() = default;
 
     /** Appends three states and records that it was asked to. */
     void populateStateMap() override {
@@ -59,9 +58,8 @@ public:
 class ForkingStateMachine : public StateMachine {
 public:
     /** The hand-off names `targetAppId` and the state in it to enter at. */
-    ForkingStateMachine(int appId, StateId targetAppId, StateId entryStateId)
-        : StateMachine(appId)
-        , targetAppId(targetAppId)
+    ForkingStateMachine(StateId targetAppId, StateId entryStateId)
+        : targetAppId(targetAppId)
         , entryStateId(entryStateId) {}
 
     /** Boot state gets the hand-off first, then a local edge to its sibling. */
@@ -89,11 +87,9 @@ private:
 // Mock StateMachine for testing
 class MockStateMachine : public StateMachine {
 public:
-    explicit MockStateMachine(int appId) : StateMachine(appId) {
-        // Initialize with a dummy state so currentState is not nullptr
-        stateMap.push_back(new MockState());
-    }
-    
+    /** Starts with one dummy state so currentState is never nullptr. */
+    MockStateMachine() { stateMap.push_back(new MockState()); }
+
     void populateStateMap() override {
         // Already populated in constructor
     }
@@ -135,9 +131,9 @@ public:
 
     void SetUp() override {
         device = new MockDevice();
-        appOne = new MockStateMachine(APP_ONE.id);
-        appTwo = new MockStateMachine(APP_TWO.id);
-        appThree = new MockStateMachine(APP_THREE.id);
+        appOne = new MockStateMachine();
+        appTwo = new MockStateMachine();
+        appThree = new MockStateMachine();
     }
 
     void TearDown() override {
@@ -160,9 +156,9 @@ public:
     /** Apps are built here but populate lazily on their first mount. */
     void SetUp() override {
         device = new MockDevice();
-        appOne = new IndexedStateMachine(APP_ONE.id);
-        appTwo = new IndexedStateMachine(APP_TWO.id);
-        appThree = new ForkingStateMachine(APP_THREE.id, APP_TWO, StateId(2));
+        appOne = new IndexedStateMachine();
+        appTwo = new IndexedStateMachine();
+        appThree = new ForkingStateMachine(APP_TWO, StateId(2));
     }
 
     /** Each app frees the states it registered. */

@@ -6,8 +6,7 @@
 IdleApp::IdleApp(RemotePlayerManager* remotePlayerManager,
                  RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnMatchSpool* fdnMatchSpool,
                  FdnProvisioningManager* fdnProvisioningManager)
-    : StateMachine(IDLE_APP_ID)
-    , remotePlayerManager(remotePlayerManager)
+    : remotePlayerManager(remotePlayerManager)
     , remoteDeviceCoordinator(remoteDeviceCoordinator)
     , fdnMatchSpool(fdnMatchSpool)
     , fdnProvisioningManager(fdnProvisioningManager) {}

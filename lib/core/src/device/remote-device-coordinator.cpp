@@ -310,7 +310,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         context.silentLinkMs = HELLO_SILENT_LINK_MS;
         context.contextTimeoutMs = CONTEXT_EXCHANGE_TIMEOUT_MS;
         link.machine = new HelloLinkMachine(std::move(context));
-        link.machine->initialize(nullptr);  // states ignore Device*; mounts Idle
+        link.machine->onStateMounted(nullptr);  // states ignore Device*; mounts Idle
     }
 
 #ifndef NATIVE_BUILD

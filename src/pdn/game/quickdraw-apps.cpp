@@ -12,8 +12,7 @@ std::function<bool()> tournamentAbortedCondition(ShootoutManager* shootoutManage
 }  // namespace
 
 HubApp::HubApp(const GameContext& context)
-    : StateMachine(HUB_APP_ID)
-    , context(context) {}
+    : context(context) {}
 
 void HubApp::populateStateMap() {
     AwakenSequence* awakenSequence = new AwakenSequence(context);
@@ -66,8 +65,7 @@ void HubApp::populateStateMap() {
 }
 
 MatchApp::MatchApp(const GameContext& context)
-    : StateMachine(MATCH_APP_ID)
-    , context(context) {}
+    : context(context) {}
 
 MatchApp::~MatchApp() { stopWatchingOpponentJack(); }
 
@@ -205,8 +203,7 @@ void MatchApp::populateStateMap() {
 }
 
 ShootoutApp::ShootoutApp(const GameContext& context)
-    : StateMachine(SHOOTOUT_APP_ID)
-    , context(context) {}
+    : context(context) {}
 
 void ShootoutApp::populateStateMap() {
     ShootoutProposal* proposal = new ShootoutProposal(context);
@@ -266,8 +263,7 @@ void ShootoutApp::populateStateMap() {
 }
 
 SymbolApp::SymbolApp(const GameContext& context)
-    : StateMachine(SYMBOL_APP_ID)
-    , context(context) {}
+    : context(context) {}
 
 void SymbolApp::populateStateMap() {
     SymbolState* symbol = new SymbolState(context);

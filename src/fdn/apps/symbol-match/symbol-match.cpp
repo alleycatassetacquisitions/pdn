@@ -5,8 +5,7 @@
 SymbolMatchApp::SymbolMatchApp(RemoteDeviceCoordinator* remoteDeviceCoordinator,
                                SymbolWirelessManager* symbolWirelessManager,
                                FdnProvisioningManager* fdnProvisioningManager)
-    : StateMachine(SYMBOL_MATCH_APP_ID)
-    , remoteDeviceCoordinator(remoteDeviceCoordinator)
+    : remoteDeviceCoordinator(remoteDeviceCoordinator)
     , symbolManager(new SymbolManager())
     , symbolWirelessManager(symbolWirelessManager)
     , fdnProvisioningManager(fdnProvisioningManager) {}
