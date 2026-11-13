@@ -49,30 +49,37 @@ void NativeHttpClientDriver::processPendingRequests() {
             request.path, 
             request.payload, 
             responseBody);
-        
-        // Track in history
+
+        // An oversized body is rejected as the device client rejects it: neither
+        // kept in the history nor delivered.
+        const bool tooLarge = responseBody.size() > MAX_HTTP_RESPONSE_BYTES;
+        const bool success = !tooLarge && statusCode >= 200 && statusCode < 300;
+
         HttpRequestHistoryEntry entry;
         entry.method = request.method;
         entry.path = request.path;
         entry.requestBody = request.payload;
-        entry.responseBody = responseBody;
+        entry.responseBody = tooLarge ? "" : responseBody;
         entry.statusCode = statusCode;
-        entry.success = (statusCode >= 200 && statusCode < 300);
+        entry.success = success;
         addToHistory(entry);
-        
-        // Call appropriate callback
-        if (statusCode >= 200 && statusCode < 300) {
+
+        if (success) {
             if (request.onSuccess) {
                 request.onSuccess(responseBody);
             }
-        } else {
-            if (request.onError) {
-                WirelessErrorInfo error;
-                // Use SERVER_ERROR for 5xx, INVALID_RESPONSE for 4xx
-                error.code = (statusCode >= 500) ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
+        } else if (request.onError) {
+            WirelessErrorInfo error;
+            if (tooLarge) {
+                error.code = WirelessError::INVALID_RESPONSE;
+                error.message = "Response too large";
+            } else {
+                // SERVER_ERROR for 5xx, INVALID_RESPONSE for 4xx.
+                error.code =
+                (statusCode >= 500) ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
                 error.message = "HTTP " + std::to_string(statusCode);
-                request.onError(error);
             }
+            request.onError(error);
         }
     }
 }

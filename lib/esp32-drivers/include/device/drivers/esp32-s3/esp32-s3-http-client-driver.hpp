@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <esp_event.h>
 #include <esp_netif.h>
@@ -453,6 +454,7 @@ private:
         }
 
         request.responseData = "";
+        responseTooLarge = false;
         request.inProgress = true;
         request.lastAttemptTime = SimpleTimer::getPlatformClock()->milliseconds();
         currentRequest = &request;
@@ -487,11 +489,21 @@ private:
 
     // In async mode perform() returns ESP_ERR_HTTP_EAGAIN until the transfer is
     // done, so it is called once per tick. Only connecting is non-blocking: once
-    // connected, each read and write can still block for up to timeout_ms. Its
-    // return is the only outcome this driver acts on, though IDF also reports a
-    // failure as HTTP_EVENT_ERROR.
+    // connected, each read and write can still block for up to timeout_ms. Apart
+    // from an oversized body, its return is the only outcome this driver acts on,
+    // though IDF also reports a failure as HTTP_EVENT_ERROR.
     void pumpHttpTransfer() {
         const esp_err_t err = esp_http_client_perform(httpClient);
+        // IDF ignores the event handler's return for body and header events, so an
+        // oversized reply is dropped here, between perform() calls. No retry: the
+        // server would send the same reply again.
+        if (responseTooLarge) {
+            LOG_E(HTTP_TAG, "Response over %zu bytes: %s", MAX_HTTP_RESPONSE_BYTES,
+                  httpQueue.front().path.c_str());
+            resetHttpClient();
+            completeFront(false, {WirelessError::INVALID_RESPONSE, "Response too large"});
+            return;
+        }
         if (err == ESP_ERR_HTTP_EAGAIN) {
             return;
         }
@@ -572,9 +584,20 @@ private:
     }
 
     void handleHttpData(HttpRequest* request, void* data, int dataLen) {
-        if (dataLen > 0) {
-            request->responseData.append(reinterpret_cast<char*>(data), dataLen);
+        if (dataLen <= 0 || responseTooLarge) {
+            return;
         }
+        if (request->responseData.size() + static_cast<size_t>(dataLen) > MAX_HTTP_RESPONSE_BYTES) {
+            rejectOversizedResponse(request);
+            return;
+        }
+        request->responseData.append(reinterpret_cast<char*>(data), dataLen);
+    }
+
+    // Swap rather than clear, so the buffer's capacity is released too.
+    void rejectOversizedResponse(HttpRequest* request) {
+        responseTooLarge = true;
+        std::string().swap(request->responseData);
     }
 
     static constexpr unsigned long REQUEST_TIMEOUT_MS = 15000;
@@ -597,6 +620,8 @@ private:
     HttpClientState httpClientState = HttpClientState::DISCONNECTED;
     // When the front request may be attempted again after a failure; 0 = now.
     unsigned long retryAt = 0;
+    // Set from the event handler; pumpHttpTransfer() fails the request on it.
+    bool responseTooLarge = false;
 };
 
 // Defined after the class: syncs clock from the Date header, collects the
@@ -616,6 +641,11 @@ inline esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt) {
                   static_cast<long long>(clock ? clock->unixMilliseconds() : 0),
                   clock ? clock->milliseconds() : 0UL);
         }
+    } else if (evt->event_id == HTTP_EVENT_ON_HEADER && evt->header_key != nullptr &&
+               client->currentRequest != nullptr &&
+               strcasecmp(evt->header_key, "Content-Length") == 0 &&
+               std::strtoull(evt->header_value, nullptr, 10) > MAX_HTTP_RESPONSE_BYTES) {
+        client->rejectOversizedResponse(client->currentRequest);
     } else if (evt->event_id == HTTP_EVENT_ON_DATA && client->currentRequest != nullptr) {
         client->handleHttpData(client->currentRequest, evt->data, evt->data_len);
     }
