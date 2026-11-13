@@ -2230,6 +2230,9 @@ TEST_F(ShootoutManagerTests, bracketAckClearsPendingForThatPeer) { bracketAckCle
 TEST_F(ShootoutManagerTests, bracketRetriesThreeTimesThenAborts) { bracketRetriesThreeTimesThenAborts(this); }
 TEST_F(ShootoutManagerTests, matchStartWaitsOutTheBracketRevealWindow) { matchStartWaitsOutTheBracketRevealWindow(this); }
 TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
+TEST_F(ShootoutManagerTests, aSpectatorAfterPlayingReportsNoOpponent) {
+    aSpectatorAfterPlayingReportsNoOpponent(this);
+}
 TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
 TEST_F(ShootoutManagerTests, eachMatchGetsItsOwnResultRetry) { eachMatchGetsItsOwnResultRetry(this); }

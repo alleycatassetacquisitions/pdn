@@ -992,15 +992,48 @@ inline void nonCoordinatorReceivingMatchStartIdentifiesRole(ShootoutManagerTests
     suite->shootout->onBracketReceived(coord.data(), {me, coord, other}, 1);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
 
-    // Self in the match pair -> isInCurrentMatch + opponentMac populated.
+    // Self in the match pair -> isInCurrentMatch + opponent derived from the pair.
     suite->shootout->onMatchStartReceived(coord.data(), me.data(), coord.data(), 0, 2);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
     EXPECT_TRUE(suite->shootout->isInCurrentMatch());
-    EXPECT_EQ(memcmp(suite->shootout->getOpponentMac().data(), coord.data(), 6), 0);
+    ASSERT_NE(suite->shootout->getOpponentMac(), nullptr);
+    EXPECT_EQ(memcmp(suite->shootout->getOpponentMac(), coord.data(), 6), 0);
 
     // Different MATCH_START where self is NOT in the pair -> spectator.
     suite->shootout->onMatchStartReceived(coord.data(), coord.data(), other.data(), 1, 3);
     EXPECT_FALSE(suite->shootout->isInCurrentMatch());
+}
+
+// A device that played match 0 and spectates match 1 must not keep naming its
+// old opponent, or a stray local win would be reported against a player it no
+// longer faces.
+inline void aSpectatorAfterPlayingReportsNoOpponent(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+    .WillByDefault(testing::Return(1));
+
+    suite->followRingHead(coord);
+    suite->shootout->onRingClosedReceived(coord.data(), {me, coord, other});
+    suite->shootout->startProposal();
+    suite->shootout->onConfirmReceived(me.data());
+    suite->shootout->onConfirmReceived(coord.data());
+    suite->shootout->onConfirmReceived(other.data());
+    suite->shootout->onBracketReceived(coord.data(), {me, coord, other}, 1);
+
+    suite->shootout->onMatchStartReceived(coord.data(), me.data(), coord.data(), 0, 2);
+    ASSERT_NE(suite->shootout->getOpponentMac(), nullptr);
+
+    suite->shootout->onMatchStartReceived(coord.data(), coord.data(), other.data(), 1, 3);
+    ASSERT_FALSE(suite->shootout->isInCurrentMatch());
+    EXPECT_EQ(suite->shootout->getOpponentMac(), nullptr);
+
+    suite->shootout->reportLocalWin();
+    EXPECT_FALSE(suite->shootout->isEliminated(coord.data()));
+    EXPECT_FALSE(suite->shootout->isEliminated(other.data()));
 }
 
 inline void winnerBroadcastsMatchResultAndAdvancesLocally(ShootoutManagerTests* suite) {

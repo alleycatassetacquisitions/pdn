@@ -92,7 +92,8 @@ public:
      * match ID and opposite `localIsHunter`, so each writes exactly one of the
      * match's two draw-time slots.
      */
-    void initializeShootoutMatch(const char* matchId, uint8_t* opponentMac, bool localIsHunter);
+    void initializeShootoutMatch(const char* matchId, const uint8_t* opponentMac,
+                                 bool localIsHunter);
 
     /** True once the match handshake has completed and countdown may begin. */
     bool isMatchReady() const;

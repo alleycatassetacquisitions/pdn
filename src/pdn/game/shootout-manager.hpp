@@ -111,7 +111,11 @@ public:
                               const uint8_t* playerB, uint8_t matchIndex, uint8_t seqId);
     /** True when this device is one of the two players in the current match. */
     bool isInCurrentMatch() const;
-    std::array<uint8_t, 6> getOpponentMac() const;
+    /**
+     * The other player of the current match, read from the current pair; nullptr
+     * when this device is not in the current pair or no match is set.
+     */
+    const uint8_t* getOpponentMac() const;
 
     void reportLocalWin();
 
@@ -281,8 +285,6 @@ private:
 
     // Author of the current bracket; all-zero while no bracket is held.
     std::array<uint8_t, 6> coordinatorMac{};
-
-    std::array<uint8_t, 6> opponentMac{};
 
     // Never repeats within a tournament, so a stale frame for an earlier match
     // stays recognisable. roundPairIndex is the pair's slot in currentRound.
