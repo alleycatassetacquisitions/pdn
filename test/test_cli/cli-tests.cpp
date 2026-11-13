@@ -31,6 +31,26 @@ TEST_F(SerialCableBrokerTestSuite, InvalidDeviceReturnsFalse) {
     serialBrokerInvalidDeviceReturnsFalse(this);
 }
 
+TEST_F(SerialCableBrokerTestSuite, CableCarriesBytesBothWays) {
+    serialBrokerCableCarriesBytesBothWays(this);
+}
+
+TEST_F(SerialCableBrokerTestSuite, DisconnectStopsRouting) {
+    serialBrokerDisconnectStopsRouting(this);
+}
+
+TEST_F(SerialCableBrokerTestSuite, HeldBytesCrossOnConnect) {
+    serialBrokerHeldBytesCrossOnConnect(this);
+}
+
+TEST_F(SerialCableBrokerTestSuite, ByteWritesShareOneRxEntry) {
+    serialBrokerByteWritesShareOneRxEntry(this);
+}
+
+TEST_F(SerialCableBrokerTestSuite, OccupiedJackRefusesSecondCable) {
+    serialBrokerOccupiedJackRefusesSecondCable(this);
+}
+
 // ============================================
 // NATIVE PEER BROKER TESTS
 // ============================================
@@ -109,9 +129,7 @@ TEST_F(NativeHttpClientDriverTestSuite, TracksHistory) {
     httpClientTracksHistory(this);
 }
 
-TEST_F(NativeHttpClientDriverTestSuite, DisabledMockServerFails) {
-    httpClientDisabledMockServerFails(this);
-}
+TEST_F(NativeHttpClientDriverTestSuite, DisconnectedFails) { httpClientDisconnectedFails(this); }
 
 TEST_F(NativeHttpClientDriverTestSuite, UploadsEncodedCrashLog) {
     httpClientUploadsEncodedCrashLog(this);

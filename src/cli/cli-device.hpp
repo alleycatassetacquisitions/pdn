@@ -168,8 +168,6 @@ public:
         instance.serialOutDriver = new NativeSerialDriver(SERIAL_OUT_DRIVER_NAME + suffix);
         instance.serialInDriver = new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix);
         instance.httpClientDriver = new NativeHttpClientDriver(HTTP_CLIENT_DRIVER_NAME + suffix);
-        instance.httpClientDriver->setMockServerEnabled(true);  // Enable mock HTTP server
-        instance.httpClientDriver->setConnected(true);  // Simulate WiFi connection
         instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
         instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix, {MATCHES_PREFS_NAMESPACE});
         

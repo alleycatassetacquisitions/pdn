@@ -170,7 +170,7 @@ void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
             suite->lastErrorCode = error.code;
         });
 
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
@@ -190,7 +190,7 @@ void httpClientDisconnectFailsQueuedRequests(NativeHttpClientDriverTestSuite* su
     }
 
     suite->driver->disconnect();
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->exec();
 
     EXPECT_EQ(errors, 2);
@@ -214,7 +214,7 @@ void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
             suite->errorCallbackCalled = true;
         });
 
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
@@ -231,7 +231,7 @@ void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
         [](const std::string&) {},
         [](const WirelessErrorInfo&) {});
 
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
@@ -264,7 +264,7 @@ void httpClientUploadsEncodedCrashLog(NativeHttpClientDriverTestSuite* suite) {
         }
     );
 
-    suite->driver->setMockServerEnabled(true);
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
@@ -272,8 +272,9 @@ void httpClientUploadsEncodedCrashLog(NativeHttpClientDriverTestSuite* suite) {
     ASSERT_FALSE(suite->errorCallbackCalled);
 }
 
-void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
-    suite->driver->setMockServerEnabled(false);
+// Test: a request queued with no WiFi association fails without reaching the server
+void httpClientDisconnectedFails(NativeHttpClientDriverTestSuite* suite) {
+    ASSERT_FALSE(suite->driver->isConnected());
 
     HttpRequest request(
         "/device/players/by-pin/0010",
@@ -285,10 +286,14 @@ void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
         },
         [suite](const WirelessErrorInfo& error) {
             suite->errorCallbackCalled = true;
+            suite->lastErrorCode = error.code;
         });
 
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
-    suite->driver->setMockServerEnabled(true);
+    ASSERT_FALSE(suite->successCallbackCalled);
+    ASSERT_TRUE(suite->errorCallbackCalled);
+    ASSERT_EQ(suite->lastErrorCode, WirelessError::WIFI_NOT_CONNECTED);
+    ASSERT_TRUE(suite->driver->getRequestHistory().empty());
 }

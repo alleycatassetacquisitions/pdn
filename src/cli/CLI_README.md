@@ -92,8 +92,9 @@ Use `http offline` to simulate network failures.
 .pio/build/native_cli/program 2
 
 # In the simulator:
-cable 0 1              # Connect devices - starts handshake
-# Watch devices progress through: Idle → MatchCountdown → MatchState
+cable 0 1              # Connect devices
+# The simulator does not send the cable's HELLO frames yet (the firmware does it
+# from a FreeRTOS task the native build lacks), so cabled devices stay in Idle.
 
 # Press buttons during match
 press 0 primary        # Hunter presses button

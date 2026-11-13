@@ -17,68 +17,168 @@
 
 class SerialCableBrokerTestSuite : public testing::Test {
 public:  // Public for test function access
+    /** Two devices' jacks, registered as a hunter (0) and a bounty (1). */
     void SetUp() override {
-        broker_ = &cli::SerialCableBroker::getInstance();
-        
+        broker = &cli::SerialCableBroker::getInstance();
+
         // Create serial drivers for two devices
-        outputJackA_ = new NativeSerialDriver("DeviceA_Out");
-        inputJackA_ = new NativeSerialDriver("DeviceA_In");
-        outputJackB_ = new NativeSerialDriver("DeviceB_Out");
-        inputJackB_ = new NativeSerialDriver("DeviceB_In");
-        
+        outputJackA = new NativeSerialDriver("DeviceA_Out");
+        inputJackA = new NativeSerialDriver("DeviceA_In");
+        outputJackB = new NativeSerialDriver("DeviceB_Out");
+        inputJackB = new NativeSerialDriver("DeviceB_In");
+
         // Register devices - A is hunter, B is bounty
-        broker_->registerDevice(0, outputJackA_, inputJackA_, true);   // Hunter
-        broker_->registerDevice(1, outputJackB_, inputJackB_, false);  // Bounty
+        broker->registerDevice(0, outputJackA, inputJackA, true);   // Hunter
+        broker->registerDevice(1, outputJackB, inputJackB, false);  // Bounty
     }
-    
+
+    /** Unregisters before deleting: a cabled jack points at its peer. */
     void TearDown() override {
-        broker_->unregisterDevice(0);
-        broker_->unregisterDevice(1);
-        
-        delete outputJackA_;
-        delete inputJackA_;
-        delete outputJackB_;
-        delete inputJackB_;
+        broker->unregisterDevice(0);
+        broker->unregisterDevice(1);
+
+        delete outputJackA;
+        delete inputJackA;
+        delete outputJackB;
+        delete inputJackB;
     }
-    
-    cli::SerialCableBroker* broker_;
-    NativeSerialDriver* outputJackA_;
-    NativeSerialDriver* inputJackA_;
-    NativeSerialDriver* outputJackB_;
-    NativeSerialDriver* inputJackB_;
+
+    cli::SerialCableBroker* broker = nullptr;
+    NativeSerialDriver* outputJackA = nullptr;
+    NativeSerialDriver* inputJackA = nullptr;
+    NativeSerialDriver* outputJackB = nullptr;
+    NativeSerialDriver* inputJackB = nullptr;
 };
+
+// Appends every byte the jack's exec() hands its byte callback to `sink`.
+inline void captureBytes(NativeSerialDriver* jack, std::string* sink) {
+    jack->setByteCallback([sink](uint8_t byte) { sink->push_back(static_cast<char>(byte)); });
+}
 
 // Test: Connect hunter to bounty
 void serialBrokerConnectHunterToBounty(SerialCableBrokerTestSuite* suite) {
-    ASSERT_TRUE(suite->broker_->connect(0, 1));
-    
-    ASSERT_EQ(suite->broker_->getConnectionCount(), 1);
-    ASSERT_EQ(suite->broker_->getConnectedDevice(0), 1);
-    ASSERT_EQ(suite->broker_->getConnectedDevice(1), 0);
+    ASSERT_TRUE(suite->broker->connect(0, 1));
+
+    ASSERT_EQ(suite->broker->getConnectionCount(), 1);
+    ASSERT_EQ(suite->broker->getConnectedDevice(0), 1);
+    ASSERT_EQ(suite->broker->getConnectedDevice(1), 0);
 }
 
 // Test: Disconnect clears connection
 void serialBrokerDisconnectClearsConnection(SerialCableBrokerTestSuite* suite) {
-    suite->broker_->connect(0, 1);
-    ASSERT_EQ(suite->broker_->getConnectionCount(), 1);
-    
-    suite->broker_->disconnect(0, 1);
-    ASSERT_EQ(suite->broker_->getConnectionCount(), 0);
-    ASSERT_EQ(suite->broker_->getConnectedDevice(0), -1);
+    suite->broker->connect(0, 1);
+    ASSERT_EQ(suite->broker->getConnectionCount(), 1);
+
+    suite->broker->disconnect(0, 1);
+    ASSERT_EQ(suite->broker->getConnectionCount(), 0);
+    ASSERT_EQ(suite->broker->getConnectedDevice(0), -1);
 }
 
 // Test: Double connection is idempotent
 void serialBrokerDoubleConnectionIdempotent(SerialCableBrokerTestSuite* suite) {
-    ASSERT_TRUE(suite->broker_->connect(0, 1));
-    ASSERT_TRUE(suite->broker_->connect(0, 1));  // Should succeed (already connected)
-    
-    ASSERT_EQ(suite->broker_->getConnectionCount(), 1);  // Still only one connection
+    ASSERT_TRUE(suite->broker->connect(0, 1));
+    ASSERT_TRUE(suite->broker->connect(0, 1));  // Should succeed (already connected)
+
+    ASSERT_EQ(suite->broker->getConnectionCount(), 1);  // Still only one connection
 }
 
 // Test: Invalid device returns false
 void serialBrokerInvalidDeviceReturnsFalse(SerialCableBrokerTestSuite* suite) {
-    ASSERT_FALSE(suite->broker_->connect(0, 99));  // Device 99 doesn't exist
-    ASSERT_FALSE(suite->broker_->connect(99, 0));  // Device 99 doesn't exist
+    ASSERT_FALSE(suite->broker->connect(0, 99));  // Device 99 doesn't exist
+    ASSERT_FALSE(suite->broker->connect(99, 0));  // Device 99 doesn't exist
+}
+
+// Test: a cable carries each jack's writes to the other's byte callback
+void serialBrokerCableCarriesBytesBothWays(SerialCableBrokerTestSuite* suite) {
+    std::string heardByBounty;
+    std::string heardByHunter;
+    captureBytes(suite->inputJackB, &heardByBounty);
+    captureBytes(suite->outputJackA, &heardByHunter);
+    // Hunter to bounty joins the hunter's output jack to the bounty's input jack.
+    ASSERT_TRUE(suite->broker->connect(0, 1));
+
+    suite->outputJackA->print('h');
+    suite->outputJackA->print('i');
+    suite->inputJackB->print('y');
+    suite->inputJackB->print('o');
+
+    // In the peer's RX at once, but handed to its callback only by its own exec().
+    EXPECT_TRUE(heardByBounty.empty());
+    suite->inputJackB->exec();
+    suite->outputJackA->exec();
+
+    EXPECT_EQ(heardByBounty, "hi");
+    EXPECT_EQ(heardByHunter, "yo");
+    EXPECT_EQ(suite->outputJackA->getOutputBufferSize(), 0u);
+    EXPECT_EQ(suite->inputJackB->getOutputBufferSize(), 0u);
+}
+
+// Test: an unplugged jack keeps its writes instead of sending them
+void serialBrokerDisconnectStopsRouting(SerialCableBrokerTestSuite* suite) {
+    std::string heardByBounty;
+    captureBytes(suite->inputJackB, &heardByBounty);
+    suite->broker->connect(0, 1);
+    suite->broker->disconnect(0, 1);
+
+    suite->outputJackA->print('x');
+    suite->inputJackB->exec();
+
+    EXPECT_TRUE(heardByBounty.empty());
+    EXPECT_EQ(suite->outputJackA->getOutput(), "x");
+}
+
+// Test: bytes written before the cable was plugged in cross when it is
+void serialBrokerHeldBytesCrossOnConnect(SerialCableBrokerTestSuite* suite) {
+    std::string heardByBounty;
+    captureBytes(suite->inputJackB, &heardByBounty);
+    suite->outputJackA->print('a');
+    suite->outputJackA->print('b');
+
+    suite->broker->connect(0, 1);
+    suite->inputJackB->exec();
+
+    EXPECT_EQ(heardByBounty, "ab");
+    EXPECT_EQ(suite->outputJackA->getOutputBufferSize(), 0u);
+}
+
+// Test: a frame written a byte at a time arrives whole
+void serialBrokerByteWritesShareOneRxEntry(SerialCableBrokerTestSuite* suite) {
+    std::string heardByBounty;
+    captureBytes(suite->inputJackB, &heardByBounty);
+    suite->broker->connect(0, 1);
+
+    // More writes than the RX queue has entries: an entry per write would drop
+    // the head of the frame.
+    std::string frame;
+    for (size_t i = 0; i < NativeSerialDriver::MAX_INPUT_QUEUE_SIZE + 8; i++) {
+        frame.push_back(static_cast<char>('A' + (i % 26)));
+        suite->outputJackA->print(frame.back());
+    }
+
+    EXPECT_EQ(suite->inputJackB->getInputQueueSize(), 1u);
+    suite->inputJackB->exec();
+    EXPECT_EQ(heardByBounty, frame);
+}
+
+// Test: a jack that already has a cable refuses a second
+void serialBrokerOccupiedJackRefusesSecondCable(SerialCableBrokerTestSuite* suite) {
+    NativeSerialDriver outputJackC("DeviceC_Out");
+    NativeSerialDriver inputJackC("DeviceC_In");
+    suite->broker->registerDevice(2, &outputJackC, &inputJackC, true);
+    std::string heardByBounty;
+    captureBytes(suite->inputJackB, &heardByBounty);
+
+    ASSERT_TRUE(suite->broker->connect(0, 1));
+    // A second hunter would need the bounty's input jack too.
+    EXPECT_FALSE(suite->broker->connect(2, 1));
+    EXPECT_EQ(suite->broker->getConnectionCount(), 1u);
+
+    outputJackC.print('c');
+    suite->outputJackA->print('a');
+    suite->inputJackB->exec();
+    EXPECT_EQ(heardByBounty, "a");
+
+    suite->broker->unregisterDevice(2);
 }
 
 // ============================================
