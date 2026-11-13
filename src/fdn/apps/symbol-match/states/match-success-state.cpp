@@ -1,6 +1,5 @@
 #include "apps/symbol-match/symbol-match-states.hpp"
 #include "device/animation/animation-base.hpp"
-#include "device/fdn-light-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "apps/symbol-match/../../device/animation/fdn-match-success-animation.hpp"
 
@@ -10,8 +9,6 @@ MatchSuccess::MatchSuccess(RemoteDeviceCoordinator* remoteDeviceCoordinator,
                            SymbolWirelessManager* symbolWirelessManager)
     : FDNConnectState(remoteDeviceCoordinator, MATCH_SUCCESS)
     , symbolWirelessManager(symbolWirelessManager) {}
-
-MatchSuccess::~MatchSuccess() { symbolWirelessManager = nullptr; }
 
 void MatchSuccess::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");

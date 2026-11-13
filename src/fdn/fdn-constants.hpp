@@ -8,7 +8,6 @@
 // --- GPIO pin assignments ---
 constexpr uint8_t fdnPrimaryButtonPin    = 15;
 constexpr uint8_t fdnSecondaryButtonPin  = 16;
-constexpr uint8_t fdnTertiaryButtonPin   = 6;
 constexpr uint8_t fdnMotorPin            = 17;
 
 // Primary input jack (Serial2: RXr=41, RXt=40)

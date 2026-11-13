@@ -1,7 +1,6 @@
 #include "device/fdn.hpp"
 #include "device/fdn-light-manager.hpp"
 #include "device/driver-names.hpp"
-#include "device/drivers/logger.hpp"
 
 FDN* FDN::createFDN(DriverConfig& driverConfig) {
     return new FDN(driverConfig);
@@ -61,10 +60,6 @@ WirelessManager* FDN::getWirelessManager() {
 
 RemoteDeviceCoordinator* FDN::getRemoteDeviceCoordinator() {
     return remoteDeviceCoordinator;
-}
-
-Button* FDN::getTertiaryButton() {
-    return getPeripheral<Button>(TERTIARY_BUTTON_DRIVER_NAME);
 }
 
 void FDN::setDeviceId(const std::string& id) {

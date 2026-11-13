@@ -17,11 +17,6 @@ Selection::Selection(SymbolManager* symbolManager,
     , symbolManager(symbolManager)
     , symbolWirelessManager(symbolWirelessManager) {}
 
-Selection::~Selection() {
-    symbolManager = nullptr;
-    symbolWirelessManager = nullptr;
-}
-
 void Selection::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
     symbolManager->getRefreshTimer()->invalidate();
