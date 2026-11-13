@@ -4,6 +4,7 @@
 
 #include <string>
 #include <deque>
+#include <vector>
 #include <cstring>
 
 // Native drivers
@@ -20,6 +21,7 @@
 
 // Core game components
 #include "device/pdn.hpp"
+#include "device/remote-device-coordinator.hpp"
 #include "game/player.hpp"
 #include "game/game-session.hpp"
 #include "game/quickdraw-apps.hpp"
@@ -262,6 +264,29 @@ public:
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted
     }
 };
+
+/**
+ * One simulator tick for every device: delivers queued ESP-NOW packets, emits
+ * one HELLO on each device's jacks, runs each device's loop, then records the
+ * state it ended in.
+ */
+inline void advanceSimulation(std::vector<DeviceInstance>& devices) {
+    NativePeerBroker::getInstance().deliverPackets();
+
+    // On ESP32 a FreeRTOS task emits HELLO every HELLO_CADENCE_MS; native builds
+    // spawn no task, so without this cabled devices never link. One HELLO goes
+    // out per tick, so a tick longer than HELLO_SILENT_LINK_MS (a render or
+    // terminal stall) drops the links until the next exchange.
+    for (DeviceInstance& device : devices) {
+        device.pdn->getRemoteDeviceCoordinator()->emitHello();
+    }
+
+    for (DeviceInstance& device : devices) {
+        device.pdn->loop();
+        State* currentState = device.getCurrentState();
+        device.updateStateHistory(currentState ? currentState->getStateId() : -1);
+    }
+}
 
 } // namespace cli
 

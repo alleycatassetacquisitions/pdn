@@ -93,8 +93,8 @@ Use `http offline` to simulate network failures.
 
 # In the simulator:
 cable 0 1              # Connect devices
-# The simulator does not send the cable's HELLO frames yet (the firmware does it
-# from a FreeRTOS task the native build lacks), so cabled devices stay in Idle.
+# The main loop emits each device's HELLO every tick (the firmware does it from
+# a FreeRTOS task the native build lacks), so the cabled jacks reach Connected.
 
 # Press buttons during match
 press 0 primary        # Hunter presses button

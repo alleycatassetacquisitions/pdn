@@ -944,6 +944,85 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
 }
 
 // ============================================
+// CLI SIMULATION TICK TEST SUITE
+// ============================================
+
+class CliSimulationTestSuite : public testing::Test {
+public:
+    /** Two hunter devices on a real clock, uncabled. */
+    void SetUp() override {
+        globalClock = new NativeClockDriver("test_sim_clock");
+        globalLogger = new NativeLoggerDriver("test_sim_logger");
+        globalLogger->setSuppressOutput(true);
+        g_logger = globalLogger;
+        SimpleTimer::setPlatformClock(globalClock);
+
+        devices.reserve(2);
+        devices.push_back(cli::DeviceFactory::createDevice(0, true));
+        devices.push_back(cli::DeviceFactory::createDevice(1, true));
+    }
+
+    /** Destroys both devices after draining the radio broker into them, so no
+     * queued packet reaches a later test's peers. */
+    void TearDown() override {
+        NativePeerBroker::getInstance().deliverPackets();
+        for (cli::DeviceInstance& device : devices) {
+            cli::DeviceFactory::destroyDevice(device);
+        }
+        devices.clear();
+        SimpleTimer::setPlatformClock(nullptr);
+        g_logger = nullptr;
+        delete globalLogger;
+        delete globalClock;
+    }
+
+    std::vector<cli::DeviceInstance> devices;
+    NativeClockDriver* globalClock = nullptr;
+    NativeLoggerDriver* globalLogger = nullptr;
+};
+
+// Test: two cabled devices link through the simulator's own tick (HELLO + loop)
+void cliSimulationCabledDevicesConnect(CliSimulationTestSuite* suite) {
+    // Two hunters: device 0's output jack to device 1's input jack.
+    ASSERT_TRUE(cli::SerialCableBroker::getInstance().connect(0, 1));
+    RemoteDeviceCoordinator* upper = suite->devices[0].pdn->getRemoteDeviceCoordinator();
+    RemoteDeviceCoordinator* lower = suite->devices[1].pdn->getRemoteDeviceCoordinator();
+
+    for (int tick = 0; tick < 200; tick++) {
+        cli::advanceSimulation(suite->devices);
+        if (upper->getJackStatus(SerialIdentifier::OUTPUT_JACK) == JackStatus::CONNECTED &&
+            lower->getJackStatus(SerialIdentifier::INPUT_JACK) == JackStatus::CONNECTED) {
+            break;
+        }
+    }
+
+    ASSERT_EQ(upper->getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
+    ASSERT_EQ(lower->getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
+}
+
+// Test: every device's history follows its transitions, not only a rendered one
+void cliSimulationRecordsHistoryForEveryDevice(CliSimulationTestSuite* suite) {
+    cli::advanceSimulation(suite->devices);
+    for (cli::DeviceInstance& device : suite->devices) {
+        ASSERT_EQ(device.stateHistory.size(), 1u);
+        ASSERT_EQ(device.stateHistory.back(), device.getCurrentState()->getStateId());
+    }
+
+    // Unchanged state: dedupe keeps one entry.
+    cli::advanceSimulation(suite->devices);
+    ASSERT_EQ(suite->devices[1].stateHistory.size(), 1u);
+
+    suite->devices[1].pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID),
+                                        StateId(PlayerFetchStateId::FETCH_USER));
+    cli::advanceSimulation(suite->devices);
+
+    cli::DeviceInstance& switched = suite->devices[1];
+    ASSERT_EQ(switched.stateHistory.size(), 2u);
+    ASSERT_EQ(switched.stateHistory.back(), switched.getCurrentState()->getStateId());
+    ASSERT_NE(switched.stateHistory.front(), switched.stateHistory.back());
+}
+
+// ============================================
 // CLI ROLE COMMAND TEST SUITE
 // ============================================
 

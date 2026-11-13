@@ -412,6 +412,16 @@ TEST_F(CliCommandTestSuite, RebootClearsHistory) {
 }
 
 // ============================================
+// CLI SIMULATION TICK TESTS
+// ============================================
+
+TEST_F(CliSimulationTestSuite, CabledDevicesConnect) { cliSimulationCabledDevicesConnect(this); }
+
+TEST_F(CliSimulationTestSuite, RecordsHistoryForEveryDevice) {
+    cliSimulationRecordsHistoryForEveryDevice(this);
+}
+
+// ============================================
 // MAIN
 // ============================================
 
