@@ -65,7 +65,8 @@ public:
      * test; the fixture frees it once the manager built on it is gone.
      */
     NativePrefsDriver& makeNativePrefs(const char* name) {
-        nativePrefs = new NativePrefsDriver(name, {MATCHES_PREFS_NAMESPACE});
+        nativePrefs =
+        new NativePrefsDriver(name, {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_PREFS_NAMESPACE});
         return *nativePrefs;
     }
 
@@ -78,7 +79,7 @@ public:
         char key[16];
         snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
                  static_cast<unsigned>((seq - 1) % MATCH_RING_CAPACITY));
-        return nativePrefs->readBytes(MATCHES_PREFS_NAMESPACE, key,
+        return nativePrefs->readBytes(MATCH_RING_PREFS_NAMESPACE, key,
                                       reinterpret_cast<uint8_t*>(&out),
                                       sizeof(out)) == MATCH_SLOT_SIZE;
     }
@@ -94,6 +95,32 @@ public:
         }
         out.deserialize(slot.recordBytes);
         return true;
+    }
+
+    /**
+     * Asks the manager for its lowest pending record as the record relay does,
+     * expecting one of this firmware's ring.
+     */
+    bool readLowestPending(uint32_t& recordNumber, MatchRecordContent& content) {
+        RecordKind kind = RecordKind::CRASH;
+        if (!matchManager->readLowestPendingFrame(recordNumber, kind, content)) {
+            return false;
+        }
+        EXPECT_EQ(kind, RecordKind::MATCH);
+        return true;
+    }
+
+    /**
+     * Acknowledges ring match @p seq as an FDN that stored it would: its kind,
+     * its number and the record check of its stored slot, of an empty slot
+     * when none is stored.
+     */
+    void acknowledgeRingMatch(uint32_t seq) {
+        MatchRecordContent slot{};
+        readStoredSlot(seq, slot);
+        uint8_t recordCheck[RECORD_CHECK_SIZE] = {};
+        computeRecordCheck(slot, recordCheck);
+        matchManager->onRecordAcknowledged(RecordKind::MATCH, seq, recordCheck);
     }
 
     void TearDown() override {
@@ -793,11 +820,11 @@ TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
 
     uint32_t oldestPending = 0;
     MatchRecordContent oldest{};
-    ASSERT_TRUE(matchManager->readLowestPending(oldestPending, oldest));
+    ASSERT_TRUE(readLowestPending(oldestPending, oldest));
     EXPECT_EQ(oldestPending, 2u) << "match 1 was overwritten by match 33";
 
     MatchRecordContent slot0{};
-    ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0",
+    ASSERT_EQ(prefs.readBytes(MATCH_RING_PREFS_NAMESPACE, "match_0",
                               reinterpret_cast<uint8_t*>(&slot0), sizeof(slot0)),
               MATCH_SLOT_SIZE);
     Match slot0Match{};
@@ -805,15 +832,57 @@ TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
     EXPECT_STREQ(slot0Match.getMatchId(), "00000033-1234-4000-8000-000000000000");
 }
 
-TEST_F(MatchManagerTestSuite, initializeDropsRecordsFromBeforeTheRing) {
+// A deployed PDN holds its matches as JSON strings in "matches"; flashing this
+// firmware must not lose one before it is delivered.
+TEST_F(MatchManagerTestSuite, bootWithOlderFirmwareJsonMatchesErasesNothing) {
     NativePrefsDriver& prefs = makeNativePrefs("legacy-prefs");
-    prefs.write(MATCHES_PREFS_NAMESPACE, "match_40", R"({"match_id":"old"})");
-    prefs.writeUChar(MATCHES_PREFS_NAMESPACE, "count", 41);
+    const std::string json =
+    R"({"match_id":"0e0e0e0e-0000-4000-8000-000000000040","hunter":"1234","bounty":"5678",)"
+    R"("winner_is_hunter":true,"hunter_time":180,"bounty_time":240})";
+    prefs.write(LEGACY_MATCHES_PREFS_NAMESPACE, "match_40", json);
+    prefs.writeUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_COUNT_KEY, 41);
+    prefs.writeUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_TEST_KEY, 123);
 
     rebuildMatchManager(&prefs);
+    setupMatchAsBounty("0e0e0e0e-1111-4000-8000-000000000001");
+    finishMatchWithDrawTimes(180, 120);
 
-    EXPECT_EQ(prefs.read(MATCHES_PREFS_NAMESPACE, "match_40", ""), "");
-    EXPECT_EQ(prefs.readUChar(MATCHES_PREFS_NAMESPACE, "count", 0), 0);
+    EXPECT_EQ(prefs.read(LEGACY_MATCHES_PREFS_NAMESPACE, "match_40", ""), json);
+    EXPECT_EQ(prefs.readUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_COUNT_KEY, 0), 41);
+    EXPECT_EQ(prefs.readUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_TEST_KEY, 0), 123);
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 1u)
+    << "a new match goes to the ring's own namespace";
+}
+
+// What cannot be read cannot be delivered, so it is never erased and older
+// firmware's count stays with it; it does not hold back the matches after it.
+TEST_F(MatchManagerTestSuite, unparseableOlderFirmwareJsonMatchIsKept) {
+    NativePrefsDriver& prefs = makeNativePrefs("legacy-torn-prefs");
+    const std::string torn = R"({"match_id":"0e0e0e0e-0000-4000-8000-0000000)";
+    prefs.write(LEGACY_MATCHES_PREFS_NAMESPACE, "match_0", torn);
+    prefs.write(LEGACY_MATCHES_PREFS_NAMESPACE, "match_1",
+                R"({"match_id":"0e0e0e0e-0000-4000-8000-000000000001","hunter":"1234",)"
+                R"("bounty":"5678","winner_is_hunter":false,"hunter_time":300,"bounty_time":200})");
+    prefs.writeUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_COUNT_KEY, 2);
+    rebuildMatchManager(&prefs);
+
+    uint32_t recordNumber = 0;
+    RecordKind kind = RecordKind::CRASH;
+    MatchRecordContent content{};
+    ASSERT_TRUE(matchManager->readLowestPendingFrame(recordNumber, kind, content));
+    EXPECT_EQ(recordNumber, 1u) << "the unparseable match 0 must not hold back match 1";
+    EXPECT_EQ(kind, RecordKind::LEGACY_MATCH);
+
+    uint8_t recordCheck[RECORD_CHECK_SIZE] = {};
+    computeRecordCheck(content, recordCheck);
+    matchManager->onRecordAcknowledged(RecordKind::LEGACY_MATCH, 1, recordCheck);
+
+    EXPECT_EQ(prefs.read(LEGACY_MATCHES_PREFS_NAMESPACE, "match_1", ""), "");
+    EXPECT_EQ(prefs.read(LEGACY_MATCHES_PREFS_NAMESPACE, "match_0", ""), torn)
+    << "an unparseable match was erased though nobody received it";
+    EXPECT_EQ(prefs.readUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_COUNT_KEY, 0), 2)
+    << "the count went while a string it finds is still stored";
+    EXPECT_FALSE(matchManager->readLowestPendingFrame(recordNumber, kind, content));
 }
 
 TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOpponent) {
@@ -1186,12 +1255,12 @@ TEST_F(MatchManagerTestSuite, drawResultNamingTheLocalSlotIsIgnored) {
 
 TEST_F(MatchManagerTestSuite, collectedHighWaterMarkClampsWhenCorruptedAboveSeq) {
     NativePrefsDriver& prefs = makeNativePrefs("clamp-prefs");
-    prefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, 5u);
-    prefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 99u);
+    prefs.writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 5u);
+    prefs.writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 99u);
     rebuildMatchManager(&prefs);
 
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 5u);
-    EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 5u)
+    EXPECT_EQ(prefs.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 5u)
     << "the clamp must persist, or matches 6..99 would read as collected once stored";
 }
 
@@ -1204,7 +1273,7 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsRunFromTheCollectedMarkToTheNew
     uint32_t recordNumber = 99;
     MatchRecordContent content;
     memset(&content, 0xEE, sizeof(content));
-    EXPECT_FALSE(matchManager->readLowestPending(recordNumber, content)) << "no match is stored";
+    EXPECT_FALSE(readLowestPending(recordNumber, content)) << "no match is stored";
     EXPECT_EQ(recordNumber, 99u) << "nothing pending must leave the outputs alone";
     EXPECT_EQ(content.recordBytes[0], 0xEE);
     EXPECT_EQ(content.tag[0], 0xEE);
@@ -1220,7 +1289,7 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsRunFromTheCollectedMarkToTheNew
         ASSERT_TRUE(matchManager->finalizeMatch());
     }
 
-    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, content));
+    ASSERT_TRUE(readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 1u);
     MatchRecordContent stored{};
     ASSERT_TRUE(readStoredSlot(1, stored));
@@ -1230,24 +1299,24 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsRunFromTheCollectedMarkToTheNew
     << "the tag is the 16 bytes the PDN stored after them";
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u) << "reading a record retired it";
 
-    matchManager->advanceMark(2);
+    acknowledgeRingMatch(2);
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 2u);
-    EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 2u)
+    EXPECT_EQ(prefs.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 2u)
     << "the mark the relay advances is the stored collected_high_water_mark";
-    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, content));
+    ASSERT_TRUE(readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 3u);
 
-    matchManager->advanceMark(1);
-    matchManager->advanceMark(0);
+    acknowledgeRingMatch(1);
+    acknowledgeRingMatch(0);
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 2u) << "the mark moved backwards";
-    matchManager->advanceMark(4);
+    acknowledgeRingMatch(4);
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 2u)
     << "the mark passed the newest stored match";
 
-    matchManager->advanceMark(3);
+    acknowledgeRingMatch(3);
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 3u);
     recordNumber = 99;
-    EXPECT_FALSE(matchManager->readLowestPending(recordNumber, content));
+    EXPECT_FALSE(readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 99u);
 }
 
@@ -1271,14 +1340,14 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsStartAtTheOldestMatchStillInThe
 
     uint32_t recordNumber = 0;
     MatchRecordContent content{};
-    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, content));
+    ASSERT_TRUE(readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 3u) << "matches 1 and 2 were overwritten; 34 - 31 is the oldest held";
     Match oldest{};
     oldest.deserialize(content.recordBytes);
     EXPECT_STREQ(oldest.getMatchId(), "00000003-9abc-4000-8000-000000000000");
 
-    matchManager->advanceMark(10);
-    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, content));
+    acknowledgeRingMatch(10);
+    ASSERT_TRUE(readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 11u) << "inside the ring the mark decides";
 }
 
@@ -1296,12 +1365,12 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsThatAreAllUnreadableOfferNothin
         matchManager->setReceivedDrawResult();
         ASSERT_TRUE(matchManager->finalizeMatch());
     }
-    matchManager->advanceMark(1);
+    acknowledgeRingMatch(1);
     ASSERT_EQ(matchManager->getCollectedHighWaterMark(), 1u);
     // Matches 2 and 3, every record still pending, are torn.
     const uint8_t torn[3] = {1, 2, 3};
-    prefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_1", torn, sizeof(torn));
-    prefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_2", torn, sizeof(torn));
+    prefs.writeBytes(MATCH_RING_PREFS_NAMESPACE, "match_1", torn, sizeof(torn));
+    prefs.writeBytes(MATCH_RING_PREFS_NAMESPACE, "match_2", torn, sizeof(torn));
 
     uint32_t recordNumber = 99;
     uint8_t untouched[sizeof(MatchRecordContent)];
@@ -1310,13 +1379,13 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsThatAreAllUnreadableOfferNothin
     memset(&content, 0xEE, sizeof(content));
     // Twice: a first read that retired what it passed over would change the second.
     for (int attempt = 0; attempt < 2; ++attempt) {
-        EXPECT_FALSE(matchManager->readLowestPending(recordNumber, content));
+        EXPECT_FALSE(readLowestPending(recordNumber, content));
         EXPECT_EQ(recordNumber, 99u) << "the output number was written with nothing to offer";
         EXPECT_EQ(memcmp(&content, untouched, sizeof(content)), 0)
         << "the output record or tag was written with nothing to offer";
         EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 1u)
         << "an unreadable record was retired without an acknowledgement";
-        EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 1u);
+        EXPECT_EQ(prefs.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 1u);
     }
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 3u);
 }
@@ -1362,7 +1431,7 @@ TEST_F(MatchManagerTestSuite, finishedMatchIsStoredWithTheTagOfItsRecordBytes) {
     ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
 
     uint8_t slot[MATCH_SLOT_SIZE] = {};
-    ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", slot, sizeof(slot)), 128u)
+    ASSERT_EQ(prefs.readBytes(MATCH_RING_PREFS_NAMESPACE, "match_0", slot, sizeof(slot)), 128u)
     << "a ring slot is the 112 record bytes and the 16-byte tag";
     Match stored{};
     stored.deserialize(slot);
@@ -1390,11 +1459,11 @@ TEST_F(MatchManagerTestSuite, matchThatEndsWithNoRecordKeyHeldIsNotStored) {
     << "a match that cannot be stored must still end";
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u) << "a match was stored with no tag";
     uint8_t slot[MATCH_SLOT_SIZE] = {};
-    EXPECT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", slot, sizeof(slot)), 0u)
+    EXPECT_EQ(prefs.readBytes(MATCH_RING_PREFS_NAMESPACE, "match_0", slot, sizeof(slot)), 0u)
     << "record bytes were written to the ring with no tag";
     uint32_t recordNumber = 0;
     MatchRecordContent content{};
-    EXPECT_FALSE(matchManager->readLowestPending(recordNumber, content));
+    EXPECT_FALSE(readLowestPending(recordNumber, content));
 
     // The same match with the key held is stored.
     setupMatchAsBounty("43333333-2222-4000-8000-333333333333");

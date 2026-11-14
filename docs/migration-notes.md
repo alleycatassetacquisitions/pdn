@@ -68,7 +68,7 @@ These change runtime behavior or API contracts.
 | ESP32-specific (`ESPNOW_CHANNEL`, baud rates, GPIO) | `lib/esp32-drivers/include/esp32-driver-constants.hpp` |
 | Game string resources (`alleycatImageCollection`, etc.) | `src/pdn/game/quickdraw-resources.hpp` as `inline const` |
 | Match prefs keys (`PREF_SEQ_KEY`, etc.) | `inline constexpr` in `src/pdn/game/match-manager.hpp` |
-| NVS namespace | `MATCHES_PREFS_NAMESPACE` in `src/pdn/game/match-manager.hpp` |
+| NVS namespace | `MATCH_RING_PREFS_NAMESPACE` (and the read-only `LEGACY_MATCHES_PREFS_NAMESPACE`) in `src/pdn/game/match-manager.hpp` |
 
 ---
 
