@@ -24,12 +24,36 @@ The FDN SHALL propagate its clock to every Connected PDN and SHALL collect recor
 - The FDN SHALL collect match records (`match-collection`) and crash records (`crash-reporting`) from any PDN as `record-relay` specifies. Collecting a record SHALL NOT depend on the sending PDN being Connected on a serial jack.
 
 #### Scenario: Connected PDN receives UTC time and transfers pending match and crash records
-- **WHEN** a provisioned PDN holding a record key, with uncollected match and crash records, connects to an FDN whose UTC clock is synchronized
+- **WHEN** a provisioned PDN with uncollected match and crash records connects to an FDN whose UTC clock is synchronized
 - **THEN** the FDN propagates its UTC epoch milliseconds to the PDN and collects the PDN's pending match and crash records (`record-relay`)
 
 #### Scenario: Clock is not propagated to a PDN that is not Connected
 - **WHEN** a PDN that is not Connected on any serial jack of the FDN sends a pending crash record to that FDN
 - **THEN** the FDN does not propagate its clock to that PDN; collecting the record follows `record-relay`
+
+### Requirement: Registration screen for a cabled unprovisioned PDN
+
+When a PDN whose connection context shows no applied profile (unprovisioned, as distinct from a demo player) becomes Connected on an FDN serial jack while the FDN is in the idle or player-detected state, the FDN SHALL show a registration screen ahead of any other cabled flow:
+
+- While waiting for a lookup request, the FDN SHALL display `"REGISTER"` / `"ENTER CODE"`.
+- While a lookup for that PDN is in progress, the FDN SHALL display `"LOOKING"` / `"UP"`.
+- On a delivered profile, the FDN SHALL display `"WELCOME"` and the player's display name for `3000 ms`; on a lookup failure or timeout, `"UNABLE TO"` / `"LOCATE ASSET"` for `3000 ms`.
+- When a lookup returned a profile and no record key the FDN could deliver to the PDN (`player-provisioning`), the FDN SHALL display `"UNABLE TO"` / `"ISSUE KEY"` for `3000 ms` in place of `"UNABLE TO"` / `"LOCATE ASSET"`.
+- The FDN SHALL end a lookup that has not answered within `8000 ms` as a lookup failure.
+- Outside the registration screen, the FDN SHALL drop a lookup request while a registered PDN is Connected on an FDN jack, so a lookup's Wi-Fi excursion never interrupts that PDN's symbol-match game.
+- The FDN SHALL leave the registration screen for the idle state when the PDN is unplugged, when a result has been shown, or, while waiting for a request, when the cabled PDN's context shows an applied profile.
+
+#### Scenario: Unprovisioned PDN plugged in shows the registration screen
+- **WHEN** an unprovisioned PDN becomes Connected on an idle FDN
+- **THEN** the FDN displays `"REGISTER"` / `"ENTER CODE"` instead of entering the symbol-match flow
+
+#### Scenario: Successful lookup shows the player's name
+- **WHEN** the FDN delivers a profile named `"Ada"` to the cabled PDN
+- **THEN** the FDN displays `"WELCOME"` / `"Ada"` for `3000 ms` and returns to the idle state
+
+#### Scenario: Lookup that yields no record key shows that no key was issued
+- **WHEN** the lookup for a cabled unprovisioned PDN returns a valid profile and no record key
+- **THEN** the FDN displays `"UNABLE TO"` / `"ISSUE KEY"` for `3000 ms`, delivers no profile, and returns to the idle state
 
 ## RENAMED Requirements
 
