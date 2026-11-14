@@ -41,6 +41,7 @@
 #include "sha256-tests.hpp"
 #include "hmac-sha256-tests.hpp"
 #include "text-lines-tests.hpp"
+#include "server-key-pin-tests.hpp"
 #include "fdn-record-store-tests.hpp"
 #include "fdn-record-uploader-tests.hpp"
 #include "fdn-beacon-tests.hpp"
@@ -1302,6 +1303,10 @@ TEST_F(FdnProvisioningTests, servesRequestThatArrivedDuringAnotherPdnsKeyHandOff
     fdnServesRequestThatArrivedDuringAnotherPdnsKeyHandOff(this);
 }
 
+TEST_F(FdnProvisioningTests, untrustedServerFailsRegistrationWithoutAKey) {
+    fdnUntrustedServerFailsRegistrationWithoutAKey(this);
+}
+
 // ============================================
 // SHA-256 AND RECORD CHECK TESTS
 // ============================================
@@ -1343,6 +1348,12 @@ TEST(RecordCheck, ofAMatchRecordIsFirstEightBytesOfSha256OverItsBytesThenItsTag)
 }
 
 TEST(RecordCheck, changesWithTheTag) { recordCheckChangesWithTheTag(); }
+
+TEST(ServerKeyPin, trustsTheKeyItWasComputedFrom) { serverKeyPinTrustsTheKeyItWasComputedFrom(); }
+
+TEST(ServerKeyPin, refusesAKeyOneBitAway) { serverKeyPinRefusesAKeyOneBitAway(); }
+
+TEST(ServerKeyPin, thatIsMalformedTrustsNothing) { serverKeyPinThatIsMalformedTrustsNothing(); }
 
 // ============================================
 // FDN RECORD STORE AND INTAKE TESTS

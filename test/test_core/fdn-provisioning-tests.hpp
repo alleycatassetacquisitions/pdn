@@ -58,6 +58,8 @@ public:
                 results.push_back(name != nullptr ? name : "<unnamed>");
             } else if (result == ProvisionLookupResult::KEY_NOT_ISSUED) {
                 results.push_back("<no key>");
+            } else if (result == ProvisionLookupResult::SERVER_NOT_TRUSTED) {
+                results.push_back("<not trusted>");
             } else {
                 results.push_back("<failed>");
             }
@@ -478,4 +480,27 @@ inline void fdnServesRequestThatArrivedDuringAnotherPdnsKeyHandOff(FdnProvisioni
     suite->queuedRequests[1].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404"});
     fdnProv.sync();
     EXPECT_EQ(suite->queuedRequests.size(), 2u) << "a PDN's repeated request was looked up twice";
+}
+
+// The HTTP client refused the server for presenting a key other than the pinned
+// one: the FDN reports that, and the PDN gets the plain lookup-failure reply.
+inline void fdnUntrustedServerFailsRegistrationWithoutAKey(FdnProvisioningTests* suite) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    suite->listenForResults(fdnProv);
+    suite->captureRadio();
+
+    suite->deliverRequest("0007", suite->pdnMac);
+    ASSERT_EQ(suite->queuedRequests.size(), 1u);
+    suite->queuedRequests[0].onError(
+    {WirelessError::SERVER_NOT_TRUSTED, "Server key does not match the pin"});
+
+    EXPECT_EQ(suite->results, (std::vector<std::string>{"<not trusted>"}))
+    << "the registration screen cannot tell an untrusted server from a missing player";
+    EXPECT_TRUE(suite->fdnRdc.getSentApplicationFrames().empty()) << "a key reached the jack";
+    ASSERT_EQ(suite->replies.size(), 1u) << "the PDN was left waiting out its timeout";
+    EXPECT_EQ(suite->replies[0].status, static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED));
+    EXPECT_STREQ(suite->replies[0].playerName, "");
+    EXPECT_FALSE(fdnProv.isLookupInFlight());
+    EXPECT_EQ(suite->fdnDevice.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW)
+    << "Wi-Fi was kept after the lookup ended";
 }
