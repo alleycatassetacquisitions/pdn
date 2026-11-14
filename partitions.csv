@@ -5,6 +5,8 @@ ota_0,    app,   ota_0,    0x10000,  0x3E0000
 ota_1,    app,   ota_1,    0x3F0000, 0x3E0000
 coredump, data,  coredump, 0x7D0000, 0x10000
 nvs_keys, data,  nvs_keys, 0x7E0000, 0x1000
-# The FDN's record store, in the end of flash; a PDN never opens it. Only a
-# USB flash writes this table: an over-the-air image does not carry it.
+# The FDN's record store, in the end of flash; on a PDN, its match ring
+# (MATCH_RING_PARTITION_OFFSET in src/pdn/pdn-constants.hpp, registered there at
+# runtime under a table without it). Only a USB flash writes this table: an
+# over-the-air image does not carry it.
 fdn_store, data, nvs,      0x7E1000, 0x1F000

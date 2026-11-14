@@ -52,15 +52,15 @@ public:
 
     /**
      * Replaces the manager with a fresh one on `storage`, which must outlive it
-     * (~MatchManager calls storage->end()). No active match or boost provider
-     * carries over.
+     * (~MatchManager calls storage->end()), with its ring in `ringStorage` when
+     * given. No active match or boost provider carries over.
      */
-    void rebuildMatchManager(StorageInterface* storage) {
+    void rebuildMatchManager(StorageInterface* storage, StorageInterface* ringStorage = nullptr) {
         // Old manager first: a match channel built while it stands is refused the
         // kMatchCommand type.
         delete matchManager;
         matchManager = new MatchManager(player, playerProvider.getRecordKey(), storage,
-                                        device.wirelessManager, &fakeRdc);
+                                        device.wirelessManager, &fakeRdc, ringStorage);
     }
 
     /**
@@ -131,6 +131,7 @@ public:
         delete matchManager;
         // After the manager, whose destructor closes the storage it was built on.
         delete nativePrefs;
+        delete ringArea;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
@@ -180,6 +181,8 @@ public:
     MockDevice device;
     MockStorage mockStorage;
     NativePrefsDriver* nativePrefs = nullptr;
+    // The match ring's own storage area, when a test gives it one; freed like nativePrefs.
+    StorageDriverInterface* ringArea = nullptr;
     FakeRemoteDeviceCoordinator fakeRdc;
     FakePlatformClock* fakeClock;
     QuickdrawRadioTap radioTap;

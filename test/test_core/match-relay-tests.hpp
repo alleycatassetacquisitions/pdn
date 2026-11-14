@@ -237,8 +237,36 @@ public:
 
     NativePrefsDriver pdnPrefs{"relay-pdn-prefs",
                                {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_PREFS_NAMESPACE}};
+    // The match ring's own storage area, for a session rebuilt on it.
+    NativePrefsDriver ringAreaPrefs{"relay-ring-area", {MATCH_RING_PREFS_NAMESPACE}};
     std::vector<HttpRequest> fdnHttpRequests;
 };
+
+// ---- The match ring's own storage area ----
+
+// The session hands the match manager the ring's area: after a restart on it,
+// the matches stored in the default partition are sent from there.
+inline void matchRelaySendsTheRingFromItsOwnAreaAfterARestart(MatchRelayTests* suite) {
+    suite->storeMatches(2);
+    const MatchRecordContent stored = suite->storedSlot(1);
+
+    delete suite->gameSession;
+    suite->gameSession = new GameSession(suite->player, suite->playerProvider.getRecordKey(),
+                                         &suite->pdnDevice, nullptr, &suite->ringAreaPrefs);
+    EXPECT_EQ(suite->ringAreaPrefs.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0), 2u);
+    EXPECT_EQ(suite->pdnPrefs.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0), 0u);
+
+    suite->hearBeacon(suite->fdnMac);
+
+    const std::vector<SentRecordFrame<MatchRecordFramePacket>> frames =
+    suite->framesOf<MatchRecordTraits>();
+    ASSERT_EQ(frames.size(), 1u);
+    uint32_t recordNumber = 0;
+    memcpy(&recordNumber, &frames[0].bytes[2], sizeof(recordNumber));
+    EXPECT_EQ(recordNumber, 1u);
+    EXPECT_EQ(memcmp(&frames[0].bytes[6], &stored, sizeof(stored)), 0)
+    << "the frame does not carry the record and tag stored for match 1";
+}
 
 // ---- Record frame ----
 

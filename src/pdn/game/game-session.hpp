@@ -32,10 +32,12 @@ public:
      * Builds the shared managers, wires the session-level callbacks, and
      * installs its own per-tick pump. The device outlives the session, so the
      * destructor empties every slot holding `this`. recordKey is borrowed, may
-     * be null, and must outlive the session.
+     * be null, and must outlive the session. matchRingStorage, borrowed, is
+     * the match ring's own storage area; null keeps the ring in the device's storage.
      */
     GameSession(Player* player, const RecordKey* recordKey, Device* pdn,
-                SymbolWirelessManager* symbolWirelessManager);
+                SymbolWirelessManager* symbolWirelessManager,
+                StorageInterface* matchRingStorage = nullptr);
     /** Drops the callbacks that capture `this`, then frees the managers it owns. */
     ~GameSession();
 
@@ -55,7 +57,8 @@ private:
     void logRetryStats();
     // Builds the managers the context owns; its other pointers are borrowed.
     static GameContext makeContext(Player* player, const RecordKey* recordKey, Device* pdn,
-                                   SymbolWirelessManager* symbolWirelessManager);
+                                   SymbolWirelessManager* symbolWirelessManager,
+                                   StorageInterface* matchRingStorage);
 
     Device* pdn = nullptr;
     WirelessManager* wirelessManager = nullptr;

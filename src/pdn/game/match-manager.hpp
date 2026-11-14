@@ -97,13 +97,17 @@ public:
     /**
      * Claims the kMatchCommand channel on wirelessManager and, with an rdc,
      * registers for its application frames and jack changes. storage is
-     * required; wirelessManager and rdc may be null in tests; with a null rdc
-     * no standalone match starts either way. recordKey is borrowed and read
-     * only when a finished match is tagged; while it is null or holds no key,
-     * no match is stored.
+     * required and holds older firmware's matches; ringStorage, when given,
+     * holds this firmware's ring, and the ring records storage holds, where
+     * firmware before it kept them, are moved there first. Without ringStorage
+     * the ring stays in storage. wirelessManager and rdc may be null in tests;
+     * with a null rdc no standalone match starts either way. recordKey is
+     * borrowed and read only when a finished match is tagged; while it is null
+     * or holds no key, no match is stored.
      */
     MatchManager(Player* player, const RecordKey* recordKey, StorageInterface* storage,
-                 WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
+                 WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc,
+                 StorageInterface* ringStorage = nullptr);
     ~MatchManager();
 
     /**
@@ -287,7 +291,10 @@ private:
     parameterizedCallbackFunction matchButtonPush;
     parameterizedCallbackFunction buttonMasher;
 
+    // Older firmware's matches, and where firmware before ringStorage kept the ring.
     StorageInterface* storage;
+    // This firmware's ring; storage itself when the ring has no area of its own.
+    StorageInterface* ringStorage;
     ReliableChannel<MatchPacket> matchChannel;
 
     void initialize();
@@ -324,9 +331,17 @@ private:
     /** Writes a tagged match record to the next ring slot and increments the sequence number. */
     bool appendRecordToStorage(const MatchRecordContent& content);
 
-    // Reads ring slot @p seq of namespace @p ns. A slot of LEGACY_UNTAGGED_SLOT_SIZE
-    // bytes reads with a zero tag.
-    bool readRingSlot(const char* ns, uint32_t seq, MatchRecordContent& content);
+    // The storage holding namespace @p ns: ringStorage for this firmware's ring.
+    StorageInterface* storageHolding(const char* ns) const;
+    // Reads ring slot @p seq of namespace @p ns in @p area. A slot of
+    // LEGACY_UNTAGGED_SLOT_SIZE bytes reads with a zero tag.
+    static bool readRingSlot(StorageInterface* area, const char* ns, uint32_t seq,
+                             MatchRecordContent& content);
+    // Moves into ringStorage the ring records @p oldLocation holds, then erases
+    // them there; see the definition for why a cut-short move loses nothing.
+    void moveRingRecordsFrom(StorageInterface* oldLocation);
+    // True when one of the slots ringStorage's ring holds is byte-identical to @p content.
+    bool ringHoldsRecord(const MatchRecordContent& content);
     bool readLowestPendingInRing(const char* ns, uint32_t& highestReported, uint32_t& recordNumber,
                                  MatchRecordContent& content);
     bool readLowestPendingLegacyJson(uint32_t& recordNumber, MatchRecordContent& content);

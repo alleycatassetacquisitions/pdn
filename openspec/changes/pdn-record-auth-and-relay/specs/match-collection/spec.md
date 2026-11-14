@@ -77,3 +77,25 @@ An FDN holding ingested match records SHALL upload them to the central server in
 #### Scenario: Uploaded match carries the record bytes, the tag and the sender note alongside the decoded fields
 - **WHEN** an FDN uploads a match record it stored from a record frame sent by the PDN with MAC address `aa:bb:cc:dd:ee:ff`
 - **THEN** the uploaded match carries, in addition to the decoded match fields, the `112` match record bytes and the `16`-byte record tag exactly as the FDN received them, and that MAC address as a troubleshooting note
+
+## ADDED Requirements
+
+### Requirement: PDN match ring in its own storage area
+
+A PDN SHALL keep its match ring buffer, `match_sequence_number` and `collected_high_water_mark` in a storage area of its own at the end of flash, apart from its other non-volatile data and from match records stored by older firmware, which stay where they are. At boot it SHALL move pending ring records there, erasing them from the old location only once all are held. When the area cannot be opened, the ring SHALL stay in the shared storage.
+
+#### Scenario: Pending ring records move to the storage area at first boot
+- **WHEN** a PDN boots with matches `3..5` pending of `5` in its ring in the shared storage and its storage area opens
+- **THEN** the storage area holds matches `3..5` under the same sequence numbers with `collected_high_water_mark` `2`, and the shared storage holds none of the ring
+
+#### Scenario: A move cut short loses no match record
+- **WHEN** a PDN loses power after storing some pending ring records in its storage area and before erasing them from the shared storage
+- **THEN** every pending record is held in at least one of the two, and the next boot finishes the move without holding any record twice
+
+#### Scenario: Ring stays in shared storage when the storage area does not open
+- **WHEN** a PDN boots and its storage area can be neither found nor registered, or does not open
+- **THEN** it reads and stores its ring in the shared storage as before, and erases nothing in the storage area
+
+#### Scenario: Older firmware's match records stay in shared storage and are sent
+- **WHEN** a PDN whose ring is in its storage area holds JSON-era match records in the shared storage
+- **THEN** they stay there and are sent as `record-relay` requires after the pending ring records, each erased only on its stored acknowledgement

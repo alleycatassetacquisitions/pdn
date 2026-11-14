@@ -2,6 +2,8 @@
 #include <freertos/task.h>
 #include <esp_log.h>
 #include <nvs_flash.h>
+#include <esp_flash.h>
+#include <esp_partition.h>
 
 // How long the splash screen stays up before the first app mounts.
 constexpr unsigned long SPLASH_HOLD_MS = 3000;
@@ -46,6 +48,10 @@ Esp32s3SerialIn* serialInDriver = nullptr;
 EspNowDriver* peerCommsDriver = nullptr;
 Esp32S3Logger* loggerDriver = nullptr;
 Esp32S3PrefsDriver* storageDriver = nullptr;
+// The match ring's own partition. Not in DriverConfig: setup() opens it just
+// before the match manager, whose ring stays in storageDriver's partition when it
+// does not open.
+Esp32S3PrefsDriver* matchRingDriver = nullptr;
 
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
@@ -55,6 +61,37 @@ PlayerProvider* playerProvider = nullptr;
 GameSession* gameSession = nullptr;
 
 SymbolWirelessManager* symbolWirelessManager = nullptr;
+
+// True when the match ring's partition is in the partition table, or, on a
+// deployed table that ends before its range, once that range is registered for
+// this boot. Nothing is erased: a registration holds only until restart, so a
+// first one cannot be told from a later one, and NVS takes any other data left in
+// the range, as from an old table's spiffs, for free pages and erases each page
+// when it first uses it.
+static bool findOrRegisterMatchRingPartition() {
+    if (esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS,
+                                 MATCH_RING_PARTITION_LABEL) != nullptr) {
+        return true;
+    }
+    uint32_t flashSize = 0;
+    if (esp_flash_get_physical_size(nullptr, &flashSize) != ESP_OK ||
+        flashSize < PDN_FLASH_SIZE) {
+        LOG_E("SETUP", "Flash of %u bytes has no room for the match ring's partition",
+              static_cast<unsigned>(flashSize));
+        return false;
+    }
+    // Refused when a partition of the running table overlaps the range, or the
+    // image header's flash size does not reach its end.
+    const esp_err_t status = esp_partition_register_external(
+    nullptr, MATCH_RING_PARTITION_OFFSET, MATCH_RING_PARTITION_SIZE, MATCH_RING_PARTITION_LABEL,
+    ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, nullptr);
+    if (status != ESP_OK) {
+        LOG_E("SETUP", "Registering the match ring's partition failed: %s",
+              esp_err_to_name(status));
+        return false;
+    }
+    return true;
+}
 
 static void setup() {
     const uint32_t crashedBootUptimeMs = CrashLogger::takeCrashedBootUptime();
@@ -91,6 +128,9 @@ static void setup() {
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, RXt, RXr);
 
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
+    // The default partition keeps MATCH_RING_PREFS_NAMESPACE so the ring older
+    // firmware stored there can be moved, or kept there when the ring's own
+    // partition does not open.
     storageDriver = new Esp32S3PrefsDriver(
     STORAGE_DRIVER_NAME,
     {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
@@ -123,8 +163,21 @@ static void setup() {
     crashLogger = new CrashLogger(storageDriver);
     crashLogger->capture(crashedBootUptimeMs);
 
+    // The ring's records move out of the default partition, which an init
+    // failure above erases and older firmware's matches may have filled.
+    if (findOrRegisterMatchRingPartition()) {
+        matchRingDriver = new Esp32S3PrefsDriver(MATCH_RING_DRIVER_NAME, MATCH_RING_PARTITION_LABEL,
+                                                 {MATCH_RING_PREFS_NAMESPACE});
+        if (matchRingDriver->initialize() != 0) {
+            delete matchRingDriver;
+            matchRingDriver = nullptr;
+        }
+    }
+    if (matchRingDriver == nullptr) {
+        LOG_E("SETUP", "The match ring stays in the default partition");
+    }
     gameSession = new GameSession(playerProvider->getPlayer(), playerProvider->getRecordKey(), pdn,
-                                  symbolWirelessManager);
+                                  symbolWirelessManager, matchRingDriver);
     gameSession->setCrashRecordSource(crashLogger);
 
     PlayerFetchApp* playerFetchApp =
