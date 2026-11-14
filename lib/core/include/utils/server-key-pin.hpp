@@ -40,6 +40,17 @@ public:
     bool matchesKey(const uint8_t* spki, size_t length,
                     char (&presentedKeyHash)[SERVER_KEY_PIN_HEX_LENGTH + 1]) const;
 
+    /**
+     * The verification flags to leave on the certificate at @p depth of a
+     * chain; only the leaf (depth 0) decides. A leaf whose key matched clears
+     * every incoming flag, host name and dates included; any other leaf keeps
+     * them and adds @p notTrustedFlag. Certificates above the leaf are cleared
+     * so no CA's verdict counts; @p keyMatches is ignored there.
+     * @return the flags to store back for this certificate.
+     */
+    static uint32_t verifiedFlags(int depth, bool keyMatches, uint32_t incomingFlags,
+                                  uint32_t notTrustedFlag);
+
 private:
     uint8_t pinnedDigest[SHA256_DIGEST_SIZE] = {};
     bool pinIsSet = false;
