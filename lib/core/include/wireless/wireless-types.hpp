@@ -11,7 +11,10 @@ enum class WirelessError {
     INVALID_RESPONSE,
     SERVER_ERROR,
     WIFI_NOT_CONNECTED,
-    INVALID_STATE
+    INVALID_STATE,
+    // The HTTPS server presented a key other than the pinned one, or no key is
+    // pinned; retrying would meet the same key.
+    SERVER_NOT_TRUSTED
 };
 
 struct WirelessErrorInfo {
@@ -33,11 +36,25 @@ struct WifiConfig {
     std::string ssid;
     std::string password;
     std::string baseUrl;
-    
-    WifiConfig() : ssid(""), password(""), baseUrl("") {}
-    
-    WifiConfig(const std::string& ssid, const std::string& password, const std::string& baseUrl)
-        : ssid(ssid), password(password), baseUrl(baseUrl) {}
+    // SHA-256 of the server's DER SubjectPublicKeyInfo as 64 hex digits; only an
+    // HTTPS server presenting that key is trusted. Empty or malformed, no HTTPS
+    // server is.
+    std::string serverKeySha256;
+
+    /** An empty configuration: no network, no server, no pin. */
+    WifiConfig()
+        : ssid("")
+        , password("")
+        , baseUrl("")
+        , serverKeySha256("") {}
+
+    /** A configuration for @p ssid and @p baseUrl; with no pin no HTTPS server is trusted. */
+    WifiConfig(const std::string& ssid, const std::string& password, const std::string& baseUrl,
+               const std::string& serverKeySha256 = "")
+        : ssid(ssid)
+        , password(password)
+        , baseUrl(baseUrl)
+        , serverKeySha256(serverKeySha256) {}
 };
 
 // Callback definitions
