@@ -49,7 +49,7 @@ What the three open PRs add on top. #426 replaces the FDN's match spool with one
 What the server does today (alleycat-rs at `af107bf`; outside this repository):
 
 - Nothing authenticates a caller. No endpoint has authentication, key issuance or key storage.
-- `GET /players` returns every player's PIN with their name and email, to any caller.
+- Every player endpoint that returns a PIN (`GET /players`, `GET /players/{id}`, `GET /players/by-pin/{pin}`) returns it with the player's name and email, to any caller. Player UUIDs cross the radio in the clear, so one UUID yields that player's PIN.
 - `POST /device-logs` takes `device_mac` as a field, so a relayed record under the PDN's MAC address is accepted today. A repeat of the same MAC address and crash number is ignored with `204`. A malformed body, invalid UTF-8 or a missing required field gets `400`; a body that is too large `413`; a wrong content type `415`. Nothing answers `422`.
 - `POST /quickdraw-matches` accepts a match from any caller and rejects an unknown player or team per entry. A repeated match ID is stored once: the first upload wins and scores at once, and a second copy, even one naming a different winner, is dropped with `204`. The stored row records no uploader and no report count, and there is no view of disputed matches. A winner is required, so a tie cannot be stored. Occurred-at comes from the device and received-at from the server.
 - ADR 0001 ("Quickdraw results and scoring periods") records that both devices upload the same duel, sometimes late and with slightly different timestamps; that there is one result per match ID and the first valid upload supplies the result and the timestamp; that a small timestamp difference near a scoring boundary can change eligibility depending on which device uploads first; and that the server does not keep both reports. It says to "revisit this if reconciliation becomes necessary."
@@ -102,7 +102,7 @@ The comparison is only as strong as the path by which a key is handed out. A key
 
 ### Key on the PDN: volatile memory only (editor's choice; Open Questions)
 
-- The PDN holds the 32-byte key in volatile memory and never writes it to non-volatile storage. A PDN registers on every boot before it can play a match that is stored, and crash records need no key.
+- The PDN holds the 32-byte key in volatile memory and never writes it to the storage it keeps deliberately: its key-value storage and its match ring.
 - The PDN sends the key to no device and never logs or displays it.
 - A key accepted later in the same session replaces the held one.
 - The PDN drops the key when it leaves registration without a profile applied, so a key never outlasts a registration that failed.
@@ -127,7 +127,7 @@ Why the jack: registration messages cross the radio unencrypted, so a key sent t
 
 `tag = first 16 bytes of HMAC-SHA-256(record key, the 112 match record bytes)`.
 
-- **Input.** The record bytes alone. The MAC address and the player are in the key.
+- **Input.** The record bytes alone.
 - **When.** The tag is computed when the match ends and stored with the record in the PDN's ring.
 - **No key (editor's choice; Open Questions).** A PDN that holds no key when a match ends stores the record with a 16-byte all-zero tag, which means "no tag". Match records are sent whether or not they carry a tag.
 - **Storage.** A stored match record grows from `112` to `128` bytes on the PDN. A slot holding `112` bytes and no tag is read as carrying the all-zero tag. Such a record is still delivered; it stops counting once the server verifies (Migration Plan).
@@ -193,19 +193,19 @@ Whether an FDN takes match records from a PDN that is not Connected before the s
 - **Crash records** upload in today's device-log shape: the originating PDN's MAC address and the decoded fields, with no new field. Today's server accepts this.
 - **Retiring a relayed crash record.** The FDN retires it on success, and on `400`, `413`, `415` or `422`, each of which says the request itself can never be accepted; it then continues with the next relayed record. On any other failure it stops the relayed records and keeps them for the next cycle. Without the retire rule one record the server will never take would block the record store for good. The rule does not apply to the FDN's own crash records, which advance only on success as today. Crash numbers restart if a PDN's storage is erased; today's server then ignores the reused number with `204`, which also retires the record.
 - **Match records** upload the decoded fields as today plus the sender's MAC address, the raw 112 record bytes and the 16-byte tag. The field format is the server team's.
-- **The seam.** Firmware keeps the three new upload fields, and the MAC address on the lookup, behind one marked seam each, and sends today's shapes until the server team agrees the formats. The scenarios "Uploaded match carries the sender, the record bytes and the tag alongside the decoded fields" (`match-collection`) and "Lookup names the Connected PDN" (`player-provisioning`) describe the target. They are met only when the seams are filled (tasks.md 10.3), not when the firmware tasks before that finish.
+- **The seam.** Firmware keeps the three new upload fields, and the MAC address on the lookup, behind one marked seam each, and sends today's shapes until the server team agrees the formats. These describe the target and are met only when the seams are filled (tasks.md 10.3), not when the firmware tasks before that finish: the scenario "Uploaded match carries the sender, the record bytes and the tag alongside the decoded fields" (`match-collection`); the scenario "Lookup names the Connected PDN" (`player-provisioning`); and, in `record-relay`, the upload sentence of the requirement "FDN relays without verifying" with the upload part of its scenarios "A record with a wrong tag is still relayed" and "A match record with the all-zero tag is still relayed".
 
 ### FDN delay after an unknown PIN (editor's choice; Open Questions)
 
 After a lookup the server answers with HTTP `404`, the FDN makes no lookup for a delay. The delay is `2,000 ms` after the first `404` and doubles with each further `404`, up to `120,000 ms`. It returns to none after `600,000 ms` without a `404`. While a delay runs the FDN answers a PIN request with the lookup-failure notification without contacting the server, and its display says `"LOOKUPS"` / `"PAUSED"`. A successful lookup changes nothing. The state is FDN-wide and in volatile memory.
 
 - **Why FDN-wide.** The PIN request arrives over the radio under a self-asserted MAC address, so the FDN cannot count per device.
-- **Why a delay and not a stop.** A radio that copies a Connected PDN's MAC address can send PIN requests with no cable, so it can trigger the limit. A stop would then block every registration at that FDN. A delay costs each honest registration at most two minutes.
+- **Why a delay and not a stop.** A radio that copies a Connected PDN's MAC address can send PIN requests with no cable, so it can trigger the limit. A stop would then block every registration at that FDN for its whole length. A delay bounds one wait at `120,000 ms`. It does not stop a persistent radio: one that sends a wrong PIN each time a delay ends takes the FDN's single lookup and starts another `120,000 ms`, so registration at that FDN is blocked for as long as it transmits. The same radio can block registration today as well, by keeping the one lookup busy.
 - **Why at the FDN.** The server-side limit (item 4 of the ranked list) may not get built.
-- **Arithmetic, per FDN.** Sustained guessing is one lookup per 120 s, which is 720 a day. A specific PIN takes 5,000 guesses on average out of 10,000, about 7 days. Some valid PIN among 200 players takes about 50 guesses on average (10,001 / 201), about 100 minutes. Today, at 7 guesses a minute, those figures are about 12 hours and about 7 minutes.
+- **Arithmetic, per FDN.** The best sustained rate is 7 lookups per 726 s: `404` answers at 0, 2, 6, 14, 30, 62 and 126 s, then 600 s idle, after which the delay is none again. That is about 104 s per lookup, about 833 a day. A specific PIN takes 5,000 guesses on average out of 10,000, about 6 days. Some valid PIN among 200 players takes about 50 guesses on average (10,001 / 201), about 86 minutes. Today, at 7 guesses a minute, those figures are about 12 hours and about 7 minutes.
 - **What multiplies the rate.** k FDNs give k times the rate. Restarting an FDN clears its delay.
 - **A server with no active event also triggers the delay**, because the lookup answers `404` in that case too.
-- **An attacker often need not guess at all.** The PIN crosses the radio in the clear at every registration, and `GET /players` returns every PIN to anyone who can reach the server.
+- **An attacker often need not guess at all.** The PIN crosses the radio in the clear at every registration, and the player endpoints return PINs to anyone who can reach the server.
 
 ### Server: verification and match standing (proposal to the server team)
 
@@ -232,7 +232,7 @@ Everything in this section is a proposal to the server team. Each rule names the
 
 The server team's capacity is unknown. The items are in rank order so the team can cut from the bottom. Firmware does not wait on any of them: crash relay works against today's server, and match records upload in today's shape until the new fields are agreed.
 
-**Precondition, unranked (the editor's addition, not the owner's):** the lookup and `GET /players` must not be reachable by players. Without that, items 1 and 2 protect nothing against anyone on the network.
+**Precondition, unranked (the editor's addition, not the owner's):** every player endpoint that returns a PIN (`GET /players`, `GET /players/{id}`, `GET /players/by-pin/{pin}`), the device lookup, and `POST /quickdraw-matches` must not be reachable by players. Without that, items 1 and 2 protect nothing against anyone on the network.
 
 1. **Keep both copies of a match and flag contradicted and unconfirmed ones.** Without it, a lie by whoever uploads first stands silently, which is today's behaviour. Built without item 2, the upload has no sender at all. The server can then flag two different copies of a match ID, but it cannot tell the other player's copy from the same copy sent twice, and it cannot flag a match as unconfirmed.
 2. **The lookup takes the PDN's MAC address and returns the derived key; match uploads carry the sender's MAC address, the raw bytes and the tag, and are verified.** Without it, the comparison in item 1 can be defeated by anyone with a radio who copies a MAC address, and firmware has no key to tag with, so PDNs send all-zero tags.
@@ -242,7 +242,7 @@ The server team's capacity is unknown. The items are in rank order so the team c
 
 ### Superseded decisions
 
-Each line is a decision of the earlier version of this proposal, what replaces it, and why. The reasons are given here and not repeated in the sections above.
+Each line is a decision of the earlier version of this proposal, what replaces it, and why.
 
 1. **Every record tagged, crash records included** -> match records only. A tag cannot make a crash record true, the server already treats device logs as unverified, and relayed crash records then need no server change.
 2. **A random key issued per registration and kept by the server, up to 255 per MAC address, named by a key ID** -> one key derived from a server secret, the PDN's MAC address and the player. There is nothing to store, nothing to wrap around and no key ID.
@@ -262,7 +262,7 @@ The record trailer and the "unverified crash record" and "quarantine" server rul
 
 Where the design does not hold on its own:
 
-- **Everything rests on the server being reachable only by FDNs and operators.** The server authenticates nothing. `GET /players` returns every player's PIN with name and email. So anyone who can reach the server can read every PIN, can post matches directly today, and once server item 2 exists can be given the key for any MAC address and any player from the lookup. The tags then protect nothing against that person. Every PDN image built so far carries the Wi-Fi password and the server address, so until PDN Wi-Fi is removed and the password changed, anyone holding a PDN can reach the server. → The Wi-Fi password change comes before the server starts returning keys (Migration Plan). Whether the premise holds after that is the owner's first open question.
+- **Everything rests on the server being reachable only by FDNs and operators.** The server authenticates nothing. Every player endpoint that returns a PIN (`GET /players`, `GET /players/{id}`, `GET /players/by-pin/{pin}`), the device lookup, and `POST /quickdraw-matches` answer any caller. So anyone who can reach the server can read every PIN, can post matches directly today, and once server item 2 exists can be given the key for any MAC address and any player from the lookup. The tags then protect nothing against that person. Every PDN image built so far carries the Wi-Fi password and the server address, so until PDN Wi-Fi is removed and the password changed, anyone holding a PDN can reach the server. → The Wi-Fi password change comes before the server starts returning keys (Migration Plan). Whether the premise holds after that is the owner's first open question.
 - **Between this change and server verification, a radio can submit any match.** Before server item 2 the server verifies nothing, and with this change an FDN takes match records from any PDN with no cable. Player UUIDs cross the radio in the clear. So any radio in range of an FDN can submit a match record for any two players, and today's server scores the first upload and drops the real one with `204`. On the cabled path this change replaces, that needed a cable or the MAC address of a PDN that was plugged in at that moment. → Not decided here; the owner chooses (Open Questions, 2).
 - **A fabricated match cannot be contradicted.** A player can tag a wholly invented match, with a new match ID and any opponent's player UUID, under their own key. It verifies and counts at once. The opponent holds no record with that ID, so no copy can ever contradict it. It shows only as unconfirmed, the same standing as an honest match whose loser withheld their copy or whose opponent's PDN never stored it. → Reviewing unconfirmed matches before prizes are awarded is the only check.
 - **Two PDNs without keys play matches that never count once the server verifies.** Both copies carry the all-zero tag and the match is unverified. A PDN is without a key when the key frame was lost, when the server returned none, and for every match stored before its first key.
@@ -287,9 +287,8 @@ Accepted by the owner:
 Other risks:
 
 - **The server secret.** Whoever learns it can derive every key.
-- **The delay can slow registration at an FDN.** Wrong PINs from one cabled PDN, or from a radio that copies a Connected PDN's MAC address, keep the delay at `120,000 ms` for as long as they continue. A server with no active event has the same effect.
+- **A persistent radio can block registration at an FDN.** Wrong PINs from one cabled PDN, or from a radio that copies a Connected PDN's MAC address, sent each time a delay ends, hold the FDN's single lookup and start another `120,000 ms`. Registration at that FDN is blocked for as long as they continue; one wait is bounded at `120,000 ms` once they stop. The same sender can block registration today by keeping the one lookup busy. A server with no active event also keeps the delay running.
 - **Restarting an FDN clears the delay.** Someone who can cycle an FDN's power guesses at the undelayed rate.
-- **The core-dump exception** to the volatile-only key (Decisions, "Key on the PDN").
 - **Junk can keep an FDN's record store full.** Junk leaves the FDN at each upload and can be refilled at once, so one radio can hold an FDN full for as long as it transmits while PDN ring buffers overwrite. Each acknowledgement to a new MAC address also takes a slot in the FDN's radio peer table, and each beacon from a new address takes one in the PDN's. → Bounded on the devices by capacity and the driver's eviction rule.
 - **Every PDN in range answers the same beacon.** Replies can collide; the transport retries and the next beacon is another chance.
 - **The FDN handles a key at every registration.** A compromised FDN firmware could copy keys as they pass.
@@ -299,19 +298,21 @@ Other risks:
 1. **Rework the open PRs.** #426, #427 and #428 lose the key ID and the crash trailer from their frames, the record check and the FDN record store entries before they merge, so the `17`-byte trailer never ships.
 2. **First firmware roll-out.** Frame formats change, so every FDN and PDN takes the same build, as with the other wire changes in the comms rewrite. Crash relay and match relay work against today's server. From this point any radio in range of an FDN can submit a match that today's server scores, unless the owner chooses otherwise (Open Questions, 2).
 3. **Stored match records.** A PDN's match slots holding `112` bytes and no tag are read as carrying the all-zero tag. They are delivered, and they stop counting when verification is turned on.
-4. **Server items in rank order** (proposals to the server team): keep both copies and flag; derived key on the lookup and verified match uploads; optional winner; lookup rate limit; block a PDN or a player.
+4. **The server team builds; nothing is enabled yet** (proposals to the server team, in rank order): keep both copies and flag; item 2 in three parts, the lookup takes the PDN's MAC address and returns the derived key, match uploads carry the sender's MAC address, the raw bytes and the tag, and uploads are verified; optional winner; lookup rate limit; block a PDN or a player. The field formats are agreed in this step.
 5. **Wi-Fi password, before the server returns keys.** PDN Wi-Fi is removed (its own change), then the venue Wi-Fi password is changed, which means rebuilding every FDN. Every PDN flashed so far carries the old password; until it is changed anyone holding a PDN can join the network and would be able to ask the lookup for any key.
-6. **Second firmware roll-out, to every FDN.** Once the server team has agreed the field formats, the lookup and upload seams are filled and every FDN is rebuilt again. This can be the same rebuild as step 5.
-7. **The server derives keys first, with verification off.** The server counts the first copy as it does today, and copies with the all-zero tag count. A PDN registered before this step sends all-zero tags until it restarts and registers again, and matches already stored keep their all-zero tags.
-8. **Verification is turned on between events, or at an announced time.** From then on a copy with the all-zero tag never counts. Turning it on mid-event would stop counting the matches of every PDN that has not restarted since step 7 and every match stored before its key.
+6. **Second firmware roll-out, to every FDN.** The lookup and upload seams are filled with the formats agreed in step 4 and every FDN is rebuilt again. This can be the same rebuild as step 5.
+7. **Item 2, first part enabled: the lookup returns keys.** Verification stays off. The server counts the first copy as it does today, and copies with the all-zero tag count. A PDN registered before this step sends all-zero tags until it restarts and registers again, and matches already stored keep their all-zero tags.
+8. **Item 2, last part enabled: verification is turned on between events, or at an announced time.** From then on a copy with the all-zero tag never counts. Turning it on mid-event would stop counting the matches of every PDN that has not restarted since step 7 and every match stored before its key.
 9. **Rollback.** The server can stop verifying at any time and count the first upload as today. Firmware rollback means reflashing every device.
 
 ## Open Questions
 
 For the owner, each answerable yes or no:
 
-1. **Is the server reachable only by FDNs and operators once the Wi-Fi password is changed, and is `GET /players` acceptable as it is?** If not, the tags protect nothing against anyone who can reach the server (Risks, first entry).
+1. Two questions about who can reach the server (Risks, first entry):
+   - **1a. Is the server reachable only by FDNs and operators once the Wi-Fi password is changed?** This is a question of fact. If not, the tags protect nothing against anyone who can reach it.
+   - **1b. Are the player endpoints that return a PIN (`GET /players`, `GET /players/{id}`, `GET /players/by-pin/{pin}`), the device lookup and `POST /quickdraw-matches` acceptable as they are?** This is a decision. Yes accepts that every PIN, and later every key, stays readable by anything that gets onto that network.
 2. **Should FDNs keep taking match records only from a Connected PDN until the server verifies tags?** Yes is choice (a): match records stay cabled until then and `record-relay` gains that condition for match records. No is choice (b): the exposure between the first firmware roll-out and verification is accepted (Risks, second entry).
-3. **Do you accept the FDN's delay after an unknown PIN with its numbers** (`2,000 ms`, doubling to `120,000 ms`, cleared after `600,000 ms` without a `404`, FDN-wide)? Note: the review brief gave "about 3 hours" for guessing some valid PIN among 200 players; that was wrong, and it is about 100 minutes.
-4. **Do you accept the record key in volatile memory only, lost at restart?**
+3. **Do you accept the FDN's delay after an unknown PIN with its numbers** (`2,000 ms`, doubling to `120,000 ms`, cleared after `600,000 ms` without a `404`, FDN-wide)? Yes accepts a wait of up to `120,000 ms` per registration after wrong PINs, triggered also by a radio or by a server with no active event, and the guessing time that remains: about 6 days for a specific PIN and about 86 minutes for some valid PIN among 200 players, per FDN. Note: the review brief gave "about 3 hours" for the second figure; that was wrong.
+4. **Do you accept the record key in volatile memory only, lost at restart?** Yes accepts the core-dump exception (Decisions, "Key on the PDN"). The alternative is the key in non-volatile storage, where a flash dump of a powered-off PDN finds it.
 5. **Do you accept that a PDN with no key sends its matches with the all-zero tag, and that those matches never count once the server verifies?**

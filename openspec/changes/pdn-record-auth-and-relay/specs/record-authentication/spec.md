@@ -2,15 +2,15 @@
 
 ### Requirement: Record key
 
-A PDN SHALL hold at most one record key: `32` bytes that the server derives from the PDN's MAC address and the player the PDN is registered to, received during registration (`player-provisioning`). The PDN SHALL hold the record key in volatile memory only and SHALL NOT write it to non-volatile storage. The PDN SHALL NOT send the record key to any device and SHALL NOT log or display it.
+A PDN SHALL hold at most one record key: `32` bytes that the server derives from the PDN's MAC address and the player the PDN is registered to, received during registration (`player-provisioning`). The PDN SHALL hold the record key in volatile memory and SHALL NOT write it to its key-value storage or its match ring buffer. The PDN SHALL NOT send the record key to any device and SHALL NOT log or display it.
 
 #### Scenario: A PDN that has not been registered holds no record key
 - **WHEN** a PDN boots and a player enters the demo PIN `0000`
 - **THEN** the PDN holds no record key for that session
 
-#### Scenario: Record key is not written to non-volatile storage
+#### Scenario: Record key is not written to the PDN's key-value storage or match ring buffer
 - **WHEN** a PDN accepts a record key during registration
-- **THEN** no copy of the record key is in the PDN's non-volatile storage
+- **THEN** no copy of the record key is in the PDN's key-value storage or its match ring buffer
 
 ### Requirement: Record key lifetime
 
@@ -21,7 +21,7 @@ A record key SHALL last no longer than the session in which the PDN accepted it.
 - **THEN** it holds no record key until it is registered again
 
 #### Scenario: A later record key in the same session replaces the held one
-- **WHEN** a PDN that accepted a record key accepts a second, different record key before it restarts
+- **WHEN** a PDN that accepted a record key receives a second record key frame before the profile arrives, and accepts it
 - **THEN** the PDN holds only the second record key
 
 #### Scenario: Record key is dropped when registration ends without a profile

@@ -88,7 +88,7 @@ Once the FDN decodes a valid player profile (or a lookup failure) for a Connecte
 
 ### Requirement: FDN delay after an unknown PIN
 
-After a lookup the server answers with HTTP `404`, an FDN SHALL make no lookup for a delay: `2,000 ms` after the first `404`, doubling with each further `404` up to `120,000 ms`, and none again once `600,000 ms` pass without a `404`. During a delay the FDN SHALL answer a PIN request with the lookup-failure notification without contacting the server. A successful lookup SHALL NOT change the delay. The delay state SHALL be FDN-wide and held in volatile memory.
+After a lookup the server answers with HTTP `404`, an FDN SHALL make no lookup for a delay: `2,000 ms` after the first `404`, doubling with each further `404` up to `120,000 ms`, and none again once `600,000 ms` pass without a `404`. During a delay the FDN SHALL answer a request it would otherwise look up with the lookup-failure notification, without contacting the server. A successful lookup SHALL NOT change the delay. The delay state SHALL be FDN-wide and held in volatile memory.
 
 #### Scenario: First 404 starts a 2,000 ms delay
 - **WHEN** the server answers an FDN's lookup with HTTP `404` and no `404` was received in the `600,000 ms` before it

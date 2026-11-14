@@ -16,8 +16,9 @@ Match results decide prizes, and a few technical attendees may read out a PDN's 
 - The `Authorization: Bearer` wording is dropped from the three modified requirements that carried it, following the decision that the network has no device authentication.
 - Registration, symbol match, learning to play and clock propagation stay cabled.
 - Where the design does not hold on its own (design.md, Risks): everything rests on the server being reachable only by FDNs and operators, because the server authenticates nothing and returns every player's PIN to any caller; until the server verifies tags, any radio in range of an FDN can submit a match that the server scores; a player can tag an invented match that can never be contradicted.
-- Known limits accepted by the owner: two players can agree on a false result; a stolen PIN registers a second PDN that gets a valid key for that player; a device posing as an FDN can make PDNs retire records; a loser can withhold their copy; records and the registration PIN cross the radio in the clear.
-- Five questions wait on the owner (design.md, Open Questions).
+- Known limits accepted by the owner: two players can agree on a false result; a stolen PIN registers a second PDN that gets a valid key for that player; a device posing as an FDN can make PDNs retire records; a loser can withhold their copy.
+- Records and the registration PIN cross the radio in the clear, as today.
+- Six questions wait on the owner (design.md, Open Questions 1a, 1b and 2 to 5).
 - **BREAKING** (wire format): crash records and match records move to a new record frame, and the PDN's stored match records and the FDN's stored entries change size. Every PDN and FDN needs the same firmware.
 
 ## Capabilities
