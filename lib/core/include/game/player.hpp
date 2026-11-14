@@ -77,14 +77,8 @@ public:
     /** @return Milliseconds for the most recent match reaction sample. */
     unsigned long getLastReactionTime() const;
 
-    /** @return Mean reaction time across recorded matches, or 0 when none played. */
-    unsigned long getAverageReactionTime() const;
-
     /** @return Current consecutive win count. */
     int getStreak() const;
-
-    /** @return Total matches recorded for this session profile. */
-    int getMatchesPlayed() const;
 
     /** @return Win count for this session profile. */
     int getWins() const;
@@ -129,6 +123,28 @@ public:
      * updated by later matches; all zero when it came with none.
      */
     const PlayerTotals& getRegistrationTotals() const;
+
+    /** @return Wins to show the player: the registration totals' wins plus this session's. */
+    uint64_t getDisplayedWins() const;
+
+    /**
+     * @return Losses to show the player: the registration totals' matches that
+     * were not wins, plus this session's losses.
+     */
+    uint64_t getDisplayedLosses() const;
+
+    /**
+     * @return Matches to show the player: the registration totals' matches plus
+     * this session's.
+     */
+    uint64_t getDisplayedMatchesPlayed() const;
+
+    /**
+     * @return Mean reaction time in milliseconds to show the player, taken over
+     * the registration totals' matches and this session's together so every
+     * match weighs the same; 0 when there are none. Rounds down.
+     */
+    uint64_t getDisplayedAverageReactionTime() const;
 
     /**
      * Replaces registration fields, @p totals included, and syncs legacy gameplay
