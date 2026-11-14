@@ -644,11 +644,26 @@ posseMultiDeviceDemoChallengerIsBoostedByARegisteredSupporter(PosseMultiDeviceFi
     EXPECT_EQ(suite->node(0).posse->getBoostMs(), 15u);
 }
 
-// The only player a supporter is compared with is the challenger's. Two PDNs
-// registered as one other player are two supporters.
-inline void posseMultiDeviceTwoSupportersOfOnePlayerBothCount(PosseMultiDeviceFixture* suite) {
+// One boost per supporting player: two PDNs registered as the same other
+// player buy one boost between them, however many of them press.
+inline void posseMultiDeviceTwoSupportersOfOnePlayerGrantOneBoost(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     registerTestPlayerId(*suite->node(2).player, suite->node(1).player->getServerPlayerId());
+    suite->formHunterPosse();
+
+    suite->pressEverySupporter();
+
+    EXPECT_EQ(suite->node(0).posse->getSupporterChainPeers().size(), 2u);
+    EXPECT_EQ(suite->node(0).posse->getConfirmedSupporterCount(), 1u);
+    EXPECT_EQ(suite->node(0).posse->getBoostMs(), 15u);
+}
+
+// Deduplication is by player, not a blanket cap: two supporters registered as
+// two different players each earn a boost.
+inline void posseMultiDeviceTwoSupportersOfTwoPlayersBothCount(PosseMultiDeviceFixture* suite) {
+    suite->spawnDevices(3);
+    ASSERT_FALSE(suite->node(1).player->getServerPlayerId() ==
+                 suite->node(2).player->getServerPlayerId());
     suite->formHunterPosse();
 
     suite->pressEverySupporter();

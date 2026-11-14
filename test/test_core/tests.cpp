@@ -2984,8 +2984,12 @@ TEST_F(PosseMultiDeviceFixture, demoChallengerIsBoostedByARegisteredSupporter) {
     posseMultiDeviceDemoChallengerIsBoostedByARegisteredSupporter(this);
 }
 
-TEST_F(PosseMultiDeviceFixture, twoSupportersOfOnePlayerBothCount) {
-    posseMultiDeviceTwoSupportersOfOnePlayerBothCount(this);
+TEST_F(PosseMultiDeviceFixture, twoSupportersOfOnePlayerGrantOneBoost) {
+    posseMultiDeviceTwoSupportersOfOnePlayerGrantOneBoost(this);
+}
+
+TEST_F(PosseMultiDeviceFixture, twoSupportersOfTwoPlayersBothCount) {
+    posseMultiDeviceTwoSupportersOfTwoPlayersBothCount(this);
 }
 
 TEST_F(PosseMultiDeviceFixture, gameEventReachesDistantSupporter) {
