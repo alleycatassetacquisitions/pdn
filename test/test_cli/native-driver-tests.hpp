@@ -818,8 +818,9 @@ void cliCommandDisplayAlias(CliDisplayCommandTestSuite* suite) {
 // ============================================
 
 /**
- * Simulates a cabled FDN registering a PDN on its waiting screen: the record key
- * on the jack, then the PlayerProvisionPacket on the radio.
+ * Simulates a cabled FDN registering a PDN on its waiting screen: a context
+ * saying the PDN's registration turn is open, the record key on the jack, then
+ * the PlayerProvisionPacket on the radio.
  */
 inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
     const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x01};
@@ -832,6 +833,7 @@ inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
     FdnConnectionContext fdnCtx{};
     fdnCtx.seqId = 1;
     fdnCtx.chainRole = ChainRole::HEAD;
+    fdnCtx.fdn.registrationTurn = RegistrationTurn::OPEN;
     device.peerCommsDriver->receivePacket(fdnMac, PktType::kFdnConnectionContext,
                                           reinterpret_cast<const uint8_t*>(&fdnCtx),
                                           sizeof(fdnCtx));

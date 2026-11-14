@@ -345,12 +345,27 @@ public:
     void setPeerProfile(SerialIdentifier id, const PlayerProfile& profile) {
         setPeerDeviceType(id, DeviceType::PDN);
         FakeJack* jack = jackFor(id);
-        if (jack != nullptr) jack->profile = profile;
+        if (jack == nullptr) return;
+        jack->profile = profile;
+        jack->fdnProfile.reset();
+    }
+
+    /** Seeds an FDN peer profile on `id`, as the context an FDN sent there. */
+    void setPeerFdnProfile(SerialIdentifier id, const FdnProfile& profile) {
+        setPeerDeviceType(id, DeviceType::FDN);
+        FakeJack* jack = jackFor(id);
+        if (jack == nullptr) return;
+        jack->fdnProfile = profile;
+        jack->profile.reset();
     }
 
     /** Returns the seeded peer profile on `id`, or nullptr if unset. */
     const uint8_t* getPeerProfile(SerialIdentifier id, size_t& length) const override {
         const FakeJack* jack = jackFor(id);
+        if (jack != nullptr && jack->fdnProfile.has_value()) {
+            length = sizeof(FdnProfile);
+            return reinterpret_cast<const uint8_t*>(&jack->fdnProfile.value());
+        }
         if (jack == nullptr || !jack->profile.has_value()) {
             length = 0;
             return nullptr;
@@ -416,6 +431,27 @@ public:
         return sentApplicationFrames;
     }
 
+    /** One context resent to the peer on a jack: the jack and the registration turn it carried. */
+    using SentRegistrationTurn = std::pair<SerialIdentifier, RegistrationTurn>;
+
+    /**
+     * Records, as the real coordinator's context send reads it, the turn a
+     * fresh context would carry to the peer on every Connected jack.
+     */
+    void resendContext() override {
+        for (SerialIdentifier id : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK,
+                                    SerialIdentifier::INPUT_JACK_SECONDARY}) {
+            const FakeJack* jack = jackFor(id);
+            if (jack->status != JackStatus::CONNECTED || !jack->peerSet) continue;
+            sentRegistrationTurns.emplace_back(id, getRegistrationTurnFor(jack->peerMac));
+        }
+    }
+
+    /** Every turn resendContext() carried so far, oldest first. */
+    const std::vector<SentRegistrationTurn>& getSentRegistrationTurns() const {
+        return sentRegistrationTurns;
+    }
+
     /** The writer takes the frame waiting on `jack`: a disconnect now settles it WRITTEN. */
     void beginApplicationFrameWrite(SerialIdentifier jack) {
         FakeJack* fakeJack = jackFor(jack);
@@ -442,6 +478,7 @@ private:
         JackStatus status = JackStatus::DISCONNECTED;
         DeviceType deviceType = DeviceType::UNKNOWN;
         std::optional<PlayerProfile> profile;
+        std::optional<FdnProfile> fdnProfile;
         uint8_t peerMac[6] = {};
         bool peerSet = false;
         ApplicationFrameHandOff handOff;
@@ -465,6 +502,7 @@ private:
     FakeJack secondaryInputJack;
     bool applicationFramesRefused = false;
     std::vector<SentApplicationFrame> sentApplicationFrames;
+    std::vector<SentRegistrationTurn> sentRegistrationTurns;
     std::array<uint8_t, 6> ringHeadMac{};
 };
 

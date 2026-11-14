@@ -2697,6 +2697,101 @@ inline void rdcFdnNeverAdoptsItsPdnsChainHead() {
     SimpleTimer::setPlatformClock(nullptr);
 }
 
+// An FDN's context to a PDN carries whether that PDN has the registration turn,
+// read at send time, so a resend after the turn moves carries the new answer.
+inline void rdcFdnContextCarriesEachPdnsRegistrationTurn() {
+    class MockFdnDevice : public MockDevice {
+    public:
+        /** @return DeviceType::FDN, so the coordinator under test runs as an FDN. */
+        DeviceType getDeviceType() override { return DeviceType::FDN; }
+    };
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    clock.setTime(1000);
+    MockFdnDevice fdnDevice;
+    uint8_t fdnMac[6] = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60};
+    wireRadioDefaults(fdnDevice, fdnMac);
+    std::vector<FdnConnectionContext> contexts;
+    ON_CALL(*fdnDevice.mockPeerComms, sendData(_, PktType::kFdnConnectionContext, _, _))
+    .WillByDefault(testing::DoAll(
+    testing::Invoke([&contexts](const uint8_t*, PktType, const uint8_t* data, size_t len) {
+        FdnConnectionContext context{};
+        if (len == sizeof(context)) memcpy(&context, data, len);
+        contexts.push_back(context);
+    }),
+    Return(1)));
+    NativeSerialDriver inJack{"fdn-in"};
+    fdnDevice.serialManager->setInputJack(&inJack);
+    RemoteDeviceCoordinator fdnRdc;
+    fdnRdc.setExternalConnectivityTask(true);
+    fdnRdc.initialize(fdnDevice.wirelessManager, fdnDevice.serialManager, &fdnDevice);
+
+    const uint8_t pdn[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    bool turnIsWithPdn = true;
+    const int owner = 0;
+    fdnRdc.setRegistrationTurnProvider(
+    [&turnIsWithPdn, &pdn](const uint8_t* mac) {
+        return turnIsWithPdn && memcmp(mac, pdn, 6) == 0;
+    },
+    &owner);
+
+    deliverFrame(inJack, chainHelloFrame(pdn, nullptr));
+    fdnRdc.sync(&fdnDevice);
+    ASSERT_EQ(contexts.size(), 1u);
+    EXPECT_EQ(contexts.back().fdn.registrationTurn, RegistrationTurn::OPEN)
+    << "the context did not carry the turn the FDN holds for this PDN";
+    fdnRdc.onContextExchangeComplete(SerialIdentifier::INPUT_JACK);
+    fdnRdc.sync(&fdnDevice);
+    ASSERT_EQ(fdnRdc.getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
+
+    turnIsWithPdn = false;
+    fdnRdc.resendContext();
+    ASSERT_EQ(contexts.size(), 2u);
+    EXPECT_EQ(contexts.back().fdn.registrationTurn, RegistrationTurn::CLOSED)
+    << "the resend carried the turn as it stood before it moved";
+
+    // Another owner's clear leaves the provider; its own owner's removes it.
+    turnIsWithPdn = true;
+    const int otherOwner = 0;
+    fdnRdc.setRegistrationTurnProvider(nullptr, &otherOwner);
+    fdnRdc.resendContext();
+    ASSERT_EQ(contexts.size(), 3u);
+    EXPECT_EQ(contexts.back().fdn.registrationTurn, RegistrationTurn::OPEN);
+    fdnRdc.setRegistrationTurnProvider(nullptr, &owner);
+    fdnRdc.resendContext();
+    ASSERT_EQ(contexts.size(), 4u);
+    EXPECT_EQ(contexts.back().fdn.registrationTurn, RegistrationTurn::CLOSED);
+
+    SimpleTimer::setPlatformClock(nullptr);
+}
+
+// An older FDN's context ends before the turn byte. A PDN still connects to it
+// and reads the turn as NOT_SENT, which is not an open turn.
+inline void rdcPdnConnectsToAnFdnContextWithoutTheTurn(RDCHelloTests* suite) {
+    const uint8_t fdn[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    HelloPayload hello{};
+    memcpy(hello.source, fdn, 6);
+    hello.deviceType = static_cast<uint8_t>(DeviceType::FDN);
+    suite->deliverHello(suite->outJack, encodeFramed(hello));
+    suite->rdc.sync(&suite->device);
+    FdnConnectionContext older{};
+    older.seqId = 1;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, fdn,
+                                        reinterpret_cast<const uint8_t*>(&older),
+                                        sizeof(older) - sizeof(RegistrationTurn));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED)
+    << "an older FDN's context was dropped";
+
+    size_t length = 0;
+    const uint8_t* bytes = suite->rdc.getPeerProfile(SerialIdentifier::OUTPUT_JACK, length);
+    ASSERT_NE(bytes, nullptr);
+    ASSERT_EQ(length, sizeof(FdnProfile));
+    FdnProfile profile{};
+    memcpy(&profile, bytes, sizeof(profile));
+    EXPECT_EQ(profile.registrationTurn, RegistrationTurn::NOT_SENT);
+}
+
 // Reads a captured PdnConnectionContext frame back into the struct.
 inline PdnConnectionContext contextFromBytes(const std::vector<uint8_t>& bytes) {
     PdnConnectionContext ctx{};

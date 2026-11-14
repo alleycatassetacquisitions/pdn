@@ -434,6 +434,7 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
         PlatformClock* clock = SimpleTimer::getPlatformClock();
         const int64_t unixMs = clock != nullptr ? clock->unixMilliseconds() : 0;
         ctx.fdn.utcUnixMs = isValidUtcUnixMs(unixMs) ? unixMs : 0;
+        ctx.fdn.registrationTurn = getRegistrationTurnFor(mac);
         fdnContextChannel->sendReliable(mac, ctx);
         return;
     }
@@ -441,6 +442,18 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
     ctx.chainRole = role;
     if (selfProfileProvider) ctx.player = selfProfileProvider();
     pdnContextChannel->sendReliable(mac, ctx);
+}
+
+void RemoteDeviceCoordinator::setRegistrationTurnProvider(RegistrationTurnProvider provider,
+                                                          const void* owner) {
+    if (!provider) {
+        if (owner != registrationTurnProviderOwner) return;
+        registrationTurnProvider = nullptr;
+        registrationTurnProviderOwner = nullptr;
+        return;
+    }
+    registrationTurnProvider = std::move(provider);
+    registrationTurnProviderOwner = owner;
 }
 
 void RemoteDeviceCoordinator::resendContext() {

@@ -1161,7 +1161,17 @@ TEST(PlayerRegistrationShim, formatsServerIdAsUserId) { playerLegacyShimFormatsS
 // PLAYER FETCH APP TESTS
 // ============================================
 
-TEST_F(PlayerFetchTestSuite, awaitBandAsksForCableThenTap) { awaitBandAsksForCableThenTap(this); }
+TEST_F(PlayerFetchTestSuite, awaitBandAsksForTapOnlyWhileItsTurnIsOpen) {
+    awaitBandAsksForTapOnlyWhileItsTurnIsOpen(this);
+}
+
+TEST_F(PlayerFetchTestSuite, awaitBandWaitsWhenTheFdnSaysNoOpenTurn) {
+    awaitBandWaitsWhenTheFdnSaysNoOpenTurn(this);
+}
+
+TEST_F(PlayerFetchTestSuite, awaitBandFollowsTheTurnTheFdnSends) {
+    awaitBandFollowsTheTurnTheFdnSends(this);
+}
 
 TEST_F(PlayerFetchTestSuite, awaitBandAsksForCableUntilAnFdnIsConnected) {
     awaitBandAsksForCableUntilAnFdnIsConnected(this);
@@ -1305,8 +1315,16 @@ TEST_F(FdnProvisioningTests, holdsTheQueueWhileTheRegistrationScreenIsNotShown) 
     fdnHoldsTheQueueWhileTheRegistrationScreenIsNotShown(this);
 }
 
-TEST_F(FdnProvisioningTests, ignoresTapJustAfterThePendingJackChanges) {
-    fdnIgnoresTapJustAfterThePendingJackChanges(this);
+TEST_F(FdnProvisioningTests, tellsOnlyThePendingJacksPdnItsTurnIsOpen) {
+    fdnTellsOnlyThePendingJacksPdnItsTurnIsOpen(this);
+}
+
+TEST_F(FdnProvisioningTests, updatesBothPdnsWhenTheTurnMoves) {
+    fdnUpdatesBothPdnsWhenTheTurnMoves(this);
+}
+
+TEST_F(FdnProvisioningTests, reopensTheTurnOnlyAfterTheResultHold) {
+    fdnReopensTheTurnOnlyAfterTheResultHold(this);
 }
 
 TEST_F(FdnProvisioningTests, ignoresTapWhileALookupResultIsHeld) {
@@ -2593,6 +2611,9 @@ TEST_F(RDCHelloTests, headTransferCarriesFullCapRoster) {
 TEST_F(RDCHelloTests, fdnContextSyncsPdnWallClockOnlyFromCabledFdn) {
     rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(this);
 }
+TEST_F(RDCHelloTests, pdnConnectsToAnFdnContextWithoutTheTurn) {
+    rdcPdnConnectsToAnFdnContextWithoutTheTurn(this);
+}
 TEST_F(RDCHelloTests, staleTransferDoesNotReforkClaimedUpstream) {
     rdcStaleTransferDoesNotReforkClaimedUpstream(this);
 }
@@ -2743,6 +2764,9 @@ TEST_F(RDCHelloTests, ringMembershipEventReportsARelayedFlagClearing) {
     rdcRingMembershipEventReportsARelayedFlagClearing(this);
 }
 TEST(RDCHelloStandalone, fdnNeverAdoptsItsPdnsChainHead) { rdcFdnNeverAdoptsItsPdnsChainHead(); }
+TEST(RDCHelloStandalone, fdnContextCarriesEachPdnsRegistrationTurn) {
+    rdcFdnContextCarriesEachPdnsRegistrationTurn();
+}
 
 // ============================================
 // RDC APPLICATION FRAME

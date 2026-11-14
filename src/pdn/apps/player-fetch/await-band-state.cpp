@@ -37,7 +37,7 @@ void AwaitBandState::onStateMounted(PDN* pdn) {
         onProvisionPacket(fromMac, pkt);
     });
 
-    screenShowsTapBand = remoteDeviceCoordinator->getConnectedPeerMac(DeviceType::FDN) != nullptr;
+    waitingScreen = getWaitingScreenForCable();
     renderWaitingScreen(pdn);
 }
 
@@ -71,12 +71,11 @@ void AwaitBandState::onStateLoop(PDN* pdn) {
     }
 
     // The failure page stays up for its full time; the waiting screen it returns to
-    // is drawn from the cable state at that point.
+    // is drawn from the cable and turn at that point.
     if (failurePageIsShowing) return;
-    const bool fdnIsCabled =
-    remoteDeviceCoordinator->getConnectedPeerMac(DeviceType::FDN) != nullptr;
-    if (fdnIsCabled != screenShowsTapBand) {
-        screenShowsTapBand = fdnIsCabled;
+    const WaitingScreen screen = getWaitingScreenForCable();
+    if (screen != waitingScreen) {
+        waitingScreen = screen;
         renderWaitingScreen(pdn);
     }
 }
@@ -95,7 +94,7 @@ void AwaitBandState::onStateDismounted(PDN* pdn) {
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->setEligible(false);
     }
-    screenShowsTapBand = false;
+    waitingScreen = WaitingScreen::CABLE_TO_FDN;
     transitionToWelcomeState = false;
     transitionToChooseTeamState = false;
     transitionToFirmwareUpdateState = false;
@@ -236,14 +235,36 @@ void AwaitBandState::dismissFailurePage(PDN* pdn) {
     failurePageIsShowing = false;
     attemptFdn.reset();
     playerProvider->clear();
-    screenShowsTapBand = remoteDeviceCoordinator->getConnectedPeerMac(DeviceType::FDN) != nullptr;
+    waitingScreen = getWaitingScreenForCable();
     renderWaitingScreen(pdn);
+}
+
+AwaitBandState::WaitingScreen AwaitBandState::getWaitingScreenForCable() const {
+    WaitingScreen screen = WaitingScreen::CABLE_TO_FDN;
+    for (SerialIdentifier jack : RemoteDeviceCoordinator::HELLO_JACKS) {
+        if (remoteDeviceCoordinator->getJackStatus(jack) != JackStatus::CONNECTED ||
+            remoteDeviceCoordinator->getPeerDeviceType(jack) != DeviceType::FDN ||
+            remoteDeviceCoordinator->getPeerMac(jack) == nullptr) {
+            continue;
+        }
+        screen = WaitingScreen::PLEASE_WAIT;
+        // An older FDN's context carries no turn and reads NOT_SENT: never "Tap band".
+        size_t length = 0;
+        const uint8_t* bytes = remoteDeviceCoordinator->getPeerProfile(jack, length);
+        if (bytes == nullptr || length < sizeof(FdnProfile)) continue;
+        FdnProfile fdn{};
+        memcpy(&fdn, bytes, sizeof(fdn));
+        if (fdn.registrationTurn == RegistrationTurn::OPEN) return WaitingScreen::TAP_BAND;
+    }
+    return screen;
 }
 
 void AwaitBandState::renderWaitingScreen(PDN* pdn) const {
     pdn->getDisplay()->invalidateScreen()->setGlyphMode(FontMode::TEXT);
-    if (screenShowsTapBand) {
+    if (waitingScreen == WaitingScreen::TAP_BAND) {
         pdn->getDisplay()->drawText("Tap band", 16, 26)->drawText("at FDN", 28, 42);
+    } else if (waitingScreen == WaitingScreen::PLEASE_WAIT) {
+        pdn->getDisplay()->drawText("Please", 28, 26)->drawText("wait", 40, 42);
     } else {
         pdn->getDisplay()->drawText("Cable to", 16, 26)->drawText("FDN", 44, 42);
     }

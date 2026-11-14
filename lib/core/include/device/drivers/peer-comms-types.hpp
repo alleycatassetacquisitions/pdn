@@ -96,18 +96,44 @@ struct PdnConnectionContext {
 } __attribute__((packed));
 static_assert(sizeof(PdnConnectionContext) == 31, "PdnConnectionContext wire size");
 
+// Whether the FDN's registration turn is with the PDN a context goes to. NOT_SENT
+// is what an older FDN's context, which ends before this byte, decodes to; any
+// value but OPEN is not the turn.
+enum class RegistrationTurn : uint8_t {
+    NOT_SENT = 0,
+    CLOSED = 1,
+    OPEN = 2,
+};
+static_assert(sizeof(RegistrationTurn) == 1, "RegistrationTurn must be 1 byte on the wire");
+
 // FDN self-description exchanged on cabled connection context. Carries the FDN's
-// synchronized UTC wall clock in epoch milliseconds (or 0 when unsynchronized).
+// synchronized UTC wall clock in epoch milliseconds (or 0 when unsynchronized),
+// and whether the receiving PDN's jack holds the FDN's registration turn.
 struct FdnProfile {
     int64_t utcUnixMs;
+    RegistrationTurn registrationTurn = RegistrationTurn::CLOSED;
 } __attribute__((packed));
+static_assert(sizeof(FdnProfile) == 9, "FdnProfile wire size");
 
 // FDN-to-neighbour connection context; same header as PdnConnectionContext, FDN body.
 struct FdnConnectionContext {
     uint8_t seqId;
     ChainRole chainRole;
     FdnProfile fdn;
+
+    /**
+     * Bytes sent. An older FDN's context ends before registrationTurn; the
+     * channel zero-fills the missing byte to NOT_SENT and this length then
+     * matches, so a new PDN still connects to it. A context that carries the
+     * byte never holds NOT_SENT.
+     */
+    size_t wireSize() const {
+        return fdn.registrationTurn == RegistrationTurn::NOT_SENT
+               ? sizeof(FdnConnectionContext) - sizeof(RegistrationTurn)
+               : sizeof(FdnConnectionContext);
+    }
 } __attribute__((packed));
+static_assert(sizeof(FdnConnectionContext) == 11, "FdnConnectionContext wire size");
 
 // Frozen: older builds must parse a newer build's firmware frames (this header, kFirmwareUpdate,
 // FirmwareChunkHeader, FIRMWARE_CHUNK_SIZE, ESPNOW_CHANNEL) or they can only be updated over USB.

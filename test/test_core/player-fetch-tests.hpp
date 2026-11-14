@@ -51,13 +51,22 @@ public:
         }));
     }
 
-    /** Plugs or unplugs the FDN on the PDN's input jack. */
-    void cableFdn(bool connected) {
-        device.fakeRemoteDeviceCoordinator.setPeerDeviceType(SerialIdentifier::INPUT_JACK,
-                                                             DeviceType::FDN);
+    /**
+     * Plugs or unplugs the FDN on the PDN's input jack; its context carries
+     * @p turn, open unless a test says otherwise.
+     */
+    void cableFdn(bool connected, RegistrationTurn turn = RegistrationTurn::OPEN) {
+        setFdnTurn(turn);
         device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
         device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::INPUT_JACK, connected ? JackStatus::CONNECTED : JackStatus::DISCONNECTED);
+    }
+
+    /** Has the FDN on the PDN's input jack resend its context carrying @p turn. */
+    void setFdnTurn(RegistrationTurn turn) {
+        FdnProfile fdn{};
+        fdn.registrationTurn = turn;
+        device.fakeRemoteDeviceCoordinator.setPeerFdnProfile(SerialIdentifier::INPUT_JACK, fdn);
     }
 
     /** Puts a second FDN, @p mac, Connected on the PDN's output jack. */
@@ -156,19 +165,76 @@ inline void registerThroughFdn(PlayerFetchTestSuite* suite, const std::string& b
     awaitBand.onStateDismounted(&suite->device);
 }
 
-inline void awaitBandAsksForCableThenTap(PlayerFetchTestSuite* suite) {
+// Cabled, the PDN asks for a tap only while the FDN says its jack's turn is open,
+// and asks the player to wait otherwise.
+inline void awaitBandAsksForTapOnlyWhileItsTurnIsOpen(PlayerFetchTestSuite* suite) {
     suite->cableFdn(false);
     AwaitBandState awaitBand(suite->device.wirelessManager, &suite->playerProvider);
     awaitBand.onStateMounted(&suite->device);
     EXPECT_TRUE(suite->lastScreenReads("Cable to", "FDN"));
 
-    suite->cableFdn(true);
+    suite->cableFdn(true, RegistrationTurn::CLOSED);
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_TRUE(suite->lastScreenReads("Please", "wait")) << "cabled without the turn";
+
+    suite->setFdnTurn(RegistrationTurn::OPEN);
     awaitBand.onStateLoop(&suite->device);
     EXPECT_TRUE(suite->lastScreenReads("Tap band", "at FDN"));
+
+    suite->setFdnTurn(RegistrationTurn::CLOSED);
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_TRUE(suite->lastScreenReads("Please", "wait")) << "Tap band outlived the turn";
 
     suite->cableFdn(false);
     awaitBand.onStateLoop(&suite->device);
     EXPECT_TRUE(suite->lastScreenReads("Cable to", "FDN"));
+    awaitBand.onStateDismounted(&suite->device);
+}
+
+// An older FDN's context carries no turn, an FDN's context may not have arrived,
+// and a turn byte may be junk: none of them is an open turn.
+inline void awaitBandWaitsWhenTheFdnSaysNoOpenTurn(PlayerFetchTestSuite* suite) {
+    suite->cableFdn(true, RegistrationTurn::NOT_SENT);
+    AwaitBandState awaitBand(suite->device.wirelessManager, &suite->playerProvider);
+    awaitBand.onStateMounted(&suite->device);
+    EXPECT_TRUE(suite->lastScreenReads("Please", "wait")) << "a context with no turn said tap";
+
+    suite->setFdnTurn(static_cast<RegistrationTurn>(7));
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_TRUE(suite->lastScreenReads("Please", "wait")) << "a junk turn byte said tap";
+    awaitBand.onStateDismounted(&suite->device);
+
+    const uint8_t otherFdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x02};
+    suite->cableFdn(false);
+    suite->cableOtherFdnOnOutputJack(otherFdnMac);
+    awaitBand.onStateMounted(&suite->device);
+    EXPECT_TRUE(suite->lastScreenReads("Please", "wait")) << "an FDN with no context said tap";
+    awaitBand.onStateDismounted(&suite->device);
+}
+
+// Two PDNs at one FDN: the screen of the suite's PDN, on the FDN's primary jack,
+// follows the turn the FDN sends it, open and then moved to the other jack.
+inline void awaitBandFollowsTheTurnTheFdnSends(PlayerFetchTestSuite* suite) {
+    suite->cablePdn(SerialIdentifier::INPUT_JACK_SECONDARY, suite->secondPdnMac);
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc,
+                                   &suite->reader);
+    fdnProv.setRegistrationScreenShown(true);
+    suite->cableFdn(true, RegistrationTurn::CLOSED);
+    AwaitBandState awaitBand(suite->device.wirelessManager, &suite->playerProvider);
+    awaitBand.onStateMounted(&suite->device);
+    ASSERT_TRUE(suite->lastScreenReads("Please", "wait"));
+
+    fdnProv.sync();
+    suite->setFdnTurn(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK));
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_TRUE(suite->lastScreenReads("Tap band", "at FDN")) << "the pending PDN was not asked";
+
+    suite->fakeClock->advance(FdnProvisioningManager::REGISTRATION_PENDING_MS + 1);
+    fdnProv.sync();
+    suite->setFdnTurn(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK));
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_TRUE(suite->lastScreenReads("Please", "wait"))
+    << "the PDN kept asking for a tap after the turn moved to the other jack";
     awaitBand.onStateDismounted(&suite->device);
 }
 

@@ -23,11 +23,13 @@
  * profile is queued for registration in arrival order. While the registration
  * screen is shown and no lookup result is on it, the queue's head is pending,
  * and a band tapped at the reader while it is pending is looked up for that PDN.
- * The answer goes to the pending jack as the player's record key, then to the
- * PDN's MAC as the server's profile on the radio, or as LOOKUP_FAILED. The
- * profile rides a reliable channel; the key never touches the radio. A lookup
- * owns Wi-Fi from its HTTP request to its answer; while another component owns
- * it the lookup waits, inside its time limit.
+ * The pending PDN's turn is open: the connection context the FDN sends each
+ * PDN says whether its turn is, and is sent again whenever the turn opens,
+ * moves or closes. The answer goes to the pending jack as the player's record
+ * key, then to the PDN's MAC as the server's profile on the radio, or as
+ * LOOKUP_FAILED. The profile rides a reliable channel; the key never touches
+ * the radio. A lookup owns Wi-Fi from its HTTP request to its answer; while
+ * another component owns it the lookup waits, inside its time limit.
  */
 class FdnProvisioningManager {
 public:
@@ -42,24 +44,18 @@ public:
     static constexpr unsigned long REGISTRATION_PENDING_MS = 30000;
 
     /**
-     * How long taps are ignored after the pending registration passes to the
-     * other jack, so a player who read the prompt for one jack does not
-     * register the PDN on the other as the turn moves.
-     */
-    static constexpr unsigned long PENDING_JACK_CHANGE_TAP_IGNORE_MS = 2000;
-
-    /**
      * How long a finished lookup's result stays on the registration screen.
-     * Nothing is pending meanwhile, so a tap neither lands on the PDN while it
-     * shows its own 3000 ms failure page, which refuses a key, nor binds the next
-     * jack's PDN before the screen names that jack.
+     * Nothing is pending and no turn is open meanwhile, so a tap neither lands
+     * on the PDN while it shows its own 3000 ms failure page, which refuses a
+     * key, nor binds the next jack's PDN before that PDN says it is its turn.
      */
     static constexpr unsigned long LOOKUP_RESULT_HOLD_MS = 3000;
 
     /**
      * Constructs the FDN provisioning manager wired to wireless, RDC and the band
-     * reader driver. A null @p bandReader is a reader that never answers: nobody
-     * can register at this FDN.
+     * reader driver, and becomes the source of the registration turn in the
+     * contexts the coordinator sends. A null @p bandReader is a reader that never
+     * answers: nobody can register at this FDN.
      */
     FdnProvisioningManager(WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc,
                            BandReader* bandReader)
@@ -72,21 +68,30 @@ public:
             onKeyFrameOutcome(jack, outcome);
         },
         this);
+        rdc->setRegistrationTurnProvider(
+        [this](const uint8_t* pdnMac) { return isRegistrationTurnOpenFor(pdnMac); }, this);
         if (!isBandReaderResponding()) {
             LOG_E("FDN_PROVISION", "Band reader not responding: no PDN can register here");
         }
     }
 
-    /** Stops listening for jack outcomes; the coordinator outlives this manager. */
-    ~FdnProvisioningManager() { rdc->setOnApplicationFrameOutcome(nullptr, this); }
+    /**
+     * Stops listening for jack outcomes and answering for the turn; the
+     * coordinator outlives this manager.
+     */
+    ~FdnProvisioningManager() {
+        rdc->setOnApplicationFrameOutcome(nullptr, this);
+        rdc->setRegistrationTurnProvider(nullptr, this);
+    }
 
     /**
      * Past PROVISION_LOOKUP_TIMEOUT_MS ends a lookup the server has not answered
      * as SERVER_UNREACHABLE; starts a lookup that was waiting for Wi-Fi once it is
      * free; ends the hold of a lookup result after LOOKUP_RESULT_HOLD_MS; queues
      * PDNs that arrived and drops those that left; sends a registration pending
-     * for REGISTRATION_PENDING_MS to the back of the queue; and takes the band
-     * reader's tap. Call every tick.
+     * for REGISTRATION_PENDING_MS to the back of the queue; takes the band
+     * reader's tap; and has the coordinator resend its contexts when the turn
+     * opened, moved or closed. Call every tick.
      */
     void sync() {
         if (phase != LookupPhase::IDLE && lookupTimer.expired()) {
@@ -108,8 +113,8 @@ public:
         if (hasPendingRegistration() && !pendingTimer.isRunning()) {
             pendingTimer.setTimer(REGISTRATION_PENDING_MS);
         }
-        followPendingJack();
         takeBandTap();
+        followRegistrationTurn();
     }
 
     /**
@@ -148,6 +153,14 @@ public:
 
     /** @return the pending registration's jack; meaningful only while hasPendingRegistration(). */
     SerialIdentifier getPendingJack() const { return queue[0].jack; }
+
+    /**
+     * @return true when the registration turn is with the PDN whose radio MAC is
+     * @p pdnMac: its registration is pending, so a tap now registers it.
+     */
+    bool isRegistrationTurnOpenFor(const uint8_t* pdnMac) const {
+        return hasPendingRegistration() && memcmp(queue[0].pdnMac.data(), pdnMac, 6) == 0;
+    }
 
     /** @return true while the band reader answers; false with no reader at all. */
     bool isBandReaderResponding() const {
@@ -268,24 +281,17 @@ private:
         pendingTimer.invalidate();
     }
 
-    // Starts the tap ignore window when the pending registration moves to the
-    // other jack: as the queue rotates or a lookup ends with the other jack next.
-    void followPendingJack() {
-        if (phase == LookupPhase::IDLE && queueLength == 0) {
-            hasLastPendingJack = false;
-            return;
-        }
-        if (!hasPendingRegistration()) return;
-        const SerialIdentifier pendingJack = queue[0].jack;
-        if (hasLastPendingJack && pendingJack != lastPendingJack) {
-            pendingJackChangeTimer.setTimer(PENDING_JACK_CHANGE_TAP_IGNORE_MS);
-        }
-        lastPendingJack = pendingJack;
-        hasLastPendingJack = true;
-    }
-
-    bool isInPendingJackChangeWindow() {
-        return pendingJackChangeTimer.isRunning() && !pendingJackChangeTimer.expired();
+    // Has the coordinator resend its contexts when the turn opened, moved to
+    // another PDN or closed since the last tick, so each PDN's screen follows it.
+    void followRegistrationTurn() {
+        const bool turnIsOpen = hasPendingRegistration();
+        const bool turnChanged = turnIsOpen != announcedTurnIsOpen ||
+                                 (turnIsOpen && (announcedTurn.jack != queue[0].jack ||
+                                                 announcedTurn.pdnMac != queue[0].pdnMac));
+        if (!turnChanged) return;
+        announcedTurnIsOpen = turnIsOpen;
+        if (turnIsOpen) announcedTurn = queue[0];
+        rdc->resendContext();
     }
 
     void takeBandTap() {
@@ -297,8 +303,6 @@ private:
         } else if (!uid.hasLookupLength()) {
             LOG_W("FDN_PROVISION", "Band tap ignored: a UID of %u bytes",
                   static_cast<unsigned>(uid.length));
-        } else if (isInPendingJackChangeWindow()) {
-            LOG_W("FDN_PROVISION", "Band tap ignored: the pending jack just changed");
         } else {
             startLookup(uid);
         }
@@ -436,10 +440,9 @@ private:
     std::array<QueuedRegistration, REGISTRATION_JACKS.size()> queue{};
     size_t queueLength = 0;
     SimpleTimer pendingTimer;
-    // The jack last seen pending, while any registration is queued or looked up.
-    SerialIdentifier lastPendingJack = SerialIdentifier::INPUT_JACK;
-    bool hasLastPendingJack = false;
-    SimpleTimer pendingJackChangeTimer;
+    // The turn the contexts last sent carry: open or not, and if open, whose.
+    bool announcedTurnIsOpen = false;
+    QueuedRegistration announcedTurn;
     SimpleTimer lookupTimer;
     SimpleTimer lookupResultTimer;
     bool lookupResultIsHeld = false;

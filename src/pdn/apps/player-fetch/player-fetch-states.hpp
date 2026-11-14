@@ -36,11 +36,13 @@ struct RegistrationFdn {
 class AwaitBandState : public TypedState<PDN> {
 public:
     /**
-     * Waiting screen of an unprovisioned PDN: asks to be cabled to an FDN, then for
-     * a band tap there, and takes the record key (jack) and profile (radio) that FDN
-     * pushes, showing a failure page for REGISTRATION_FAILURE_PAGE_TIMEOUT_MS when an
-     * attempt fails. Sends nothing to ask for them. Constructing claims the
-     * kPlayerProvision packet type on @p wirelessManager.
+     * Waiting screen of an unprovisioned PDN: asks to be cabled to an FDN, then,
+     * cabled, for a band tap there while that FDN says this jack has its
+     * registration turn, and to wait otherwise. Takes the record key (jack) and
+     * profile (radio) that FDN pushes, showing a failure page for
+     * REGISTRATION_FAILURE_PAGE_TIMEOUT_MS when an attempt fails. Sends nothing
+     * to ask for them. Constructing claims the kPlayerProvision packet type on
+     * @p wirelessManager.
      */
     AwaitBandState(WirelessManager* wirelessManager, PlayerProvider* playerProvider);
 
@@ -58,6 +60,14 @@ public:
     bool transitionToFirmwareUpdate() const;
 
 private:
+    // Which of the three waiting screens is up: no FDN cabled, an FDN cabled
+    // that has not said this PDN has its turn, and one that has.
+    enum class WaitingScreen : uint8_t {
+        CABLE_TO_FDN,
+        PLEASE_WAIT,
+        TAP_BAND,
+    };
+
     void onProvisionPacket(const uint8_t* fromMac, const PlayerProvisionPacket& pkt);
     void onApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload);
     void onJackChange(SerialIdentifier jack, bool connected);
@@ -70,6 +80,7 @@ private:
     void renderFailurePage(PDN* pdn);
     void dismissFailurePage(PDN* pdn);
     bool isHoldComplete(unsigned long heldMs, unsigned long holdMs);
+    WaitingScreen getWaitingScreenForCable() const;
     void renderWaitingScreen(PDN* pdn) const;
 
     ReliableChannel<PlayerProvisionPacket> provisionChannel;
@@ -81,7 +92,7 @@ private:
     SimpleTimer attemptTimer;
     SimpleTimer sinceMount;
     SimpleTimer failurePageTimer;
-    bool screenShowsTapBand = false;
+    WaitingScreen waitingScreen = WaitingScreen::CABLE_TO_FDN;
     bool failurePageIsShowing = false;
     bool failurePageIsDirty = false;
     bool transitionToWelcomeState = false;

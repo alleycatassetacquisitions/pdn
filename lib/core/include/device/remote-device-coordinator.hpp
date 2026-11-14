@@ -200,12 +200,26 @@ public:
     }
 
     /**
+     * Answers, on an FDN, whether the registration turn is with the PDN whose
+     * radio MAC is `peerMac`. Read at send time, as the self profile is.
+     */
+    using RegistrationTurnProvider = std::function<bool(const uint8_t* peerMac)>;
+
+    /**
+     * Registers `owner`'s registration-turn source, carried in every context an
+     * FDN sends. A null provider removes `owner`'s and no other owner's. With
+     * none registered every context says the turn is closed.
+     */
+    void setRegistrationTurnProvider(RegistrationTurnProvider provider, const void* owner);
+
+    /**
      * Queues a fresh context to the peer on every Connected jack. The exchange
      * is otherwise once-per-connect, so a profile field a peer acts on (the
-     * hunter/bounty role) changing on an already-open link has to push itself
-     * or the peer keeps acting on the stale value until the next replug.
+     * hunter/bounty role, an FDN's registration turn) changing on an
+     * already-open link has to push itself or the peer keeps acting on the
+     * stale value until the next replug.
      */
-    void resendContext();
+    virtual void resendContext();
 
     /**
      * The peer's own ChainRole as of the context it sent on `jack`, recorded but
@@ -378,6 +392,16 @@ protected:
         applicationFrameOutcomeCallbacks.fire(jack, outcome);
     }
 
+    /**
+     * The registration turn a context sent to `peerMac` carries now; a
+     * coordinator double that stands in for the context send reads it too.
+     */
+    RegistrationTurn getRegistrationTurnFor(const uint8_t* peerMac) const {
+        if (!registrationTurnProvider) return RegistrationTurn::CLOSED;
+        return registrationTurnProvider(peerMac) ? RegistrationTurn::OPEN
+                                                 : RegistrationTurn::CLOSED;
+    }
+
 private:
     static constexpr size_t NUM_JACKS = 3;
 
@@ -417,6 +441,8 @@ private:
     bool externalConnectivityTask = false;
     CallbackList<ContextReceivedCallback> contextReceivedCallbacks;
     SelfProfileProvider selfProfileProvider;
+    RegistrationTurnProvider registrationTurnProvider;
+    const void* registrationTurnProviderOwner = nullptr;
     std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 

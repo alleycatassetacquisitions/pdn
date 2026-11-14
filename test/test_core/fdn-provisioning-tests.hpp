@@ -130,6 +130,29 @@ public:
         return index < replyMacs.size() && memcmp(replyMacs[index].data(), mac, 6) == 0;
     }
 
+    /**
+     * @return the registration turn the last context resent to @p jack's PDN
+     * carried; NOT_SENT when none was resent there.
+     */
+    RegistrationTurn lastTurnSentTo(SerialIdentifier jack) const {
+        const std::vector<FakeRemoteDeviceCoordinator::SentRegistrationTurn>& sent =
+        fdnRdc.getSentRegistrationTurns();
+        for (size_t i = sent.size(); i > 0; --i) {
+            if (sent[i - 1].first == jack) return sent[i - 1].second;
+        }
+        return RegistrationTurn::NOT_SENT;
+    }
+
+    /** @return true when a context resent since send @p since told any PDN its turn is open. */
+    bool turnOpenedSince(size_t since) const {
+        const std::vector<FakeRemoteDeviceCoordinator::SentRegistrationTurn>& sent =
+        fdnRdc.getSentRegistrationTurns();
+        for (size_t i = since; i < sent.size(); ++i) {
+            if (sent[i].second == RegistrationTurn::OPEN) return true;
+        }
+        return false;
+    }
+
     FakePlatformClock* fakeClock = nullptr;
     MockDevice fdnDevice;
     FakeRemoteDeviceCoordinator fdnRdc;
@@ -450,42 +473,87 @@ inline void fdnHoldsTheQueueWhileTheRegistrationScreenIsNotShown(FdnProvisioning
     EXPECT_EQ(suite->queuedRequests.size(), 1u) << "the registration screen takes the tap";
 }
 
-// The prompt named one jack a moment ago, so a tap just after the turn passes to
-// the other jack is not taken for that jack's PDN.
-inline void fdnIgnoresTapJustAfterThePendingJackChanges(FdnProvisioningTests* suite) {
+// Only the PDN on the pending jack is told its turn is open; the other cabled
+// PDN is told it is not, and off the registration screen nobody's is.
+inline void fdnTellsOnlyThePendingJacksPdnItsTurnIsOpen(FdnProvisioningTests* suite) {
+    suite->cablePdn(SerialIdentifier::INPUT_JACK_SECONDARY, suite->secondPdnMac);
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc,
+                                   &suite->reader);
+    fdnProv.sync();
+    EXPECT_FALSE(suite->turnOpenedSince(0)) << "a turn opened during symbol match";
+
+    fdnProv.setRegistrationScreenShown(true);
+    fdnProv.sync();
+    ASSERT_EQ(fdnProv.getPendingJack(), SerialIdentifier::INPUT_JACK);
+    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK), RegistrationTurn::OPEN)
+    << "the pending jack's PDN was not told its turn is open";
+    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK_SECONDARY),
+              RegistrationTurn::CLOSED)
+    << "the queued PDN was not told to wait";
+
+    const size_t sendsBefore = suite->fdnRdc.getSentRegistrationTurns().size();
+    fdnProv.sync();
+    EXPECT_EQ(suite->fdnRdc.getSentRegistrationTurns().size(), sendsBefore)
+    << "contexts were resent with the turn unchanged";
+
+    fdnProv.setRegistrationScreenShown(false);
+    fdnProv.sync();
+    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK), RegistrationTurn::CLOSED)
+    << "the turn stayed open off the registration screen";
+}
+
+// The turn moves on a 30 s timeout and when its PDN unplugs, and closes at the
+// tap, and every PDN cabled is told each time.
+inline void fdnUpdatesBothPdnsWhenTheTurnMoves(FdnProvisioningTests* suite) {
+    suite->cablePdn(SerialIdentifier::INPUT_JACK_SECONDARY, suite->secondPdnMac);
     FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc,
                                    &suite->reader);
     fdnProv.setRegistrationScreenShown(true);
     fdnProv.sync();
-    suite->cablePdn(SerialIdentifier::INPUT_JACK_SECONDARY, suite->secondPdnMac);
-    fdnProv.sync();
-    ASSERT_EQ(fdnProv.getPendingJack(), SerialIdentifier::INPUT_JACK);
 
     suite->fakeClock->advance(FdnProvisioningManager::REGISTRATION_PENDING_MS + 1);
     fdnProv.sync();
     ASSERT_EQ(fdnProv.getPendingJack(), SerialIdentifier::INPUT_JACK_SECONDARY);
-    suite->fakeClock->advance(1000);
-    suite->tapBand(fdnProv);
-    EXPECT_TRUE(suite->queuedRequests.empty())
-    << "a tap 1000 ms after the turn moved was looked up";
-    ASSERT_TRUE(fdnProv.hasPendingRegistration());
-    EXPECT_EQ(fdnProv.getPendingJack(), SerialIdentifier::INPUT_JACK_SECONDARY);
+    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK), RegistrationTurn::CLOSED)
+    << "the timed-out PDN still says Tap band";
+    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK_SECONDARY),
+              RegistrationTurn::OPEN);
 
-    suite->fakeClock->advance(FdnProvisioningManager::PENDING_JACK_CHANGE_TAP_IGNORE_MS - 1000 + 1);
+    suite->fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK_SECONDARY, JackStatus::DISCONNECTED);
+    fdnProv.sync();
+    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK), RegistrationTurn::OPEN)
+    << "the turn did not come back when its PDN unplugged";
+
+    // A tap on the open turn counts at once: no guard follows a move.
     suite->tapBand(fdnProv);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
-    suite->queuedRequests[0].onSuccess(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada"));
-    EXPECT_TRUE(suite->wroteTestKeyTo(SerialIdentifier::INPUT_JACK_SECONDARY));
+    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK), RegistrationTurn::CLOSED)
+    << "the turn stayed open under the lookup";
+}
 
-    // A lookup that ends with the other jack next moves the turn as well, once its
-    // result has had its time on the screen.
-    suite->fdnRdc.finishApplicationFrameWrite(SerialIdentifier::INPUT_JACK_SECONDARY);
-    suite->waitOutLookupResult(fdnProv);
-    ASSERT_TRUE(fdnProv.hasPendingRegistration());
-    EXPECT_EQ(fdnProv.getPendingJack(), SerialIdentifier::INPUT_JACK);
+// After a lookup result the next turn opens only once the result hold ends,
+// and it goes to the PDN queued behind, the failed one to the back.
+inline void fdnReopensTheTurnOnlyAfterTheResultHold(FdnProvisioningTests* suite) {
+    suite->cablePdn(SerialIdentifier::INPUT_JACK_SECONDARY, suite->secondPdnMac);
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc,
+                                   &suite->reader);
+    fdnProv.setRegistrationScreenShown(true);
     suite->tapBand(fdnProv);
-    EXPECT_EQ(suite->queuedRequests.size(), 1u)
-    << "a tap as the turn passed on after a lookup was looked up";
+    ASSERT_EQ(suite->queuedRequests.size(), 1u);
+    const size_t sendsAtTap = suite->fdnRdc.getSentRegistrationTurns().size();
+    suite->queuedRequests[0].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404", 404});
+    fdnProv.sync();
+
+    suite->fakeClock->advance(FdnProvisioningManager::LOOKUP_RESULT_HOLD_MS);
+    fdnProv.sync();
+    EXPECT_FALSE(suite->turnOpenedSince(sendsAtTap)) << "a turn opened during the result hold";
+
+    suite->fakeClock->advance(1);
+    fdnProv.sync();
+    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK_SECONDARY),
+              RegistrationTurn::OPEN)
+    << "the next PDN was not told its turn once the hold ended";
+    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK), RegistrationTurn::CLOSED);
 }
 
 // A finished lookup's result holds the next registration back for its screen
