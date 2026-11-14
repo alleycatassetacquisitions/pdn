@@ -2,7 +2,7 @@
 
 ### Requirement: Handing a PDN to another player
 
-A PDN SHALL be handed to another player by restarting it. After a restart a PDN SHALL be on PIN entry with no registered profile and no record key (`record-authentication`), and registration SHALL be reachable only from there. A running PDN SHALL offer no sign-out and no way back to registration: a PDN that is not restarted SHALL stay registered to the player it was registered to.
+A PDN SHALL be handed to another player by restarting it. After a restart a PDN SHALL be on PIN entry with no registered profile and no record key (`record-authentication`), and registration SHALL be reachable only from there. A running PDN SHALL offer no sign-out and no way back to registration: a PDN that is not restarted SHALL stay registered to the player it was registered to. At the event, PDN swaps go through the Alleycat desk, which power-cycles the PDN before handing it over.
 
 #### Scenario: Restart returns the PDN to PIN entry with nothing held
 - **WHEN** a PDN registered to a player is restarted
