@@ -5,11 +5,58 @@
 #include "game/record-tag.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
+#include <ArduinoJson.h>
 #include <algorithm>
 #include <optional>
 #include <cstring>
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
+
+namespace {
+
+void matchSlotKey(uint32_t slot, char (&key)[16]) {
+    snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX, static_cast<unsigned>(slot));
+}
+
+// A string of at most `size` characters, copied into `out` without a terminator
+// when it fills it; `out` must start zeroed.
+bool copyTextField(JsonVariantConst value, char* out, size_t size) {
+    if (!value.is<const char*>()) {
+        return false;
+    }
+    const char* text = value.as<const char*>();
+    const size_t length = strlen(text);
+    if (length > size) {
+        return false;
+    }
+    memcpy(out, text, length);
+    return true;
+}
+
+// Builds a LEGACY_MATCH record from what older firmware's Match::toJson() stored.
+// A field missing, mistyped or too long refuses the whole string, leaving
+// @p content untouched, so nothing it held is sent half-read.
+bool parseLegacyJsonMatch(const std::string& json, MatchRecordContent& content) {
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) {
+        return false;
+    }
+    LegacyMatchContent legacy{};
+    if (!copyTextField(doc["match_id"], legacy.matchId, sizeof(legacy.matchId)) ||
+        !copyTextField(doc["hunter"], legacy.hunterPin, sizeof(legacy.hunterPin)) ||
+        !copyTextField(doc["bounty"], legacy.bountyPin, sizeof(legacy.bountyPin)) ||
+        !doc["hunter_time"].is<uint32_t>() || !doc["bounty_time"].is<uint32_t>() ||
+        !doc["winner_is_hunter"].is<bool>()) {
+        return false;
+    }
+    legacy.hunterTimeMs = doc["hunter_time"].as<uint32_t>();
+    legacy.bountyTimeMs = doc["bounty_time"].as<uint32_t>();
+    legacy.winnerIsHunter = doc["winner_is_hunter"].as<bool>() ? 1 : 0;
+    memcpy(&content, &legacy, sizeof(content));
+    return true;
+}
+
+}  // namespace
 
 MatchManager::MatchManager(Player* player, const RecordKey* recordKey, StorageInterface* storage,
                            WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
@@ -319,12 +366,12 @@ long MatchManager::getEffectiveDrawTime(bool hunterSlot) const {
 
 uint32_t MatchManager::getMatchSequenceNumber() {
     if (!storage) return 0;
-    return storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, 0);
+    return storage->readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0);
 }
 
 uint32_t MatchManager::getCollectedHighWaterMark() {
     if (!storage) return 0;
-    return storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
+    return storage->readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
 }
 
 bool MatchManager::appendRecordToStorage(const MatchRecordContent& content) {
@@ -332,17 +379,16 @@ bool MatchManager::appendRecordToStorage(const MatchRecordContent& content) {
 
     const uint32_t nextSeq = getMatchSequenceNumber() + 1;
     char key[16];
-    snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
-             static_cast<unsigned>((nextSeq - 1) % MATCH_RING_CAPACITY));
+    matchSlotKey((nextSeq - 1) % MATCH_RING_CAPACITY, key);
 
-    if (storage->writeBytes(MATCHES_PREFS_NAMESPACE, key,
+    if (storage->writeBytes(MATCH_RING_PREFS_NAMESPACE, key,
                             reinterpret_cast<const uint8_t*>(&content),
                             MATCH_SLOT_SIZE) != MATCH_SLOT_SIZE) {
         LOG_E(MATCH_MANAGER_TAG, "Failed to save match binary at key %s", key);
         return false;
     }
 
-    if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, nextSeq) != sizeof(uint32_t)) {
+    if (storage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, nextSeq) != sizeof(uint32_t)) {
         LOG_E(MATCH_MANAGER_TAG, "Failed to update match sequence number to %u", nextSeq);
         return false;
     }
@@ -350,42 +396,161 @@ bool MatchManager::appendRecordToStorage(const MatchRecordContent& content) {
     return true;
 }
 
-bool MatchManager::readLowestPending(uint32_t& recordNumber, MatchRecordContent& content) {
-    // A scratch copy, so a short read leaves the caller's buffer untouched.
+bool MatchManager::readRingSlot(const char* ns, uint32_t seq, MatchRecordContent& content) {
+    char key[16];
+    matchSlotKey((seq - 1) % MATCH_RING_CAPACITY, key);
     MatchRecordContent slot{};
-    // With no storage both numbers read 0, nothing is pending and nothing is loaded.
-    // A slot of another length has no tag to send (firmware that stored none wrote
-    // 112 bytes), so it is passed over the same way as one that cannot be read.
-    if (!findLowestReadableRecord(
-        getCollectedHighWaterMark(), getMatchSequenceNumber(), MATCH_RING_CAPACITY,
-        highestUnreadableReported, recordNumber,
-        [this, &slot](uint32_t seq) {
-            char key[16];
-            snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
-                     static_cast<unsigned>((seq - 1) % MATCH_RING_CAPACITY));
-            return storage->readBytes(MATCHES_PREFS_NAMESPACE, key,
-                                      reinterpret_cast<uint8_t*>(&slot),
-                                      MATCH_SLOT_SIZE) == MATCH_SLOT_SIZE;
-        },
-        [](uint32_t seq) {
-            LOG_W(MATCH_MANAGER_TAG, "Stored match %u is not a readable tagged record",
-                  static_cast<unsigned>(seq));
-        })) {
+    const size_t length =
+    storage->readBytes(ns, key, reinterpret_cast<uint8_t*>(&slot), sizeof(slot));
+    // Only older firmware wrote untagged slots; this firmware's own ring never holds one.
+    if (length != MATCH_SLOT_SIZE && length != LEGACY_UNTAGGED_SLOT_SIZE) {
         return false;
     }
     content = slot;
     return true;
 }
 
-void MatchManager::advanceMark(uint32_t recordNumber) {
-    const uint32_t collected = getCollectedHighWaterMark();
-    // With no storage both numbers read 0, so the mark never advances.
-    if (advancedRecordMark(collected, getMatchSequenceNumber(), recordNumber) == collected) {
+bool MatchManager::readLowestPendingInRing(const char* ns, uint32_t& highestReported,
+                                           uint32_t& recordNumber, MatchRecordContent& content) {
+    return findLowestReadableRecord(
+    storage->readUInt(ns, PREF_COLLECTED_SEQ_KEY, 0), storage->readUInt(ns, PREF_SEQ_KEY, 0),
+    MATCH_RING_CAPACITY, highestReported, recordNumber,
+    [this, ns, &content](uint32_t seq) { return readRingSlot(ns, seq, content); },
+    [ns](uint32_t seq) {
+        LOG_W(MATCH_MANAGER_TAG, "Stored match %u in %s is not a readable record",
+              static_cast<unsigned>(seq), ns);
+    });
+}
+
+bool MatchManager::readLowestPendingLegacyJson(uint32_t& recordNumber,
+                                               MatchRecordContent& content) {
+    const uint32_t count =
+    storage->readUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_COUNT_KEY, 0);
+    for (uint32_t index = legacyJsonFirstHeld; index < count; index++) {
+        char key[16];
+        matchSlotKey(index, key);
+        const std::string json = storage->read(LEGACY_MATCHES_PREFS_NAMESPACE, key, "");
+        if (json.empty()) {
+            if (index == legacyJsonFirstHeld) {
+                legacyJsonFirstHeld = index + 1;
+            }
+            continue;
+        }
+        if (parseLegacyJsonMatch(json, content)) {
+            recordNumber = index;
+            return true;
+        }
+        // Kept: erasing it would lose a match nobody has received.
+        if (index >= legacyJsonReportedBelow) {
+            legacyJsonReportedBelow = index + 1;
+            LOG_W(MATCH_MANAGER_TAG, "Older firmware's match %u does not parse; kept unsent",
+                  static_cast<unsigned>(index));
+        }
+    }
+    return false;
+}
+
+bool MatchManager::readLowestPendingFrame(uint32_t& recordNumber, RecordKind& kind,
+                                          MatchRecordContent& content) {
+    if (readLowestPendingInRing(MATCH_RING_PREFS_NAMESPACE, highestUnreadableReported, recordNumber,
+                                content) ||
+        readLowestPendingInRing(LEGACY_MATCHES_PREFS_NAMESPACE, highestLegacyUnreadableReported,
+                                recordNumber, content)) {
+        kind = RecordKind::MATCH;
+        return true;
+    }
+    if (readLowestPendingLegacyJson(recordNumber, content)) {
+        kind = RecordKind::LEGACY_MATCH;
+        return true;
+    }
+    return false;
+}
+
+bool MatchManager::ringHoldsPending(const char* ns, uint32_t seq,
+                                    const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
+    const uint32_t newest = storage->readUInt(ns, PREF_SEQ_KEY, 0);
+    const uint32_t firstPending = firstPendingRecordNumber(
+    storage->readUInt(ns, PREF_COLLECTED_SEQ_KEY, 0), newest, MATCH_RING_CAPACITY);
+    if (firstPending == 0 || seq < firstPending || seq > newest) {
+        return false;
+    }
+    MatchRecordContent slot{};
+    if (!readRingSlot(ns, seq, slot)) {
+        return false;
+    }
+    uint8_t slotCheck[RECORD_CHECK_SIZE] = {};
+    computeRecordCheck(slot, slotCheck);
+    return memcmp(slotCheck, recordCheck, RECORD_CHECK_SIZE) == 0;
+}
+
+void MatchManager::advanceRingMark(const char* ns, uint32_t recordNumber) {
+    const uint32_t collected = storage->readUInt(ns, PREF_COLLECTED_SEQ_KEY, 0);
+    if (advancedRecordMark(collected, storage->readUInt(ns, PREF_SEQ_KEY, 0), recordNumber) ==
+        collected) {
         return;
     }
-    if (storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, recordNumber) !=
-        sizeof(uint32_t)) {
-        LOG_E(MATCH_MANAGER_TAG, "Failed to store collected mark %u",
+    if (storage->writeUInt(ns, PREF_COLLECTED_SEQ_KEY, recordNumber) != sizeof(uint32_t)) {
+        LOG_E(MATCH_MANAGER_TAG, "Failed to store collected mark %u in %s",
+              static_cast<unsigned>(recordNumber), ns);
+    }
+}
+
+void MatchManager::retireLegacyJsonMatch(uint32_t index,
+                                         const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
+    const uint32_t count =
+    storage->readUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_COUNT_KEY, 0);
+    char key[16];
+    matchSlotKey(index, key);
+    MatchRecordContent held{};
+    uint8_t heldCheck[RECORD_CHECK_SIZE] = {};
+    if (index >= count ||
+        !parseLegacyJsonMatch(storage->read(LEGACY_MATCHES_PREFS_NAMESPACE, key, ""), held)) {
+        LOG_W(MATCH_MANAGER_TAG, "Acknowledged older firmware's match %u is no longer held",
+              static_cast<unsigned>(index));
+        return;
+    }
+    computeRecordCheck(held, heldCheck);
+    if (memcmp(heldCheck, recordCheck, RECORD_CHECK_SIZE) != 0) {
+        LOG_W(MATCH_MANAGER_TAG, "Acknowledged older firmware's match %u differs from the one held",
+              static_cast<unsigned>(index));
+        return;
+    }
+    if (!storage->remove(LEGACY_MATCHES_PREFS_NAMESPACE, key)) {
+        LOG_E(MATCH_MANAGER_TAG, "Failed to erase delivered older firmware's match %u",
+              static_cast<unsigned>(index));
+        return;
+    }
+
+    // The count and older firmware's write probe go only once no string is left,
+    // an unparseable one included: the count is what finds the strings.
+    for (uint32_t remaining = legacyJsonFirstHeld; remaining < count; remaining++) {
+        matchSlotKey(remaining, key);
+        if (!storage->read(LEGACY_MATCHES_PREFS_NAMESPACE, key, "").empty()) {
+            return;
+        }
+    }
+    storage->remove(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_COUNT_KEY);
+    storage->remove(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_TEST_KEY);
+}
+
+void MatchManager::onRecordAcknowledged(RecordKind kind, uint32_t recordNumber,
+                                        const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
+    if (kind == RecordKind::LEGACY_MATCH) {
+        retireLegacyJsonMatch(recordNumber, recordCheck);
+        return;
+    }
+    if (kind != RecordKind::MATCH) {
+        LOG_E(MATCH_MANAGER_TAG, "Acknowledgement of kind %u is not a match record",
+              static_cast<unsigned>(kind));
+        return;
+    }
+    // Both rings number from 1, so the record check says which one was stored.
+    if (ringHoldsPending(MATCH_RING_PREFS_NAMESPACE, recordNumber, recordCheck)) {
+        advanceRingMark(MATCH_RING_PREFS_NAMESPACE, recordNumber);
+    } else if (ringHoldsPending(LEGACY_MATCHES_PREFS_NAMESPACE, recordNumber, recordCheck)) {
+        advanceRingMark(LEGACY_MATCHES_PREFS_NAMESPACE, recordNumber);
+    } else {
+        LOG_W(MATCH_MANAGER_TAG, "Acknowledged match %u is no longer pending",
               static_cast<unsigned>(recordNumber));
     }
 }
@@ -399,14 +564,8 @@ void MatchManager::clearButtonMasherCount() { activeMatchState.buttonMasherCount
 void MatchManager::initialize() {
     // An NVS wipe of "seq" alone would otherwise leave every new match marked collected.
     if (getCollectedHighWaterMark() > getMatchSequenceNumber()) {
-        storage->writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY,
+        storage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY,
                            getMatchSequenceNumber());
-    }
-
-    // Firmware before the ring kept JSON strings under these keys. Nothing reads
-    // them now, and left in place they take the room the ring needs.
-    if (getMatchSequenceNumber() == 0) {
-        storage->clear(MATCHES_PREFS_NAMESPACE);
     }
 
     matchButtonPush = [](void* ctx) {

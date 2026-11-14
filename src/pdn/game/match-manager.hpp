@@ -25,13 +25,25 @@
 
 class ShootoutManager;
 
-inline constexpr const char MATCHES_PREFS_NAMESPACE[] = "matches";
+// The ring this firmware writes. It has a namespace of its own because older
+// firmware's JSON strings sit under the same key names in "matches", and those
+// are kept until delivered.
+inline constexpr const char MATCH_RING_PREFS_NAMESPACE[] = "match_ring";
 inline constexpr const char PREF_SEQ_KEY[] = "seq";
 inline constexpr const char PREF_COLLECTED_SEQ_KEY[] = "collectedSeq";
 inline constexpr const char PREF_MATCH_KEY_PREFIX[] = "match_";
 inline constexpr uint8_t MATCH_RING_CAPACITY = 32;
 // A ring slot holds a match record and then its tag, as a record frame carries them.
 inline constexpr size_t MATCH_SLOT_SIZE = sizeof(MatchRecordContent);
+
+// Matches older firmware stored, read in place and never written except to
+// retire one an FDN acknowledged. Either a ring under the keys above, its slots
+// LEGACY_UNTAGGED_SLOT_SIZE bytes (or MATCH_SLOT_SIZE from bench builds), or
+// JSON strings "match_<i>" for i below "count".
+inline constexpr const char LEGACY_MATCHES_PREFS_NAMESPACE[] = "matches";
+inline constexpr const char LEGACY_PREF_COUNT_KEY[] = "count";
+inline constexpr const char LEGACY_PREF_TEST_KEY[] = "test_key";
+inline constexpr size_t LEGACY_UNTAGGED_SLOT_SIZE = MATCH_RECORD_SIZE;
 
 struct LastMatchDisplay {
     // Effective draw times, as used for winner calc: raw minus boost, so a big
@@ -74,10 +86,11 @@ struct ActiveMatchState {
 class MatchManager : public RecordSource<MatchRecordTraits> {
 public:
     /**
-     * Claims the kMatchCommand channel on wirelessManager. wirelessManager and
-     * rdc may be null in tests; with a null rdc every SEND_MATCH_ID is refused.
-     * recordKey is borrowed and read only when a finished match is tagged; while
-     * it is null or holds no key, no match is stored.
+     * Claims the kMatchCommand channel on wirelessManager. storage is required;
+     * wirelessManager and rdc may be null in tests; with a null rdc every
+     * SEND_MATCH_ID is refused. recordKey is borrowed and read only when a
+     * finished match is tagged; while it is null or holds no key, no match is
+     * stored.
      */
     MatchManager(Player* player, const RecordKey* recordKey, StorageInterface* storage,
                  WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
@@ -139,24 +152,30 @@ public:
     /** Returns the active match, or std::nullopt if none. */
     std::optional<Match>& getCurrentMatch() { return activeMatchState.match; }
 
-    /** Returns the sequence number of the newest stored match (0 when none stored). */
+    /** Returns the sequence number of the newest match in this firmware's ring (0 when none). */
     uint32_t getMatchSequenceNumber();
 
-    /** Returns the sequence number of the newest match record an FDN acknowledged storing. */
+    /** Returns the sequence number of the newest ring match an FDN acknowledged storing. */
     uint32_t getCollectedHighWaterMark();
 
     /**
-     * Offers the oldest uncollected match record in the ring with its stored tag,
-     * never recomputed, passing over any slot that does not read as
-     * MATCH_SLOT_SIZE bytes.
+     * Offers the oldest uncollected record of this firmware's ring, with its
+     * stored tag; only when that ring has none pending, the oldest of older
+     * firmware's ring, untagged slots with a zero tag; then the lowest JSON-era
+     * match as LEGACY_MATCH. Asked before every send, so a new match is never
+     * queued behind older ones. Unreadable slots and unparseable strings are
+     * passed over and kept.
      */
-    bool readLowestPending(uint32_t& recordNumber, MatchRecordContent& content) override;
+    bool readLowestPendingFrame(uint32_t& recordNumber, RecordKind& kind,
+                                MatchRecordContent& content) override;
 
     /**
-     * Stores @p recordNumber as collected_high_water_mark; ignored at or below
-     * the mark or above the newest stored match.
+     * Retires the record whose kind, number and record check were acknowledged:
+     * a ring's mark moves, or a JSON-era match's key is erased. A record no
+     * longer held with that check is left alone.
      */
-    void advanceMark(uint32_t recordNumber) override;
+    void onRecordAcknowledged(RecordKind kind, uint32_t recordNumber,
+                              const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) override;
 
     /** Clears the active match and resets all per-match state flags. */
     void clearCurrentMatch();
@@ -240,8 +259,25 @@ private:
     /** Writes a tagged match record to the next ring slot and increments the sequence number. */
     bool appendRecordToStorage(const MatchRecordContent& content);
 
+    // Reads ring slot @p seq of namespace @p ns. A slot of LEGACY_UNTAGGED_SLOT_SIZE
+    // bytes reads with a zero tag.
+    bool readRingSlot(const char* ns, uint32_t seq, MatchRecordContent& content);
+    bool readLowestPendingInRing(const char* ns, uint32_t& highestReported, uint32_t& recordNumber,
+                                 MatchRecordContent& content);
+    bool readLowestPendingLegacyJson(uint32_t& recordNumber, MatchRecordContent& content);
+    // True when ring slot @p seq of @p ns is pending and its record check is @p recordCheck.
+    bool ringHoldsPending(const char* ns, uint32_t seq,
+                          const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]);
+    void advanceRingMark(const char* ns, uint32_t recordNumber);
+    void retireLegacyJsonMatch(uint32_t index, const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]);
+
     // Each unreadable stored match is logged once per boot, not on every beacon.
     uint32_t highestUnreadableReported = 0;
+    uint32_t highestLegacyUnreadableReported = 0;
+    // JSON-era indexes below this are erased, so a scan need not read them again.
+    uint32_t legacyJsonFirstHeld = 0;
+    // Unparseable JSON-era strings below this were logged.
+    uint32_t legacyJsonReportedBelow = 0;
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake match commands
