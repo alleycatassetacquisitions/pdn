@@ -23,6 +23,8 @@ void RegistrationState::onStateMounted(FDN* fdn) {
             screen = Screen::WELCOME;
         } else if (result == ProvisionLookupResult::KEY_NOT_ISSUED) {
             screen = Screen::KEY_NOT_ISSUED;
+        } else if (result == ProvisionLookupResult::SERVER_NOT_TRUSTED) {
+            screen = Screen::SERVER_NOT_TRUSTED;
         } else {
             screen = Screen::FAILED;
         }
@@ -63,7 +65,8 @@ void RegistrationState::onStateDismounted(FDN* fdn) {
 bool RegistrationState::transitionToIdle() {
     if (!isConnected()) return true;
     if (fdnProvisioningManager->isLookupInFlight()) return false;
-    if (screen == Screen::WELCOME || screen == Screen::FAILED || screen == Screen::KEY_NOT_ISSUED) {
+    if (screen == Screen::WELCOME || screen == Screen::FAILED || screen == Screen::KEY_NOT_ISSUED ||
+        screen == Screen::SERVER_NOT_TRUSTED) {
         return resultTimer.expired();
     }
     return !fdnProvisioningManager->hasUnprovisionedPdnCabled();
@@ -84,6 +87,9 @@ void RegistrationState::render(FDN* fdn) {
     } else if (screen == Screen::KEY_NOT_ISSUED) {
         top = "UNABLE TO";
         bottom = "ISSUE KEY";
+    } else if (screen == Screen::SERVER_NOT_TRUSTED) {
+        top = "SERVER";
+        bottom = "NOT TRUSTED";
     }
     fdn->getDisplay()
     ->invalidateScreen()
