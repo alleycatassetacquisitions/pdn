@@ -117,6 +117,7 @@ public:
     Idle* idleState;
     GameContext ctx;
     FakePlatformClock* fakeClock;
+    FontMode selectedFontMode = FontMode::TEXT_INVERTED_SMALL;
 };
 
 // Test: Idle state mounts and registers button callbacks
@@ -168,6 +169,122 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
 
     suite->idleState->onStateDismounted(&suite->device);
+}
+
+// Collects every text the idle screen draws into `drawnTexts`, on a display
+// 128 pixels wide. The large font is eleven pixels a character, the advance
+// of most letters in the PDN's font (eleven to a line), and every other font
+// five, so text measured in the wrong font breaks in the wrong place.
+inline void recordIdleDrawnTexts(IdleStateTests* suite, std::vector<std::string>* drawnTexts) {
+    MockDisplay* display = suite->device.mockDisplay;
+    ON_CALL(*display, drawText(_, _, _))
+    .WillByDefault(Invoke([display, drawnTexts](const char* text, int, int) -> Display* {
+        drawnTexts->push_back(text);
+        return display;
+    }));
+    ON_CALL(*display, setGlyphMode(_))
+    .WillByDefault(Invoke([display, suite](FontMode mode) -> Display* {
+        suite->selectedFontMode = mode;
+        return display;
+    }));
+    ON_CALL(*display, renderGlyph(_, _, _)).WillByDefault(Return(display));
+    ON_CALL(*display, getWidth()).WillByDefault(Return(128));
+    ON_CALL(*display, getTextWidth(_)).WillByDefault(Invoke([suite](const char* text) {
+        const bool largeFont = suite->selectedFontMode == FontMode::TEXT ||
+                               suite->selectedFontMode == FontMode::TEXT_INVERTED_LARGE;
+        return static_cast<int>(strlen(text)) * (largeFont ? 11 : 5);
+    }));
+}
+
+inline void registerIdlePlayerName(IdleStateTests* suite, const char* name) {
+    suite->player->applyRegistrationProfile(UUIDBytes(), name, Team(), {});
+}
+
+// A new holder reads whose PDN it is from the first idle screen, so it shows
+// the whole name and no allegiance image over it.
+inline void idleFirstScreenShowsThePlayerName(IdleStateTests* suite) {
+    std::vector<std::string> drawnTexts;
+    recordIdleDrawnTexts(suite, &drawnTexts);
+    registerIdlePlayerName(suite, "Wilhelmina Vanderbilt");
+    EXPECT_CALL(*suite->device.mockDisplay, drawImage(_)).Times(0);
+
+    suite->idleState->onStateMounted(&suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+
+    EXPECT_THAT(drawnTexts, testing::ElementsAre("Player", "Wilhelmina", "Vanderbilt"));
+}
+
+inline void idleNameScreenWithoutANameShowsTheLabelAlone(IdleStateTests* suite) {
+    std::vector<std::string> drawnTexts;
+    recordIdleDrawnTexts(suite, &drawnTexts);
+
+    suite->idleState->onStateMounted(&suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+
+    EXPECT_THAT(drawnTexts, testing::ElementsAre("Player"));
+}
+
+inline void idleOneClickShowsWins(IdleStateTests* suite) {
+    std::vector<std::string> drawnTexts;
+    recordIdleDrawnTexts(suite, &drawnTexts);
+    registerIdlePlayerName(suite, "Demo");
+    suite->idleState->onStateMounted(&suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+    drawnTexts.clear();
+
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::CLICK);
+    suite->idleState->onStateLoop(&suite->device);
+
+    EXPECT_THAT(drawnTexts, testing::ElementsAre("Wins", "0"));
+}
+
+inline void idleNineClicksReturnToTheNameScreen(IdleStateTests* suite) {
+    std::vector<std::string> drawnTexts;
+    recordIdleDrawnTexts(suite, &drawnTexts);
+    registerIdlePlayerName(suite, "Demo");
+    suite->idleState->onStateMounted(&suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+
+    const std::vector<std::string> labelsInOrder = {"Wins", "Streak",  "Losses", "Matches",
+                                                    "Last", "Average", "Posse"};
+    for (const std::string& label : labelsInOrder) {
+        drawnTexts.clear();
+        suite->device.mockPrimaryButton->trigger(ButtonInteraction::CLICK);
+        suite->idleState->onStateLoop(&suite->device);
+        ASSERT_FALSE(drawnTexts.empty()) << label;
+        EXPECT_EQ(drawnTexts.front(), label);
+    }
+
+    // The eighth click reaches the symbol screen, which draws a glyph and no text.
+    drawnTexts.clear();
+    EXPECT_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).Times(1);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::CLICK);
+    suite->idleState->onStateLoop(&suite->device);
+    EXPECT_TRUE(drawnTexts.empty());
+
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::CLICK);
+    suite->idleState->onStateLoop(&suite->device);
+    EXPECT_THAT(drawnTexts, testing::ElementsAre("Player", "Demo"));
+}
+
+// Idle is left and re-entered around every match; whoever holds the PDN next
+// sees the name without having to click round to it.
+inline void idleRemountStartsOnTheNameScreen(IdleStateTests* suite) {
+    std::vector<std::string> drawnTexts;
+    recordIdleDrawnTexts(suite, &drawnTexts);
+    registerIdlePlayerName(suite, "Demo");
+    suite->idleState->onStateMounted(&suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::CLICK);
+    suite->idleState->onStateLoop(&suite->device);
+    ASSERT_EQ(drawnTexts.back(), "0") << "the Wins screen is up before leaving idle";
+
+    suite->idleState->onStateDismounted(&suite->device);
+    drawnTexts.clear();
+    suite->idleState->onStateMounted(&suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+
+    EXPECT_THAT(drawnTexts, testing::ElementsAre("Player", "Demo"));
 }
 
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
