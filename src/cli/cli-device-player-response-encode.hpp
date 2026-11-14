@@ -3,18 +3,37 @@
 #ifdef NATIVE_BUILD
 
 #include "alleycat-server/device_api.pb.h"
+#include "game/player-types.hpp"
 #include "game/record-key.hpp"
 #include "utils/uuid-bytes.hpp"
 
 #include <pb_encode.h>
 #include <cstring>
+#include <optional>
 #include <string>
 
 namespace cli {
 
 namespace DevicePlayerResponseEncode {
 
-inline bool encodeMinimal(const UUIDBytes& playerId, const char* displayName, std::string& outBody) {
+/** Appends one varint field to @p outBody; false when it does not encode. */
+inline bool appendUint32Field(uint32_t tag, uint32_t value, std::string& outBody) {
+    pb_byte_t buffer[16];
+    pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
+    if (!pb_encode_tag(&stream, PB_WT_VARINT, tag) || !pb_encode_varint(&stream, value)) {
+        return false;
+    }
+    outBody.append(reinterpret_cast<const char*>(buffer), stream.bytes_written);
+    return true;
+}
+
+/**
+ * Encodes the lookup response the simulated server sends: the player id, the
+ * record key, the display name and, when @p totals holds them, the three scoring
+ * totals. With no totals it answers as today's server does.
+ */
+inline bool encode(const UUIDBytes& playerId, const char* displayName,
+                   const std::optional<PlayerTotals>& totals, std::string& outBody) {
     if (playerId.isZero() || displayName == nullptr) {
         return false;
     }
@@ -51,7 +70,16 @@ inline bool encodeMinimal(const UUIDBytes& playerId, const char* displayName, st
         }
         outBody.append(buffer.data(), stream.bytes_written);
     }
-    return true;
+    if (!totals.has_value()) {
+        return true;
+    }
+    // SERVER-SEAM(fungible-pdns): the three scoring totals are provisional fields.
+    return appendUint32Field(alleycat_device_DevicePlayerResponse_scoring_matches_played_tag,
+                             totals->matchesPlayed, outBody) &&
+           appendUint32Field(alleycat_device_DevicePlayerResponse_scoring_wins_tag, totals->wins,
+                             outBody) &&
+           appendUint32Field(alleycat_device_DevicePlayerResponse_scoring_average_draw_time_ms_tag,
+                             totals->averageDrawTimeMs, outBody);
 }
 
 }  // namespace DevicePlayerResponseEncode

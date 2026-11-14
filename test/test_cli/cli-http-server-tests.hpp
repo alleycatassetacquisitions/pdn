@@ -8,8 +8,11 @@
 #include <cstring>
 #include "cli/cli-http-server.hpp"
 #include "alleycat-server/crash-codec.hpp"
+#include "alleycat-server/device-player-codec.hpp"
 #include "device/crash/crash-record.hpp"
 #include "device/drivers/native/native-http-client-driver.hpp"
+#include "game/player.hpp"
+#include "game/record-key.hpp"
 #include "utils/uuid-bytes.hpp"
 #include "wireless/wireless-types.hpp"
 
@@ -44,6 +47,35 @@ void httpServerGetDevicePlayerByPinReturnsData(MockHttpServerTestSuite* suite) {
     ASSERT_NE(response.find("TestPlayer"), std::string::npos);
 
     suite->server->removePlayer("1234");
+}
+
+// Test: The simulated server answers a lookup with the player's scoring totals,
+// each wider than 16 bits so a narrowed field shows, and the firmware's decoder
+// takes them with the profile.
+void httpServerGetDevicePlayerByPinCarriesTotals(MockHttpServerTestSuite* suite) {
+    cli::MockPlayerConfig config;
+    config.name = "TotalsPlayer";
+    UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", config.wirePlayerId);
+    PlayerTotals totals;
+    totals.matchesPlayed = 70000;
+    totals.wins = 66000;
+    totals.averageDrawTimeMs = 4000000000u;
+    config.totals = totals;
+    suite->server->configurePlayer("2468", config);
+
+    std::string response;
+    int status = suite->server->handleRequest("GET", "/device/players/by-pin/2468", "", response);
+    suite->server->removePlayer("2468");
+
+    ASSERT_EQ(status, 200);
+    Player player;
+    RecordKey recordKey;
+    ASSERT_TRUE(DevicePlayerCodec::decode(response, player, recordKey));
+    EXPECT_STREQ(player.getServerPlayerName(), "TotalsPlayer");
+    EXPECT_TRUE(recordKey.isHeld());
+    EXPECT_EQ(player.getRegistrationTotals().matchesPlayed, 70000u);
+    EXPECT_EQ(player.getRegistrationTotals().wins, 66000u);
+    EXPECT_EQ(player.getRegistrationTotals().averageDrawTimeMs, 4000000000u);
 }
 
 // Test: Unknown PIN returns 404

@@ -81,6 +81,10 @@ TEST_F(MockHttpServerTestSuite, GetPlayerReturnsCorrectData) {
     httpServerGetDevicePlayerByPinReturnsData(this);
 }
 
+TEST_F(MockHttpServerTestSuite, GetPlayerCarriesTotals) {
+    httpServerGetDevicePlayerByPinCarriesTotals(this);
+}
+
 TEST_F(MockHttpServerTestSuite, GetPlayerReturnsDefaults) {
     httpServerGetDevicePlayerByPinReturns404(this);
 }
@@ -403,8 +407,8 @@ TEST_F(CliCommandTestSuite, CabledProvisionTransitions) {
     cliDeviceCabledProvisionTransitions(this);
 }
 
-TEST_F(CliCommandTestSuite, RebootResetsState) {
-    cliCommandRebootResetsState(this);
+TEST_F(CliCommandTestSuite, RebootLandsOnPinEntryWithNothingHeld) {
+    cliCommandRebootLandsOnPinEntryWithNothingHeld(this);
 }
 
 TEST_F(CliCommandTestSuite, RebootFromLaterState) {

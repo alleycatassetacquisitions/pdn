@@ -5,8 +5,10 @@
 #include <string>
 #include <map>
 #include <functional>
+#include <optional>
 #include <cstdio>
 #include "cli/cli-device-player-response-encode.hpp"
+#include "game/player-types.hpp"
 #include "utils/uuid-bytes.hpp"
 
 namespace cli {
@@ -17,6 +19,8 @@ namespace cli {
 struct MockPlayerConfig {
     std::string name;
     UUIDBytes wirePlayerId;
+    /** The player's scoring totals; none answers as today's server does. */
+    std::optional<PlayerTotals> totals;
 };
 
 /**
@@ -103,8 +107,8 @@ private:
             responseBody = R"({"errors":["Player not configured"]})";
             return 500;
         }
-        if (!cli::DevicePlayerResponseEncode::encodeMinimal(it->second.wirePlayerId,
-                                                            it->second.name.c_str(), responseBody)) {
+        if (!cli::DevicePlayerResponseEncode::encode(
+            it->second.wirePlayerId, it->second.name.c_str(), it->second.totals, responseBody)) {
             responseBody = R"({"errors":["Encode failed"]})";
             return 500;
         }

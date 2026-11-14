@@ -57,6 +57,15 @@ inline void textLinesShowAllOfANameThatOnlyFitsWhenFilled() {
                 testing::ElementsAre("Abigail Bern", "ard Charles", "Dominic"));
 }
 
+// The longest name a profile holds, with no space to break at, fills the three
+// lines and loses nothing.
+inline void textLinesFillThreeLinesWithALongestNameWithoutSpaces() {
+    const char* name = "Wolfeschlegelsteinhausenbergerd";
+    ASSERT_EQ(std::strlen(name), 31U);
+    EXPECT_THAT(breakForTestDisplay(name),
+                testing::ElementsAre("Wolfeschlege", "lsteinhausen", "bergerd"));
+}
+
 inline void textLinesSplitAWordWiderThanTheLimit() {
     EXPECT_THAT(breakForTestDisplay("Supercalifragilistic"),
                 testing::ElementsAre("Supercalifra", "gilistic"));
