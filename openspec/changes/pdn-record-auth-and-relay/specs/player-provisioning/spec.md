@@ -12,7 +12,7 @@ When a player's PIN is presented at an FDN while a PDN is Connected on a serial 
   - Up to `5` affiliations SHALL be retained in server response order; any additional affiliations beyond the first `5` SHALL be skipped without failing the decode.
   - If initial player statistics (career wins, losses, matches played, win streak, or reaction-time history) are provided, they SHALL be retained in the decoded profile; otherwise, session statistics SHALL initialize to `0`.
 - The FDN SHALL take the looked-up player's record key (`record-authentication`) from the same response:
-  - The FDN SHALL accept no record key from a lookup that was not made over HTTPS with the server's certificate verified.
+  - The FDN SHALL accept no record key from a lookup that was not made over HTTPS from a server presenting the public key pinned in the FDN's firmware (`fdn-server-trust`, `neoband-registration`).
   - The FDN SHALL accept no record key that is not exactly `32` bytes. A record key of any other length SHALL count as no record key and SHALL NOT make the response undecodable.
   - The FDN SHALL hold a record key in volatile memory only, SHALL NOT log, display, or store it, and SHALL erase it as soon as it has been written to the serial jack or the PDN disconnects.
   - When the response carries a valid profile and no record key the FDN accepts, the FDN SHALL report a lookup failure to the cabled PDN and SHALL NOT deliver the profile.
@@ -34,8 +34,8 @@ When a player's PIN is presented at an FDN while a PDN is Connected on a serial 
 - **WHEN** the server responds with a valid profile and a record key that is `31` bytes long
 - **THEN** the FDN sends the Connected PDN the lookup-failure notification, delivers no profile and sends no record key
 
-#### Scenario: Record key from a lookup without a verified server certificate is not accepted
-- **WHEN** a lookup response that was not obtained over HTTPS with the server's certificate verified carries a valid profile and a record key
+#### Scenario: Record key from a lookup without the pinned server key is not accepted
+- **WHEN** a lookup response that was not obtained over HTTPS from a server presenting the pinned public key carries a valid profile and a record key
 - **THEN** the FDN does not accept the record key, sends none to the PDN, sends the lookup-failure notification and delivers no profile
 
 #### Scenario: PDN disconnect before delivery erases the held record key
