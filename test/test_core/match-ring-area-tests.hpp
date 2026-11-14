@@ -367,3 +367,20 @@ TEST_F(MatchManagerTestSuite, ringMoveCutBetweenSlotAndSeqInAFullRingLosesNothin
     EXPECT_TRUE(ringSlotHolds(area, 41, numberedRingRecord(1)));
     EXPECT_TRUE(ringSlotHolds(area, 42, numberedRingRecord(2)));
 }
+
+// Power lost while erasing the default partition's ring after moving a full
+// ring: every record is already in the area, and the next boot stores at most
+// one again.
+TEST_F(MatchManagerTestSuite, fullRingEraseCutShortStoresAtMostOneRecordAgain) {
+    NativePrefsDriver& prefs = makeNativePrefs("full-erase-cut-prefs");
+    writeRing(prefs, 1, 32, 0);
+    NativePrefsDriver& area = makeRingArea(this);
+    writeRing(area, 1, 32, 0);
+
+    rebuildMatchManager(&prefs, &area);
+
+    EXPECT_LE(area.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0), 33u)
+    << "records already moved were stored again";
+    EXPECT_TRUE(ringSlotHolds(area, 32, numberedRingRecord(32)));
+    EXPECT_TRUE(ringIsGone(prefs));
+}

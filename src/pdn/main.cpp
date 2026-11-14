@@ -62,14 +62,9 @@ GameSession* gameSession = nullptr;
 
 SymbolWirelessManager* symbolWirelessManager = nullptr;
 
-// True when the store partition is in the partition table, or, on a deployed
-// table that ends before its range, once that range is registered for this
-// boot. The registration is refused when a partition of the running table
-// overlaps the range or the image's flash size (8 MB, which boot already
-// checked the chip holds) does not reach its end. Nothing is erased: a
-// registration holds only until restart, so a first one cannot be told from a
-// later one, and NVS takes other data left in the range, as from an old table's
-// spiffs, for free pages and erases each page when it first uses it.
+// True when the store partition is in the table or registered for this boot.
+// Never erases: a registration lasts one boot, so a first one cannot be told
+// from a later one, and NVS takes leftover data in the range for free pages.
 static bool findOrRegisterStorePartition() {
     if (esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS,
                                  STORE_PARTITION_LABEL) != nullptr) {

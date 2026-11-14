@@ -119,7 +119,7 @@
 
 ## 14. PDN match ring in its own storage area (option F; new PR on top of #469)
 
-- [x] 14.1 Open the match ring's storage area at boot: the `fdn_store` partition of this stack's table, or, on a deployed table, the same range registered for that boot, which the platform refuses on an overlapping partition or a flash smaller than `8` MB; never erase it; fall back to the shared partition when it does not open
+- [x] 14.1 Open the match ring's storage area at boot: the `fdn_store` partition of this stack's table, or, on a deployed table, the same range registered for that boot, which the platform refuses when a partition of the running table overlaps it (boot already refuses a chip smaller than the image's `8` MB); never erase it; fall back to the shared partition when it does not open
 - [x] 14.2 `MatchManager` keeps its ring in the area and moves pending ring records from the shared partition at boot, erasing them there only once all are held, `seq` last; `"matches"` stays in the shared partition
 - [x] 14.3 Tests: move at boot keeping numbers, fallback, no shared-partition entries for the ring, older firmware's matches still sent, reboot after the move changes nothing, a move cut short loses nothing and finishes, a ring already in the area, an unreadable record, the mark clamp in the area, the session passing the area
 - [ ] 14.4 On devices: a PDN on a deployed partition table, updated over the air, registers the range and moves its ring; one with an older spiffs table falls back; time the move of a full ring

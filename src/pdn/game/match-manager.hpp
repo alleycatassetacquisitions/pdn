@@ -331,17 +331,16 @@ private:
     /** Writes a tagged match record to the next ring slot and increments the sequence number. */
     bool appendRecordToStorage(const MatchRecordContent& content);
 
-    // Each ring is namespace @p ns in @p area: this firmware's in ringStorage,
-    // older firmware's in storage.
-    // Reads ring slot @p seq. A slot of LEGACY_UNTAGGED_SLOT_SIZE bytes reads with a zero tag.
+    // Reads ring slot @p seq of namespace @p ns in @p area. A slot of
+    // LEGACY_UNTAGGED_SLOT_SIZE bytes reads with a zero tag.
     static bool readRingSlot(StorageInterface* area, const char* ns, uint32_t seq,
                              MatchRecordContent& content);
     // Moves @p oldLocation's pending ring records into ringStorage and, once all
     // are held, erases its ring; see the definition.
     void moveRingRecordsFrom(StorageInterface* oldLocation);
-    // True when a slot of ringStorage's ring, other than the one the next record
-    // goes to, is byte-identical to @p content.
-    bool ringHoldsRecord(const MatchRecordContent& content);
+    // True when a slot of ringStorage's ring is byte-identical to @p content,
+    // leaving out, with @p skipNextSlot, the slot the next record goes to.
+    bool ringHoldsRecord(const MatchRecordContent& content, bool skipNextSlot);
     static bool readLowestPendingInRing(StorageInterface* area, const char* ns,
                                         uint32_t& highestReported, uint32_t& recordNumber,
                                         MatchRecordContent& content);

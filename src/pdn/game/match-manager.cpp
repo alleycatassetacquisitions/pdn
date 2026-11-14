@@ -508,14 +508,10 @@ bool MatchManager::readRingSlot(StorageInterface* area, const char* ns, uint32_t
     return true;
 }
 
-// Pending records only, oldest first. @p oldLocation's ring is erased, "seq"
-// last, only once every readable one is held here, so a move cut short loses
-// nothing and the next boot finishes it, passing over records already held.
-// Nothing is written to @p oldLocation, which older firmware's matches may have
-// filled. An unreadable record is dropped, since it could never be sent. Into
-// an empty ring the records keep their numbers up to the first one dropped, so
-// one an FDN took without its acknowledgement arriving is sent again as the
-// same record.
+// Erases @p oldLocation's ring, "seq" last, only once every readable pending
+// record is held here, and never writes to it (older firmware's matches may fill
+// it). Into an empty ring records keep their numbers up to the first unreadable
+// one, so one an FDN took unacknowledged is sent again as the same record.
 void MatchManager::moveRingRecordsFrom(StorageInterface* oldLocation) {
     const uint32_t oldNewest = oldLocation->readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0);
     if (oldNewest == 0) {
@@ -536,6 +532,10 @@ void MatchManager::moveRingRecordsFrom(StorageInterface* oldLocation) {
             return;
         }
     }
+    // An append an earlier boot cut before "seq" left its bytes in the next
+    // slot under an older number; that slot counts as held only after this
+    // boot's first append, so at most one record is stored twice.
+    bool nextSlotMayBeTorn = true;
     for (uint32_t number = firstPending; number != 0 && number <= oldNewest; number++) {
         MatchRecordContent content{};
         if (!readRingSlot(oldLocation, MATCH_RING_PREFS_NAMESPACE, number, content)) {
@@ -543,7 +543,7 @@ void MatchManager::moveRingRecordsFrom(StorageInterface* oldLocation) {
                   static_cast<unsigned>(number));
             continue;
         }
-        if (ringHoldsRecord(content)) {
+        if (ringHoldsRecord(content, nextSlotMayBeTorn)) {
             continue;
         }
         if (!appendRecordToStorage(content)) {
@@ -552,6 +552,7 @@ void MatchManager::moveRingRecordsFrom(StorageInterface* oldLocation) {
                   static_cast<unsigned>(number));
             return;
         }
+        nextSlotMayBeTorn = false;
     }
     for (uint32_t slot = 0; slot < MATCH_RING_CAPACITY; slot++) {
         char key[16];
@@ -562,14 +563,14 @@ void MatchManager::moveRingRecordsFrom(StorageInterface* oldLocation) {
     oldLocation->remove(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY);
 }
 
-bool MatchManager::ringHoldsRecord(const MatchRecordContent& content) {
+bool MatchManager::ringHoldsRecord(const MatchRecordContent& content, bool skipNextSlot) {
     const uint32_t newest = getMatchSequenceNumber();
-    // Not the slot the next record goes to: an append cut short between its
-    // slot and "seq" leaves that record's bytes there under an older number,
-    // and counting it as held would drop it. The oldest held record is then
-    // not checked, and at worst is stored again.
-    for (uint32_t number = firstPendingRecordNumber(0, newest, MATCH_RING_CAPACITY - 1);
+    for (uint32_t number = firstPendingRecordNumber(0, newest, MATCH_RING_CAPACITY);
          number != 0 && number <= newest; number++) {
+        // Once the ring is full, the next record goes to the oldest number's slot.
+        if (skipNextSlot && number + MATCH_RING_CAPACITY == newest + 1) {
+            continue;
+        }
         MatchRecordContent held{};
         if (readRingSlot(ringStorage, MATCH_RING_PREFS_NAMESPACE, number, held) &&
             memcmp(&held, &content, sizeof(held)) == 0) {
