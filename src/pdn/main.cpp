@@ -130,12 +130,10 @@ static void setup() {
         {FIRMWARE_STORE_DRIVER_NAME, firmwareStore},
     };
 
-    // Create core game objects
     pdn = PDN::createPDN(pdnConfig);
     
     IdGenerator::initialize(clockDriver->milliseconds());
     playerProvider = new PlayerProvider();
-    playerProvider->getPlayer()->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
     LOG_I("SETUP", "Creating SymbolWirelessManager...");
     symbolWirelessManager =
