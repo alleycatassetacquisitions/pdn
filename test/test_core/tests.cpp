@@ -1088,6 +1088,16 @@ TEST(DevicePlayerCodec, rejectedResponseYieldsNoRecordKey) {
     devicePlayerRejectedResponseYieldsNoRecordKey();
 }
 
+TEST(DevicePlayerCodec, decodesTotalsWithProfile) { devicePlayerDecodesTotalsWithProfile(); }
+
+TEST(DevicePlayerCodec, decodesProfileWithoutTotalsAsZero) {
+    devicePlayerDecodesProfileWithoutTotalsAsZero();
+}
+
+TEST(DevicePlayerCodec, takesMoreWinsThanMatchesAsNoTotals) {
+    devicePlayerTakesMoreWinsThanMatchesAsNoTotals();
+}
+
 TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
     playerApiQueuesDevicePlayerLookup(this);
 }
@@ -1145,6 +1155,16 @@ TEST_F(PlayerFetchTestSuite, fetchUserRequestsOnceFdnIsCabled) {
 TEST_F(PlayerFetchTestSuite, fetchUserStoresProvisionedPlayerOnSuccess) {
     fetchUserStoresProvisionedPlayerOnSuccess(this);
 }
+
+TEST_F(PlayerFetchTestSuite, registrationTakesServerTotalsAsBaseline) {
+    registrationTakesServerTotalsAsBaseline(this);
+}
+
+TEST_F(PlayerFetchTestSuite, registrationWithoutServerTotalsHasZeroBaseline) {
+    registrationWithoutServerTotalsHasZeroBaseline(this);
+}
+
+TEST(PlayerProvisionCodec, carriesTotals) { provisionPacketCarriesTotals(); }
 
 TEST_F(PlayerFetchTestSuite, fetchUserIgnoresUncabledOrMalformedProvision) {
     fetchUserIgnoresUncabledOrMalformedProvision(this);
