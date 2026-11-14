@@ -1,7 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <functional>
+#include <utility>
 #include "alleycat-server/fdn-stored-entry.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/drivers/peer-comms-types.hpp"
@@ -13,31 +16,30 @@
 inline constexpr const char FDN_RECORD_STORE_NAMESPACE[] = "fdn_records";
 inline constexpr size_t FDN_CRASH_RECORD_CAPACITY = 32;
 inline constexpr size_t FDN_MATCH_RECORD_CAPACITY = 64;
+// Legacy matches take at most this many of the FDN_MATCH_RECORD_CAPACITY match
+// slots, so a PDN's backlog from older firmware never crowds current matches out.
+inline constexpr size_t FDN_LEGACY_MATCH_RECORD_CAPACITY = 32;
 
-// One record kind's intake and its ring of slots in storage, owned by
-// FdnRecordStore. head and tail count records ever retired and ever stored; a
-// record's slot is its count modulo CAPACITY. Storage is written only here, so
-// both are kept in memory. storageRefused is the store's one latch, shared by
-// its rings because they share the partition whose refusal sets it.
-template <class Traits, size_t CAPACITY> class FdnRecordRing {
+// One record kind's ring of slots in storage, owned by FdnRecordStore. head and
+// tail count records ever retired and ever stored; a record's slot is its count
+// modulo CAPACITY. Storage is written only here, so both are kept in memory.
+// storageRefused is the latch the ring sets when storage refuses a write and
+// clears when it frees a slot; the store decides which rings share one.
+template <class Content, size_t CAPACITY> class FdnRecordRing {
 public:
-    using Frame = typename Traits::Frame;
-    using Entry = FdnStoredEntry<typename Traits::Content>;
+    using Entry = FdnStoredEntry<Content>;
 
     /**
-     * Loads the ring from storage and claims the kind's record and
-     * acknowledgement types. Every storage key of the ring starts with @p keyPrefix.
+     * Loads the ring of @p kind from storage. Every storage key of the ring
+     * starts with @p keyPrefix.
      */
-    FdnRecordRing(WirelessManager* wirelessManager, StorageInterface* storage, bool& storageRefused,
-                  const char* keyPrefix)
+    FdnRecordRing(StorageInterface* storage, bool& storageRefused, const char* keyPrefix,
+                  RecordKind kind)
         : storage(storage)
         , storageRefused(storageRefused)
         , keyPrefix(keyPrefix)
-        , frameChannel(wirelessManager, Traits::FRAME_PACKET_TYPE)
-        , ackChannel(wirelessManager, Traits::ACK_PACKET_TYPE) {
+        , kind(kind) {
         loadFromStorage();
-        frameChannel.onReceive(
-        [this](const uint8_t* fromMac, const Frame& frame) { onRecordFrame(fromMac, frame); });
     }
 
     /** @return Number of records held. */
@@ -56,7 +58,7 @@ public:
         return storage->readBytes(FDN_RECORD_STORE_NAMESPACE, key,
                                   reinterpret_cast<uint8_t*>(&entry),
                                   sizeof(entry)) == sizeof(entry) &&
-               entry.kind == static_cast<uint8_t>(Traits::KIND);
+               entry.kind == static_cast<uint8_t>(kind);
     }
 
     /** @return true when @p index counts a record that is held. */
@@ -75,7 +77,7 @@ public:
         }
         if (unreadableCount > 0) {
             LOG_E("FDN_RECORDS", "Dropping %u unreadable record(s) of kind %u from %u",
-                  static_cast<unsigned>(unreadableCount), static_cast<unsigned>(Traits::KIND),
+                  static_cast<unsigned>(unreadableCount), static_cast<unsigned>(kind),
                   static_cast<unsigned>(head));
             retire(head, unreadableCount);
         }
@@ -86,10 +88,12 @@ public:
      * acknowledged: newly stored, or byte-identical to one already held. An
      * entry that shares a held one's sender and number but differs in bytes
      * or, for a match record, tag is stored separately: taking it for a
-     * duplicate would let a junk frame stand in for the real one.
+     * duplicate would let a junk frame stand in for the real one. A new entry
+     * is refused while the ring holds @p roomLimit or more, at most CAPACITY.
      * @p recordCheck receives the check over the entry's content.
      */
-    bool storeRecord(const Entry& entry, uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
+    bool storeRecord(const Entry& entry, uint8_t (&recordCheck)[RECORD_CHECK_SIZE],
+                     size_t roomLimit) {
         computeRecordCheck(entry.content, recordCheck);
         const uint32_t recordNumber = entry.recordNumber;
         // Before the capacity check: a PDN that lost the acknowledgement resends
@@ -103,12 +107,12 @@ public:
         if (storageRefused) {
             LOG_W("FDN_RECORDS",
                   "Storage refused a record earlier; record %u of kind %u is not stored",
-                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(Traits::KIND));
+                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(kind));
             return false;
         }
-        if (tail - head >= CAPACITY) {
+        if (tail - head >= std::min(roomLimit, CAPACITY)) {
             LOG_W("FDN_RECORDS", "No room for kind %u; record %u is not acknowledged",
-                  static_cast<unsigned>(Traits::KIND), static_cast<unsigned>(recordNumber));
+                  static_cast<unsigned>(kind), static_cast<unsigned>(recordNumber));
             return false;
         }
 
@@ -118,7 +122,7 @@ public:
                                 reinterpret_cast<const uint8_t*>(&entry),
                                 sizeof(entry)) != sizeof(entry)) {
             LOG_E("FDN_RECORDS", "Storing record %u of kind %u failed",
-                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(Traits::KIND));
+                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(kind));
             storageRefused = true;
             return false;
         }
@@ -126,7 +130,7 @@ public:
         counterKey("tail", tailKey);
         if (storage->writeUInt(FDN_RECORD_STORE_NAMESPACE, tailKey, tail + 1) != sizeof(uint32_t)) {
             LOG_E("FDN_RECORDS", "Committing record %u of kind %u failed",
-                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(Traits::KIND));
+                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(kind));
             // Outside [head, tail) nothing would ever retire this blob.
             storage->remove(FDN_RECORD_STORE_NAMESPACE, key);
             storageRefused = true;
@@ -161,8 +165,7 @@ public:
         char headKey[16];
         counterKey("head", headKey);
         if (storage->writeUInt(FDN_RECORD_STORE_NAMESPACE, headKey, head) != sizeof(uint32_t)) {
-            LOG_E("FDN_RECORDS", "Storing the head of kind %u failed",
-                  static_cast<unsigned>(Traits::KIND));
+            LOG_E("FDN_RECORDS", "Storing the head of kind %u failed", static_cast<unsigned>(kind));
         }
     }
 
@@ -222,15 +225,34 @@ private:
         return false;
     }
 
-    // A frame whose kind is not this ring's is dropped: the channel fixed its
-    // length, so its bytes are not a record of the kind it claims.
-    void onRecordFrame(const uint8_t* fromMac, const Frame& frame) {
-        if (frame.kind != static_cast<uint8_t>(Traits::KIND)) {
-            LOG_W("FDN_RECORDS", "Dropping a record frame of kind %u on the channel for kind %u",
-                  static_cast<unsigned>(frame.kind), static_cast<unsigned>(Traits::KIND));
-            return;
-        }
+    StorageInterface* storage = nullptr;
+    bool& storageRefused;
+    const char* keyPrefix = nullptr;
+    RecordKind kind;
+    uint32_t head = 0;
+    uint32_t tail = 0;
+    HeldRecord heldRecords[CAPACITY] = {};
+};
 
+// One record channel's intake: it hands each frame to @p storeEntry, which
+// files it by kind, and acknowledges only what that reports held.
+template <class Traits> class FdnRecordIntake {
+public:
+    using Frame = typename Traits::Frame;
+    using Entry = FdnStoredEntry<typename Traits::Content>;
+    using StoreEntry = std::function<bool(const Entry&, uint8_t (&)[RECORD_CHECK_SIZE])>;
+
+    /** Claims the channel's record and acknowledgement packet types. */
+    FdnRecordIntake(WirelessManager* wirelessManager, StoreEntry storeEntry)
+        : storeEntry(std::move(storeEntry))
+        , frameChannel(wirelessManager, Traits::FRAME_PACKET_TYPE)
+        , ackChannel(wirelessManager, Traits::ACK_PACKET_TYPE) {
+        frameChannel.onReceive(
+        [this](const uint8_t* fromMac, const Frame& frame) { onRecordFrame(fromMac, frame); });
+    }
+
+private:
+    void onRecordFrame(const uint8_t* fromMac, const Frame& frame) {
         Entry entry{};
         memcpy(entry.senderMac, fromMac, sizeof(entry.senderMac));
         entry.kind = frame.kind;
@@ -238,7 +260,7 @@ private:
         entry.content = frame.content;
 
         uint8_t recordCheck[RECORD_CHECK_SIZE] = {};
-        if (!storeRecord(entry, recordCheck)) {
+        if (!storeEntry(entry, recordCheck)) {
             return;
         }
 
@@ -249,34 +271,47 @@ private:
         ackChannel.sendReliable(fromMac, ack);
     }
 
-    StorageInterface* storage = nullptr;
-    bool& storageRefused;
-    const char* keyPrefix = nullptr;
+    StoreEntry storeEntry;
     ReliableChannel<Frame> frameChannel;
     ReliableChannel<RecordAckPacket> ackChannel;
-    uint32_t head = 0;
-    uint32_t tail = 0;
-    HeldRecord heldRecords[CAPACITY] = {};
 };
 
 /**
  * The FDN's non-volatile store of crash records and match records relayed by
  * PDNs. It takes a record frame from any PDN, acknowledges it only once the
  * record is stored, and hands the records out to be uploaded: the match
- * records as one batch, the crash records oldest first, one at a time. Each record kind
- * has its own bound, but both share one storage partition. The FDN holds no
+ * records as one batch, the crash records oldest first, one at a time. Crash
+ * records have their own bound; current and legacy matches share
+ * FDN_MATCH_RECORD_CAPACITY; all share one storage partition. The FDN holds no
  * record keys: a match record's tag is stored as received and never checked.
+ * Legacy matches arrive on the match channel and are held in a ring of their
+ * own, which the uploader leaves stored until the server takes them.
  */
 class FdnRecordStore {
 public:
     /** Loads what the storage holds and claims the record and acknowledgement packet types. */
     FdnRecordStore(WirelessManager* wirelessManager, StorageInterface* storage)
-        : crashRing(wirelessManager, storage, storageRefused, "c_")
-        , matchRing(wirelessManager, storage, storageRefused, "m_") {}
+        : crashRing(storage, storageRefused, "c_", RecordKind::CRASH)
+        , matchRing(storage, storageRefused, "m_", RecordKind::MATCH)
+        , legacyMatchRing(storage, legacyStorageRefused, "l_", RecordKind::LEGACY_MATCH)
+        , crashIntake(
+          wirelessManager,
+          [this](const FdnStoredCrashEntry& entry, uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
+              return storeCrashEntry(entry, recordCheck);
+          })
+        , matchIntake(wirelessManager, [this](const FdnStoredMatchEntry& entry,
+                                              uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
+            return storeMatchEntry(entry, recordCheck);
+        }) {}
 
     /** @return Number of records of @p kind held. */
     size_t getStoredCount(RecordKind kind) const {
-        return kind == RecordKind::CRASH ? crashRing.getStoredCount() : matchRing.getStoredCount();
+        switch (kind) {
+            case RecordKind::CRASH: return crashRing.getStoredCount();
+            case RecordKind::MATCH: return matchRing.getStoredCount();
+            case RecordKind::LEGACY_MATCH: return legacyMatchRing.getStoredCount();
+        }
+        return 0;
     }
 
     /**
@@ -285,10 +320,10 @@ public:
      * change nothing, so whoever drains the store asks for this first.
      */
     void dropUnreadableOldest(RecordKind kind) {
-        if (kind == RecordKind::CRASH) {
-            crashRing.dropUnreadableHead();
-        } else {
-            matchRing.dropUnreadableHead();
+        switch (kind) {
+            case RecordKind::CRASH: crashRing.dropUnreadableHead(); return;
+            case RecordKind::MATCH: matchRing.dropUnreadableHead(); return;
+            case RecordKind::LEGACY_MATCH: legacyMatchRing.dropUnreadableHead(); return;
         }
     }
 
@@ -314,6 +349,7 @@ public:
             return false;
         }
         crashRing.retire(position, 1);
+        legacyStorageRefused = false;
         return true;
     }
 
@@ -352,16 +388,53 @@ public:
             return;
         }
         matchRing.retire(position, static_cast<uint32_t>(count));
+        legacyStorageRefused = false;
     }
 
 private:
-    using CrashRing = FdnRecordRing<CrashRecordTraits, FDN_CRASH_RECORD_CAPACITY>;
-    using MatchRing = FdnRecordRing<MatchRecordTraits, FDN_MATCH_RECORD_CAPACITY>;
+    using CrashRing = FdnRecordRing<CrashRecordContent, FDN_CRASH_RECORD_CAPACITY>;
+    using MatchRing = FdnRecordRing<MatchRecordContent, FDN_MATCH_RECORD_CAPACITY>;
+    using LegacyMatchRing = FdnRecordRing<MatchRecordContent, FDN_LEGACY_MATCH_RECORD_CAPACITY>;
 
-    // Set by a failed write in either ring and cleared when either frees a slot:
-    // the rings share one partition, so room freed by one is room for the other.
-    // Declared before the rings, which hold a reference to it.
+    // A frame whose kind is not its channel's is dropped: the channel fixed its
+    // length, so its bytes are not a record of the kind it claims.
+    bool storeCrashEntry(const FdnStoredCrashEntry& entry,
+                         uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
+        if (entry.kind != static_cast<uint8_t>(RecordKind::CRASH)) {
+            LOG_W("FDN_RECORDS", "Dropping a record frame of kind %u on the crash channel",
+                  static_cast<unsigned>(entry.kind));
+            return false;
+        }
+        return crashRing.storeRecord(entry, recordCheck, FDN_CRASH_RECORD_CAPACITY);
+    }
+
+    bool storeMatchEntry(const FdnStoredMatchEntry& entry,
+                         uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
+        if (entry.kind == static_cast<uint8_t>(RecordKind::MATCH)) {
+            return matchRing.storeRecord(
+            entry, recordCheck, FDN_MATCH_RECORD_CAPACITY - legacyMatchRing.getStoredCount());
+        }
+        if (entry.kind == static_cast<uint8_t>(RecordKind::LEGACY_MATCH)) {
+            return legacyMatchRing.storeRecord(
+            entry, recordCheck, FDN_MATCH_RECORD_CAPACITY - matchRing.getStoredCount());
+        }
+        LOG_W("FDN_RECORDS", "Dropping a record frame of kind %u on the match channel",
+              static_cast<unsigned>(entry.kind));
+        return false;
+    }
+
+    // Set by a failed write in the crash or match ring and cleared when either
+    // frees a slot: they share one partition, so room freed by one is room for
+    // the other. Declared before the rings, which hold a reference to it.
     bool storageRefused = false;
+    // The legacy ring's own latch. Nothing retires a legacy match, so sharing
+    // the latch above would let one refused legacy write stop every current
+    // match and crash record until a reboot; room the other rings free clears it.
+    bool legacyStorageRefused = false;
     CrashRing crashRing;
     MatchRing matchRing;
+    LegacyMatchRing legacyMatchRing;
+    // After the rings they file frames into.
+    FdnRecordIntake<CrashRecordTraits> crashIntake;
+    FdnRecordIntake<MatchRecordTraits> matchIntake;
 };

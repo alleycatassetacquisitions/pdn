@@ -190,8 +190,9 @@ public:
         instance.serialInDriver = new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix);
         instance.httpClientDriver = new NativeHttpClientDriver(HTTP_CLIENT_DRIVER_NAME + suffix);
         instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
-        instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix, {MATCHES_PREFS_NAMESPACE});
-        
+        instance.storageDriver = new NativePrefsDriver(
+        STORAGE_DRIVER_NAME + suffix, {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_PREFS_NAMESPACE});
+
         // Configure mock HTTP server with this device's player data
         MockPlayerConfig playerConfig;
         playerConfig.name = (isHunter ? "Hunter" : "Bounty") + instance.deviceId;

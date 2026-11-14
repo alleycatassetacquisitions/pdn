@@ -61,7 +61,7 @@ class FdnOwnCrashQueue : public FdnCrashUploadQueue {
 public:
     /** @param ownCrashSource Not owned; its mark is the FDN's sent mark. */
     FdnOwnCrashQueue(WirelessManager* wirelessManager,
-                     RecordSource<CrashRecordTraits>* ownCrashSource)
+                     SingleKindRecordSource<CrashRecordTraits>* ownCrashSource)
         : wirelessManager(wirelessManager)
         , ownCrashSource(ownCrashSource) {}
 
@@ -105,7 +105,7 @@ public:
 
 private:
     WirelessManager* wirelessManager = nullptr;
-    RecordSource<CrashRecordTraits>* ownCrashSource = nullptr;
+    SingleKindRecordSource<CrashRecordTraits>* ownCrashSource = nullptr;
     uint32_t lastReadNumber = 0;
 };
 
@@ -154,7 +154,7 @@ public:
      * sent mark. Neither it nor @p fdnRecordStore is owned by the uploader.
      */
     FdnRecordUploader(WirelessManager* wirelessManager,
-                      RecordSource<CrashRecordTraits>* ownCrashSource,
+                      SingleKindRecordSource<CrashRecordTraits>* ownCrashSource,
                       FdnRecordStore* fdnRecordStore)
         : wirelessManager(wirelessManager)
         , fdnRecordStore(fdnRecordStore)
@@ -166,6 +166,9 @@ public:
      * match record, a relayed crash record, or a crash record of the FDN's own.
      */
     bool hasRecordsWaiting() {
+        // SERVER-SEAM(legacy-match): legacy matches stay stored and are not
+        // uploaded. The match upload names players by UUID and a legacy match
+        // by PIN, so they wait for a server field that takes them.
         return fdnRecordStore->getStoredCount(RecordKind::MATCH) > 0 ||
                fdnRecordStore->getStoredCount(RecordKind::CRASH) > 0 || ownCrashQueue.hasPending();
     }
