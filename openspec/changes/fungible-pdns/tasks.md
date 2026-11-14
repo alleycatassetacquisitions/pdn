@@ -3,8 +3,8 @@
 - [x] 1.1 Owner ruled: a PDN is handed over by restarting it; no sign-out is added; the idle screen shows the registered player's name; a PDN passed on without a restart stays the previous player's, accepted; clearing leaves the legacy fields set, as it does today
 - [x] 1.2 Owner ruled: the PDN shows the player's server totals after registering; the server item is last in the ranking, a feature and not a security item, and does not hold up the roll-out gate
 - [x] 1.3 Owner ruled: a posse supporter counts only if its PDN is registered, to a different player than the challenger; a second PDN registered as another player still passes
-- [ ] 1.4 Owner confirms the editor's choices F1 to F3, T1 to T8, P1, P2 and P4 (design.md, Open Questions)
-- [ ] 1.5 Owner answers: do two supporters registered as the same player both count; who is told the handover rule; how a PDN's power is cycled at the event
+- [x] 1.4 Chief confirmed the editor's choices F1 to F3, T1 to T8, P1, P2 and P4 (design.md, Open Questions)
+- [x] 1.5 Owner answered: one boost per supporting player (FP-1); PDN swaps go through the Alleycat desk, which power-cycles the PDN before handing it over, and players need not know the rule (FP-2, FP-3)
 
 ## 2. Name on idle and the handover rule
 
@@ -32,9 +32,10 @@
 
 - [ ] 4.1 The posse confirmation carries the supporter's own 16-byte player UUID, all-zero for a PDN that is not registered and for a PDN on the demo profile; the payload is `23` bytes
 - [ ] 4.2 The challenger counts a confirmation toward the boost only when its player UUID is not all-zero and differs from the challenger's own player UUID, and logs each confirmation that fails the test
-- [ ] 4.3 The posse member list, the cascade, the events sent to supporters, the supporter's screens and the idle "Posse" count are unchanged
-- [ ] 4.4 The simulator gives each device a different player; a simulated PDN started straight into play has no registration and does not count as a supporter
-- [ ] 4.5 Tests: two supporters registered to other players give `30 ms`; a supporter registered as the challenger's own player gives nothing while another still gives `15 ms`; a supporter on the demo profile gives nothing; a demo challenger is boosted by a registered supporter; a supporter that does not count stays in the member list and is sent the posse result; the `270 ms` cap still holds
+- [ ] 4.3 The challenger counts each player UUID at most once per round: several eligible confirmations carrying the same player UUID grant one `15 ms` boost (FP-1; firmware in #451)
+- [ ] 4.4 The posse member list, the cascade, the events sent to supporters, the supporter's screens and the idle "Posse" count are unchanged
+- [ ] 4.5 The simulator gives each device a different player; a simulated PDN started straight into play has no registration and does not count as a supporter
+- [ ] 4.6 Tests: two supporters registered to the same other player give `15 ms`; two supporters registered to other players give `30 ms`; a supporter registered as the challenger's own player gives nothing while another still gives `15 ms`; a supporter on the demo profile gives nothing; a demo challenger is boosted by a registered supporter; a supporter that does not count stays in the member list and is sent the posse result; the `270 ms` cap still holds
 
 ## 5. Server (outside this repository)
 
@@ -52,6 +53,6 @@
 
 ## 7. Roll-out, operations and archive
 
-- [ ] 7.1 Tell whoever hands a PDN on the handover rule: restart it first, and check the name on its idle screen (design.md, Migration Plan step 4)
+- [ ] 7.1 Tell Alleycat desk staff to power-cycle every PDN before handing it over in a swap (design.md, Migration Plan step 4)
 - [ ] 7.2 Every firmware PR description of this change states that the stack must not be flashed to event devices before the server verifies tags
 - [ ] 7.3 At archive, rename the `pdn-session-routing` scenario "Clicking primary or secondary button cycles forward through 8 idle screens" to say nine screens; a MODIFIED requirement keeps its base scenario titles, so the delta cannot
