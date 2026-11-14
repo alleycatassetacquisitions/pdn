@@ -782,6 +782,7 @@ TEST(WirelessManagerTest, aManagerWithNoHttpClientRefusesAnHttpRequestAndKeepsTh
 
     EXPECT_FALSE(wm.queueHttpRequest(std::move(request)));
     EXPECT_FALSE(wm.hasQueuedHttpRequests());
+    EXPECT_FALSE(wm.isHttpResponseServerVerified());
     EXPECT_EQ(callbacks, 0);
 
     // A refused request must not cost the device its peer-to-peer radio.
