@@ -52,6 +52,10 @@ A PDN SHALL send its lowest-numbered pending record of each record kind to the r
 - **WHEN** a PDN with pending records hears an FDN's beacon while a match is active on it
 - **THEN** the PDN sends nothing until the match has ended and it next hears a beacon or an FDN becomes Connected
 
+#### Scenario: A PDN that is not registered still delivers its stored records
+- **WHEN** a PDN that holds a pending match record and a pending crash record restarts and, before any player has registered on it, hears an FDN's beacon with its peer-to-peer radio enabled
+- **THEN** the PDN sends both records to that FDN
+
 ### Requirement: One record of each kind in flight
 
 A PDN SHALL send record frames by reliable unicast (`wireless-transport`) and SHALL have at most one record of each record kind in flight. A beacon or FDN connection that arrives while a record of a kind is still in flight SHALL NOT cause another send of that kind. When a match or a shootout becomes active the PDN SHALL cancel any record send in flight; the record stays pending.
@@ -138,12 +142,20 @@ An FDN SHALL treat a record frame as a duplicate only when it holds a record wit
 
 ### Requirement: FDN relays without verifying
 
-An FDN SHALL NOT verify record tags and SHALL NOT hold a record key except in volatile memory while delivering one during registration (`player-provisioning`). When it uploads a relayed match record the FDN SHALL send the sender's MAC address, the record bytes and the record tag exactly as received. When it uploads a relayed crash record the FDN SHALL name the sender's MAC address as the originating device (`crash-reporting`).
+An FDN SHALL NOT verify record tags and SHALL NOT hold a record key except in volatile memory while delivering one during registration (`player-provisioning`). When it uploads a relayed match record the FDN SHALL send the record bytes and the record tag exactly as received. When it uploads a relayed crash record the FDN SHALL name the sender's MAC address as the originating device (`crash-reporting`).
 
 #### Scenario: A record with a wrong tag is still relayed
 - **WHEN** an FDN receives a well-formed match record frame whose record tag does not match its contents
 - **THEN** the FDN stores, acknowledges and uploads it unchanged, leaving the decision to the server
 
-#### Scenario: A match record with the all-zero tag is still relayed
-- **WHEN** an FDN receives a match record frame whose record tag is `16` zero bytes
-- **THEN** the FDN stores, acknowledges and uploads it with the all-zero record tag
+### Requirement: Sender's MAC address on a match upload is a note only
+
+When it uploads a relayed match record the FDN SHALL also send the sender's MAC address, as stored, as a note for troubleshooting. That address is the radio source address of the record frame, which any device can set. The FDN SHALL NOT treat it, and the upload SHALL NOT present it, as evidence of which PDN or which player produced the record.
+
+#### Scenario: Match upload carries the sender's MAC address as a note
+- **WHEN** an FDN uploads a match record it stored from a record frame whose radio source address was `aa:bb:cc:dd:ee:ff`
+- **THEN** the upload carries `aa:bb:cc:dd:ee:ff` as the sender note, apart from the record bytes and the record tag, which are sent exactly as received
+
+#### Scenario: A record relayed under another PDN's address is uploaded like any other
+- **WHEN** an FDN receives a well-formed match record frame whose radio source address equals the MAC address of a different PDN from the one that stored the record
+- **THEN** the FDN stores, acknowledges and uploads it with the record bytes and the record tag unchanged, and makes no decision from the address
