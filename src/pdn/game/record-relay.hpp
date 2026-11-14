@@ -155,14 +155,15 @@ private:
 
 /**
  * Delivers this PDN's records to FDNs over the peer-to-peer radio; the records
- * and their marks belong to the RecordSource registered per kind. The managers
- * and the coordinator are borrowed and must outlive it.
+ * and their marks belong to each kind's RecordSource. The managers and the
+ * coordinator are borrowed and must outlive it.
  */
 class RecordRelay {
 public:
     /**
      * Claims the four record packet types and the player-info beacon handler,
      * and starts observing jack connections, match starts and shootout phases.
+     * @p matchManager is also the source of this device's match records.
      */
     RecordRelay(WirelessManager* wirelessManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
                 MatchManager* matchManager, ShootoutManager* shootoutManager);
@@ -171,9 +172,6 @@ public:
 
     /** Registers the source of this device's crash records; null removes it. Not owned. */
     void setCrashRecordSource(RecordSource<CrashRecordTraits>* crashRecordSource);
-
-    /** Registers the source of this device's match records; null removes it. Not owned. */
-    void setMatchRecordSource(RecordSource<MatchRecordTraits>* matchRecordSource);
 
 private:
     bool isPlayActive() const;

@@ -262,10 +262,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                     }
                 }
                 if (matchManager.finalizeMatch()) {
-                    Match stored{};
-                    volatile bool ok =
-                    matchManager.readMatchBySequence(matchManager.getMatchSequenceNumber(), stored);
-                    (void)ok;
+                    uint32_t recordNumber = 0;
+                    uint8_t recordBytes[MatchRecordTraits::RECORD_SIZE] = {};
+                    if (matchManager.readLowestPending(recordNumber, recordBytes)) {
+                        Match stored{};
+                        stored.deserialize(recordBytes);
+                    }
                 }
                 break;
             }

@@ -25,10 +25,6 @@ enum class PktType : uint8_t {
     // NOLINTNEXTLINE(readability-identifier-naming)
     kFirmwareUpdate = 22,
     // NOLINTNEXTLINE(readability-identifier-naming)
-    kMatchCollection = 23,
-    // NOLINTNEXTLINE(readability-identifier-naming)
-    kMatchCollectionAck = 24,
-    // NOLINTNEXTLINE(readability-identifier-naming)
     kPlayerProvision = 25,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kPlayerProvisionRequest = 26,

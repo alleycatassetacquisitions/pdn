@@ -40,6 +40,7 @@
 #include "fdn-record-store-tests.hpp"
 #include "fdn-beacon-tests.hpp"
 #include "record-relay-tests.hpp"
+#include "match-relay-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1224,8 +1225,16 @@ TEST_F(FdnRecordStoreTests, storesARecordWithABadTagUnchanged) {
     fdnStoresARecordWithABadTagUnchanged(this);
 }
 
-TEST_F(FdnRecordStoreTests, storesACabledMatchCollectionFrameWithItsSenderAndNoRecordKey) {
-    fdnStoresACabledMatchCollectionFrameWithItsSenderAndNoRecordKey(this);
+TEST_F(FdnRecordStoreTests, fullMatchStorageStillAcknowledgesAResendAndKnowsItAfterARestart) {
+    fdnWithFullMatchStorageStillAcknowledgesAResendAndKnowsItAfterARestart(this);
+}
+
+TEST_F(FdnRecordStoreTests, dropsAnUnreadableHeadInsteadOfFailingEveryBatch) {
+    fdnDropsAnUnreadableHeadInsteadOfFailingEveryBatch(this);
+}
+
+TEST_F(FdnRecordStoreTests, uploadStopsShortOfAnUnreadableRecord) {
+    fdnUploadStopsShortOfAnUnreadableRecord(this);
 }
 
 // ============================================
@@ -1341,6 +1350,62 @@ TEST(RecordRelay, doesNotLetOneKindHoldBackTheOther) {
 }
 
 TEST(RecordRelay, leavesNoPlayObserverBehind) { recordRelayLeavesNoPlayObserverBehind(); }
+
+// ============================================
+// PDN MATCH RECORDS OVER THE RELAY
+// ============================================
+
+TEST_F(MatchRelayTests, sendsAMatchInARecordFrameNumberedByItsSequenceNumber) {
+    matchRelaySendsAMatchInARecordFrameNumberedByItsSequenceNumber(this);
+}
+
+TEST_F(MatchRelayTests, deliversMatchesOneToThreeAfterABeaconWithNothingConnected) {
+    matchRelayDeliversMatchesOneToThreeAfterABeaconWithNothingConnected(this);
+}
+
+TEST_F(MatchRelayTests, keepsUnacknowledgedMatchesPendingAfterAnUnplug) {
+    matchRelayKeepsUnacknowledgedMatchesPendingAfterAnUnplug(this);
+}
+
+TEST_F(MatchRelayTests, ignoresAnAcknowledgementFromADeviceTheRecordWasNotSentTo) {
+    matchRelayIgnoresAnAcknowledgementFromADeviceTheRecordWasNotSentTo(this);
+}
+
+TEST_F(MatchRelayTests, passesOverAnUnreadableStoredMatch) {
+    matchRelayPassesOverAnUnreadableStoredMatch(this);
+}
+
+TEST_F(MatchRelayTests, sendsAMatchOncePerTriggerUntilAcknowledged) {
+    matchRelaySendsAMatchOncePerTriggerUntilAcknowledged(this);
+}
+
+TEST_F(MatchRelayTests, transfersAMatchToAConnectedFdnThatUploadsIt) {
+    matchRelayTransfersAMatchToAConnectedFdnThatUploadsIt(this);
+}
+
+TEST_F(MatchRelayTests, dropsAnAcknowledgementOfTheWrongLength) {
+    matchRelayDropsAnAcknowledgementOfTheWrongLength(this);
+}
+
+TEST_F(MatchRelayTests, deliversToAnotherFdnWhileConnectedToOne) {
+    matchRelayDeliversToAnotherFdnWhileConnectedToOne(this);
+}
+
+TEST_F(MatchRelayTests, sendsNoMatchRecordDuringAMatch) {
+    matchRelaySendsNoMatchRecordDuringAMatch(this);
+}
+
+TEST_F(MatchRelayTests, stopsASendWhenAMatchStartsAndStillTakesItsAcknowledgement) {
+    matchRelayStopsASendWhenAMatchStartsAndStillTakesItsAcknowledgement(this);
+}
+
+TEST_F(MatchRelayTests, isNotHeldBackByACrashRecordAFullFdnWillNotTake) {
+    matchRelayIsNotHeldBackByACrashRecordAFullFdnWillNotTake(this);
+}
+
+TEST_F(MatchRelayTests, heldByAFullFdnDoesNotHoldBackCrashRecords) {
+    matchRelayHeldByAFullFdnDoesNotHoldBackCrashRecords(this);
+}
 
 TEST(RecordPendingRange, startsAfterTheMarkAndInsideTheRing) {
     recordPendingRangeStartsAfterTheMarkAndInsideTheRing();

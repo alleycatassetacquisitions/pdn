@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "alleycat-server/fdn-record-store.hpp"
+#include "wireless/record-relay-types.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
@@ -61,6 +62,23 @@ public:
     NativePrefsDriver& makeNativePrefs(const char* name) {
         nativePrefs = new NativePrefsDriver(name, {MATCHES_PREFS_NAMESPACE});
         return *nativePrefs;
+    }
+
+    /**
+     * Reads the match stored under sequence number @p seq from the prefs
+     * makeNativePrefs() allocated. False when its ring slot holds no record.
+     */
+    bool readStoredMatch(uint32_t seq, Match& out) {
+        char key[16];
+        snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
+                 static_cast<unsigned>((seq - 1) % MATCH_RING_CAPACITY));
+        uint8_t buffer[MATCH_BINARY_SIZE] = {};
+        if (nativePrefs->readBytes(MATCHES_PREFS_NAMESPACE, key, buffer, sizeof(buffer)) !=
+            MATCH_BINARY_SIZE) {
+            return false;
+        }
+        out.deserialize(buffer);
+        return true;
     }
 
     void TearDown() override {
@@ -748,12 +766,10 @@ TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
 
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 33u);
 
-    Match evicted{};
-    EXPECT_FALSE(matchManager->readMatchBySequence(1, evicted));
-
-    Match latest{};
-    ASSERT_TRUE(matchManager->readMatchBySequence(33, latest));
-    EXPECT_STREQ(latest.getMatchId(), "00000033-1234-4000-8000-000000000000");
+    uint32_t oldestPending = 0;
+    uint8_t oldestBytes[MATCH_RECORD_SIZE] = {};
+    ASSERT_TRUE(matchManager->readLowestPending(oldestPending, oldestBytes));
+    EXPECT_EQ(oldestPending, 2u) << "match 1 was overwritten by match 33";
 
     uint8_t slot0[MATCH_BINARY_SIZE] = {};
     ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", slot0, MATCH_BINARY_SIZE),
@@ -852,8 +868,8 @@ TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
     ASSERT_EQ(matchManager->getMatchSequenceNumber(), 2u);
     Match onBountyDevice{};
     Match onHunterDevice{};
-    ASSERT_TRUE(matchManager->readMatchBySequence(1, onBountyDevice));
-    ASSERT_TRUE(matchManager->readMatchBySequence(2, onHunterDevice));
+    ASSERT_TRUE(readStoredMatch(1, onBountyDevice));
+    ASSERT_TRUE(readStoredMatch(2, onHunterDevice));
     EXPECT_EQ(onBountyDevice.getWinnerPlayerId(), bountyUuid);
     EXPECT_EQ(onHunterDevice.getWinnerPlayerId(), bountyUuid);
 
@@ -878,7 +894,7 @@ TEST_F(MatchManagerTestSuite, recordedWinnerRanksNeverPressedAboveTimes) {
     matchManager->setNeverPressed();
     ASSERT_FALSE(matchManager->didWin());
     ASSERT_TRUE(matchManager->finalizeMatch());
-    ASSERT_TRUE(matchManager->readMatchBySequence(1, stored));
+    ASSERT_TRUE(readStoredMatch(1, stored));
     EXPECT_EQ(stored.getWinnerPlayerId(), stored.getHunterPlayerId());
 
     setupMatchAsBounty("62222222-2222-4000-8000-333333333333");
@@ -889,7 +905,7 @@ TEST_F(MatchManagerTestSuite, recordedWinnerRanksNeverPressedAboveTimes) {
     matchManager->listenForMatchEvents(neverPressed);
     ASSERT_TRUE(matchManager->didWin());
     ASSERT_TRUE(matchManager->finalizeMatch());
-    ASSERT_TRUE(matchManager->readMatchBySequence(2, stored));
+    ASSERT_TRUE(readStoredMatch(2, stored));
     EXPECT_EQ(stored.getWinnerPlayerId(), stored.getBountyPlayerId());
 
     // Neither side drew: each screen shows its own outcome, so there is no shared winner.
@@ -956,7 +972,7 @@ TEST_F(MatchManagerTestSuite, opponentsBoostBeatsAFasterRawDraw) {
     EXPECT_EQ(matchManager->getLastMatchDisplay().myTimeMs, 5);
     EXPECT_EQ(matchManager->getLastMatchDisplay().opponentTimeMs, -15);
     Match stored{};
-    ASSERT_TRUE(matchManager->readMatchBySequence(1, stored));
+    ASSERT_TRUE(readStoredMatch(1, stored));
     EXPECT_EQ(stored.getWinnerPlayerId(), stored.getHunterPlayerId());
     EXPECT_EQ(stored.getHunterDrawTime(), 45u);
     EXPECT_EQ(stored.getBountyDrawTime(), 5u);
@@ -1046,350 +1062,128 @@ TEST_F(MatchManagerTestSuite, collectedHighWaterMarkClampsWhenCorruptedAboveSeq)
     << "the clamp must persist, or matches 6..99 would read as collected once stored";
 }
 
-TEST_F(MatchManagerTestSuite, unreadableStoredMatchIsSkippedNotRetriedForever) {
-    NativePrefsDriver& pdnPrefs = makeNativePrefs("pdn-torn-prefs");
-    rebuildMatchManager(&pdnPrefs);
-    for (int i = 0; i < 2; ++i) {
-        setupMatchAsBounty(i == 0 ? "33333333-2222-4000-8000-333333333333"
-                                  : "44444444-2222-4000-8000-333333333333");
+// The match store as the record relay reads it: the lowest pending record and
+// the mark, nothing else.
+TEST_F(MatchManagerTestSuite, pendingMatchRecordsRunFromTheCollectedMarkToTheNewestMatch) {
+    NativePrefsDriver& prefs = makeNativePrefs("source-prefs");
+    rebuildMatchManager(&prefs);
+
+    uint32_t recordNumber = 99;
+    uint8_t recordBytes[MATCH_RECORD_SIZE];
+    memset(recordBytes, 0xEE, sizeof(recordBytes));
+    EXPECT_FALSE(matchManager->readLowestPending(recordNumber, recordBytes))
+    << "no match is stored";
+    EXPECT_EQ(recordNumber, 99u) << "nothing pending must leave the outputs alone";
+    EXPECT_EQ(recordBytes[0], 0xEE);
+
+    for (uint32_t i = 1; i <= 3; ++i) {
+        char mid[37];
+        snprintf(mid, sizeof(mid), "%08u-5678-4000-8000-000000000000", i);
+        setupMatchAsBounty(mid);
         matchManager->setHunterDrawTime(180);
         matchManager->setBountyDrawTime(120);
         matchManager->setReceivedButtonPush();
         matchManager->setReceivedDrawResult();
-        EXPECT_TRUE(matchManager->finalizeMatch());
+        ASSERT_TRUE(matchManager->finalizeMatch());
     }
-    const uint8_t torn[3] = {1, 2, 3};
-    pdnPrefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_0", torn, sizeof(torn));
 
-    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x06};
-    fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
-    fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
-    fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
-    ON_CALL(*device.mockPeerComms, getPeerCommsState())
-    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
+    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, recordBytes));
+    EXPECT_EQ(recordNumber, 1u);
+    uint8_t stored[MATCH_BINARY_SIZE] = {};
+    ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", stored, sizeof(stored)),
+              MATCH_BINARY_SIZE);
+    EXPECT_EQ(memcmp(recordBytes, stored, sizeof(stored)), 0)
+    << "the record bytes are the 112 bytes the PDN stored";
+    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u) << "reading a record retired it";
 
-    std::vector<uint32_t> sentSeqs;
-    ON_CALL(*device.mockPeerComms,
-            sendData(::testing::_, PktType::kMatchCollection, ::testing::_, ::testing::_))
-    .WillByDefault(
-    ::testing::Invoke([&sentSeqs](const uint8_t*, PktType, const uint8_t* data, const size_t) {
-        MatchRecordPacket pkt{};
-        memcpy(&pkt, data, sizeof(pkt));
-        sentSeqs.push_back(pkt.matchSeq);
-        return 1;
-    }));
+    matchManager->advanceMark(2);
+    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 2u);
+    EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 2u)
+    << "the mark the relay advances is the stored collected_high_water_mark";
+    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, recordBytes));
+    EXPECT_EQ(recordNumber, 3u);
 
-    matchManager->sync();
-    matchManager->sync();
-    EXPECT_EQ(sentSeqs, (std::vector<uint32_t>{2u})) << "record 1 is unreadable and skipped";
+    matchManager->advanceMark(1);
+    matchManager->advanceMark(0);
+    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 2u) << "the mark moved backwards";
+    matchManager->advanceMark(4);
+    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 2u)
+    << "the mark passed the newest stored match";
+
+    matchManager->advanceMark(3);
+    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 3u);
+    recordNumber = 99;
+    EXPECT_FALSE(matchManager->readLowestPending(recordNumber, recordBytes));
+    EXPECT_EQ(recordNumber, 99u);
 }
 
-TEST_F(MatchManagerTestSuite, matchTransferSendsOncePerWindowUntilAcked) {
-    NativePrefsDriver& pdnPrefs = makeNativePrefs("pdn-window-prefs");
-    rebuildMatchManager(&pdnPrefs);
-    setupMatchAsBounty("55555555-2222-4000-8000-333333333333");
-    matchManager->setHunterDrawTime(180);
-    matchManager->setBountyDrawTime(120);
-    matchManager->setReceivedButtonPush();
-    matchManager->setReceivedDrawResult();
-    ASSERT_TRUE(matchManager->finalizeMatch());
-
-    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x07};
-    fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
-    fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
-    fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
-    ON_CALL(*device.mockPeerComms, getPeerCommsState())
-    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
-    int sends = 0;
-    ON_CALL(*device.mockPeerComms,
-            sendData(::testing::_, PktType::kMatchCollection, ::testing::_, ::testing::_))
-    .WillByDefault(
-    ::testing::Invoke([&sends](const uint8_t*, PktType, const uint8_t*, const size_t) {
-        sends++;
-        return 1;
-    }));
-
-    MatchRecordAckPacket ack{};
-    ack.matchSeq = 1;
-    device.mockPeerComms->triggerPacketCallback(
-    fdnMac, PktType::kMatchCollectionAck, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
-    matchManager->sync();
-    ASSERT_EQ(sends, 1) << "an ack for a record not yet sent marked it collected";
-    matchManager->sync();
-    EXPECT_EQ(sends, 1) << "one send per window, not per tick";
-    fakeClock->advance(MATCH_TRANSFER_WINDOW_MS + 1);
-    matchManager->sync();
-    EXPECT_EQ(sends, 2) << "an unacked record is resent once the window ends";
-
-    device.mockPeerComms->triggerPacketCallback(
-    fdnMac, PktType::kMatchCollectionAck, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
-    fakeClock->advance(MATCH_TRANSFER_WINDOW_MS + 1);
-    matchManager->sync();
-    EXPECT_EQ(sends, 2) << "an acked record is not resent";
-}
-
-TEST_F(MatchManagerTestSuite, cabledFdnMatchTransferAndRecordStoreBatchUpload) {
-    using ::testing::_;
-    NativePrefsDriver& pdnPrefs = makeNativePrefs("pdn-prefs");
-    NativePrefsDriver fdnPrefs("fdn-prefs", {FDN_RECORD_STORE_NAMESPACE});
-    rebuildMatchManager(&pdnPrefs);
-
-    MockDevice fdnDevice;
-    FakeRemoteDeviceCoordinator fdnRdc;
-    ON_CALL(*device.mockPeerComms, getPeerCommsState())
-    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
-    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
-    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
-    FdnRecordStore fdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
-
-    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
-    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x02};
-
-    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kMatchCollection, _, _))
-    .WillByDefault(::testing::Invoke(
-    [&fdnDevice, &pdnMac](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
-        fdnDevice.mockPeerComms->triggerPacketCallback(pdnMac, PktType::kMatchCollection, data,
-                                                       len);
-        return 1;
-    }));
-    ON_CALL(*fdnDevice.mockPeerComms, sendData(_, PktType::kMatchCollectionAck, _, _))
-    .WillByDefault(::testing::Invoke(
-    [this, &fdnMac](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
-        device.mockPeerComms->triggerPacketCallback(fdnMac, PktType::kMatchCollectionAck, data,
-                                                    len);
-        return 1;
-    }));
-
-    setupMatchAsBounty("11111111-2222-4000-8000-333333333333");
-    matchManager->setHunterDrawTime(180);
-    matchManager->setBountyDrawTime(120);
-    matchManager->setReceivedButtonPush();
-    matchManager->setReceivedDrawResult();
-    ASSERT_TRUE(matchManager->finalizeMatch());
-    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
+// Pending starts at max(collected_high_water_mark + 1, match_sequence_number - 31):
+// a match the 32-slot ring has overwritten is gone.
+TEST_F(MatchManagerTestSuite, pendingMatchRecordsStartAtTheOldestMatchStillInTheRing) {
+    NativePrefsDriver& prefs = makeNativePrefs("source-ring-prefs");
+    rebuildMatchManager(&prefs);
+    for (uint32_t i = 1; i <= 34; ++i) {
+        char mid[37];
+        snprintf(mid, sizeof(mid), "%08u-9abc-4000-8000-000000000000", i);
+        setupMatchAsBounty(mid);
+        matchManager->setHunterDrawTime(180);
+        matchManager->setBountyDrawTime(120);
+        matchManager->setReceivedButtonPush();
+        matchManager->setReceivedDrawResult();
+        ASSERT_TRUE(matchManager->finalizeMatch());
+    }
+    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 34u);
     ASSERT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
 
-    // Uncabled ACK from stranger MAC is ignored
-    const uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
-    MatchRecordAckPacket forgedAck{1u};
-    device.mockPeerComms->triggerPacketCallback(strangerMac, PktType::kMatchCollectionAck,
-                                                reinterpret_cast<const uint8_t*>(&forgedAck),
-                                                sizeof(forgedAck));
-    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
+    uint32_t recordNumber = 0;
+    uint8_t recordBytes[MATCH_RECORD_SIZE] = {};
+    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, recordBytes));
+    EXPECT_EQ(recordNumber, 3u) << "matches 1 and 2 were overwritten; 34 - 31 is the oldest held";
+    Match oldest{};
+    oldest.deserialize(recordBytes);
+    EXPECT_STREQ(oldest.getMatchId(), "00000003-9abc-4000-8000-000000000000");
 
-    fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
-    fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
-    fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
-
-    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
-    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
-    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
-
-    matchManager->sync();
-    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 1u);
-    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 1u);
-
-    std::vector<HttpRequest> httpRequests;
-    ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
-    .WillByDefault(::testing::Invoke([&httpRequests](HttpRequest&& req) {
-        httpRequests.push_back(std::move(req));
-        return true;
-    }));
-
-    std::vector<bool> outcomes;
-    auto onComplete = [&outcomes](bool uploaded) { outcomes.push_back(uploaded); };
-    ASSERT_TRUE(fdnRecordStore.uploadPendingBatch(onComplete));
-    ASSERT_EQ(httpRequests.size(), 1u);
-    EXPECT_EQ(httpRequests[0].path, "/quickdraw-matches");
-    httpRequests[0].onError(WirelessErrorInfo{WirelessError::SERVER_ERROR, "HTTP 500"});
-    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 1u)
-    << "5xx error must retain stored batch";
-
-    httpRequests.clear();
-    ASSERT_TRUE(fdnRecordStore.uploadPendingBatch(onComplete));
-    ASSERT_EQ(httpRequests.size(), 1u);
-    httpRequests[0].onSuccess("");
-    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 0u)
-    << "HTTP 204 must retire uploaded batch";
-    EXPECT_EQ(outcomes, (std::vector<bool>{false, true}));
-    uint8_t retired[256] = {};
-    EXPECT_EQ(fdnPrefs.readBytes(FDN_RECORD_STORE_NAMESPACE, "m_0", retired, sizeof(retired)), 0u)
-    << "a retired record still holds its NVS entries";
+    matchManager->advanceMark(10);
+    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, recordBytes));
+    EXPECT_EQ(recordNumber, 11u) << "inside the ring the mark decides";
 }
 
-TEST_F(MatchManagerTestSuite, fdnRecordStoreWithholdsAckWhenFullAt64MatchRecords) {
-    using ::testing::_;
-    NativePrefsDriver fdnPrefs("fdn-full-prefs", {FDN_RECORD_STORE_NAMESPACE});
-    MockDevice fdnDevice;
-    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
-    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
-    FakeRemoteDeviceCoordinator fdnRdc;
-    auto* fdnRecordStore = new FdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
-
-    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02};
-    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
-    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
-    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
-
-    size_t acksSent = 0;
-    ON_CALL(*fdnDevice.mockPeerComms, sendData(_, PktType::kMatchCollectionAck, _, _))
-    .WillByDefault(
-    ::testing::Invoke([&acksSent](const uint8_t*, PktType, const uint8_t*, const size_t) {
-        acksSent++;
-        return 1;
-    }));
-
-    auto send = [&pdnMac](FdnRecordStore& recordStore, uint32_t seq) {
+// Nothing readable is left to offer, and nothing may be retired to get past it.
+TEST_F(MatchManagerTestSuite, pendingMatchRecordsThatAreAllUnreadableOfferNothingAndKeepTheMark) {
+    NativePrefsDriver& prefs = makeNativePrefs("source-torn-prefs");
+    rebuildMatchManager(&prefs);
+    for (uint32_t i = 1; i <= 3; ++i) {
         char mid[37];
-        snprintf(mid, sizeof(mid), "%08u-aaaa-4000-8000-bbbbbbbbbbbb", seq);
-        Match m(mid);
-        MatchRecordPacket pkt{};
-        pkt.matchSeq = seq;
-        m.serialize(pkt.matchData);
-        recordStore.onMatchCollectionFrame(pdnMac, reinterpret_cast<const uint8_t*>(&pkt),
-                                           sizeof(pkt));
-    };
-    for (uint32_t seq = 1; seq <= 65; ++seq)
-        send(*fdnRecordStore, seq);
-
-    EXPECT_EQ(fdnRecordStore->getStoredCount(RecordKind::MATCH), 64u);
-    EXPECT_EQ(acksSent, 64u) << "65th match must not be ACKed while the store is full";
-
-    send(*fdnRecordStore, 64);
-    EXPECT_EQ(acksSent, 65u) << "a resend after a lost ack is re-acked even when full";
-    EXPECT_EQ(fdnRecordStore->getStoredCount(RecordKind::MATCH), 64u);
-
-    // Gone first, as on a reboot: the new store claims the same packet types.
-    delete fdnRecordStore;
-    FdnRecordStore rebooted(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
-    send(rebooted, 1);
-    EXPECT_EQ(acksSent, 66u) << "stored records are known again after a reboot";
-    EXPECT_EQ(rebooted.getStoredCount(RecordKind::MATCH), 64u);
-}
-
-TEST_F(MatchManagerTestSuite, matchCollectionDropsWrongLengthFrames) {
-    NativePrefsDriver& pdnPrefs = makeNativePrefs("pdn-len-prefs");
-    NativePrefsDriver fdnPrefs("fdn-len-prefs", {FDN_RECORD_STORE_NAMESPACE});
-    rebuildMatchManager(&pdnPrefs);
-    MockDevice fdnDevice;
-    FakeRemoteDeviceCoordinator fdnRdc;
-    FdnRecordStore fdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
-
-    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x04};
-    const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x04};
-    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
-    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
-    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
-
-    Match m("12345678-eeee-4000-8000-ffffffffffff");
-    MatchRecordPacket pkt{};
-    pkt.matchSeq = 1;
-    m.serialize(pkt.matchData);
-    fdnRecordStore.onMatchCollectionFrame(pdnMac, reinterpret_cast<const uint8_t*>(&pkt),
-                                          sizeof(pkt) - 1);
-    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 0u);
-
-    setupMatchAsBounty("22222222-2222-4000-8000-333333333333");
-    matchManager->setHunterDrawTime(180);
-    matchManager->setBountyDrawTime(120);
-    matchManager->setReceivedButtonPush();
-    matchManager->setReceivedDrawResult();
-    EXPECT_TRUE(matchManager->finalizeMatch());
-    fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
-    fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
-    fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
-    const uint8_t longAck[sizeof(MatchRecordAckPacket) + 1] = {1, 0, 0, 0, 0};
-    device.mockPeerComms->triggerPacketCallback(fdnMac, PktType::kMatchCollectionAck, longAck,
-                                                sizeof(longAck));
-    EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
-}
-
-TEST_F(MatchManagerTestSuite, fdnRecordStoreDropsUnreadableHeadInsteadOfFailingEveryBatch) {
-    using ::testing::_;
-    NativePrefsDriver fdnPrefs("fdn-corrupt-prefs", {FDN_RECORD_STORE_NAMESPACE});
-    MockDevice fdnDevice;
-    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
-    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
-    FakeRemoteDeviceCoordinator fdnRdc;
-    FdnRecordStore fdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
-
-    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x03};
-    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
-    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
-    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
-
-    for (uint32_t seq = 1; seq <= 2; ++seq) {
-        char mid[37];
-        snprintf(mid, sizeof(mid), "%08u-cccc-4000-8000-dddddddddddd", seq);
-        Match m(mid);
-        MatchRecordPacket pkt{};
-        pkt.matchSeq = seq;
-        m.serialize(pkt.matchData);
-        fdnRecordStore.onMatchCollectionFrame(pdnMac, reinterpret_cast<const uint8_t*>(&pkt),
-                                              sizeof(pkt));
+        snprintf(mid, sizeof(mid), "%08u-def0-4000-8000-000000000000", i);
+        setupMatchAsBounty(mid);
+        matchManager->setHunterDrawTime(180);
+        matchManager->setBountyDrawTime(120);
+        matchManager->setReceivedButtonPush();
+        matchManager->setReceivedDrawResult();
+        ASSERT_TRUE(matchManager->finalizeMatch());
     }
+    matchManager->advanceMark(1);
+    ASSERT_EQ(matchManager->getCollectedHighWaterMark(), 1u);
+    // Matches 2 and 3, every record still pending, are torn.
     const uint8_t torn[3] = {1, 2, 3};
-    fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_0", torn, sizeof(torn));
+    prefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_1", torn, sizeof(torn));
+    prefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_2", torn, sizeof(torn));
 
-    std::vector<HttpRequest> httpRequests;
-    ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
-    .WillByDefault(::testing::Invoke([&httpRequests](HttpRequest&& req) {
-        httpRequests.push_back(std::move(req));
-        return true;
-    }));
-
-    ASSERT_TRUE(fdnRecordStore.uploadPendingBatch(nullptr));
-    ASSERT_EQ(httpRequests.size(), 1u) << "the readable record still goes up";
-    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 1u);
-    httpRequests[0].onSuccess("");
-    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 0u);
-}
-
-TEST_F(MatchManagerTestSuite, fdnRecordStoreUploadStopsShortOfAnUnreadableRecord) {
-    using ::testing::_;
-    NativePrefsDriver fdnPrefs("fdn-mid-prefs", {FDN_RECORD_STORE_NAMESPACE});
-    MockDevice fdnDevice;
-    ON_CALL(*fdnDevice.mockPeerComms, getPeerCommsState())
-    .WillByDefault(::testing::Return(PeerCommsState::ENABLED));
-    FakeRemoteDeviceCoordinator fdnRdc;
-    FdnRecordStore fdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs, &fdnRdc);
-
-    const uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x05};
-    fdnRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
-    fdnRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
-    fdnRdc.setPeerMac(SerialIdentifier::INPUT_JACK, pdnMac);
-
-    for (uint32_t seq = 1; seq <= 3; ++seq) {
-        char mid[37];
-        snprintf(mid, sizeof(mid), "%08u-dddd-4000-8000-eeeeeeeeeeee", seq);
-        Match m(mid);
-        MatchRecordPacket pkt{};
-        pkt.matchSeq = seq;
-        m.serialize(pkt.matchData);
-        fdnRecordStore.onMatchCollectionFrame(pdnMac, reinterpret_cast<const uint8_t*>(&pkt),
-                                              sizeof(pkt));
+    uint32_t recordNumber = 99;
+    uint8_t recordBytes[MATCH_RECORD_SIZE];
+    memset(recordBytes, 0xEE, sizeof(recordBytes));
+    // Twice: a first read that retired what it passed over would change the second.
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        EXPECT_FALSE(matchManager->readLowestPending(recordNumber, recordBytes));
+        EXPECT_EQ(recordNumber, 99u) << "the output number was written with nothing to offer";
+        for (size_t i = 0; i < sizeof(recordBytes); ++i) {
+            ASSERT_EQ(recordBytes[i], 0xEE) << "output byte " << i << " was written";
+        }
+        EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 1u)
+        << "an unreadable record was retired without an acknowledgement";
+        EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 1u);
     }
-    const uint8_t torn[3] = {1, 2, 3};
-    fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_1", torn, sizeof(torn));
-
-    std::vector<HttpRequest> httpRequests;
-    ON_CALL(*fdnDevice.mockHttpClient, queueRequest(_))
-    .WillByDefault(::testing::Invoke([&httpRequests](HttpRequest&& req) {
-        httpRequests.push_back(std::move(req));
-        return true;
-    }));
-
-    ASSERT_TRUE(fdnRecordStore.uploadPendingBatch(nullptr));
-    ASSERT_EQ(httpRequests.size(), 1u) << "the record ahead of the torn one still goes up";
-    httpRequests[0].onSuccess("");
-    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 2u);
-
-    ASSERT_TRUE(fdnRecordStore.uploadPendingBatch(nullptr));
-    ASSERT_EQ(httpRequests.size(), 2u);
-    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 1u)
-    << "the torn record is dropped once it is the oldest";
-    httpRequests[1].onSuccess("");
-    EXPECT_EQ(fdnRecordStore.getStoredCount(RecordKind::MATCH), 0u);
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 3u);
 }
 
 TEST(MatchesApiUpload, unqueuedRequestFailsClosed) {

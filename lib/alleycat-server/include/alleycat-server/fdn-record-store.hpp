@@ -8,7 +8,6 @@
 #include "device/drivers/logger.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/storage-interface.hpp"
-#include "device/remote-device-coordinator.hpp"
 #include "device/wireless-manager.hpp"
 #include "game/match.hpp"
 #include "wireless/record-relay-types.hpp"
@@ -96,7 +95,8 @@ public:
             return true;
         }
         // A refused blob write still costs the flash a page erase, and a PDN
-        // offers again within the second, so storage is not asked twice.
+        // offers its record again on every beacon and every FDN connection, so
+        // storage is not asked again until a slot is freed.
         if (storageRefused) {
             LOG_W("FDN_RECORDS",
                   "Storage refused a record earlier; record %u of kind %u is not stored",
@@ -268,56 +268,14 @@ private:
 class FdnRecordStore {
 public:
     /** Loads what the storage holds and claims the record and acknowledgement packet types. */
-    FdnRecordStore(WirelessManager* wirelessManager, StorageInterface* storage,
-                   RemoteDeviceCoordinator* rdc)
+    FdnRecordStore(WirelessManager* wirelessManager, StorageInterface* storage)
         : wirelessManager(wirelessManager)
-        , rdc(rdc)
         , crashRing(wirelessManager, storage, storageRefused, "c_")
-        , matchRing(wirelessManager, storage, storageRefused, "m_") {
-        wirelessManager->setEspNowPacketHandler(
-        PktType::kMatchCollection,
-        [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<FdnRecordStore*>(ctx)->onMatchCollectionFrame(fromMac, data, dataLen);
-        },
-        this);
-    }
-
-    /** Clears the kMatchCollection packet handler; the channels release their own types. */
-    ~FdnRecordStore() { wirelessManager->clearEspNowPacketHandler(PktType::kMatchCollection); }
+        , matchRing(wirelessManager, storage, storageRefused, "m_") {}
 
     /** @return Number of records of @p kind held. */
     size_t getStoredCount(RecordKind kind) const {
         return kind == RecordKind::CRASH ? crashRing.getStoredCount() : matchRing.getStoredCount();
-    }
-
-    // Removed when the PDN sends record frames.
-    /** Handles an inbound MatchRecordPacket from a Connected PDN. */
-    void onMatchCollectionFrame(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-        if (!rdc->isConnectedPeer(DeviceType::PDN, fromMac)) {
-            return;
-        }
-        if (!data || dataLen != sizeof(MatchRecordPacket)) {
-            LOG_W("FDN_RECORDS", "Dropping match record of %zu bytes", dataLen);
-            return;
-        }
-
-        MatchRecordPacket pkt{};
-        memcpy(&pkt, data, sizeof(pkt));
-
-        // This frame has no trailer; the zeroed one is key ID 0, "no record key".
-        MatchRing::Entry entry{};
-        memcpy(entry.senderMac, fromMac, sizeof(entry.senderMac));
-        entry.kind = static_cast<uint8_t>(RecordKind::MATCH);
-        entry.recordNumber = pkt.matchSeq;
-        memcpy(entry.recordBytes, pkt.matchData, sizeof(entry.recordBytes));
-        uint8_t recordCheck[RECORD_CHECK_SIZE] = {};
-        if (!matchRing.storeRecord(entry, recordCheck)) {
-            return;
-        }
-        MatchRecordAckPacket ack{};
-        ack.matchSeq = pkt.matchSeq;
-        wirelessManager->sendEspNowData(fromMac, PktType::kMatchCollectionAck,
-                                        reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
     }
 
     /**
@@ -405,7 +363,6 @@ private:
     }
 
     WirelessManager* wirelessManager = nullptr;
-    RemoteDeviceCoordinator* rdc = nullptr;
     // Set by a failed write in either ring and cleared when either frees a slot:
     // the rings share one partition, so room freed by one is room for the other.
     // Declared before the rings, which hold a reference to it.
