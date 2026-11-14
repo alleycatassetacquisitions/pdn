@@ -749,7 +749,7 @@ TEST(ReliableTransportTest, backgroundEspNowSendDoesNotPreemptWifiMode) {
     ON_CALL(http, setHttpClientState(::testing::_))
     .WillByDefault(::testing::Invoke([&](HttpClientState s) { httpState = s; }));
 
-    wm.enableWifiMode();
+    wm.queueHttpRequest(HttpRequest("/health_check", "GET", "", "", nullptr, nullptr));
     ASSERT_EQ(wm.getCurrentMode(), WirelessMode::WIFI);
     ASSERT_EQ(httpState, HttpClientState::CONNECTED);
     ASSERT_EQ(commsState, PeerCommsState::DISABLED);
@@ -759,4 +759,57 @@ TEST(ReliableTransportTest, backgroundEspNowSendDoesNotPreemptWifiMode) {
     EXPECT_EQ(wm.sendEspNowData(dst, PktType::kSymbolMatchCommand, payload, sizeof(payload)), -1);
     EXPECT_EQ(wm.getCurrentMode(), WirelessMode::WIFI);
     EXPECT_EQ(httpState, HttpClientState::CONNECTED);
+}
+
+TEST(WirelessManagerTest, aManagerWithNoHttpClientRefusesAnHttpRequestAndKeepsTheRadio) {
+    ::testing::NiceMock<MockPeerComms> comms;
+    WirelessManager wm{&comms};
+
+    PeerCommsState commsState = PeerCommsState::ENABLED;
+    ON_CALL(comms, getPeerCommsState()).WillByDefault(::testing::Invoke([&]() {
+        return commsState;
+    }));
+    ON_CALL(comms, setPeerCommsState(::testing::_))
+    .WillByDefault(::testing::Invoke([&](PeerCommsState s) { commsState = s; }));
+    ON_CALL(comms, sendData(::testing::_, ::testing::_, ::testing::_, ::testing::_))
+    .WillByDefault(::testing::Return(1));
+
+    int callbacks = 0;
+    HttpRequest request(
+    "/device-logs", "POST", "application/protobuf", "body",
+    [&callbacks](const std::string&) { callbacks++; },
+    [&callbacks](const WirelessErrorInfo&) { callbacks++; });
+
+    EXPECT_FALSE(wm.queueHttpRequest(std::move(request)));
+    EXPECT_FALSE(wm.hasQueuedHttpRequests());
+    EXPECT_EQ(callbacks, 0);
+
+    // A refused request must not cost the device its peer-to-peer radio.
+    EXPECT_EQ(wm.getCurrentMode(), WirelessMode::ESPNOW);
+    EXPECT_EQ(commsState, PeerCommsState::ENABLED);
+    const uint8_t dst[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    const uint8_t payload[4] = {1, 2, 3, 4};
+    EXPECT_EQ(wm.sendEspNowData(dst, PktType::kSymbolMatchCommand, payload, sizeof(payload)), 1);
+}
+
+TEST(WirelessManagerTest, aManagerWithNoHttpClientStartsAndReclaimsThePeerRadio) {
+    ::testing::NiceMock<MockPeerComms> comms;
+    WirelessManager wm{&comms};
+
+    PeerCommsState commsState = PeerCommsState::DISABLED;
+    ON_CALL(comms, getPeerCommsState()).WillByDefault(::testing::Invoke([&]() {
+        return commsState;
+    }));
+    ON_CALL(comms, setPeerCommsState(::testing::_))
+    .WillByDefault(::testing::Invoke([&](PeerCommsState s) { commsState = s; }));
+
+    wm.initialize();
+    EXPECT_EQ(commsState, PeerCommsState::ENABLED);
+    EXPECT_TRUE(wm.isEspNowReady());
+
+    // Only a disabled radio gets past enablePeerCommsMode's early return here.
+    commsState = PeerCommsState::DISABLED;
+    wm.enablePeerCommsMode();
+    EXPECT_EQ(commsState, PeerCommsState::ENABLED);
+    EXPECT_TRUE(wm.isEspNowReady());
 }

@@ -240,7 +240,8 @@ inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
 // The pairing screen leaves the radio to whoever switched it to WiFi.
 inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
-    suite->device.wirelessManager->enableWifiMode();
+    suite->device.wirelessManager->queueHttpRequest(
+    HttpRequest("/health_check", "GET", "", "", nullptr, nullptr));
     PlayerProvider playerProvider;
     PinEntryState pinEntry(&playerProvider);
     pinEntry.onStateMounted(&suite->device);
@@ -249,7 +250,8 @@ inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
 }
 
 inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {
-    suite->device.wirelessManager->enableWifiMode();
+    suite->device.wirelessManager->queueHttpRequest(
+    HttpRequest("/health_check", "GET", "", "", nullptr, nullptr));
     FakeFirmwareStore store;
     FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
     FirmwareUpdate seedScreen(PlayerFetchStateId::FIRMWARE_UPDATE, &manager);
