@@ -2793,6 +2793,10 @@ TEST_F(PosseManagerTests, sendConfirmTargetsChallengerMac) {
     posseSendConfirmTargetsChallengerMac(this);
 }
 
+TEST_F(PosseManagerTests, confirmFrameCarriesTheSendersPlayer) {
+    posseConfirmFrameCarriesTheSendersPlayer(this);
+}
+
 TEST_F(PosseManagerTests, sendConfirmIncrementsSeqId) { posseSendConfirmIncrementsSeqId(this); }
 
 TEST_F(PosseManagerTests, sendConfirmNoopWhenChallengerMacInvalid) {
@@ -2938,6 +2942,26 @@ TEST_F(PosseMultiDeviceFixture, confirmDeliveredToChallenger) {
 
 TEST_F(PosseMultiDeviceFixture, boostScalesWithChainDepth) {
     posseMultiDeviceBoostScalesWithChainDepth(this);
+}
+
+TEST_F(PosseMultiDeviceFixture, registeredSupporterOfAnotherPlayerCounts) {
+    posseMultiDeviceRegisteredSupporterOfAnotherPlayerCounts(this);
+}
+
+TEST_F(PosseMultiDeviceFixture, unregisteredSupportersDoNotCount) {
+    posseMultiDeviceUnregisteredSupportersDoNotCount(this);
+}
+
+TEST_F(PosseMultiDeviceFixture, supporterRegisteredAsTheChallengerDoesNotCount) {
+    posseMultiDeviceSupporterRegisteredAsTheChallengerDoesNotCount(this);
+}
+
+TEST_F(PosseMultiDeviceFixture, demoChallengerIsBoostedByARegisteredSupporter) {
+    posseMultiDeviceDemoChallengerIsBoostedByARegisteredSupporter(this);
+}
+
+TEST_F(PosseMultiDeviceFixture, twoSupportersOfOnePlayerBothCount) {
+    posseMultiDeviceTwoSupportersOfOnePlayerBothCount(this);
 }
 
 TEST_F(PosseMultiDeviceFixture, gameEventReachesDistantSupporter) {

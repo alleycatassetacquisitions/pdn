@@ -4,6 +4,7 @@
 #include <gmock/gmock.h>
 #include "device-mock.hpp"
 #include "rdc-test-harness.hpp"
+#include "registration-test-helper.hpp"
 #include "utility-tests.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "game/posse-manager.hpp"
@@ -18,6 +19,9 @@ public:
     /** The harness's device, plus what the posse cases read off the radio. */
     void SetUp() override {
         RdcTestHarness::SetUp();
+        // A registered challenger, as on the floor; deliverConfirm gives every
+        // supporter a player that differs from this one.
+        registerTestPlayerId(player, makeTestPlayerId(0));
         // Role announces have no reply packet: the radio's send result is the
         // delivery signal, so tests drive it through this captured handler.
         ON_CALL(*device.mockPeerComms,
@@ -66,6 +70,18 @@ public:
     void closeRingAroundSelf() {
         connectOutputJack();
         connectJackTo(inJack, supporterMac, localMac, true);
+    }
+
+    /**
+     * A press from supporterMac as the radio would hand it over, the supporter
+     * registered to a player of its own: one per MAC, none of them this
+     * device's.
+     */
+    void deliverConfirm(PosseManager& posse, const uint8_t* supporterMac) {
+        UUIDBytes supporterPlayerId{};
+        supporterPlayerId.bytes[0] = 0x5A;
+        memcpy(&supporterPlayerId.bytes[UUIDBytes::SIZE - 6], supporterMac, 6);
+        posse.onConfirmReceived(supporterMac, supporterPlayerId);
     }
 
     Player player;
@@ -174,11 +190,11 @@ inline void posseConfirmLifecycle(PosseManagerTests* suite) {
 
     EXPECT_EQ(posse.getBoostMs(), 0u);
 
-    posse.onConfirmReceived(suite->supporterMac);
+    suite->deliverConfirm(posse, suite->supporterMac);
     EXPECT_EQ(posse.getBoostMs(), 15u);
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 1u);
 
-    posse.onConfirmReceived(suite->supporterMac);
+    suite->deliverConfirm(posse, suite->supporterMac);
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 1u);
 
     posse.clearSupporterConfirms();
@@ -192,7 +208,7 @@ inline void posseOnChainStateChangedClearsOnDrain(PosseManagerTests* suite) {
     PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     ASSERT_TRUE(posse.isChallenger());
 
-    posse.onConfirmReceived(suite->supporterMac);
+    suite->deliverConfirm(posse, suite->supporterMac);
     ASSERT_EQ(posse.getBoostMs(), 15u);
 
     // First call: chain has peers (lastSupporterChainCount goes from 0 to N)
@@ -217,7 +233,7 @@ inline void posseConfirmFromUnknownOriginatorRejected(PosseManagerTests* suite) 
     ASSERT_TRUE(posse.isChallenger());
 
     uint8_t stranger[6] = {0xBA, 0xAD, 0xF0, 0x0D, 0x00, 0x00};
-    posse.onConfirmReceived(stranger);
+    suite->deliverConfirm(posse, stranger);
     EXPECT_EQ(posse.getBoostMs(), 0u);
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 0u);
 }
@@ -265,6 +281,36 @@ inline void posseSendConfirmTargetsChallengerMac(PosseManagerTests* suite) {
 
     EXPECT_EQ(memcmp(target.data(), challenger, 6), 0);
     EXPECT_EQ(memcmp(captured.originatorMac, suite->localMac, 6), 0);
+}
+
+// Wire layout is frozen across builds; the player is read at send time, not at
+// construction.
+inline void posseConfirmFrameCarriesTheSendersPlayer(PosseManagerTests* suite) {
+    suite->setupHunterChallenger();
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
+    uint8_t challenger[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
+    .WillRepeatedly(Return(1));
+    posse.onRoleAnnounceReceived(suite->opponentMac, challenger);
+
+    UUIDBytes laterPlayerId{};
+    ASSERT_TRUE(UUIDBytes::parse("0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0", laterPlayerId));
+    registerTestPlayerId(suite->player, laterPlayerId);
+
+    std::vector<uint8_t> frame;
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainConfirm, _, _))
+    .WillOnce([&](const uint8_t*, PktType, const uint8_t* data, const size_t length) {
+        frame.assign(data, data + length);
+        return 1;
+    });
+
+    posse.sendConfirm();
+
+    ASSERT_EQ(frame.size(), 23u);
+    EXPECT_EQ(memcmp(&frame[0], suite->localMac, 6), 0);
+    EXPECT_EQ(memcmp(&frame[6], laterPlayerId.bytes, UUIDBytes::SIZE), 0);
+    EXPECT_NE(frame[22], 0u) << "a reliable frame carries a nonzero sequence byte last";
 }
 
 // sendConfirm increments seqId on each call.
@@ -318,7 +364,7 @@ inline void posseConfirmBufferedUntilOriginatorJoinsChain(PosseManagerTests* sui
     ASSERT_TRUE(posse.isChallenger());
 
     uint8_t multiHopMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    posse.onConfirmReceived(multiHopMac);
+    suite->deliverConfirm(posse, multiHopMac);
     ASSERT_EQ(posse.getConfirmedSupporterCount(), 0u);
 
     // The join lands: multiHopMac sits somewhere behind the direct supporter-jack
@@ -345,13 +391,13 @@ inline void posseStrangerConfirmsCannotSilenceRealSupporter(PosseManagerTests* s
     for (int i = 0; i < 36; i++) {
         uint8_t stranger[6] = {
         0xEE, 0xEE, 0xEE, 0xEE, static_cast<uint8_t>(i), static_cast<uint8_t>(i)};
-        posse.onConfirmReceived(stranger);
+        suite->deliverConfirm(posse, stranger);
     }
     ASSERT_EQ(posse.getConfirmedSupporterCount(), 0u);
 
     // A genuine multi-hop supporter presses afterwards and joins the roster.
     uint8_t realMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    posse.onConfirmReceived(realMac);
+    suite->deliverConfirm(posse, realMac);
     posse.onChainJoinReceived(realMac, suite->localMac);
     posse.onChainStateChanged();
 
@@ -371,7 +417,7 @@ inline void posseChainJoinForAnotherChallengerIsIgnored(PosseManagerTests* suite
     uint8_t otherChallenger[6] = {0x99, 0x99, 0x99, 0x99, 0x99, 0x99};
     uint8_t foreignSupporter[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
     posse.onChainJoinReceived(foreignSupporter, otherChallenger);
-    posse.onConfirmReceived(foreignSupporter);
+    suite->deliverConfirm(posse, foreignSupporter);
 
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 0u);
     EXPECT_EQ(posse.getBoostMs(), 0u);
@@ -1188,7 +1234,7 @@ inline void posseThreeDeviceConfirm(PosseManagerTests* suite) {
 
     uint8_t distantMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
     a.onChainJoinReceived(distantMac, suite->localMac);
-    a.onConfirmReceived(distantMac);
+    suite->deliverConfirm(a, distantMac);
     EXPECT_EQ(a.getBoostMs(), 15u);
 }
 

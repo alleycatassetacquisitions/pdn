@@ -1013,6 +1013,17 @@ void cliSimulationCabledDevicesConnect(CliSimulationTestSuite* suite) {
     ASSERT_EQ(lower->getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
 }
 
+// Test: no two simulated devices look up as one player, and none as nobody. A
+// shared player would make every simulated supporter the challenger's own and
+// every simulated posse worth nothing.
+void cliSimulationDevicesAreDifferentPlayers() {
+    const UUIDBytes first = cli::DeviceFactory::getSimulatedPlayerId(0);
+    const UUIDBytes second = cli::DeviceFactory::getSimulatedPlayerId(1);
+    ASSERT_FALSE(first.isZero());
+    ASSERT_FALSE(second.isZero());
+    ASSERT_NE(memcmp(first.bytes, second.bytes, UUIDBytes::SIZE), 0);
+}
+
 // Test: every device's history follows its transitions, not only a rendered one
 void cliSimulationRecordsHistoryForEveryDevice(CliSimulationTestSuite* suite) {
     cli::advanceSimulation(suite->devices);

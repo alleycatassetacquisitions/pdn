@@ -421,6 +421,10 @@ TEST_F(CliCommandTestSuite, RebootClearsHistory) {
 
 TEST_F(CliSimulationTestSuite, CabledDevicesConnect) { cliSimulationCabledDevicesConnect(this); }
 
+TEST(CliSimulationPlayers, DevicesAreDifferentPlayers) {
+    cliSimulationDevicesAreDifferentPlayers();
+}
+
 TEST_F(CliSimulationTestSuite, RecordsHistoryForEveryDevice) {
     cliSimulationRecordsHistoryForEveryDevice(this);
 }

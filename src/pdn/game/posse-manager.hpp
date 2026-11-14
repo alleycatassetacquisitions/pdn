@@ -11,6 +11,7 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 #include "wireless/reliable-channel.hpp"
+#include "utils/uuid-bytes.hpp"
 
 enum class ChainGameEventType : uint8_t {
     COUNTDOWN = 0,
@@ -95,8 +96,11 @@ public:
      * join naming any challenger but this device.
      */
     void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChallengerMac);
-    /** Records a supporter press from originatorMac; chain membership is filtered when read. */
-    void onConfirmReceived(const uint8_t* originatorMac);
+    /**
+     * Records a press from originatorMac if supporterPlayerId is non-nil and not
+     * this device's player; chain membership is filtered when read.
+     */
+    void onConfirmReceived(const uint8_t* originatorMac, const UUIDBytes& supporterPlayerId);
     void onChainStateChanged();
 
     unsigned long getBoostMs() const;
@@ -159,11 +163,12 @@ private:
 
     bool confirmSent = false;
 
-    // Every press we have heard this round, member or not. Membership is applied
-    // when the count is read, not here, because a confirm can beat the kChainJoin
-    // that puts its originator in the roster and the sender gets no signal it was
-    // dropped. Deciding late means an early confirm starts counting the moment
-    // its join lands, and an unplugged supporter stops counting, with nothing to
+    // Every eligible press we have heard this round, member or not. Membership
+    // is applied when the count is read, not here, because a confirm can beat the
+    // kChainJoin that puts its originator in the roster and the sender gets no
+    // signal it was dropped.
+    // Deciding late means an early confirm starts counting the moment its join
+    // lands, and an unplugged supporter stops counting, with nothing to
     // re-offer or evict on a topology event.
     //
     // Fixed slots rather than a vector: packets append to this while a match is

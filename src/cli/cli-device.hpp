@@ -147,6 +147,18 @@ struct DeviceInstance {
 class DeviceFactory {
 public:
     /**
+     * The server player the mock lookup returns for the device at @p deviceIndex.
+     * One per device: a posse supporter and a match opponent both have to be a
+     * different player from the device they face.
+     */
+    static UUIDBytes getSimulatedPlayerId(int deviceIndex) {
+        UUIDBytes playerId{};
+        UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", playerId);
+        playerId.bytes[UUIDBytes::SIZE - 1] += static_cast<uint8_t>(deviceIndex);
+        return playerId;
+    }
+
+    /**
      * Create a new simulated PDN device.
      * 
      * @param deviceIndex Index for this device (used to generate ID and driver names)
@@ -183,7 +195,7 @@ public:
         // Configure mock HTTP server with this device's player data
         MockPlayerConfig playerConfig;
         playerConfig.name = (isHunter ? "Hunter" : "Bounty") + instance.deviceId;
-        UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", playerConfig.wirePlayerId);
+        playerConfig.wirePlayerId = getSimulatedPlayerId(deviceIndex);
         MockHttpServer::getInstance().configurePlayer(instance.deviceId, playerConfig);
         
         // Create driver configuration
