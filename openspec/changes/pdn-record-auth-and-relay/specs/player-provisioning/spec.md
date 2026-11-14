@@ -48,9 +48,10 @@ Once the FDN decodes a valid player profile (or a lookup failure) for a Connecte
 
 - An unprovisioned PDN whose session has no registered profile SHALL advertise the unregistered sentinel identity (nil 16-byte UUID, mapping to `0xFFFF` on any 16-bit wire field and never `0`) in its outbound connection context until a profile is applied.
 - The PDN SHALL accept a provisioned profile or lookup-failure notification **only while mounted in the provisioning app** and **only when the wireless sender MAC address matches the verified MAC address of an FDN currently Connected on a physical serial jack** (ignoring wireless provisioning frames from any uncabled sender or after the PDN has entered gameplay).
-- The FDN SHALL deliver the record key to the Connected PDN over the serial jack only and SHALL NOT send a record key over the peer-to-peer radio. The FDN SHALL send the profile only after it has written the record key to that jack; when the record key cannot be written, the FDN SHALL send the lookup-failure notification and no profile.
+- The FDN SHALL deliver the record key to the Connected PDN over the serial jack only and SHALL NOT send a record key over the peer-to-peer radio. The FDN SHALL send the profile as soon as the serial jack reports the record key frame written, and not before. When the jack does not report the frame written, because it refuses the frame or the PDN is no longer Connected on it, the FDN SHALL send no profile, and SHALL send the lookup-failure notification if the PDN is still Connected.
 - The PDN SHALL accept a record key only over a serial jack on which an FDN is Connected, and only while mounted in the provisioning app after it has sent that FDN its PIN. The PDN SHALL discard a record key whose frame fails its integrity check or that is not exactly `32` bytes.
-- The PDN SHALL apply a profile only when it holds a record key accepted during the same registration attempt. A profile that arrives while the PDN holds no record key SHALL NOT be applied; the PDN SHALL then show the lookup failure screen and return to the registration screen, as for a failed lookup.
+- The PDN SHALL apply a profile delivered by an FDN only once it holds both that profile and a record key accepted during the same registration attempt, in whichever order the two arrive. A profile that arrives first SHALL be held, not applied, until the record key arrives. If the PDN's wait for the FDN's reply (`10,000 ms`) ends with either missing, the attempt SHALL fail as it does when no reply arrives, and the PDN SHALL drop whatever it held. A lookup-failure notification SHALL fail the attempt at once.
+- The demo profile of PIN `0000` is not delivered by an FDN; the PDN SHALL apply it with no record key, as before.
 - A record key accepted later in the same registration attempt replaces the one held, and the PDN SHALL drop its record key whenever a registration attempt ends without a profile applied (`record-authentication`).
 - Once provisioned, the PDN's connection context and peer profile exchanged with cabled neighbors SHALL carry the player's 16-byte player UUID, 16-byte team UUID, standing role (`Hunter` or `Bounty`), and display name (truncated to fit the wire profile field).
 
@@ -64,7 +65,7 @@ Once the FDN decodes a valid player profile (or a lookup failure) for a Connecte
 
 #### Scenario: Record key is delivered over the serial jack before the profile
 - **WHEN** a PDN holding no record key is mounted in the provisioning app and Connected to an FDN on a serial jack, has sent that FDN its PIN, and the lookup response carries a profile and a `32`-byte record key
-- **THEN** the FDN delivers the record key over that serial jack before it sends the profile, and not over the peer-to-peer radio, and the PDN holds that record key and applies the profile
+- **THEN** the FDN delivers the record key over that serial jack and not over the peer-to-peer radio, sends the profile once the jack reports the record key frame written, and the PDN holds that record key and applies the profile
 
 #### Scenario: Record key offered over the peer-to-peer radio is ignored
 - **WHEN** a PDN holding no record key, mounted in the provisioning app, receives a record key over the peer-to-peer radio from any sender, including an FDN Connected on one of its serial jacks
@@ -82,10 +83,22 @@ Once the FDN decodes a valid player profile (or a lookup failure) for a Connecte
 - **WHEN** a PDN accepts a record key over the serial jack and then receives the lookup-failure notification, or no profile within its wait for the FDN's reply
 - **THEN** the PDN returns to the registration screen and holds no record key
 
-#### Scenario: Profile that arrives with no record key held is not applied
-- **WHEN** a PDN that has sent its PIN to a Connected FDN and holds no record key receives a profile from that FDN naming that PIN
-- **THEN** the PDN does not apply the profile, shows the lookup failure screen and returns to the registration screen unprovisioned
+#### Scenario: Profile that arrives before the record key is held until the key arrives
+- **WHEN** a PDN that has sent its PIN to a Connected FDN receives the profile from that FDN naming that PIN while it holds no record key, and then accepts a record key over the serial jack within its wait for the FDN's reply
+- **THEN** the PDN does not apply the profile when it arrives, and applies it when the record key is accepted
 
-#### Scenario: FDN that cannot write the record key sends no profile
-- **WHEN** an FDN holding a profile and a `32`-byte record key for a Connected PDN cannot write the record key to that PDN's serial jack
+#### Scenario: Profile with no record key by the end of the wait is not applied
+- **WHEN** a PDN that has sent its PIN to a Connected FDN receives the profile from that FDN naming that PIN and accepts no record key before its `10,000 ms` wait for the FDN's reply ends
+- **THEN** the PDN does not apply the profile, drops it, shows the lookup failure screen and returns to the registration screen unprovisioned
+
+#### Scenario: FDN whose jack refuses the record key frame sends no profile
+- **WHEN** an FDN holding a profile and a `32`-byte record key for a Connected PDN offers the record key frame to that PDN's serial jack and the jack does not report it written while the PDN is still Connected
 - **THEN** the FDN sends that PDN the lookup-failure notification and no profile
+
+#### Scenario: PDN that disconnects before the record key frame is written gets nothing
+- **WHEN** a PDN disconnects from the FDN's serial jack after the lookup answered and before the jack reports the record key frame written
+- **THEN** the FDN sends neither a profile nor a lookup-failure notification, and erases the record key
+
+#### Scenario: Demo profile is applied with no record key
+- **WHEN** a player enters PIN `0000` on a PDN holding no record key and picks a role
+- **THEN** the PDN applies the demo profile and enters the hub app, and holds no record key

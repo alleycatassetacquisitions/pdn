@@ -4,12 +4,12 @@
 
 A PDN SHALL hold at most one record key: the `32` bytes the server returns for the player the PDN is being registered to, received during registration (`player-provisioning`). The PDN SHALL hold the record key in volatile memory and SHALL NOT write it to its key-value storage or its match ring buffer. The PDN SHALL NOT send the record key to any device and SHALL NOT log or display it.
 
-#### Scenario: A PDN that has not been registered holds no record key
+#### Scenario: A PDN playing with the demo profile holds no record key
 - **WHEN** a PDN boots and a player enters the demo PIN `0000`
 - **THEN** the PDN holds no record key for that session
 
 #### Scenario: A registered PDN holds a record key
-- **WHEN** a PDN applies a profile at the end of a registration
+- **WHEN** a PDN applies a profile delivered by an FDN
 - **THEN** the PDN holds the record key it accepted during that registration
 
 #### Scenario: Record key is not written to the PDN's key-value storage or match ring buffer
@@ -53,7 +53,7 @@ When a match ends and a PDN stores its match record, the PDN SHALL compute a rec
 A PDN SHALL store a match record only together with a record tag computed under the record key it holds. A PDN that holds no record key when a match ends SHALL NOT store a match record for that match. No record tag value SHALL stand for a missing tag.
 
 #### Scenario: Match on a PDN holding no record key is not stored
-- **WHEN** a match ends on a PDN whose player entered the demo PIN `0000`, which holds no record key
+- **WHEN** a match ends on a PDN playing with the demo profile, which holds no record key
 - **THEN** the PDN stores no match record for that match
 
 ### Requirement: Stored record tags are not changed

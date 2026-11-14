@@ -2,7 +2,7 @@
 
 ### Requirement: Same-player match refusal
 
-A PDN whose own player UUID is non-nil SHALL NOT play a standalone match against an opponent whose player UUID equals its own, whether it initiated the match or was invited to it. An initiating PDN that receives a match acknowledgement naming its own player UUID SHALL clear the pending match and SHALL NOT enter the match countdown. A PDN SHALL NOT store a match record whose two player UUIDs are equal.
+A PDN whose own player UUID is non-nil SHALL NOT play a standalone match against an opponent whose player UUID equals its own, whether it initiated the match or was invited to it. An initiating PDN that receives a match acknowledgement naming its own non-nil player UUID SHALL clear the pending match and SHALL NOT enter the match countdown. A PDN SHALL NOT store a match record whose two player UUIDs are equal.
 
 #### Scenario: Initiator refuses an acknowledgement that names its own player
 - **WHEN** a Hunter registered as player $P$ has sent a match initiation and receives, from the Connected opponent, a match acknowledgement for that match carrying player UUID $P$

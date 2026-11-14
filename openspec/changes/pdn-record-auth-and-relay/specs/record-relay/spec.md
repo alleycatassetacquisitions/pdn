@@ -32,6 +32,14 @@ A PDN's relay target SHALL be the FDN that caused it to send: the FDN whose beac
 - **WHEN** a PDN with pending records has no FDN Connected on a jack and hears no FDN beacon
 - **THEN** it sends no records and the records stay pending
 
+### Requirement: Pending records
+
+A record SHALL be pending when the PDN holds it, its number is above that record kind's mark, and it can be sent as a record frame. A stored match slot that does not hold `128` bytes cannot be sent and SHALL NOT be pending (`match-collection`). Wherever this capability says "lowest pending record", such a slot is passed over.
+
+#### Scenario: A slot that cannot be sent is not the lowest pending record
+- **WHEN** a PDN's match mark is `2`, the slot for match `3` holds `112` bytes, the slot for match `4` holds `128` bytes, and the PDN hears an FDN's beacon
+- **THEN** the PDN sends match `4` as its lowest pending match record, and that FDN's stored acknowledgement for match `4` advances the match mark to `4`
+
 ### Requirement: Relay triggers
 
 A PDN SHALL send its lowest-numbered pending record of each record kind to the relay target when it hears an FDN beacon and when an FDN becomes Connected on one of its jacks. After a stored acknowledgement advances a mark, the PDN SHALL send the next pending record of that kind to the FDN that acknowledged. A PDN SHALL NOT send records while a match or a shootout is active on it; a stored acknowledgement arriving then SHALL still advance the mark.
@@ -150,11 +158,11 @@ An FDN SHALL NOT verify record tags and SHALL NOT hold a record key except in vo
 
 ### Requirement: Sender's MAC address on a match upload is a note only
 
-When it uploads a relayed match record the FDN SHALL also send the sender's MAC address, as stored, as a note for troubleshooting. That address is the radio source address of the record frame, which any device can set. The FDN SHALL NOT treat it, and the upload SHALL NOT present it, as evidence of which PDN or which player produced the record.
+When it uploads a relayed match record the FDN SHALL also send the sender's MAC address, as stored, as a note for troubleshooting, in a field separate from the record bytes and the record tag. That address is the radio source address of the record frame, which any device can set. The FDN SHALL make no decision from it: it SHALL store, acknowledge and upload a match record the same way whatever the address.
 
 #### Scenario: Match upload carries the sender's MAC address as a note
 - **WHEN** an FDN uploads a match record it stored from a record frame whose radio source address was `aa:bb:cc:dd:ee:ff`
-- **THEN** the upload carries `aa:bb:cc:dd:ee:ff` as the sender note, apart from the record bytes and the record tag, which are sent exactly as received
+- **THEN** the upload carries `aa:bb:cc:dd:ee:ff` in a field separate from the record bytes and the record tag, which are sent exactly as received
 
 #### Scenario: A record relayed under another PDN's address is uploaded like any other
 - **WHEN** an FDN receives a well-formed match record frame whose radio source address equals the MAC address of a different PDN from the one that stored the record

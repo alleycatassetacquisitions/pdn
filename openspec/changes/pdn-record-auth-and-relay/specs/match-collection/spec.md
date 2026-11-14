@@ -2,11 +2,11 @@
 
 ### Requirement: Bounded persistent match ring buffer and collection watermark on PDN
 
-Every completed standalone 1v1 match on a PDN SHALL be persisted in a bounded non-volatile ring buffer in binary form alongside a monotonic sequence counter and collection watermark:
+Every completed standalone 1v1 match on a PDN that holds a record key when the match ends SHALL be persisted in a bounded non-volatile ring buffer in binary form alongside a monotonic sequence counter and collection watermark:
 
 - Each persisted standalone match SHALL increment the PDN's persisted `match_sequence_number` by `1` (starting at `1`) and write the binary match record into a `32`-slot circular buffer indexed by `(match_sequence_number - 1) mod 32`.
 - The PDN SHALL write each match record's `16`-byte record tag (`record-authentication`) into the same slot as the record. A match that ends while the PDN holds no record key SHALL NOT be persisted (`record-authentication`).
-- A slot holding `112` bytes and no record tag, as written by firmware that stored no record tag, SHALL NOT be sent and SHALL NOT hold back the pending records after it.
+- A stored slot that does not hold `128` bytes, such as a slot of `112` bytes and no record tag written by firmware that stored none, cannot be sent. Such a slot SHALL NOT be pending, whatever its sequence number: the PDN SHALL NOT send it, and SHALL send the pending records after it as if it were absent.
 - Binary match records containing raw 16-byte UUIDs (which may include `0x00` bytes) SHALL round-trip through non-volatile storage without null-byte truncation.
 - If more than `32` matches occur before an FDN collects them, newer matches SHALL overwrite the oldest slots in the `32`-slot ring buffer without failing or blocking gameplay.
 - The PDN SHALL persist a separate `collected_high_water_mark` (`0` initially). If `collected_high_water_mark > match_sequence_number` (such as after storage corruption), the PDN SHALL clamp `collected_high_water_mark` to `match_sequence_number`. A retained match with sequence number `N` is pending FDN collection whenever `N > collected_high_water_mark` and `N > match_sequence_number - 32`.
