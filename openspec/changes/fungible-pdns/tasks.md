@@ -8,33 +8,33 @@
 
 ## 2. Name on idle and the handover rule
 
-- [ ] 2.1 The idle screen list has nine screens; the name screen is index `0`; the eight existing screens move to `1` through `8`; idle starts on screen `0` every time it is mounted
-- [ ] 2.2 Name screen: the label `"Player"` in the small font and the display name in the large font over the full width, with no allegiance artwork
-- [ ] 2.3 Break the name over up to `3` lines using the display's measured text width: at spaces first; if text is left over, break the whole name again by filling each line; cut only the text that still does not fit three lines
-- [ ] 2.4 A PDN on the demo profile shows `Demo` on the name screen
-- [ ] 2.5 Clearing the session player provider also resets the totals baseline (3.4); it keeps leaving the legacy fields (name, id, role, allegiance, faction, symbol) and the session statistics
+- [x] 2.1 The idle screen list has nine screens; the name screen is index `0`; the eight existing screens move to `1` through `8`; idle starts on screen `0` every time it is mounted (#448)
+- [x] 2.2 Name screen: the label `"Player"` in the small font and the display name in the large font over the full width, with no allegiance artwork (#448)
+- [x] 2.3 Break the name over up to `3` lines using the display's measured text width: at spaces first; if text is left over, break the whole name again by filling each line; cut only the text that still does not fit three lines (#448)
+- [x] 2.4 A PDN on the demo profile shows `Demo` on the name screen (#448)
+- [x] 2.5 Clearing the session player provider also resets the totals baseline (3.4); it keeps leaving the legacy fields (name, id, role, allegiance, faction, symbol) and the session statistics (#449)
 - [ ] 2.6 The simulator's `reboot` / `restart` command is a restart: the device gets a fresh player and player provider (no statistics, no baseline, no PIN, no record key) and lands on PIN entry
 - [ ] 2.7 Tests: nine clicks from screen `0` return to screen `0`; idle shows the name on first entry and on returning from a match; a name whose words fit three lines is broken at spaces; a `31`-character name with no space fills the lines; a name too wide for three lines shows three full lines and is cut; the demo profile shows `Demo`; clearing leaves the role and the session statistics and drops the PIN, the record key and the baseline; the simulator's restart lands on PIN entry with nothing held
 - [ ] 2.8 Tests for the handover rule: a registered PDN that stores a match names its registered player and tags the record under that player's key; no app transition under `src/pdn` targets the registration app
 
 ## 3. Server totals
 
-- [ ] 3.1 Add the placeholder fields `optional uint32 scoring_matches_played = 11`, `optional uint32 scoring_wins = 12` and `optional uint32 scoring_average_draw_time_ms = 13` to the firmware's copy of `DevicePlayerResponse`, marked `SERVER-SEAM(fungible-pdns)`, and regenerate the nanopb outputs
-- [ ] 3.2 The lookup decode holds each total that is present on the `Player` and `0` for each that is absent; absent totals never fail the decode
-- [ ] 3.3 The profile packet the FDN sends the PDN gains the three totals as fixed-width fields; the encode and decode on both sides copy them; the test that checks the packet's length follows
-- [ ] 3.4 The totals live on the `Player` on both devices. `Player::applyRegistrationProfile` keeps them as the baseline and drops all three to `0` when wins exceed matches played; the baseline does not change again in that session; the demo profile holds `0`
-- [ ] 3.5 Idle screens: wins, losses, matches and average reaction show baseline plus session as design.md T5 states; the average is computed in 64-bit arithmetic, rounded down, and `0` when both counts are `0`; streak and last reaction stay session only
+- [x] 3.1 Add the placeholder fields `optional uint32 scoring_matches_played = 11`, `optional uint32 scoring_wins = 12` and `optional uint32 scoring_average_draw_time_ms = 13` to the firmware's copy of `DevicePlayerResponse`, marked `SERVER-SEAM(fungible-pdns)`, and regenerate the nanopb outputs (#449)
+- [x] 3.2 The lookup decode holds each total that is present on the `Player` and `0` for each that is absent; absent totals never fail the decode (#449)
+- [x] 3.3 The profile packet the FDN sends the PDN gains the three totals as fixed-width fields; the encode and decode on both sides copy them; the test that checks the packet's length follows (#449)
+- [x] 3.4 The totals live on the `Player` on both devices. `Player::applyRegistrationProfile` keeps them as the baseline and drops all three to `0` when wins exceed matches played; the baseline does not change again in that session; the demo profile holds `0` (#449)
+- [x] 3.5 Idle screens: wins, losses, matches and average reaction show baseline plus session as design.md T5 states; the average is computed in 64-bit arithmetic, rounded down, and `0` when both counts are `0`; streak and last reaction stay session only (#450)
 - [ ] 3.6 The simulator's lookup response encoder and the test encoders can carry the three totals
 - [ ] 3.7 Tests: a response with all three totals; with none; with only some; wins above matches drops the totals; totals reach the PDN in the profile; the baseline is unchanged after matches are played; the four sums, with the example in `pdn-session-routing` (`9` wins, `6` losses, `15` matches, `286 ms`); both counts `0` shows an average of `0`; a reaction time from an abandoned match is weighted into the average with a baseline and shows `0` without one; totals near the `32`-bit limit do not wrap the average; no totals shows the session counters alone; streak and last reaction ignore the baseline
 - [ ] 3.8 With 3.1, extend the `player-types` delta that `pdn-record-auth-and-relay` 10.8 adds, so the clause "without changing protobuf definitions" also allows the three totals fields
 
 ## 4. Posse supporter eligibility
 
-- [ ] 4.1 The posse confirmation carries the supporter's own 16-byte player UUID, all-zero for a PDN that is not registered and for a PDN on the demo profile; the payload is `23` bytes
-- [ ] 4.2 The challenger counts a confirmation toward the boost only when its player UUID is not all-zero and differs from the challenger's own player UUID, and logs each confirmation that fails the test
-- [ ] 4.3 The challenger counts each player UUID at most once per round: several eligible confirmations carrying the same player UUID grant one `15 ms` boost (FP-1; firmware in #451)
-- [ ] 4.4 The posse member list, the cascade, the events sent to supporters, the supporter's screens and the idle "Posse" count are unchanged
-- [ ] 4.5 The simulator gives each device a different player; a simulated PDN started straight into play has no registration and does not count as a supporter
+- [x] 4.1 The posse confirmation carries the supporter's own 16-byte player UUID, all-zero for a PDN that is not registered and for a PDN on the demo profile; the payload is `23` bytes (#451)
+- [x] 4.2 The challenger counts a confirmation toward the boost only when its player UUID is not all-zero and differs from the challenger's own player UUID, and logs each confirmation that fails the test (#451)
+- [x] 4.3 The challenger counts each player UUID at most once per round: several eligible confirmations carrying the same player UUID grant one `15 ms` boost (FP-1; firmware in #451) (#451)
+- [x] 4.4 The posse member list, the cascade, the events sent to supporters, the supporter's screens and the idle "Posse" count are unchanged (#451)
+- [x] 4.5 The simulator gives each device a different player; a simulated PDN started straight into play has no registration and does not count as a supporter (#451)
 - [ ] 4.6 Tests: two supporters registered to the same other player give `15 ms`; two supporters registered to other players give `30 ms`; a supporter registered as the challenger's own player gives nothing while another still gives `15 ms`; a supporter on the demo profile gives nothing; a demo challenger is boosted by a registered supporter; a supporter that does not count stays in the member list and is sent the posse result; the `270 ms` cap still holds
 
 ## 5. Server (outside this repository)
