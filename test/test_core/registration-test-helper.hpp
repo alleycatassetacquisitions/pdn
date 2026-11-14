@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <string>
 
 #include "device/remote-device-coordinator.hpp"
 #include "game/player-provider.hpp"
@@ -38,4 +39,27 @@ inline void registerTestPlayer(PlayerProvider& playerProvider, const char* playe
     playerProvider.getPlayer()->applyRegistrationProfile(serverId, name, team, {});
 
     playerProvider.getRecordKey()->set(makeTestRecordKey(keyFirstByte).data());
+}
+
+/**
+ * A registered (non-nil) player UUID that differs for every @p index, for tests
+ * that only need players to be told apart.
+ */
+inline UUIDBytes makeTestPlayerId(uint8_t index) {
+    UUIDBytes playerId{};
+    playerId.bytes[0] = 0x50;
+    playerId.bytes[UUIDBytes::SIZE - 1] = index;
+    return playerId;
+}
+
+/**
+ * Registers @p player as @p playerId and nothing more: the name and the standing
+ * role it already had are handed back to the profile, because applying one
+ * otherwise resets both. A nil @p playerId is the demo profile.
+ */
+inline void registerTestPlayerId(Player& player, const UUIDBytes& playerId) {
+    Team team{};
+    strncpy(team.name, player.isHunter() ? "Hunter" : "Bounty", sizeof(team.name) - 1);
+    const std::string name = player.getName();
+    player.applyRegistrationProfile(playerId, name.c_str(), team, {});
 }

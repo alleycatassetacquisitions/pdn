@@ -25,6 +25,7 @@
 
 #include "device-mock.hpp"
 #include "rdc-hello-tests.hpp"
+#include "registration-test-helper.hpp"
 #include "utility-tests.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "protocol-constants.hpp"
@@ -112,6 +113,9 @@ public:
             node->device = std::make_unique<MockDevice>();
             node->rdc = std::make_unique<RemoteDeviceCoordinator>();
             node->player = std::make_unique<Player>();
+            // Every node is a different registered player unless a case says
+            // otherwise: only such a supporter earns its challenger a boost.
+            registerTestPlayerId(*node->player, makeTestPlayerId(static_cast<uint8_t>(i)));
 
             wirePeerCommsMock(*node);
 
@@ -144,6 +148,35 @@ public:
     void setAllHunters() {
         for (auto& n : nodes)
             n->player->setIsHunter(true);
+    }
+
+    /**
+     * Cables every node into one hunter chain behind node 0 and runs the role
+     * cascade to its far end, so each supporter follows node 0 and is on its
+     * roster before anyone presses.
+     */
+    void formHunterPosse() {
+        setAllHunters();
+        connectLinearHunterChain();
+        deliverAllPackets();
+        syncAll();
+        deliverAllPackets();
+        // The cascade advances one cable per pass.
+        for (size_t pass = 0; pass < nodes.size(); ++pass) {
+            for (size_t i = 0; i < nodes.size(); ++i)
+                nodes[i]->posse->onChainStateChanged();
+            deliverAllPackets();
+        }
+        ASSERT_TRUE(nodes[0]->posse->isChallenger());
+        ASSERT_EQ(nodes[0]->posse->getSupporterChainPeers().size(), nodes.size() - 1);
+    }
+
+    /** Every supporter presses for the round, each confirm landing before the next. */
+    void pressEverySupporter() {
+        for (size_t i = 1; i < nodes.size(); ++i) {
+            nodes[i]->posse->sendConfirm();
+            deliverAllPackets();
+        }
     }
 
     // Wire every device's i+1 OUTPUT to device i INPUT (reverse of task
@@ -534,20 +567,7 @@ inline void posseMultiDeviceConfirmDeliveredToChallenger(PosseMultiDeviceFixture
 // counted and all three paid.
 inline void posseMultiDeviceBoostScalesWithChainDepth(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(4);
-    suite->setAllHunters();
-    suite->connectLinearHunterChain();
-    suite->deliverAllPackets();
-    suite->syncAll();
-    suite->deliverAllPackets();
-
-    // Two passes: the cascade advances one cable per pass, so the tail needs the
-    // second to learn the challenger and announce itself back.
-    for (int pass = 0; pass < 3; ++pass) {
-        for (size_t i = 0; i < suite->nodeCount(); ++i) {
-            suite->node(i).posse->onChainStateChanged();
-        }
-        suite->deliverAllPackets();
-    }
+    suite->formHunterPosse();
 
     MultiDeviceNode& challenger = suite->node(0);
     ASSERT_TRUE(challenger.posse->isChallenger());
@@ -560,13 +580,81 @@ inline void posseMultiDeviceBoostScalesWithChainDepth(PosseMultiDeviceFixture* s
     // a COUNTDOWN reach a device that has not confirmed yet.
     ASSERT_EQ(challenger.posse->getSupporterChainPeers().size(), 3u);
 
-    for (size_t i = 1; i < suite->nodeCount(); ++i) {
-        suite->node(i).posse->sendConfirm();
-        suite->deliverAllPackets();
-    }
+    suite->pressEverySupporter();
 
     EXPECT_EQ(challenger.posse->getConfirmedSupporterCount(), 3u);
     EXPECT_EQ(challenger.posse->getBoostMs(), 3 * PosseManager::BOOST_PER_SUPPORTER_MS);
+}
+
+// The rule in its plainest form: one supporter, registered, and not the
+// challenger's player. Its press is worth one supporter's boost.
+inline void
+posseMultiDeviceRegisteredSupporterOfAnotherPlayerCounts(PosseMultiDeviceFixture* suite) {
+    suite->spawnDevices(2);
+    suite->formHunterPosse();
+
+    suite->pressEverySupporter();
+
+    EXPECT_EQ(suite->node(0).posse->getConfirmedSupporterCount(), 1u);
+    EXPECT_EQ(suite->node(0).posse->getBoostMs(), 15u);
+}
+
+// A PDN anyone can pick up and cable in buys no boost: on the demo profile or
+// with no profile at all it has no player, so its press is not counted. It is
+// still a member of the posse, and the registered supporter behind it still
+// counts.
+inline void posseMultiDeviceUnregisteredSupportersDoNotCount(PosseMultiDeviceFixture* suite) {
+    suite->spawnDevices(4);
+    registerTestPlayerId(*suite->node(1).player, UUIDBytes());
+    suite->node(2).player->clearRegistrationProfile();
+    suite->formHunterPosse();
+
+    suite->pressEverySupporter();
+
+    EXPECT_EQ(suite->node(0).posse->getSupporterChainPeers().size(), 3u);
+    EXPECT_EQ(suite->node(0).posse->getConfirmedSupporterCount(), 1u);
+    EXPECT_EQ(suite->node(0).posse->getBoostMs(), 15u);
+}
+
+// One player with two PDNs cannot support themselves: the supporter registered
+// as the challenger's own player is passed over, the other one counts.
+inline void
+posseMultiDeviceSupporterRegisteredAsTheChallengerDoesNotCount(PosseMultiDeviceFixture* suite) {
+    suite->spawnDevices(3);
+    registerTestPlayerId(*suite->node(2).player, suite->node(0).player->getServerPlayerId());
+    suite->formHunterPosse();
+
+    suite->pressEverySupporter();
+
+    EXPECT_EQ(suite->node(0).posse->getConfirmedSupporterCount(), 1u);
+    EXPECT_EQ(suite->node(0).posse->getBoostMs(), 15u);
+}
+
+// A demo challenger has no player to collide with, so every registered
+// supporter is somebody else and counts.
+inline void
+posseMultiDeviceDemoChallengerIsBoostedByARegisteredSupporter(PosseMultiDeviceFixture* suite) {
+    suite->spawnDevices(2);
+    registerTestPlayerId(*suite->node(0).player, UUIDBytes());
+    suite->formHunterPosse();
+
+    suite->pressEverySupporter();
+
+    EXPECT_EQ(suite->node(0).posse->getConfirmedSupporterCount(), 1u);
+    EXPECT_EQ(suite->node(0).posse->getBoostMs(), 15u);
+}
+
+// The only player a supporter is compared with is the challenger's. Two PDNs
+// registered as one other player are two supporters.
+inline void posseMultiDeviceTwoSupportersOfOnePlayerBothCount(PosseMultiDeviceFixture* suite) {
+    suite->spawnDevices(3);
+    registerTestPlayerId(*suite->node(2).player, suite->node(1).player->getServerPlayerId());
+    suite->formHunterPosse();
+
+    suite->pressEverySupporter();
+
+    EXPECT_EQ(suite->node(0).posse->getConfirmedSupporterCount(), 2u);
+    EXPECT_EQ(suite->node(0).posse->getBoostMs(), 30u);
 }
 
 // The challenger's COUNTDOWN/WIN/LOSS have to land on every supporter, not just
@@ -574,18 +662,7 @@ inline void posseMultiDeviceBoostScalesWithChainDepth(PosseMultiDeviceFixture* s
 // round start otherwise, and never leaves its stale screen.
 inline void posseMultiDeviceGameEventReachesDistantSupporter(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(4);
-    suite->setAllHunters();
-    suite->connectLinearHunterChain();
-    suite->deliverAllPackets();
-    suite->syncAll();
-    suite->deliverAllPackets();
-
-    for (int pass = 0; pass < 3; ++pass) {
-        for (size_t i = 0; i < suite->nodeCount(); ++i) {
-            suite->node(i).posse->onChainStateChanged();
-        }
-        suite->deliverAllPackets();
-    }
+    suite->formHunterPosse();
 
     MultiDeviceNode& challenger = suite->node(0);
     ASSERT_TRUE(challenger.posse->isChallenger());
