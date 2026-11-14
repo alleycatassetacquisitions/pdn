@@ -77,9 +77,19 @@ inline void serverKeyPinThatIsMalformedTrustsNothing() {
     notHex[10] = 'g';
     std::string spaced = pin;
     spaced[0] = ' ';
-    const std::string cases[] = {"",        pin.substr(0, SERVER_KEY_PIN_HEX_LENGTH - 1),
-                                 pin + "1", notHex,
-                                 spaced,    "SHA2-256(stdin)= " + pin};
+    // Odd indexes are the low digit of a byte, parsed separately from the high.
+    std::string lowDigitNotHex = pin;
+    lowDigitNotHex[1] = 'g';
+    std::string lastDigitNotHex = pin;
+    lastDigitNotHex[SERVER_KEY_PIN_HEX_LENGTH - 1] = 'z';
+    const std::string cases[] = {"",
+                                 pin.substr(0, SERVER_KEY_PIN_HEX_LENGTH - 1),
+                                 pin + "1",
+                                 notHex,
+                                 lowDigitNotHex,
+                                 lastDigitNotHex,
+                                 spaced,
+                                 "SHA2-256(stdin)= " + pin};
     for (const std::string& text : cases) {
         const ServerKeyPin malformed(text);
         EXPECT_FALSE(malformed.isSet()) << "\"" << text << "\" parsed as a pin";
@@ -93,4 +103,27 @@ inline void serverKeyPinThatIsMalformedTrustsNothing() {
     EXPECT_FALSE(ServerKeyPin(TEST_SERVER_KEY_PIN).matchesKey(nullptr, 4, presented))
     << "no bytes matched";
     EXPECT_STREQ(presented, "") << "a hash was logged for no bytes";
+}
+
+// Catches a flag rule that lets mbedTLS's own verdict leak through: a matched
+// leaf clears host-name, date and trust flags; a refused leaf fails even when
+// mbedTLS found nothing wrong; flags above the leaf never count.
+inline void serverKeyPinFlagsFollowOnlyTheLeafKey() {
+    // Distinct bits standing in for mbedTLS's CN_MISMATCH, EXPIRED and NOT_TRUSTED.
+    constexpr uint32_t CN_MISMATCH = 0x04;
+    constexpr uint32_t EXPIRED = 0x01;
+    constexpr uint32_t NOT_TRUSTED = 0x08;
+    const uint32_t incoming = CN_MISMATCH | EXPIRED | NOT_TRUSTED;
+
+    EXPECT_EQ(ServerKeyPin::verifiedFlags(0, true, incoming, NOT_TRUSTED), 0u)
+    << "a matched leaf kept mbedTLS's flags";
+    EXPECT_EQ(ServerKeyPin::verifiedFlags(0, true, 0, NOT_TRUSTED), 0u);
+    EXPECT_EQ(ServerKeyPin::verifiedFlags(0, false, 0, NOT_TRUSTED), NOT_TRUSTED)
+    << "a refused leaf with no flags of its own passed";
+    EXPECT_EQ(ServerKeyPin::verifiedFlags(0, false, CN_MISMATCH | EXPIRED, NOT_TRUSTED),
+              CN_MISMATCH | EXPIRED | NOT_TRUSTED)
+    << "a refused leaf lost NOT_TRUSTED or its own flags";
+    EXPECT_EQ(ServerKeyPin::verifiedFlags(1, false, incoming, NOT_TRUSTED), 0u)
+    << "a CA's verdict counted";
+    EXPECT_EQ(ServerKeyPin::verifiedFlags(2, true, incoming, NOT_TRUSTED), 0u);
 }

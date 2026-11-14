@@ -60,3 +60,9 @@ bool ServerKeyPin::matchesKey(const uint8_t* spki, size_t length,
     }
     return pinIsSet && difference == 0;
 }
+
+uint32_t ServerKeyPin::verifiedFlags(int depth, bool keyMatches, uint32_t incomingFlags,
+                                     uint32_t notTrustedFlag) {
+    if (depth > 0 || keyMatches) return 0;
+    return incomingFlags | notTrustedFlag;
+}
