@@ -38,8 +38,9 @@ When a PDN whose connection context shows no applied profile (unprovisioned, as 
 - While waiting for a lookup request, the FDN SHALL display `"REGISTER"` / `"ENTER CODE"`.
 - While a lookup for that PDN is in progress, the FDN SHALL display `"LOOKING"` / `"UP"`.
 - On a delivered profile, the FDN SHALL display `"WELCOME"` and the player's display name for `3000 ms`; on a lookup failure or timeout, `"UNABLE TO"` / `"LOCATE ASSET"` for `3000 ms`.
-- When a lookup returned a profile and no record key the FDN could deliver to the PDN (`player-provisioning`), the FDN SHALL display `"UNABLE TO"` / `"ISSUE KEY"` for `3000 ms` in place of `"UNABLE TO"` / `"LOCATE ASSET"`.
+- When a lookup returned a profile and no record key the FDN could deliver to the PDN (`player-provisioning`), the FDN SHALL display `"UNABLE TO"` / `"ISSUE KEY"` for `3000 ms` in place of `"UNABLE TO"` / `"LOCATE ASSET"`, while that PDN is still Connected.
 - The FDN SHALL end a lookup that has not answered within `8000 ms` as a lookup failure.
+- A lookup and an upload cycle (`crash-reporting`) SHALL NOT hold Wi-Fi at the same time: a lookup SHALL wait for Wi-Fi inside its `8000 ms` limit, and an upload cycle SHALL NOT start while a lookup is in flight.
 - Outside the registration screen, the FDN SHALL drop a lookup request while a registered PDN is Connected on an FDN jack, so a lookup's Wi-Fi excursion never interrupts that PDN's symbol-match game.
 - The FDN SHALL leave the registration screen for the idle state when the PDN is unplugged, when a result has been shown, or, while waiting for a request, when the cabled PDN's context shows an applied profile.
 
@@ -52,8 +53,16 @@ When a PDN whose connection context shows no applied profile (unprovisioned, as 
 - **THEN** the FDN displays `"WELCOME"` / `"Ada"` for `3000 ms` and returns to the idle state
 
 #### Scenario: Lookup that yields no record key shows that no key was issued
-- **WHEN** the lookup for a cabled unprovisioned PDN returns a valid profile and no record key
+- **WHEN** the lookup for a cabled unprovisioned PDN returns a valid profile and no record key, or a record key that is not `32` bytes, and the PDN stays Connected
 - **THEN** the FDN displays `"UNABLE TO"` / `"ISSUE KEY"` for `3000 ms`, delivers no profile, and returns to the idle state
+
+#### Scenario: PDN unplugged before its result leaves the registration screen at once
+- **WHEN** the cabled unprovisioned PDN is unplugged while its lookup is in flight or before the record key frame is written
+- **THEN** the FDN leaves the registration screen for the idle state at once and does not hold `"UNABLE TO"` / `"ISSUE KEY"` for `3000 ms`
+
+#### Scenario: Lookup waits while an upload cycle holds Wi-Fi
+- **WHEN** an FDN has received a cabled PDN's PIN and an upload cycle holds Wi-Fi
+- **THEN** the FDN starts the lookup when the cycle ends if that is within the lookup's `8000 ms` limit, and otherwise ends it as a lookup failure
 
 ## RENAMED Requirements
 

@@ -64,6 +64,7 @@ An FDN holding ingested match records SHALL upload them to the central server in
   - each player's team UUID (`player_a_team_id`, `player_b_team_id`) as lowercase `8-4-4-4-12` hexadecimal text if and only if that team UUID is not nil;
   - both players' raw reaction times (`player_a_draw_time_ms`, `player_b_draw_time_ms`) as unsigned 64-bit millisecond values (`0..INT64_MAX`) and the UTC occurrence timestamp (`occurred_at_unix_ms`), marked present on the wire even when their numeric value is `0`.
 - Each uploaded match SHALL also carry the `112` match record bytes and the `16`-byte record tag exactly as the FDN stored them, alongside the existing fields. It SHALL also carry the sending PDN's MAC address as a troubleshooting note only, as `record-relay` requires ("Sender's MAC address on a match upload is a note only").
+- In an upload cycle the FDN SHALL send the match batch before any crash record (`crash-reporting`).
 
 #### Scenario: Batch of matches is encoded and queued to POST /quickdraw-matches with raw reaction times and effective-time winner
 - **WHEN** an FDN queues an upload of 2 collected match records (including a match won via posse boost where the winner's raw reaction time is `210 ms` against the opponent's `195 ms`, and one nil team UUID)

@@ -9,11 +9,11 @@ Unreported crash records SHALL be collected from PDNs by FDNs over peer-to-peer 
   - The PDN's persisted `sent_high_water_mark` SHALL be the mark that the stored acknowledgement for a crash record advances (`record-relay`), to that record's crash number (stopping on the first unacknowledged record so earlier records are never skipped).
 - **FDN server reporting**:
   - An FDN SHALL stage up to `32` relayed crash records in its record store (`record-relay`), separately from the FDN's own local 10-slot crash ring buffer. Acceptance, acknowledgement, duplicates and full storage SHALL follow `record-relay`.
-  - When an FDN has pending local crash records or relayed PDN crash records in its record store, the FDN SHALL upload them at boot and on its periodic uplink (`fdn-apps`), sequentially within a `15,000 ms` upload timeout window: its own records first, then the relayed records.
+  - When an FDN has pending local crash records or relayed PDN crash records in its record store, the FDN SHALL upload them at boot and on its periodic uplink (`fdn-apps`), in one upload cycle that sends everything waiting, sequentially within a `15,000 ms` upload timeout window: the match batch (`match-collection`) first, so that a long crash queue cannot starve match records inside the window, then its own crash records, then the relayed records.
   - Each record SHALL be encoded via the crash protobuf codec as a device-log protobuf payload containing the originating device's lowercase colon-separated MAC address (`aa:bb:cc:dd:ee:ff`), `crash_number`, `uptime_ms`, `software_version`, `reset_reason`, and (when present) `program_counter`, `exception_cause`, and `task_name`, and sent via HTTP `POST` to `/device-logs` with content type `application/protobuf`. For a relayed PDN crash record the originating device is the PDN that sent it (`record-relay`), and the payload SHALL carry no other field.
   - Upon each successful response for an FDN's own crash record, the FDN SHALL advance its local `sent_high_water_mark` to that record's crash number; upon each successful response for a relayed PDN crash record, the FDN SHALL retire that record from its record store and queue the next pending record.
   - Upon an HTTP `400`, `413`, `415` or `422` response for a relayed PDN crash record, which says the request itself can never be accepted, the FDN SHALL retire that record from its record store and continue the upload with the next pending record. This SHALL NOT apply to the FDN's own crash records.
-  - Upon an encode error or any other HTTP error, the FDN SHALL stop uploading further records of that group (its own, or relayed) on the current cycle and leave the failed record (and any subsequent records of that group) pending. A failure on one of the FDN's own crash records SHALL NOT stop its relayed PDN crash records from uploading on that cycle.
+  - Upon an encode error or any other HTTP error, the FDN SHALL stop uploading further records of that group (its own, or relayed) on the current cycle and leave the failed record (and any subsequent records of that group) pending. An own crash record whose `sent_high_water_mark` cannot be advanced after a successful response SHALL count as such a failure. A failure on one of the FDN's own crash records SHALL NOT stop its relayed PDN crash records from uploading on that cycle.
   - Once all queued HTTP requests have completed, or when the `15,000 ms` upload timeout expires, the FDN SHALL re-enable the peer-to-peer radio.
 
 #### Scenario: PDN transfers pending crash records to Connected FDN and advances watermark on confirmation
@@ -51,3 +51,11 @@ Unreported crash records SHALL be collected from PDNs by FDNs over peer-to-peer 
 #### Scenario: A failure on the FDN's own crash record does not stop relayed records
 - **WHEN** an FDN with its own pending crash record `1` and relayed PDN crash record `A` uploads, and the server responds with HTTP `400` to the request for record `1`
 - **THEN** the FDN leaves its own record `1` pending with `sent_high_water_mark` unchanged and uploads relayed record `A` on the same cycle
+
+#### Scenario: One upload cycle sends the match batch, then own crash records, then relayed crash records
+- **WHEN** an FDN holding stored match records, its own pending crash record `1` and relayed PDN crash record `A` starts an upload cycle and the server accepts every request
+- **THEN** the FDN sends the match batch to `POST /quickdraw-matches` first, then its own record `1`, then relayed record `A`, all within the same `15,000 ms` window
+
+#### Scenario: An own crash record whose mark cannot move does not stop relayed records
+- **WHEN** the server accepts an FDN's own crash record `1`, the FDN cannot advance `sent_high_water_mark` to `1`, and relayed PDN crash record `A` is pending
+- **THEN** the FDN does not upload record `1` again on that cycle and uploads relayed record `A` on the same cycle
