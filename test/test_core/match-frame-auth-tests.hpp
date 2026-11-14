@@ -147,7 +147,8 @@ TEST_F(MatchFrameAuthTests, zeroMillisecondPressBeforeTheBountysWindowIsHeldAndB
     EXPECT_FALSE(bountyMatchManager->didWin());
 }
 
-// Catches: the hold applied to draw results only, not to never-pressed reports.
+// Catches: the hold applied to draw results only, not to never-pressed reports,
+// or the report applied as a plain 900 ms draw, which a 1000 ms press would lose to.
 TEST_F(MatchFrameAuthTests, neverPressedBeforeTheWindowOpensIsHeldThenApplied) {
     performHandshake();
     hunterMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
@@ -160,10 +161,10 @@ TEST_F(MatchFrameAuthTests, neverPressedBeforeTheWindowOpensIsHeldThenApplied) {
     ASSERT_TRUE(bountyMatchManager->getHasReceivedDrawResult());
     EXPECT_EQ(bountyMatchManager->getCurrentMatch()->getHunterDrawTime(), 900u);
     EXPECT_FALSE(bountyMatchManager->matchResultsAreIn());
-    fakeClock->advance(50);
+    fakeClock->advance(1000);
     bountyMatchManager->getMatchButtonPush()(bountyMatchManager);
     EXPECT_TRUE(bountyMatchManager->matchResultsAreIn());
-    EXPECT_TRUE(bountyMatchManager->didWin()) << "the held never-pressed report was not applied";
+    EXPECT_TRUE(bountyMatchManager->didWin()) << "the held report was not applied as never-pressed";
 }
 
 // Catches: the first held result kept over a later one from the same opponent.

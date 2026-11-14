@@ -84,9 +84,7 @@ struct ActiveMatchState {
     // Set when the local draw window opens; a standalone match applies no
     // opponent result before it.
     std::optional<unsigned long> matchLocalStartTime;
-    // Standalone: the latest result the opponent sent before the local window
-    // opened. Countdowns start a frame delivery apart, and the channel has
-    // already acked the frame, so it is kept and applied as the window opens.
+    // Standalone: the opponent's latest result from before the local window opened.
     std::optional<OpponentResult> earlyOpponentResult;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
@@ -157,11 +155,7 @@ public:
     /** Sets the bounty draw time (ms) on the active match. */
     bool setBountyDrawTime(unsigned long bountyTimeMs);
 
-    /**
-     * Records the local timestamp when the match draw window starts, and opens
-     * the window. An opponent result held from before it is applied now, as if
-     * it had arrived at this instant.
-     */
+    /** Opens the draw window at localStartTimeMs and applies any opponent result held before it. */
     void setMatchLocalStartTime(unsigned long localStartTimeMs);
 
     bool didWin();

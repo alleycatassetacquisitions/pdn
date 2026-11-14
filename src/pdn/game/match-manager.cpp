@@ -304,10 +304,9 @@ void MatchManager::receiveMatch(const char* matchId, bool opponentIsHunter, uint
 void MatchManager::setMatchLocalStartTime(unsigned long localStartTimeMs) {
     activeMatchState.matchLocalStartTime = localStartTimeMs;
     if (!activeMatchState.earlyOpponentResult.has_value()) return;
-    const OpponentResult held = *activeMatchState.earlyOpponentResult;
-    activeMatchState.earlyOpponentResult.reset();
     LOG_I(MATCH_MANAGER_TAG, "Applying the draw result held from before the draw window");
-    applyOpponentResult(held);
+    applyOpponentResult(*activeMatchState.earlyOpponentResult);
+    activeMatchState.earlyOpponentResult.reset();
 }
 
 unsigned long MatchManager::getMatchLocalStartTime() const {
@@ -820,11 +819,10 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
         }
         const OpponentResult result{command.command, command.isHunter, command.playerDrawTime,
                                     command.boostMs};
-        // Standalone countdowns start a frame delivery apart, so a press at the
-        // very start of the opponent's window can land while this one still
-        // counts down. The channel has acked it and will not resend it, so the
-        // latest such result is held and applied as the window opens. Shootout
-        // starts are fan-out retries and its results are taken as they come.
+        // Countdowns start a frame delivery apart, and the channel has acked this
+        // frame and will not resend it, so an early result waits for the window,
+        // the latest one counting. Shootout starts are fan-out retries; its
+        // results apply on arrival.
         if (!currentMatchIsShootout() && !activeMatchState.matchLocalStartTime.has_value()) {
             LOG_I(MATCH_MANAGER_TAG, "Holding draw result until the draw window opens");
             activeMatchState.earlyOpponentResult = result;
