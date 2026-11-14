@@ -226,10 +226,10 @@ inline void playerStatsAccumulateAcrossMatches(Player* player) {
 
     EXPECT_EQ(player->getWins(), 4);
     EXPECT_EQ(player->getLosses(), 1);
-    EXPECT_EQ(player->getMatchesPlayed(), 5);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 5u);
     EXPECT_EQ(player->getStreak(), 1);
     EXPECT_EQ(player->getLastReactionTime(), 190);
-    EXPECT_EQ(player->getAverageReactionTime(), 228);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 228u);
 }
 
 // ============================================

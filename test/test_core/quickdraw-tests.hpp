@@ -17,6 +17,7 @@
 #include "device/firmware-update-state.hpp"
 #include "registration-test-helper.hpp"
 #include "utility-tests.hpp"
+#include "player-tests.hpp"
 #include "fake-firmware-store.hpp"
 #include "protocol-constants.hpp"
 
@@ -285,6 +286,35 @@ inline void idleRemountStartsOnTheNameScreen(IdleStateTests* suite) {
     suite->idleState->onStateLoop(&suite->device);
 
     EXPECT_THAT(drawnTexts, testing::ElementsAre("Player", "Demo"));
+}
+
+// A player who has swapped PDNs reads the server's totals with this PDN's
+// matches added. The server has no streak or last reaction, so those two
+// screens stay this PDN's own.
+inline void idleScreensShowServerTotalsPlusTheSession(IdleStateTests* suite) {
+    std::vector<std::string> drawnTexts;
+    recordIdleDrawnTexts(suite, &drawnTexts);
+    registerWithTotals(suite->player, 12, 7, 300);
+    recordSessionMatch(suite->player, true, 200);
+    recordSessionMatch(suite->player, false, 250);
+    recordSessionMatch(suite->player, true, 210);
+    suite->idleState->onStateMounted(&suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+
+    const std::vector<std::vector<std::string>> screensInOrder = {
+    {"Wins", "9"},
+    {"Streak", "1"},
+    {"Losses", "6"},
+    {"Matches", "15"},
+    {"Last", "Reaction", "210"},
+    {"Average", "Reaction", "284"},
+    };
+    for (const std::vector<std::string>& screen : screensInOrder) {
+        drawnTexts.clear();
+        suite->device.mockPrimaryButton->trigger(ButtonInteraction::CLICK);
+        suite->idleState->onStateLoop(&suite->device);
+        EXPECT_EQ(drawnTexts, screen);
+    }
 }
 
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
@@ -1344,7 +1374,7 @@ inline void resultPlayerStatsUpdatedOnWin(MatchResultTests* suite) {
     
     int initialWins = suite->player->getWins();
     int initialStreak = suite->player->getStreak();
-    int initialMatches = suite->player->getMatchesPlayed();
+    uint64_t initialMatches = suite->player->getDisplayedMatchesPlayed();
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setHunterDrawTime(200);
@@ -1357,7 +1387,7 @@ inline void resultPlayerStatsUpdatedOnWin(MatchResultTests* suite) {
     
     EXPECT_EQ(suite->player->getWins(), initialWins + 1);
     EXPECT_EQ(suite->player->getStreak(), initialStreak + 1);
-    EXPECT_EQ(suite->player->getMatchesPlayed(), initialMatches + 1);
+    EXPECT_EQ(suite->player->getDisplayedMatchesPlayed(), initialMatches + 1);
 }
 
 // Test: Player stats updated on loss
@@ -1370,7 +1400,7 @@ inline void resultPlayerStatsUpdatedOnLoss(MatchResultTests* suite) {
     suite->player->incrementStreak();
     
     int initialLosses = suite->player->getLosses();
-    int initialMatches = suite->player->getMatchesPlayed();
+    uint64_t initialMatches = suite->player->getDisplayedMatchesPlayed();
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setHunterDrawTime(400);
@@ -1383,7 +1413,7 @@ inline void resultPlayerStatsUpdatedOnLoss(MatchResultTests* suite) {
     
     EXPECT_EQ(suite->player->getLosses(), initialLosses + 1);
     EXPECT_EQ(suite->player->getStreak(), 0); // Streak reset
-    EXPECT_EQ(suite->player->getMatchesPlayed(), initialMatches + 1);
+    EXPECT_EQ(suite->player->getDisplayedMatchesPlayed(), initialMatches + 1);
 }
 
 // Test: Match finalized on result

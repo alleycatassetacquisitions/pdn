@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <gtest/gtest.h>
 #include "game/player.hpp"
 
@@ -23,7 +24,7 @@ protected:
 inline void playerStatsIncrementCorrectly(Player* player) {
     EXPECT_EQ(player->getWins(), 0);
     EXPECT_EQ(player->getLosses(), 0);
-    EXPECT_EQ(player->getMatchesPlayed(), 0);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 0u);
     EXPECT_EQ(player->getStreak(), 0);
 
     // Simulate winning 3 matches
@@ -41,7 +42,7 @@ inline void playerStatsIncrementCorrectly(Player* player) {
 
     EXPECT_EQ(player->getWins(), 3);
     EXPECT_EQ(player->getLosses(), 0);
-    EXPECT_EQ(player->getMatchesPlayed(), 3);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 3u);
     EXPECT_EQ(player->getStreak(), 3);
 
     // Simulate losing a match (resets streak)
@@ -51,7 +52,7 @@ inline void playerStatsIncrementCorrectly(Player* player) {
 
     EXPECT_EQ(player->getWins(), 3);
     EXPECT_EQ(player->getLosses(), 1);
-    EXPECT_EQ(player->getMatchesPlayed(), 4);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 4u);
     EXPECT_EQ(player->getStreak(), 0);
 }
 
@@ -106,23 +107,128 @@ inline void playerAllegianceFromStringSetsCorrectly(Player* player) {
 
 inline void playerReactionTimeAverageCalculatesCorrectly(Player* player) {
     // No matches played - average should be 0
-    EXPECT_EQ(player->getAverageReactionTime(), 0);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 0u);
 
     // Add reaction times and matches
     player->addReactionTime(200);
     player->incrementMatchesPlayed();
     EXPECT_EQ(player->getLastReactionTime(), 200);
-    EXPECT_EQ(player->getAverageReactionTime(), 200);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 200u);
 
     player->addReactionTime(300);
     player->incrementMatchesPlayed();
     EXPECT_EQ(player->getLastReactionTime(), 300);
-    EXPECT_EQ(player->getAverageReactionTime(), 250); // (200+300)/2
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 250u);  // (200+300)/2
 
     player->addReactionTime(400);
     player->incrementMatchesPlayed();
     EXPECT_EQ(player->getLastReactionTime(), 400);
-    EXPECT_EQ(player->getAverageReactionTime(), 300); // (200+300+400)/3
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 300u);  // (200+300+400)/3
+}
+
+// ============================================
+// Displayed Totals Tests
+// ============================================
+
+// A finished match as the match states leave it on the session player.
+inline void recordSessionMatch(Player* player, bool won, unsigned long reactionTime) {
+    player->addReactionTime(reactionTime);
+    player->incrementMatchesPlayed();
+    if (won) {
+        player->incrementWins();
+        player->incrementStreak();
+        return;
+    }
+    player->resetStreak();
+    player->incrementLosses();
+}
+
+inline void registerWithTotals(Player* player, uint32_t matchesPlayed, uint32_t wins,
+                               uint32_t averageDrawTimeMs) {
+    PlayerTotals totals;
+    totals.matchesPlayed = matchesPlayed;
+    totals.wins = wins;
+    totals.averageDrawTimeMs = averageDrawTimeMs;
+    player->applyRegistrationProfile(UUIDBytes(), "Ada", Team(), {}, totals);
+}
+
+// A server that sends no totals leaves the screens reading this PDN's own
+// counts, as they did before there was a baseline.
+inline void playerDisplayedTotalsWithoutServerTotalsAreTheSessionCounts(Player* player) {
+    player->applyRegistrationProfile(UUIDBytes(), "Ada", Team(), {});
+    recordSessionMatch(player, true, 200);
+    recordSessionMatch(player, false, 300);
+    recordSessionMatch(player, true, 402);
+
+    EXPECT_EQ(player->getDisplayedWins(), 2u);
+    EXPECT_EQ(player->getDisplayedLosses(), 1u);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 3u);
+    // 902 / 3 rounds down.
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 300u);
+}
+
+// A player who has just swapped PDNs reads the server's numbers; the server
+// sends no losses, so they are the matches that were not wins.
+inline void playerDisplayedTotalsBeforeASessionMatchAreTheServerTotals(Player* player) {
+    registerWithTotals(player, 12, 7, 300);
+
+    EXPECT_EQ(player->getDisplayedWins(), 7u);
+    EXPECT_EQ(player->getDisplayedLosses(), 5u);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 12u);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 300u);
+}
+
+inline void playerDisplayedTotalsAddTheSessionToTheServerTotals(Player* player) {
+    registerWithTotals(player, 12, 7, 300);
+    recordSessionMatch(player, true, 200);
+    recordSessionMatch(player, false, 250);
+    recordSessionMatch(player, true, 210);
+
+    EXPECT_EQ(player->getDisplayedWins(), 9u);
+    EXPECT_EQ(player->getDisplayedLosses(), 6u);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 15u);
+    // (300 * 12 + 660) / 15: the server's twelve matches outweigh this
+    // session's three. The mean of the two averages, 300 and 220, is 260.
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 284u);
+}
+
+inline void playerDisplayedAverageIsZeroWithNoMatchesOnEitherSide(Player* player) {
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 0u);
+
+    // An average over no matches has nothing behind it.
+    registerWithTotals(player, 0, 0, 345);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 0u);
+
+    // A press is timed before its match is counted, and a match abandoned
+    // after the press is never counted.
+    player->addReactionTime(180);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 0u);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 0u);
+}
+
+// The totals are whatever 32-bit numbers the profile carried, so the sums
+// and the product behind the average must not wrap at that width.
+inline void playerDisplayedTotalsHoldAtThe32BitLimits(Player* player) {
+    const uint64_t limit = UINT32_MAX;
+    registerWithTotals(player, UINT32_MAX, UINT32_MAX, UINT32_MAX);
+    EXPECT_EQ(player->getDisplayedWins(), limit);
+    EXPECT_EQ(player->getDisplayedLosses(), 0u);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), limit);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), limit);
+
+    // limit * limit + limit is the most the sum of reaction times can reach
+    // where the session's own sum is 32 bits wide; over limit + 1 matches it
+    // is limit again.
+    recordSessionMatch(player, true, UINT32_MAX);
+    EXPECT_EQ(player->getDisplayedWins(), limit + 1);
+    EXPECT_EQ(player->getDisplayedLosses(), 0u);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), limit + 1);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), limit);
+
+    Player winless;
+    registerWithTotals(&winless, UINT32_MAX, 0, 0);
+    recordSessionMatch(&winless, false, 0);
+    EXPECT_EQ(winless.getDisplayedLosses(), limit + 1);
 }
 
 // ============================================

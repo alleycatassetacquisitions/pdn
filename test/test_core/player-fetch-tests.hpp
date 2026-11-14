@@ -262,17 +262,22 @@ inline void registrationTakesServerTotalsAsBaseline(PlayerFetchTestSuite* suite)
     Player* player = suite->playerProvider.getPlayer();
     ASSERT_TRUE(suite->playerProvider.hasPlayer());
     expectTotalsEqual(player->getRegistrationTotals(), makeTestTotals());
-    EXPECT_EQ(player->getMatchesPlayed(), 0) << "server totals were counted as session matches";
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), makeTestTotals().matchesPlayed)
+    << "server totals were counted as session matches";
     EXPECT_EQ(player->getWins(), 0);
-    EXPECT_EQ(player->getAverageReactionTime(), 0u);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), makeTestTotals().averageDrawTimeMs);
 
     player->incrementMatchesPlayed();
     player->incrementWins();
     player->addReactionTime(250);
     expectTotalsEqual(player->getRegistrationTotals(), makeTestTotals());
-    EXPECT_EQ(player->getMatchesPlayed(), 1);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), makeTestTotals().matchesPlayed + 1u);
     EXPECT_EQ(player->getWins(), 1);
-    EXPECT_EQ(player->getAverageReactionTime(), 250u);
+    EXPECT_EQ(
+    player->getDisplayedAverageReactionTime(),
+    (static_cast<uint64_t>(makeTestTotals().averageDrawTimeMs) * makeTestTotals().matchesPlayed +
+     250u) /
+    (makeTestTotals().matchesPlayed + 1u));
 
     suite->playerProvider.clear();
     expectTotalsEqual(player->getRegistrationTotals(), PlayerTotals{});

@@ -185,16 +185,7 @@ std::string Player::getUserID() const { return id; }
 
 unsigned long Player::getLastReactionTime() const { return lastReactionTime; }
 
-unsigned long Player::getAverageReactionTime() const {
-    if (matchesPlayed == 0) {
-        return 0;
-    }
-    return totalReactionTime / matchesPlayed;
-}
-
 int Player::getStreak() const { return winStreak; }
-
-int Player::getMatchesPlayed() const { return matchesPlayed; }
 
 int Player::getWins() const { return wins; }
 
@@ -232,6 +223,33 @@ const std::vector<Affiliation>& Player::getRegistrationAffiliations() const {
 bool Player::hasTeam() const { return !registrationTeam.id.isZero(); }
 
 const PlayerTotals& Player::getRegistrationTotals() const { return registrationTotals; }
+
+uint64_t Player::getDisplayedWins() const {
+    return static_cast<uint64_t>(registrationTotals.wins) + static_cast<uint64_t>(wins);
+}
+
+uint64_t Player::getDisplayedLosses() const {
+    // applyRegistrationProfile keeps wins within matchesPlayed, so this cannot wrap.
+    const uint64_t registrationLosses = registrationTotals.matchesPlayed - registrationTotals.wins;
+    return registrationLosses + static_cast<uint64_t>(losses);
+}
+
+uint64_t Player::getDisplayedMatchesPlayed() const {
+    return static_cast<uint64_t>(registrationTotals.matchesPlayed) +
+           static_cast<uint64_t>(matchesPlayed);
+}
+
+uint64_t Player::getDisplayedAverageReactionTime() const {
+    const uint64_t displayedMatchesPlayed = getDisplayedMatchesPlayed();
+    if (displayedMatchesPlayed == 0) {
+        return 0;
+    }
+    // The server sends a mean, so the sum behind it is rebuilt to weigh its
+    // matches against this session's. Two 32-bit factors fill 64 bits.
+    const uint64_t registrationReactionTime =
+    static_cast<uint64_t>(registrationTotals.averageDrawTimeMs) * registrationTotals.matchesPlayed;
+    return (registrationReactionTime + totalReactionTime) / displayedMatchesPlayed;
+}
 
 void Player::applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
                                       const Team& team,

@@ -705,6 +705,26 @@ TEST_F(PlayerTestSuite, reactionTimeAverageCalculatesCorrectly) {
     playerReactionTimeAverageCalculatesCorrectly(player);
 }
 
+TEST_F(PlayerTestSuite, displayedTotalsWithoutServerTotalsAreTheSessionCounts) {
+    playerDisplayedTotalsWithoutServerTotalsAreTheSessionCounts(player);
+}
+
+TEST_F(PlayerTestSuite, displayedTotalsBeforeASessionMatchAreTheServerTotals) {
+    playerDisplayedTotalsBeforeASessionMatchAreTheServerTotals(player);
+}
+
+TEST_F(PlayerTestSuite, displayedTotalsAddTheSessionToTheServerTotals) {
+    playerDisplayedTotalsAddTheSessionToTheServerTotals(player);
+}
+
+TEST_F(PlayerTestSuite, displayedAverageIsZeroWithNoMatchesOnEitherSide) {
+    playerDisplayedAverageIsZeroWithNoMatchesOnEitherSide(player);
+}
+
+TEST_F(PlayerTestSuite, displayedTotalsHoldAtThe32BitLimits) {
+    playerDisplayedTotalsHoldAtThe32BitLimits(player);
+}
+
 // ============================================
 // MATCH TESTS
 // ============================================
@@ -1891,6 +1911,10 @@ TEST_F(IdleStateTests, nineClicksReturnToTheNameScreen) {
 }
 
 TEST_F(IdleStateTests, remountStartsOnTheNameScreen) { idleRemountStartsOnTheNameScreen(this); }
+
+TEST_F(IdleStateTests, screensShowServerTotalsPlusTheSession) {
+    idleScreensShowServerTotalsPlusTheSession(this);
+}
 
 TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
     pairingCodeFirmwareHoldStartsAnUpdate(this);
