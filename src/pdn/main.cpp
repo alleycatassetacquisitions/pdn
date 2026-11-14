@@ -74,8 +74,7 @@ static bool findOrRegisterMatchRingPartition() {
         return true;
     }
     uint32_t flashSize = 0;
-    if (esp_flash_get_physical_size(nullptr, &flashSize) != ESP_OK ||
-        flashSize < PDN_FLASH_SIZE) {
+    if (esp_flash_get_physical_size(nullptr, &flashSize) != ESP_OK || flashSize < PDN_FLASH_SIZE) {
         LOG_E("SETUP", "Flash of %u bytes has no room for the match ring's partition",
               static_cast<unsigned>(flashSize));
         return false;
