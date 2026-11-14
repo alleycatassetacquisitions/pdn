@@ -107,7 +107,14 @@ private:
     bool matchInitialized = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
-    int statsCount = 7;
+    int lastScreenIndex = 8;
+    static constexpr int NAME_SCREEN_INDEX = 0;
+    static constexpr size_t NAME_LINE_LIMIT = 3;
+    static constexpr int NAME_LABEL_BASELINE = 12;
+    static constexpr int NAME_FIRST_LINE_BASELINE = 28;
+    static constexpr int NAME_LINE_SPACING = 16;
+
+    void renderPlayerName(PDN* pdn);
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;

@@ -40,6 +40,7 @@
 #include "uuid-bytes-tests.hpp"
 #include "sha256-tests.hpp"
 #include "hmac-sha256-tests.hpp"
+#include "text-lines-tests.hpp"
 #include "fdn-record-store-tests.hpp"
 #include "fdn-record-uploader-tests.hpp"
 #include "fdn-beacon-tests.hpp"
@@ -829,6 +830,24 @@ TEST(HttpDate, handlesLeapYearsCorrectly) {
 TEST(HttpDate, rejectsPre2025AndMalformedStrings) {
     httpDateRejectsPre2025AndMalformedStrings();
 }
+
+TEST(TextLines, keepAShortNameOnOneLine) { textLinesKeepAShortNameOnOneLine(); }
+
+TEST(TextLines, breakAtASpace) { textLinesBreakAtASpace(); }
+
+TEST(TextLines, fitALongestNameWithSpacesOnThreeLines) {
+    textLinesFitALongestNameWithSpacesOnThreeLines();
+}
+
+TEST(TextLines, showAllOfANameThatOnlyFitsWhenFilled) {
+    textLinesShowAllOfANameThatOnlyFitsWhenFilled();
+}
+
+TEST(TextLines, splitAWordWiderThanTheLimit) { textLinesSplitAWordWiderThanTheLimit(); }
+
+TEST(TextLines, cutTextBeyondTheLastLine) { textLinesCutTextBeyondTheLastLine(); }
+
+TEST(TextLines, giveNoLinesForNoText) { textLinesGiveNoLinesForNoText(); }
 
 // ============================================
 // MATCH MANAGER TESTS
@@ -1838,6 +1857,20 @@ TEST_F(IdleStateTests, stateClearsOnDismount) {
 TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
 }
+
+TEST_F(IdleStateTests, firstScreenShowsThePlayerName) { idleFirstScreenShowsThePlayerName(this); }
+
+TEST_F(IdleStateTests, nameScreenWithoutANameShowsTheLabelAlone) {
+    idleNameScreenWithoutANameShowsTheLabelAlone(this);
+}
+
+TEST_F(IdleStateTests, oneClickShowsWins) { idleOneClickShowsWins(this); }
+
+TEST_F(IdleStateTests, nineClicksReturnToTheNameScreen) {
+    idleNineClicksReturnToTheNameScreen(this);
+}
+
+TEST_F(IdleStateTests, remountStartsOnTheNameScreen) { idleRemountStartsOnTheNameScreen(this); }
 
 TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
     pairingCodeFirmwareHoldStartsAnUpdate(this);

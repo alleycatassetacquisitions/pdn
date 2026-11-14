@@ -11,7 +11,10 @@
 #include "device/animation/vertical-chase-animation.hpp"
 #include "wireless/mac-functions.hpp"
 #include "state/connect-state.hpp"
+#include "utils/text-lines.hpp"
 #include <cstring>
+#include <string>
+#include <vector>
 
 Idle::Idle(const GameContext& ctx)
     : ConnectState<PDN>(ctx.remoteDeviceCoordinator, IDLE)
@@ -46,8 +49,8 @@ void Idle::onStateMounted(PDN* pdn) {
     parameterizedCallbackFunction cycleStats = [](void *ctx) {
         Idle* idle = (Idle*)ctx;
         idle->statsIndex++;
-        if (idle->statsIndex > idle->statsCount) {
-            idle->statsIndex = 0;
+        if (idle->statsIndex > idle->lastScreenIndex) {
+            idle->statsIndex = NAME_SCREEN_INDEX;
         }
         idle->displayIsDirty = true;
     };
@@ -89,7 +92,7 @@ void Idle::onStateDismounted(PDN* pdn) {
         (shootoutManager && shootoutManager->shouldEnterProposal())) {
         matchManager->clearCurrentMatch();
     }
-    statsIndex = 0;
+    statsIndex = NAME_SCREEN_INDEX;
     matchInitializationTimer.invalidate();
     matchInitialized = false;
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
@@ -101,33 +104,57 @@ bool Idle::transitionToMatchCountdown() { return matchManager->isMatchReady(); }
 
 bool Idle::transitionToSupporterReady() { return posseManager->isSupporter(); }
 
+void Idle::renderPlayerName(PDN* pdn) {
+    Display* display = pdn->getDisplay();
+    display->invalidateScreen();
+    display->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+    ->drawText("Player", 0, NAME_LABEL_BASELINE);
+
+    // The large font is selected before breaking so the widths measured are
+    // those of the font the name is drawn in.
+    display->setGlyphMode(FontMode::TEXT);
+    const std::vector<std::string> lines =
+    breakTextIntoLines(player->getServerPlayerName(), display->getWidth(), NAME_LINE_LIMIT,
+                       [display](const char* text) { return display->getTextWidth(text); });
+    for (size_t line = 0; line < lines.size(); ++line) {
+        display->drawText(lines[line].c_str(), 0,
+                          NAME_FIRST_LINE_BASELINE + static_cast<int>(line) * NAME_LINE_SPACING);
+    }
+    display->render();
+}
+
 void Idle::renderStats(PDN* pdn) {
+    if (statsIndex == NAME_SCREEN_INDEX) {
+        renderPlayerName(pdn);
+        return;
+    }
+
     pdn->getDisplay()->invalidateScreen();
     pdn->getDisplay()->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
 
-    if(statsIndex == 0) {
+    if (statsIndex == 1) {
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getWins()).c_str(), 88, 40);
-    } else if(statsIndex == 1) {
+    } else if (statsIndex == 2) {
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Streak",70, 20);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getStreak()).c_str(), 88, 40);
-    } else if(statsIndex == 2) {
+    } else if (statsIndex == 3) {
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Losses",70, 20);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getLosses()).c_str(), 88, 40);
-    } else if(statsIndex == 3) {
+    } else if (statsIndex == 4) {
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Matches",70, 20);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getMatchesPlayed()).c_str(), 88, 40);
-    } else if(statsIndex == 4) {
+    } else if (statsIndex == 5) {
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Last",70, 20)->drawText("Reaction", 70, 35);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getLastReactionTime()).c_str(), 80, 55);
-    } else if(statsIndex == 5) {
+    } else if (statsIndex == 6) {
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getAverageReactionTime()).c_str(), 80, 55);
-    } else if (statsIndex == 6) {
+    } else if (statsIndex == 7) {
         size_t sc = posseManager->getSupporterChainPeers().size();
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Posse",70, 20);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(sc).c_str(), 88, 40);
-    } else if (statsIndex == 7) {
+    } else if (statsIndex == 8) {
         int glyph_size = 32;
         pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), (int)(64 + (64 - glyph_size)/2), (int)(64 - (64 - glyph_size)/2));
     }
