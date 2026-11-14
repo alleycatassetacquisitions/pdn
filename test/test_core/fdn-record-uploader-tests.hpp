@@ -27,7 +27,7 @@
  * The FDN's own crash records above a sent mark. Record N is a real crash
  * record with crash number N and no core dump details.
  */
-class FakeOwnCrashSource : public RecordSource<CrashRecordTraits> {
+class FakeOwnCrashSource : public SingleKindRecordSource<CrashRecordTraits> {
 public:
     /** Hands out record mark + 1 while it is not above the newest. */
     bool readLowestPending(uint32_t& recordNumber, CrashRecordContent& content) override {
@@ -919,4 +919,28 @@ inline void fdnMatchBatchSkipsAnUnreadableHead(FdnRecordUploaderTests* suite) {
     EXPECT_STREQ(uploaded[0].id, "00000002-abcd-4000-8000-0123456789ab");
     suite->answerSuccess(0);
     EXPECT_EQ(suite->storedMatchCount(), 0u);
+}
+
+// SERVER-SEAM(legacy-match): the upload names players by UUID and a legacy
+// match names them by PIN, so it stays on the FDN, neither sent nor dropped.
+inline void fdnKeepsLegacyMatchesStoredAndOutOfTheUpload(FdnRecordUploaderTests* suite) {
+    MatchRecordFramePacket legacy = FdnRecordStoreTests::matchFrame(0, 0x4C);
+    legacy.kind = static_cast<uint8_t>(RecordKind::LEGACY_MATCH);
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac, legacy);
+    ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::LEGACY_MATCH), 1u);
+    EXPECT_FALSE(suite->fdnRecordUploader->hasRecordsWaiting())
+    << "a legacy match alone started an upload the server cannot take";
+
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac,
+                   FdnRecordStoreTests::uploadableMatchFrame(3));
+    ASSERT_TRUE(suite->fdnRecordUploader->uploadAllRecords());
+    ASSERT_EQ(suite->httpRequests.size(), 1u);
+    const std::vector<alleycat_device_QuickdrawMatch> uploaded =
+    decodeTestRequest(suite->httpRequests[0].payload);
+    ASSERT_EQ(uploaded.size(), 1u) << "a legacy match went up with the current ones";
+    EXPECT_STREQ(uploaded[0].id, "00000003-abcd-4000-8000-0123456789ab");
+    suite->answerSuccess(0);
+    EXPECT_EQ(suite->storedMatchCount(), 0u);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::LEGACY_MATCH), 1u)
+    << "retiring the uploaded batch dropped the legacy match";
 }
