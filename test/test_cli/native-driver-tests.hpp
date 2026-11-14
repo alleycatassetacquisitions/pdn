@@ -949,11 +949,11 @@ void cliCommandRebootLandsOnPinEntryWithNothingHeld(CliCommandTestSuite* suite) 
     EXPECT_FALSE(suite->device.playerProvider->getRecordKey()->isHeld());
     EXPECT_STREQ(suite->device.playerProvider->getRegistrationPin(), "");
     // PIN entry's clear keeps the session statistics; only a fresh player drops them.
-    EXPECT_EQ(player->getMatchesPlayed(), 0);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 0u);
     EXPECT_EQ(player->getWins(), 0);
     EXPECT_EQ(player->getStreak(), 0);
     EXPECT_EQ(player->getLastReactionTime(), 0u);
-    EXPECT_EQ(player->getAverageReactionTime(), 0u);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 0u);
 }
 
 // Test: Reboot from a later state lands on PIN entry and the device registers again

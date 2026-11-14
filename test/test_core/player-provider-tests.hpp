@@ -115,10 +115,10 @@ inline void playerProviderClearDropsThePinAndKeepsRoleAndSessionStatistics() {
     EXPECT_STREQ(playerProvider.getRegistrationPin(), "");
     EXPECT_FALSE(player->isHunter());
     EXPECT_EQ(player->getName(), "Bo");
-    EXPECT_EQ(player->getMatchesPlayed(), 3);
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 3u);
     EXPECT_EQ(player->getWins(), 1);
     EXPECT_EQ(player->getLastReactionTime(), 250u);
-    EXPECT_EQ(player->getAverageReactionTime(), 250u / 3);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 250u / 3);
 }
 
 inline void playerLegacyShimMapsHelixAffiliation() {
