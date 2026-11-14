@@ -1659,6 +1659,14 @@ TEST_F(MatchRelayTests, passesOverAnUnreadableStoredMatch) {
     matchRelayPassesOverAnUnreadableStoredMatch(this);
 }
 
+TEST_F(MatchRelayTests, neverSendsASlotWithNoTagAndSendsTheRecordAfterIt) {
+    matchRelayNeverSendsASlotWithNoTagAndSendsTheRecordAfterIt(this);
+}
+
+TEST_F(MatchRelayTests, sendsTheStoredTagAfterARestartAndAnotherRegistration) {
+    matchRelaySendsTheStoredTagAfterARestartAndAnotherRegistration(this);
+}
+
 TEST_F(MatchRelayTests, sendsAMatchOncePerTriggerUntilAcknowledged) {
     matchRelaySendsAMatchOncePerTriggerUntilAcknowledged(this);
 }

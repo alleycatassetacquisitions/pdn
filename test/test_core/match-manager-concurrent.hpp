@@ -43,7 +43,7 @@ inline void matchManagerConcurrentDriverVsReader() {
     ON_CALL(storage, writeUChar(_, _, _)).WillByDefault(::testing::Return(1));
     ON_CALL(storage, readUChar(_, _, _)).WillByDefault(::testing::Return(0));
     // Declared after wireless so wireless outlives mm's matchChannel destructor.
-    MatchManager mm(&player, &storage, &wireless, &rdc);
+    MatchManager mm(&player, nullptr, &storage, &wireless, &rdc);
     mm.clearCurrentMatch();
 
     std::atomic<bool> running{true};

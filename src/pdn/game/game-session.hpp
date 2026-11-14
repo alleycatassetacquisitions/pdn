@@ -10,6 +10,7 @@
 #include "device/device.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "game/player.hpp"
+#include "game/record-key.hpp"
 #include "utils/simple-timer.hpp"
 
 /**
@@ -30,10 +31,10 @@ public:
     /**
      * Builds the shared managers, wires the session-level callbacks, and
      * installs its own per-tick pump. The device outlives the session, so the
-     * destructor empties every slot holding `this`.
+     * destructor empties every slot holding `this`. recordKey is borrowed, may
+     * be null, and must outlive the session.
      */
-    GameSession(Player* player,
-                Device* pdn,
+    GameSession(Player* player, const RecordKey* recordKey, Device* pdn,
                 SymbolWirelessManager* symbolWirelessManager);
     /** Drops the callbacks that capture `this`, then frees the managers it owns. */
     ~GameSession();
@@ -53,7 +54,7 @@ public:
 private:
     void logRetryStats();
     // Builds the managers the context owns; its other pointers are borrowed.
-    static GameContext makeContext(Player* player, Device* pdn,
+    static GameContext makeContext(Player* player, const RecordKey* recordKey, Device* pdn,
                                    SymbolWirelessManager* symbolWirelessManager);
 
     Device* pdn = nullptr;

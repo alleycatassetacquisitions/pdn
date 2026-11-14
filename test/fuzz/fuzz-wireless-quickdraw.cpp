@@ -145,7 +145,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     player.setIsHunter((size > 0) ? ((data[0] & 1U) != 0U) : true);
 
     WirelessManager wirelessManager(&peerComms, nullptr);
-    MatchManager matchManager(&player, &storage, &wirelessManager, &rdc);
+    MatchManager matchManager(&player, nullptr, &storage, &wirelessManager, &rdc);
     SymbolWirelessManager symbolWirelessManager(&wirelessManager, &rdc);
     RemotePlayerManager remotePlayerManager(&peerComms, DeviceType::PDN);
 

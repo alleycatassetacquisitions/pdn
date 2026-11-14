@@ -220,10 +220,9 @@ public:
             instance.pdn->getRemoteDeviceCoordinator());
 
         // Create the shared managers and the apps that read them
-        instance.gameSession = new GameSession(
-            instance.player,
-            instance.pdn,
-            instance.symbolWirelessManager);
+        instance.gameSession =
+        new GameSession(instance.player, instance.playerProvider->getRecordKey(), instance.pdn,
+                        instance.symbolWirelessManager);
 
         instance.playerFetchApp = new PlayerFetchApp(
             instance.pdn->getWirelessManager(),

@@ -1,10 +1,11 @@
 #include "game/game-session.hpp"
 #include "device/drivers/logger.hpp"
 
-GameSession::GameSession(Player* player, Device* pdn, SymbolWirelessManager* symbolWirelessManager)
+GameSession::GameSession(Player* player, const RecordKey* recordKey, Device* pdn,
+                         SymbolWirelessManager* symbolWirelessManager)
     : pdn(pdn)
     , wirelessManager(pdn->getWirelessManager())
-    , context(makeContext(player, pdn, symbolWirelessManager))
+    , context(makeContext(player, recordKey, pdn, symbolWirelessManager))
     , recordRelay(new RecordRelay(wirelessManager, context.remoteDeviceCoordinator,
                                   context.matchManager, context.shootoutManager)) {
     context.matchManager->setBoostProvider([this]() -> unsigned long {
@@ -74,15 +75,15 @@ void GameSession::setCrashRecordSource(RecordSource<CrashRecordTraits>* crashRec
     recordRelay->setCrashRecordSource(crashRecordSource);
 }
 
-GameContext GameSession::makeContext(Player* player, Device* pdn,
+GameContext GameSession::makeContext(Player* player, const RecordKey* recordKey, Device* pdn,
                                      SymbolWirelessManager* symbolWirelessManager) {
     WirelessManager* wirelessManager = pdn->getWirelessManager();
     GameContext context;
     context.player = player;
     context.remoteDeviceCoordinator = pdn->getRemoteDeviceCoordinator();
     context.symbolWirelessManager = symbolWirelessManager;
-    context.matchManager =
-    new MatchManager(player, pdn->getStorage(), wirelessManager, context.remoteDeviceCoordinator);
+    context.matchManager = new MatchManager(player, recordKey, pdn->getStorage(), wirelessManager,
+                                            context.remoteDeviceCoordinator);
     context.posseManager =
     new PosseManager(player, wirelessManager, context.remoteDeviceCoordinator);
     context.shootoutManager = new ShootoutManager(

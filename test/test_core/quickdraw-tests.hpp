@@ -15,6 +15,7 @@
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "game/player-provider.hpp"
 #include "device/firmware-update-state.hpp"
+#include "registration-test-helper.hpp"
 #include "utility-tests.hpp"
 #include "fake-firmware-store.hpp"
 #include "protocol-constants.hpp"
@@ -81,7 +82,7 @@ public:
 
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         stubFixtureRdcDirectPeer(device);
-        matchManager = new MatchManager(player, &storage, device.wirelessManager,
+        matchManager = new MatchManager(player, nullptr, &storage, device.wirelessManager,
                                         &device.fakeRemoteDeviceCoordinator);
 
         posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -379,7 +380,7 @@ public:
 
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         stubFixtureRdcDirectPeer(device);
-        matchManager = new MatchManager(player, &storage, device.wirelessManager,
+        matchManager = new MatchManager(player, nullptr, &storage, device.wirelessManager,
                                         &device.fakeRemoteDeviceCoordinator);
         uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
         matchManager->initializeMatch(dummyMac);
@@ -619,7 +620,7 @@ public:
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         wirelessManager->attach(device.mockPeerComms);
         stubFixtureRdcDirectPeer(device);
-        matchManager = new MatchManager(player, &storage, device.wirelessManager,
+        matchManager = new MatchManager(player, nullptr, &storage, device.wirelessManager,
                                         &device.fakeRemoteDeviceCoordinator);
 
         posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -1090,14 +1091,15 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(1000);
 
-        player = new Player();
+        player = playerProvider.getPlayer();
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         stubFixtureRdcDirectPeer(device);
-        matchManager = new MatchManager(player, &storage, device.wirelessManager,
-                                        &device.fakeRemoteDeviceCoordinator);
+        matchManager =
+        new MatchManager(player, playerProvider.getRecordKey(), &storage, device.wirelessManager,
+                         &device.fakeRemoteDeviceCoordinator);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -1113,7 +1115,6 @@ public:
     void TearDown() override {
         matchManager->clearCurrentMatch();
         delete matchManager;
-        delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
@@ -1121,7 +1122,8 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    Player* player;
+    PlayerProvider playerProvider;
+    Player* player = nullptr;
     MatchManager* matchManager;
     GameContext ctx;
     FakePlatformClock* fakeClock;
@@ -1267,15 +1269,12 @@ inline void resultPlayerStatsUpdatedOnLoss(MatchResultTests* suite) {
 
 // Test: Match finalized on result
 inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
-    UUIDBytes hunterId{};
-    UUIDBytes::parse("0a0a0a0a-0000-4000-8000-000000000003", hunterId);
-    Team hunterTeam{};
-    strncpy(hunterTeam.name, "Hunter", sizeof(hunterTeam.name) - 1);
-    suite->player->applyRegistrationProfile(hunterId, "LocalHunter", hunterTeam, {});
+    registerTestPlayer(suite->playerProvider, "0a0a0a0a-0000-4000-8000-000000000003", "LocalHunter",
+                       "Hunter");
 
-    EXPECT_CALL(suite->storage, writeBytes(MATCHES_PREFS_NAMESPACE, _, _, MATCH_BINARY_SIZE))
+    EXPECT_CALL(suite->storage, writeBytes(MATCHES_PREFS_NAMESPACE, _, _, MATCH_SLOT_SIZE))
     .Times(testing::AtLeast(1))
-    .WillRepeatedly(Return(MATCH_BINARY_SIZE));
+    .WillRepeatedly(Return(MATCH_SLOT_SIZE));
     EXPECT_CALL(suite->storage, writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, _))
     .Times(testing::AtLeast(1))
     .WillRepeatedly(Return(sizeof(uint32_t)));
@@ -1351,7 +1350,7 @@ public:
         player->setIsHunter(true);
 
         stubFixtureRdcDirectPeer(device);
-        matchManager = new MatchManager(player, &storage, device.wirelessManager,
+        matchManager = new MatchManager(player, nullptr, &storage, device.wirelessManager,
                                         &device.fakeRemoteDeviceCoordinator);
 
         posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -2026,7 +2025,7 @@ public:
 // destructor failed to empty is called here with a freed `this`.
 inline void gameSessionCtorDtorDoesNotLeak(GameSessionLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
+        GameSession* session = new GameSession(suite->player, nullptr, &suite->device, nullptr);
         delete session;
         suite->device.loop();
     }
@@ -2056,7 +2055,7 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
             return 1;
         });
 
-    auto* session = new GameSession(suite->player, &suite->device, nullptr);
+    auto* session = new GameSession(suite->player, nullptr, &suite->device, nullptr);
     PosseManager* posseManager = session->getContext().posseManager;
 
     posseManager->onRoleAnnounceReceived(challenger, challenger);
@@ -2095,7 +2094,7 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
     rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
-    GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
+    GameSession* session = new GameSession(suite->player, nullptr, &suite->device, nullptr);
     PosseManager* posseManager = session->getContext().posseManager;
     posseManager->onRoleAnnounceReceived(challenger, challenger);
     ASSERT_TRUE(posseManager->isSupporter());
@@ -2134,7 +2133,7 @@ inline void supporterResultClearsAfterEightSeconds(GameSessionLifecycleTests* su
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, challenger);
     rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
 
-    GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
+    GameSession* session = new GameSession(suite->player, nullptr, &suite->device, nullptr);
     PosseManager* posseManager = session->getContext().posseManager;
     posseManager->onRoleAnnounceReceived(challenger, challenger);
     ASSERT_TRUE(posseManager->isSupporter());

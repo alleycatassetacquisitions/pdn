@@ -7,9 +7,12 @@
 #include "wireless/record-relay-types.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
 #include "game/match-manager.hpp"
+#include "game/player-provider.hpp"
 #include "game/player.hpp"
+#include "game/record-tag.hpp"
 #include "game/shootout-manager.hpp"
 #include "device-mock.hpp"
+#include "registration-test-helper.hpp"
 #include "utility-tests.hpp"
 
 // ============================================
@@ -26,7 +29,7 @@ public:
         using ::testing::_;
         radioTap.attach(device.mockPeerComms);
 
-        player = new Player();
+        player = playerProvider.getPlayer();
         char playerId[] = "test";
         player->setUserID(playerId);
         rebuildMatchManager(&mockStorage);
@@ -53,7 +56,8 @@ public:
         // Old manager first: a match channel built while it stands is refused the
         // kMatchCommand type.
         delete matchManager;
-        matchManager = new MatchManager(player, storage, device.wirelessManager, &fakeRdc);
+        matchManager = new MatchManager(player, playerProvider.getRecordKey(), storage,
+                                        device.wirelessManager, &fakeRdc);
     }
 
     /**
@@ -66,19 +70,29 @@ public:
     }
 
     /**
-     * Reads the match stored under sequence number @p seq from the prefs
-     * makeNativePrefs() allocated. False when its ring slot holds no record.
+     * Reads the ring slot of sequence number @p seq, record then tag, from the
+     * prefs makeNativePrefs() allocated. False when the slot does not hold a
+     * tagged record.
      */
-    bool readStoredMatch(uint32_t seq, Match& out) {
+    bool readStoredSlot(uint32_t seq, MatchRecordContent& out) {
         char key[16];
         snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
                  static_cast<unsigned>((seq - 1) % MATCH_RING_CAPACITY));
-        uint8_t buffer[MATCH_BINARY_SIZE] = {};
-        if (nativePrefs->readBytes(MATCHES_PREFS_NAMESPACE, key, buffer, sizeof(buffer)) !=
-            MATCH_BINARY_SIZE) {
+        return nativePrefs->readBytes(MATCHES_PREFS_NAMESPACE, key,
+                                      reinterpret_cast<uint8_t*>(&out),
+                                      sizeof(out)) == MATCH_SLOT_SIZE;
+    }
+
+    /**
+     * Reads the match stored under sequence number @p seq from the prefs
+     * makeNativePrefs() allocated. False when its ring slot does not hold a tagged record.
+     */
+    bool readStoredMatch(uint32_t seq, Match& out) {
+        MatchRecordContent slot{};
+        if (!readStoredSlot(seq, slot)) {
             return false;
         }
-        out.deserialize(buffer);
+        out.deserialize(slot.recordBytes);
         return true;
     }
 
@@ -87,7 +101,6 @@ public:
         delete matchManager;
         // After the manager, whose destructor closes the storage it was built on.
         delete nativePrefs;
-        delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
@@ -112,15 +125,13 @@ public:
     }
 
     /**
-     * Bounty-side match with its MATCH_ID_ACK reported delivered. Both players have
-     * non-nil UUIDs, so finalizeMatch can store it.
+     * Bounty-side match with its MATCH_ID_ACK reported delivered. The local player
+     * is registered with a record key and both players have non-nil UUIDs, so
+     * finalizeMatch can store it.
      */
     void setupMatchAsBounty(const char* matchId = "test-match-id") {
-        UUIDBytes selfId{};
-        UUIDBytes::parse("0b0b0b0b-0000-4000-8000-000000000001", selfId);
-        Team bounty{};
-        strncpy(bounty.name, "Bounty", sizeof(bounty.name) - 1);
-        player->applyRegistrationProfile(selfId, "LocalBounty", bounty, {});
+        registerTestPlayer(playerProvider, "0b0b0b0b-0000-4000-8000-000000000001", "LocalBounty",
+                           "Bounty");
         UUIDBytes hunterUuid{};
         UUIDBytes::parse("0a0a0a0a-0000-4000-8000-000000000002", hunterUuid);
         static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -130,7 +141,8 @@ public:
     }
 
     MatchManager* matchManager = nullptr;
-    Player* player;
+    PlayerProvider playerProvider;
+    Player* player = nullptr;
     MockDevice device;
     MockStorage mockStorage;
     NativePrefsDriver* nativePrefs = nullptr;
@@ -784,11 +796,12 @@ TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
     ASSERT_TRUE(matchManager->readLowestPending(oldestPending, oldest));
     EXPECT_EQ(oldestPending, 2u) << "match 1 was overwritten by match 33";
 
-    uint8_t slot0[MATCH_BINARY_SIZE] = {};
-    ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", slot0, MATCH_BINARY_SIZE),
-              MATCH_BINARY_SIZE);
+    MatchRecordContent slot0{};
+    ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0",
+                              reinterpret_cast<uint8_t*>(&slot0), sizeof(slot0)),
+              MATCH_SLOT_SIZE);
     Match slot0Match{};
-    slot0Match.deserialize(slot0);
+    slot0Match.deserialize(slot0.recordBytes);
     EXPECT_STREQ(slot0Match.getMatchId(), "00000033-1234-4000-8000-000000000000");
 }
 
@@ -808,9 +821,9 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOppo
     rebuildMatchManager(&prefs);
     UUIDBytes selfId{};
     UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", selfId);
-    Team team{};
-    strncpy(team.name, "Bounty", sizeof(team.name) - 1);
-    player->applyRegistrationProfile(selfId, "LocalBounty", team, {});
+    // Registered and holding a key: only the demo opponent keeps the match out of the ring.
+    registerTestPlayer(playerProvider, "7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", "LocalBounty",
+                       "Bounty");
 
     static const uint8_t peerMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
 
@@ -904,7 +917,8 @@ TEST_F(MatchManagerTestSuite, matchNamingOnePlayerOnBothSidesIsNotStored) {
         finishMatchWithDrawTimes(120, 180);
     };
 
-    player->applyRegistrationProfile(firstId, "LocalHunter", hunters, {});
+    registerTestPlayer(playerProvider, "7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", "LocalHunter",
+                       "Hunter");
     matchManager->initializeMatch(opponentMac);
     ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
     player->applyRegistrationProfile(secondId, "LocalHunter", hunters, {});
@@ -954,8 +968,6 @@ TEST_F(MatchManagerTestSuite, twoDemoPlayersStillPlayEachOtherAndStoreNothing) {
 TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
     NativePrefsDriver& prefs = makeNativePrefs("winner-prefs");
     rebuildMatchManager(&prefs);
-    UUIDBytes hunterUuid{};
-    UUIDBytes::parse("0a0a0a0a-0000-4000-8000-000000000002", hunterUuid);
     UUIDBytes bountyUuid{};
     UUIDBytes::parse("0b0b0b0b-0000-4000-8000-000000000001", bountyUuid);
     static const uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -969,9 +981,8 @@ TEST_F(MatchManagerTestSuite, bothDevicesRecordTheSameWinnerAndNoTie) {
         ASSERT_TRUE(matchManager->finalizeMatch());
     };
     const auto finishOnHunterDevice = [&](unsigned long hunterMs, unsigned long bountyMs) {
-        Team hunters{};
-        strncpy(hunters.name, "Hunter", sizeof(hunters.name) - 1);
-        player->applyRegistrationProfile(hunterUuid, "LocalHunter", hunters, {});
+        registerTestPlayer(playerProvider, "0a0a0a0a-0000-4000-8000-000000000002", "LocalHunter",
+                           "Hunter");
         uint8_t mac[6];
         memcpy(mac, opponentMac, 6);
         matchManager->initializeMatch(mac);
@@ -1211,14 +1222,12 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsRunFromTheCollectedMarkToTheNew
 
     ASSERT_TRUE(matchManager->readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 1u);
-    uint8_t stored[MATCH_BINARY_SIZE] = {};
-    ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", stored, sizeof(stored)),
-              MATCH_BINARY_SIZE);
-    EXPECT_EQ(memcmp(content.recordBytes, stored, sizeof(stored)), 0)
+    MatchRecordContent stored{};
+    ASSERT_TRUE(readStoredSlot(1, stored));
+    EXPECT_EQ(memcmp(content.recordBytes, stored.recordBytes, sizeof(stored.recordBytes)), 0)
     << "the record bytes are the 112 bytes the PDN stored";
-    for (size_t i = 0; i < sizeof(content.tag); ++i) {
-        ASSERT_EQ(content.tag[i], 0) << "tag byte " << i << " is not zero";
-    }
+    EXPECT_EQ(memcmp(content.tag, stored.tag, sizeof(stored.tag)), 0)
+    << "the tag is the 16 bytes the PDN stored after them";
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u) << "reading a record retired it";
 
     matchManager->advanceMark(2);
@@ -1310,6 +1319,87 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsThatAreAllUnreadableOfferNothin
         EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 1u);
     }
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 3u);
+}
+
+// The vector the server team checks its own implementation against
+// (record-authentication, "Record tag equals the shared test vector").
+TEST(RecordTag, equalsTheSharedTestVector) {
+    PlayerProvider playerProvider;
+    registerTestPlayer(playerProvider, "0b0b0b0b-0000-4000-8000-000000000001", "LocalBounty",
+                       "Bounty");
+    const RecordKey* recordKey = playerProvider.getRecordKey();
+    ASSERT_TRUE(recordKey->isHeld());
+    for (size_t i = 0; i < RECORD_KEY_SIZE; ++i) {
+        ASSERT_EQ(recordKey->getBytes()[i], static_cast<uint8_t>(i))
+        << "the vector's key is 00 01 .. 1f";
+    }
+    MatchRecordContent content{};
+    for (size_t i = 0; i < MATCH_RECORD_SIZE; ++i) {
+        content.recordBytes[i] = static_cast<uint8_t>(i);
+    }
+    memset(content.tag, 0xEE, sizeof(content.tag));
+
+    ASSERT_TRUE(tagMatchRecord(recordKey, content));
+
+    const uint8_t expectedTag[RECORD_TAG_SIZE] = {0xa9, 0xcc, 0x05, 0xf6, 0x42, 0x50, 0x6d, 0x83,
+                                                  0x89, 0xc1, 0xfc, 0x42, 0x70, 0x6e, 0x7c, 0x99};
+    for (size_t i = 0; i < RECORD_TAG_SIZE; ++i) {
+        EXPECT_EQ(content.tag[i], expectedTag[i]) << "tag byte " << i;
+    }
+    for (size_t i = 0; i < MATCH_RECORD_SIZE; ++i) {
+        ASSERT_EQ(content.recordBytes[i], static_cast<uint8_t>(i))
+        << "tagging changed record byte " << i;
+    }
+}
+
+// The slot is what a record frame later carries: the 112 record bytes, then the
+// tag made over exactly those bytes under the key held when the match ended.
+TEST_F(MatchManagerTestSuite, finishedMatchIsStoredWithTheTagOfItsRecordBytes) {
+    NativePrefsDriver& prefs = makeNativePrefs("tag-prefs");
+    rebuildMatchManager(&prefs);
+    setupMatchAsBounty("41111111-2222-4000-8000-333333333333");
+    finishMatchWithDrawTimes(180, 120);
+    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
+
+    uint8_t slot[MATCH_SLOT_SIZE] = {};
+    ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", slot, sizeof(slot)), 128u)
+    << "a ring slot is the 112 record bytes and the 16-byte tag";
+    Match stored{};
+    stored.deserialize(slot);
+    EXPECT_STREQ(stored.getMatchId(), "41111111-2222-4000-8000-333333333333");
+
+    MatchRecordContent expected{};
+    memcpy(expected.recordBytes, slot, MATCH_RECORD_SIZE);
+    ASSERT_TRUE(tagMatchRecord(playerProvider.getRecordKey(), expected));
+    for (size_t i = 0; i < RECORD_TAG_SIZE; ++i) {
+        ASSERT_EQ(slot[MATCH_RECORD_SIZE + i], expected.tag[i])
+        << "stored tag byte " << i << " is not the tag of the stored record bytes";
+    }
+}
+
+// Two registered players and a shared winner: the missing key alone decides.
+TEST_F(MatchManagerTestSuite, matchThatEndsWithNoRecordKeyHeldIsNotStored) {
+    NativePrefsDriver& prefs = makeNativePrefs("no-key-prefs");
+    rebuildMatchManager(&prefs);
+    setupMatchAsBounty("42222222-2222-4000-8000-333333333333");
+    playerProvider.getRecordKey()->clear();
+
+    finishMatchWithDrawTimes(180, 120);
+
+    EXPECT_FALSE(matchManager->getCurrentMatch().has_value())
+    << "a match that cannot be stored must still end";
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u) << "a match was stored with no tag";
+    uint8_t slot[MATCH_SLOT_SIZE] = {};
+    EXPECT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", slot, sizeof(slot)), 0u)
+    << "record bytes were written to the ring with no tag";
+    uint32_t recordNumber = 0;
+    MatchRecordContent content{};
+    EXPECT_FALSE(matchManager->readLowestPending(recordNumber, content));
+
+    // The same match with the key held is stored.
+    setupMatchAsBounty("43333333-2222-4000-8000-333333333333");
+    finishMatchWithDrawTimes(180, 120);
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 1u);
 }
 
 TEST(MatchesApiUpload, unqueuedRequestFailsClosed) {

@@ -15,6 +15,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/match.hpp"
 #include "game/player.hpp"
+#include "game/record-key.hpp"
 #include "wireless/mac-functions.hpp"
 #include "wireless/match-packet.hpp"
 #include "wireless/record-source.hpp"
@@ -29,6 +30,8 @@ inline constexpr const char PREF_SEQ_KEY[] = "seq";
 inline constexpr const char PREF_COLLECTED_SEQ_KEY[] = "collectedSeq";
 inline constexpr const char PREF_MATCH_KEY_PREFIX[] = "match_";
 inline constexpr uint8_t MATCH_RING_CAPACITY = 32;
+// A ring slot holds a match record and then its tag, as a record frame carries them.
+inline constexpr size_t MATCH_SLOT_SIZE = sizeof(MatchRecordContent);
 
 struct LastMatchDisplay {
     // Effective draw times, as used for winner calc: raw minus boost, so a big
@@ -73,9 +76,11 @@ public:
     /**
      * Claims the kMatchCommand channel on wirelessManager. wirelessManager and
      * rdc may be null in tests; with a null rdc every SEND_MATCH_ID is refused.
+     * recordKey is borrowed and read only when a finished match is tagged; while
+     * it is null or holds no key, no match is stored.
      */
-    MatchManager(Player* player, StorageInterface* storage, WirelessManager* wirelessManager,
-                 RemoteDeviceCoordinator* rdc);
+    MatchManager(Player* player, const RecordKey* recordKey, StorageInterface* storage,
+                 WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
     ~MatchManager();
 
     /** Initializes a match and sends SEND_MATCH_ID to opponentMac. */
@@ -99,7 +104,8 @@ public:
     bool isMatchReady() const;
 
     /** Finalizes the active match and clears it unless the storage write fails. Shootout,
-     * demo, same-player, tied and half-reported matches are not stored. */
+     * demo, same-player, tied and half-reported matches are not stored, and neither is
+     * a match that ends while no record key is held: a record is stored only with its tag. */
     bool finalizeMatch();
 
     /** Sets the hunter draw time (ms) on the active match. */
@@ -140,9 +146,9 @@ public:
     uint32_t getCollectedHighWaterMark();
 
     /**
-     * Offers the oldest uncollected match record still in the 32-slot ring,
-     * passing over any that cannot be read. Its tag is 16 zero bytes: this build
-     * does not tag match records.
+     * Offers the oldest uncollected match record in the ring with its stored tag,
+     * never recomputed, passing over any slot that does not read as
+     * MATCH_SLOT_SIZE bytes.
      */
     bool readLowestPending(uint32_t& recordNumber, MatchRecordContent& content) override;
 
@@ -208,6 +214,7 @@ private:
     bool currentMatchIsShootout() const;
 
     Player* player;
+    const RecordKey* recordKey = nullptr;
 
     std::function<unsigned long()> boostProvider;
     RemoteDeviceCoordinator* rdc = nullptr;
@@ -230,8 +237,8 @@ private:
     // The slot's raw draw time minus its player's posse boost; below zero when
     // the boost is the larger. Needs an active match.
     long getEffectiveDrawTime(bool hunterSlot) const;
-    /** Appends a match to the binary ring buffer and increments the sequence number. */
-    bool appendMatchToStorage(const Match* match);
+    /** Writes a tagged match record to the next ring slot and increments the sequence number. */
+    bool appendRecordToStorage(const MatchRecordContent& content);
 
     // Each unreadable stored match is logged once per boot, not on every beacon.
     uint32_t highestUnreadableReported = 0;
