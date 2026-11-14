@@ -153,8 +153,7 @@ public:
      */
     void retire(uint32_t from, uint32_t count) {
         for (uint32_t index = from; index != from + count; ++index) {
-            // A retired record's blob still takes storage entries until its key is
-            // erased, and a full match ring of them is most of the partition.
+            // A retired record's blob still takes storage entries until its key is erased.
             char key[16];
             slotKey(index, key);
             storage->remove(FDN_RECORD_STORE_NAMESPACE, key);
@@ -282,8 +281,9 @@ private:
  * record is stored, and hands the records out to be uploaded: the match
  * records as one batch, the crash records oldest first, one at a time. Crash
  * records have their own bound; current and legacy matches share
- * FDN_MATCH_RECORD_CAPACITY; all share one storage partition. The FDN holds no
- * record keys: a match record's tag is stored as received and never checked.
+ * FDN_MATCH_RECORD_CAPACITY; all share one storage area, the store's own when
+ * the FDN opened it. The FDN holds no record keys: a match record's tag is
+ * stored as received and never checked.
  * Legacy matches arrive on the match channel and are held in a ring of their
  * own, which the uploader leaves stored until the server takes them.
  */
@@ -303,6 +303,23 @@ public:
                                               uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
             return storeMatchEntry(entry, recordCheck);
         }) {}
+
+    /**
+     * Builds the store on @p storeArea, its own storage area, and moves into it
+     * the records @p oldLocation holds, where firmware before that area kept
+     * them. With no @p storeArea, as when the FDN could not open it, the store
+     * stays on @p oldLocation with the same limits.
+     */
+    static FdnRecordStore* createFdnRecordStore(WirelessManager* wirelessManager,
+                                                StorageInterface* storeArea,
+                                                StorageInterface* oldLocation) {
+        if (storeArea == nullptr) {
+            return new FdnRecordStore(wirelessManager, oldLocation);
+        }
+        auto* store = new FdnRecordStore(wirelessManager, storeArea);
+        store->moveRecordsFrom(oldLocation);
+        return store;
+    }
 
     /** @return Number of records of @p kind held. */
     size_t getStoredCount(RecordKind kind) const {
@@ -395,6 +412,63 @@ private:
     using CrashRing = FdnRecordRing<CrashRecordContent, FDN_CRASH_RECORD_CAPACITY>;
     using MatchRing = FdnRecordRing<MatchRecordContent, FDN_MATCH_RECORD_CAPACITY>;
     using LegacyMatchRing = FdnRecordRing<MatchRecordContent, FDN_LEGACY_MATCH_RECORD_CAPACITY>;
+
+    /**
+     * Moves into this store every record @p oldLocation holds, oldest first and
+     * one at a time: each is stored here before it is erased there, so a move
+     * cut short, by a power loss or otherwise, loses nothing and the next call
+     * finishes it, recognising a record already moved as held. Unreadable
+     * records are dropped, as dropUnreadableOldest() drops them. A record this
+     * store does not take stays in @p oldLocation for a later call.
+     */
+    void moveRecordsFrom(StorageInterface* oldLocation) {
+        // The old rings' latch, which only storing sets: the move never stores there.
+        bool oldStorageRefused = false;
+        // On the heap, one at a time: the match ring's index alone is over 1 KB,
+        // and setup() runs on the main task's stack.
+        auto* oldCrashRing = new CrashRing(oldLocation, oldStorageRefused, "c_", RecordKind::CRASH);
+        moveRing(*oldCrashRing, [this](const FdnStoredCrashEntry& entry,
+                                       uint8_t(&recordCheck)[RECORD_CHECK_SIZE]) {
+            return storeCrashEntry(entry, recordCheck);
+        });
+        delete oldCrashRing;
+        const auto storeMatch = [this](const FdnStoredMatchEntry& entry,
+                                       uint8_t(&recordCheck)[RECORD_CHECK_SIZE]) {
+            return storeMatchEntry(entry, recordCheck);
+        };
+        auto* oldMatchRing = new MatchRing(oldLocation, oldStorageRefused, "m_", RecordKind::MATCH);
+        moveRing(*oldMatchRing, storeMatch);
+        delete oldMatchRing;
+        auto* oldLegacyMatchRing =
+        new LegacyMatchRing(oldLocation, oldStorageRefused, "l_", RecordKind::LEGACY_MATCH);
+        moveRing(*oldLegacyMatchRing, storeMatch);
+        delete oldLegacyMatchRing;
+    }
+
+    // Moves @p oldRing's records into this store through @p storeEntry, the
+    // oldest first, erasing each from @p oldRing only once it is held here. An
+    // unreadable record is dropped, as it could never be moved.
+    template <class Ring, class StoreEntry>
+    static void moveRing(Ring& oldRing, StoreEntry storeEntry) {
+        typename Ring::Entry entry{};
+        uint8_t recordCheck[RECORD_CHECK_SIZE] = {};
+        while (oldRing.getStoredCount() > 0) {
+            const uint32_t position = oldRing.getHead();
+            if (!oldRing.readEntry(position, entry)) {
+                LOG_E("FDN_RECORDS", "Dropping unreadable old record %u",
+                      static_cast<unsigned>(position));
+                oldRing.retire(position, 1);
+                continue;
+            }
+            if (!storeEntry(entry, recordCheck)) {
+                LOG_E(
+                "FDN_RECORDS", "Moving the records of kind %u stopped; %u stay in the old location",
+                static_cast<unsigned>(entry.kind), static_cast<unsigned>(oldRing.getStoredCount()));
+                return;
+            }
+            oldRing.retire(position, 1);
+        }
+    }
 
     // A frame whose kind is not its channel's is dropped: the channel fixed its
     // length, so its bytes are not a record of the kind it claims.

@@ -65,6 +65,9 @@ Esp32S3HttpClient* httpClientDriver      = nullptr;
 EspNowDriver*   peerCommsDriver         = nullptr;
 Esp32S3Logger*   loggerDriver            = nullptr;
 Esp32S3PrefsDriver* storageDriver        = nullptr;
+// The record store's own partition. Not in DriverConfig: setup() opens it just
+// before the store, which stays in storageDriver's partition when it does not open.
+Esp32S3PrefsDriver* recordStoreDriver = nullptr;
 
 // FDN device
 FDN* fdn = nullptr;
@@ -125,8 +128,13 @@ static void setup() {
     wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL, SERVER_KEY_SHA256);
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
+    // The default partition keeps FDN_RECORD_STORE_NAMESPACE so the records
+    // older firmware stored there can be moved, or served when the store's own
+    // partition does not open.
     storageDriver =
     new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_RECORD_STORE_NAMESPACE, CRASH_LOG_NAMESPACE});
+    recordStoreDriver = new Esp32S3PrefsDriver(
+    FDN_RECORD_STORE_DRIVER_NAME, FDN_RECORD_STORE_PARTITION_LABEL, {FDN_RECORD_STORE_NAMESPACE});
 
     DriverConfig fdnConfig = {
         {DISPLAY_DRIVER_NAME,              displayDriver},
@@ -151,7 +159,14 @@ static void setup() {
 
     symbolWirelessManager =
     new SymbolWirelessManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
-    fdnRecordStore = new FdnRecordStore(fdn->getWirelessManager(), fdn->getStorage());
+    StorageInterface* recordStoreArea = recordStoreDriver;
+    if (recordStoreDriver->initialize() != 0) {
+        LOG_E("FDN", "The record store's partition did not open; the store stays in the default "
+                     "partition. A partition table without it needs a USB reflash");
+        recordStoreArea = nullptr;
+    }
+    fdnRecordStore = FdnRecordStore::createFdnRecordStore(fdn->getWirelessManager(),
+                                                          recordStoreArea, fdn->getStorage());
     // fdnConfig has no BAND_READER_DRIVER_NAME entry until the reader part and its
     // pins are confirmed, so this finds none. Without one this FDN shows NO READER
     // for every pending registration and registers nobody, staff cards included:

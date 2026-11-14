@@ -1563,6 +1563,30 @@ TEST_F(FdnRecordStoreTests, refusesToRetireAMatchBatchThatIsNoLongerTheOldest) {
     fdnRefusesToRetireAMatchBatchThatIsNoLongerTheOldest(this);
 }
 
+TEST_F(FdnRecordStoreTests, storeOnItsOwnPartitionKeepsBothLimits) {
+    fdnStoreOnItsOwnPartitionKeepsBothLimits(this);
+}
+
+TEST_F(FdnRecordStoreTests, movesEveryRecordOfTheDefaultPartitionToItsOwnAtBoot) {
+    fdnMovesEveryRecordOfTheDefaultPartitionToItsOwnAtBoot(this);
+}
+
+TEST_F(FdnRecordStoreTests, losesNoRecordWhenTheMoveIsCutShortAtAnyPoint) {
+    fdnLosesNoRecordWhenTheMoveIsCutShortAtAnyPoint(this);
+}
+
+TEST_F(FdnRecordStoreTests, dropsAnUnreadableOldRecordAndMovesTheRest) {
+    fdnDropsAnUnreadableOldRecordAndMovesTheRest(this);
+}
+
+TEST_F(FdnRecordStoreTests, leavesWhatItsOwnPartitionRefusesInTheDefaultPartition) {
+    fdnLeavesWhatItsOwnPartitionRefusesInTheDefaultPartition(this);
+}
+
+TEST_F(FdnRecordStoreTests, withoutTheStorePartitionKeepsTheStoreInTheDefaultPartition) {
+    fdnWithoutTheStorePartitionKeepsTheStoreInTheDefaultPartition(this);
+}
+
 // ============================================
 // FDN RECORD UPLOADER TESTS
 // ============================================

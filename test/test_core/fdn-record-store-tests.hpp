@@ -59,6 +59,77 @@ public:
     size_t writes = 0;
 };
 
+/** The power both storages of one FDN run on, which a test can cut. */
+struct PowerSupply {
+    /** Writes and erasures that still reach storage; negative never cuts. */
+    int mutationsBeforeCut = -1;
+    /** Set once a write or erasure was lost to the cut. */
+    bool wasCut = false;
+};
+
+/**
+ * In-memory record store storage on a PowerSupply: once the supply's writes
+ * and erasures run out, every later one is lost as if the FDN had lost power,
+ * though the code that asked sees it succeed. What reached storage before the
+ * cut stays, as flash keeps it across a power loss.
+ */
+class PowerCutPrefsDriver : public NativePrefsDriver {
+public:
+    /** Storage for FDN_RECORD_STORE_NAMESPACE on @p power. */
+    PowerCutPrefsDriver(const std::string& name, PowerSupply& power)
+        : NativePrefsDriver(name, {FDN_RECORD_STORE_NAMESPACE})
+        , power(power) {}
+
+    /** Stores the blob unless the power is cut. */
+    size_t writeBytes(const std::string& ns, const std::string& key, const uint8_t* data,
+                      size_t length) override {
+        if (isCut()) return length;
+        return NativePrefsDriver::writeBytes(ns, key, data, length);
+    }
+
+    /** Stores the count unless the power is cut. */
+    size_t writeUInt(const std::string& ns, const std::string& key, uint32_t value) override {
+        if (isCut()) return sizeof(value);
+        return NativePrefsDriver::writeUInt(ns, key, value);
+    }
+
+    /** Erases the key unless the power is cut. */
+    bool remove(const std::string& ns, const std::string& key) override {
+        if (isCut()) return true;
+        return NativePrefsDriver::remove(ns, key);
+    }
+
+private:
+    bool isCut() {
+        if (power.mutationsBeforeCut == 0) {
+            power.wasCut = true;
+            return true;
+        }
+        if (power.mutationsBeforeCut > 0) --power.mutationsBeforeCut;
+        return false;
+    }
+
+    PowerSupply& power;
+};
+
+/** True when @p storage holds a blob in any slot of the record store's rings. */
+inline bool holdsAnyRecordSlot(StorageInterface& storage) {
+    const char* const prefixes[] = {"c_", "m_", "l_"};
+    const size_t capacities[] = {FDN_CRASH_RECORD_CAPACITY, FDN_MATCH_RECORD_CAPACITY,
+                                 FDN_LEGACY_MATCH_RECORD_CAPACITY};
+    uint8_t blob[256] = {};
+    char key[16];
+    for (size_t ring = 0; ring < 3; ++ring) {
+        for (size_t slot = 0; slot < capacities[ring]; ++slot) {
+            snprintf(key, sizeof(key), "%s%u", prefixes[ring], static_cast<unsigned>(slot));
+            if (storage.readBytes(FDN_RECORD_STORE_NAMESPACE, key, blob, sizeof(blob)) > 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /**
  * An FDN with nothing Connected on its jacks, a record store on in-memory
  * storage, and a radio that records every stored acknowledgement it is given.
@@ -185,10 +256,100 @@ public:
                fdnRecordStore->getStoredCount(kind) == storedBefore;
     }
 
+    /**
+     * Replaces the store with one built as the FDN's boot builds it: on
+     * storeArea, the store's own partition, moving into it what fdnPrefs, the
+     * default partition, holds.
+     */
+    void rebootOnStoreArea() {
+        delete fdnRecordStore;
+        fdnRecordStore = nullptr;
+        fdnRecordStore =
+        FdnRecordStore::createFdnRecordStore(fdnDevice.wirelessManager, &storeArea, &fdnPrefs);
+    }
+
+    /**
+     * Replaces the store with one built as the FDN's boot builds it when the
+     * store's own partition did not open: on fdnPrefs, the default partition.
+     */
+    void rebootWithoutStoreArea() {
+        delete fdnRecordStore;
+        fdnRecordStore = nullptr;
+        fdnRecordStore =
+        FdnRecordStore::createFdnRecordStore(fdnDevice.wirelessManager, nullptr, &fdnPrefs);
+    }
+
+    /** The crash record frame deliverRecords() sends as number @p recordNumber. */
+    static CrashRecordFramePacket numberedCrashFrame(uint32_t recordNumber) {
+        return crashFrame(recordNumber, static_cast<uint8_t>(recordNumber + 1));
+    }
+
+    /** The legacy match frame deliverRecords() sends as number @p recordNumber. */
+    static MatchRecordFramePacket numberedLegacyMatchFrame(uint32_t recordNumber) {
+        MatchRecordFramePacket frame =
+        matchFrame(1000 + recordNumber, static_cast<uint8_t>(recordNumber + 1));
+        frame.kind = static_cast<uint8_t>(RecordKind::LEGACY_MATCH);
+        return frame;
+    }
+
+    /** The match record frame deliverRecords() sends as number @p recordNumber. */
+    static MatchRecordFramePacket numberedMatchFrame(uint32_t recordNumber) {
+        return matchFrame(2000 + recordNumber, static_cast<uint8_t>(recordNumber + 1));
+    }
+
+    /**
+     * Sends from pdnMac the crash records numbered below @p crashCount, then
+     * the legacy matches numbered below @p legacyCount, then the match records
+     * numbered below @p matchCount.
+     */
+    void deliverRecords(uint32_t crashCount, uint32_t legacyCount, uint32_t matchCount) {
+        for (uint32_t number = 0; number < crashCount; ++number) {
+            deliver(PktType::kCrashRecord, pdnMac, numberedCrashFrame(number));
+        }
+        for (uint32_t number = 0; number < legacyCount; ++number) {
+            deliver(PktType::kMatchRecord, pdnMac, numberedLegacyMatchFrame(number));
+        }
+        for (uint32_t number = 0; number < matchCount; ++number) {
+            deliver(PktType::kMatchRecord, pdnMac, numberedMatchFrame(number));
+        }
+    }
+
+    /** True when the store holds every record deliverRecords() sends for these counts. */
+    bool holdsDeliveredRecords(uint32_t crashCount, uint32_t legacyCount, uint32_t matchCount) {
+        for (uint32_t number = 0; number < crashCount; ++number) {
+            if (!isRecognisedAsHeld(PktType::kCrashRecord, RecordKind::CRASH, pdnMac,
+                                    numberedCrashFrame(number))) {
+                return false;
+            }
+        }
+        for (uint32_t number = 0; number < legacyCount; ++number) {
+            if (!isRecognisedAsHeld(PktType::kMatchRecord, RecordKind::LEGACY_MATCH, pdnMac,
+                                    numberedLegacyMatchFrame(number))) {
+                return false;
+            }
+        }
+        for (uint32_t number = 0; number < matchCount; ++number) {
+            if (!isRecognisedAsHeld(PktType::kMatchRecord, RecordKind::MATCH, pdnMac,
+                                    numberedMatchFrame(number))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Expects @p crashCount, @p legacyCount and @p matchCount records held. */
+    void expectStoredCounts(size_t crashCount, size_t legacyCount, size_t matchCount) {
+        EXPECT_EQ(fdnRecordStore->getStoredCount(RecordKind::CRASH), crashCount);
+        EXPECT_EQ(fdnRecordStore->getStoredCount(RecordKind::LEGACY_MATCH), legacyCount);
+        EXPECT_EQ(fdnRecordStore->getStoredCount(RecordKind::MATCH), matchCount);
+    }
+
     FakePlatformClock* fakeClock = nullptr;
     MockDevice fdnDevice;
     RefusingPrefsDriver fdnPrefs{"fdn-record-prefs", {FDN_RECORD_STORE_NAMESPACE}};
     FdnRecordStore* fdnRecordStore = nullptr;
+    // The store's own partition; fdnPrefs stands for the default partition.
+    NativePrefsDriver storeArea{"fdn-record-store-area", {FDN_RECORD_STORE_NAMESPACE}};
     uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x31};
     uint8_t otherPdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x32};
     std::vector<SentRecordAck> sentAcks;
@@ -1018,4 +1179,161 @@ inline void fdnRefusesToRetireAMatchBatchThatIsNoLongerTheOldest(FdnRecordStoreT
     ASSERT_EQ(suite->fdnRecordStore->countReadableMatchBatch(currentPosition), 2u);
     suite->fdnRecordStore->retireMatchBatch(currentPosition, 2);
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
+}
+
+// ---- The store in its own partition, moved there from the default one ----
+
+// The partition changes where records are kept, not how many: 32 crash
+// records, 64 match records, of which legacy matches take at most 32.
+inline void fdnStoreOnItsOwnPartitionKeepsBothLimits(FdnRecordStoreTests* suite) {
+    suite->rebootOnStoreArea();
+    suite->deliverRecords(FDN_CRASH_RECORD_CAPACITY + 1, 0, FDN_MATCH_RECORD_CAPACITY + 1);
+    suite->expectStoredCounts(FDN_CRASH_RECORD_CAPACITY, 0, FDN_MATCH_RECORD_CAPACITY);
+
+    ASSERT_TRUE(suite->retireMatchBatch());
+    suite->deliverRecords(0, FDN_LEGACY_MATCH_RECORD_CAPACITY + 1, FDN_MATCH_RECORD_CAPACITY);
+    suite->expectStoredCounts(FDN_CRASH_RECORD_CAPACITY, FDN_LEGACY_MATCH_RECORD_CAPACITY,
+                              FDN_MATCH_RECORD_CAPACITY - FDN_LEGACY_MATCH_RECORD_CAPACITY);
+    EXPECT_FALSE(holdsAnyRecordSlot(suite->fdnPrefs))
+    << "a record went to the default partition while the store's own was there";
+    EXPECT_TRUE(holdsAnyRecordSlot(suite->storeArea));
+
+    suite->rebootOnStoreArea();
+    suite->expectStoredCounts(FDN_CRASH_RECORD_CAPACITY, FDN_LEGACY_MATCH_RECORD_CAPACITY,
+                              FDN_MATCH_RECORD_CAPACITY - FDN_LEGACY_MATCH_RECORD_CAPACITY);
+}
+
+// A full store that older firmware kept in the default partition, its crash
+// ring wrapped past slot 0, arrives whole in the store's own partition, in its
+// order, and is moved once.
+inline void fdnMovesEveryRecordOfTheDefaultPartitionToItsOwnAtBoot(FdnRecordStoreTests* suite) {
+    const uint32_t matchCount =
+    static_cast<uint32_t>(FDN_MATCH_RECORD_CAPACITY - FDN_LEGACY_MATCH_RECORD_CAPACITY);
+    suite->deliverRecords(FDN_CRASH_RECORD_CAPACITY, FDN_LEGACY_MATCH_RECORD_CAPACITY, matchCount);
+    ASSERT_TRUE(suite->retireOldestCrash());
+    const CrashRecordFramePacket wrapped =
+    FdnRecordStoreTests::numberedCrashFrame(FDN_CRASH_RECORD_CAPACITY);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, wrapped);
+    ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), FDN_CRASH_RECORD_CAPACITY);
+
+    suite->rebootOnStoreArea();
+
+    suite->expectStoredCounts(FDN_CRASH_RECORD_CAPACITY, FDN_LEGACY_MATCH_RECORD_CAPACITY,
+                              matchCount);
+    EXPECT_FALSE(holdsAnyRecordSlot(suite->fdnPrefs))
+    << "a moved record was left in the default partition";
+    FdnStoredCrashEntry entry{};
+    uint32_t position = 0;
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, position));
+    EXPECT_EQ(static_cast<uint32_t>(entry.recordNumber), 1u) << "the move changed the order";
+    for (uint32_t number = 1; number <= FDN_CRASH_RECORD_CAPACITY; ++number) {
+        EXPECT_TRUE(suite->isRecognisedAsHeld(PktType::kCrashRecord, RecordKind::CRASH,
+                                              suite->pdnMac,
+                                              FdnRecordStoreTests::numberedCrashFrame(number)))
+        << "crash record " << number << " was lost in the move";
+    }
+    EXPECT_TRUE(suite->holdsDeliveredRecords(0, FDN_LEGACY_MATCH_RECORD_CAPACITY, matchCount))
+    << "a match record was lost in the move";
+
+    suite->rebootOnStoreArea();
+    suite->expectStoredCounts(FDN_CRASH_RECORD_CAPACITY, FDN_LEGACY_MATCH_RECORD_CAPACITY,
+                              matchCount);
+}
+
+// A move cut short by a power loss, after any number of its writes and
+// erasures, is finished by the next boot with every record held once.
+inline void fdnLosesNoRecordWhenTheMoveIsCutShortAtAnyPoint(FdnRecordStoreTests* suite) {
+    WirelessManager* wirelessManager = suite->fdnDevice.wirelessManager;
+    for (int cutAfter = 0;; ++cutAfter) {
+        PowerSupply power;
+        PowerCutPrefsDriver defaultPartition("default-partition", power);
+        PowerCutPrefsDriver storeArea("store-area", power);
+        delete suite->fdnRecordStore;
+        suite->fdnRecordStore = nullptr;
+        suite->fdnRecordStore = new FdnRecordStore(wirelessManager, &defaultPartition);
+        suite->deliverRecords(3, 2, 3);
+        delete suite->fdnRecordStore;
+        suite->fdnRecordStore = nullptr;
+
+        power.mutationsBeforeCut = cutAfter;
+        suite->fdnRecordStore =
+        FdnRecordStore::createFdnRecordStore(wirelessManager, &storeArea, &defaultPartition);
+        const bool moveWasCut = power.wasCut;
+        delete suite->fdnRecordStore;
+        suite->fdnRecordStore = nullptr;
+
+        power.mutationsBeforeCut = -1;
+        suite->fdnRecordStore =
+        FdnRecordStore::createFdnRecordStore(wirelessManager, &storeArea, &defaultPartition);
+        suite->expectStoredCounts(3, 2, 3);
+        EXPECT_TRUE(suite->holdsDeliveredRecords(3, 2, 3))
+        << "a record was lost when the power was cut after " << cutAfter << " writes";
+        EXPECT_FALSE(holdsAnyRecordSlot(defaultPartition))
+        << "a record stayed in the default partition after a cut after " << cutAfter;
+        delete suite->fdnRecordStore;
+        suite->fdnRecordStore = nullptr;
+        if (!moveWasCut) break;
+    }
+}
+
+// A record in the default partition that cannot be read could never be moved:
+// it is dropped, and the records behind it are moved.
+inline void fdnDropsAnUnreadableOldRecordAndMovesTheRest(FdnRecordStoreTests* suite) {
+    suite->deliverRecords(3, 0, 0);
+    const uint8_t torn[3] = {1, 2, 3};
+    suite->fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "c_1", torn, sizeof(torn));
+
+    suite->rebootOnStoreArea();
+
+    suite->expectStoredCounts(2, 0, 0);
+    EXPECT_FALSE(holdsAnyRecordSlot(suite->fdnPrefs))
+    << "the unreadable record or one behind it stayed in the default partition";
+    for (uint32_t number : {0u, 2u}) {
+        EXPECT_TRUE(suite->isRecognisedAsHeld(PktType::kCrashRecord, RecordKind::CRASH,
+                                              suite->pdnMac,
+                                              FdnRecordStoreTests::numberedCrashFrame(number)))
+        << "crash record " << number << " was lost in the move";
+    }
+}
+
+// A record the store's own partition refuses stays in the default partition,
+// as does every record behind it, for a later boot to move.
+inline void fdnLeavesWhatItsOwnPartitionRefusesInTheDefaultPartition(FdnRecordStoreTests* suite) {
+    suite->deliverRecords(2, 2, 2);
+    RefusingPrefsDriver refusingStoreArea{"refusing-store-area", {FDN_RECORD_STORE_NAMESPACE}};
+    refusingStoreArea.refuseBlobWrites = true;
+    delete suite->fdnRecordStore;
+    suite->fdnRecordStore = nullptr;
+    suite->fdnRecordStore = FdnRecordStore::createFdnRecordStore(
+    suite->fdnDevice.wirelessManager, &refusingStoreArea, &suite->fdnPrefs);
+    suite->expectStoredCounts(0, 0, 0);
+
+    suite->rebootWithoutStoreArea();
+    suite->expectStoredCounts(2, 2, 2);
+    EXPECT_TRUE(suite->holdsDeliveredRecords(2, 2, 2))
+    << "a record the store's own partition refused was erased from the default one";
+}
+
+// An FDN that never got the new partition table keeps its store where it was,
+// with the same limits, and moves it once it is reflashed with the table.
+inline void
+fdnWithoutTheStorePartitionKeepsTheStoreInTheDefaultPartition(FdnRecordStoreTests* suite) {
+    suite->deliverRecords(2, 2, 2);
+    suite->rebootWithoutStoreArea();
+
+    suite->expectStoredCounts(2, 2, 2);
+    EXPECT_TRUE(suite->holdsDeliveredRecords(2, 2, 2));
+    const uint32_t matchCount =
+    static_cast<uint32_t>(FDN_MATCH_RECORD_CAPACITY - FDN_LEGACY_MATCH_RECORD_CAPACITY);
+    suite->deliverRecords(FDN_CRASH_RECORD_CAPACITY + 1, FDN_LEGACY_MATCH_RECORD_CAPACITY + 1,
+                          matchCount + 1);
+    suite->expectStoredCounts(FDN_CRASH_RECORD_CAPACITY, FDN_LEGACY_MATCH_RECORD_CAPACITY,
+                              matchCount);
+
+    suite->rebootOnStoreArea();
+    suite->expectStoredCounts(FDN_CRASH_RECORD_CAPACITY, FDN_LEGACY_MATCH_RECORD_CAPACITY,
+                              matchCount);
+    EXPECT_TRUE(suite->holdsDeliveredRecords(FDN_CRASH_RECORD_CAPACITY,
+                                             FDN_LEGACY_MATCH_RECORD_CAPACITY, matchCount));
+    EXPECT_FALSE(holdsAnyRecordSlot(suite->fdnPrefs));
 }

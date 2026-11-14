@@ -8,12 +8,14 @@
 #include "device/drivers/unknown-storage-namespace-exception.hpp"
 
 #include <nvs.h>
+#include <nvs_flash.h>
 
 /**
  * NVS-backed storage driver for ESP32-S3.
  *
- * Constructed with a list of namespace names; each opens a separate NVS partition
- * namespace on initialize(). All read/write operations require an explicit namespace
+ * Constructed with a list of namespace names; each opens a separate NVS
+ * namespace on initialize(), in the default `nvs` partition or in the one named
+ * at construction. All read/write operations require an explicit namespace
  * argument. Using a namespace not passed to the constructor throws
  * UnknownStorageNamespaceException.
  *
@@ -22,9 +24,19 @@
  */
 class Esp32S3PrefsDriver : public StorageDriverInterface {
 public:
-    /** Registers one NVS handle slot per namespace; any other name throws. */
+    /** Registers one NVS handle slot per namespace of the default partition; any other name throws.
+     */
     Esp32S3PrefsDriver(const std::string& name, std::initializer_list<const char*> namespaces)
-        : StorageDriverInterface(name) {
+        : Esp32S3PrefsDriver(name, NVS_DEFAULT_PART_NAME, namespaces) {}
+
+    /**
+     * Registers one NVS handle slot per namespace of the NVS partition labelled
+     * @p partitionLabel; any other name throws.
+     */
+    Esp32S3PrefsDriver(const std::string& name, const char* partitionLabel,
+                       std::initializer_list<const char*> namespaces)
+        : StorageDriverInterface(name)
+        , partitionLabel(partitionLabel) {
         for (const char* ns : namespaces) {
             namespaceHandles.try_emplace(std::string(ns), 0);
         }
@@ -35,15 +47,28 @@ public:
         endAllNamespaces();
     }
 
-    /** Begins each namespace read-write. Non-zero when one refuses to open. */
+    /**
+     * Begins each namespace read-write. Non-zero when the partition or a
+     * namespace refuses to open, as when the partition table has no partition
+     * of this label.
+     */
     int initialize() override {
-        // nvs_flash_init() is the platform's job, in main before any driver. It
-        // is idempotent, so the cost of calling it twice is nil; the reason it
-        // belongs upstairs is that the radio needs NVS too and neither driver
-        // owns it.
+        // nvs_flash_init() of the default partition is main's job, since the radio
+        // needs it too; a named partition is this driver's and is never erased on
+        // a failed init, because it may hold records.
+        if (partitionLabel != NVS_DEFAULT_PART_NAME) {
+            const esp_err_t partitionStatus = nvs_flash_init_partition(partitionLabel.c_str());
+            if (partitionStatus != ESP_OK) {
+                LOG_E(name.c_str(), "nvs_flash_init_partition failed for %s: %s",
+                      partitionLabel.c_str(), esp_err_to_name(partitionStatus));
+                return 1;
+            }
+        }
         for (auto& entry : namespaceHandles) {
-            if (nvs_open(entry.first.c_str(), NVS_READWRITE, &entry.second) != ESP_OK) {
-                LOG_E(name.c_str(), "nvs_open failed for namespace %s", entry.first.c_str());
+            if (nvs_open_from_partition(partitionLabel.c_str(), entry.first.c_str(), NVS_READWRITE,
+                                        &entry.second) != ESP_OK) {
+                LOG_E(name.c_str(), "nvs_open failed for namespace %s in partition %s",
+                      entry.first.c_str(), partitionLabel.c_str());
                 return 1;
             }
         }
@@ -196,5 +221,6 @@ private:
         }
     }
 
+    std::string partitionLabel;
     std::map<std::string, nvs_handle_t> namespaceHandles;
 };

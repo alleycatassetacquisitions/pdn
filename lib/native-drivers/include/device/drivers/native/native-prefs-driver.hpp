@@ -29,6 +29,7 @@ public:
 
     /** Always succeeds; there is no backing store to open. */
     int initialize() override { return 0; }
+
     /** No periodic work. */
     void exec() override {}
 
