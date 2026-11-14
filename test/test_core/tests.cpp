@@ -1399,6 +1399,14 @@ TEST_F(FdnRecordStoreTests, erasesARetiredCrashRecordEvenWhenTheHeadCannotAdvanc
     fdnErasesARetiredCrashRecordEvenWhenTheHeadCannotAdvance(this);
 }
 
+TEST_F(FdnRecordStoreTests, refusesToRetireACrashRecordThatIsNoLongerTheOldest) {
+    fdnRefusesToRetireACrashRecordThatIsNoLongerTheOldest(this);
+}
+
+TEST_F(FdnRecordStoreTests, refusesToRetireAMatchBatchThatIsNoLongerTheOldest) {
+    fdnRefusesToRetireAMatchBatchThatIsNoLongerTheOldest(this);
+}
+
 // ============================================
 // FDN RECORD UPLOADER TESTS
 // ============================================
