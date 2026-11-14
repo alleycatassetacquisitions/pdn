@@ -1714,7 +1714,7 @@ inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(1));
 
     MockStorage storage;
-    MatchManager matchManager(&suite->player, &storage, nullptr, nullptr);
+    MatchManager matchManager(&suite->player, nullptr, &storage, nullptr, nullptr);
     suite->followRingHead(opMac, &matchManager);
 
     suite->player.setIsHunter(true);
@@ -1760,7 +1760,7 @@ inline void anAbortRetiresTheMatchTheTournamentPrimed(ShootoutManagerTests* suit
         .WillByDefault(testing::Return(1));
 
     MockStorage storage;
-    MatchManager matchManager(&suite->player, &storage, nullptr, nullptr);
+    MatchManager matchManager(&suite->player, nullptr, &storage, nullptr, nullptr);
     suite->rebuildShootout(&matchManager);
 
     suite->joinRelayedRing(coord.data());
@@ -1792,7 +1792,7 @@ inline void aTournamentResetLeavesACableMatchAlone(ShootoutManagerTests* suite) 
         .WillByDefault(testing::Return(selfMac));
 
     MockStorage storage;
-    MatchManager matchManager(&suite->player, &storage, nullptr, nullptr);
+    MatchManager matchManager(&suite->player, nullptr, &storage, nullptr, nullptr);
     suite->rebuildShootout(&matchManager);
 
     matchManager.receiveMatch("b5f1c0de-0000-4000-8000-00000000cafe", /*opponentIsHunter=*/true,

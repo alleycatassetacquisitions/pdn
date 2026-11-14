@@ -142,7 +142,8 @@ static void setup() {
     crashLogger = new CrashLogger(storageDriver);
     crashLogger->capture(crashedBootUptimeMs);
 
-    gameSession = new GameSession(playerProvider->getPlayer(), pdn, symbolWirelessManager);
+    gameSession = new GameSession(playerProvider->getPlayer(), playerProvider->getRecordKey(), pdn,
+                                  symbolWirelessManager);
     gameSession->setCrashRecordSource(crashLogger);
 
     PlayerFetchApp* playerFetchApp =

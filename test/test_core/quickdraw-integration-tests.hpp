@@ -120,7 +120,7 @@ private:
         deviceWirelessManager = new WirelessManager(&peerComms, &httpClient);
         wirelessManager = new QuickdrawRadioTap();
         wirelessManager->attach(&peerComms);
-        matchManager = new MatchManager(player, &storage, deviceWirelessManager, &fakeRdc);
+        matchManager = new MatchManager(player, nullptr, &storage, deviceWirelessManager, &fakeRdc);
         // Stub the RDC with the opponent MAC this fixture uses so the
         // SEND_MATCH_ID gate in listenForMatchEvents passes for delivered packets.
         {
@@ -229,8 +229,8 @@ private:
         hunterDeviceWirelessManager = new WirelessManager(&hunterPeerComms, &hunterHttpClient);
         hunterWirelessManager = new QuickdrawRadioTap();
         hunterWirelessManager->attach(&hunterPeerComms);
-        hunterMatchManager =
-        new MatchManager(hunter, &hunterStorage, hunterDeviceWirelessManager, &hunterFakeRdc);
+        hunterMatchManager = new MatchManager(hunter, nullptr, &hunterStorage,
+                                              hunterDeviceWirelessManager, &hunterFakeRdc);
     }
 
     void setupBounty() {
@@ -242,8 +242,8 @@ private:
         bountyDeviceWirelessManager = new WirelessManager(&bountyPeerComms, &bountyHttpClient);
         bountyWirelessManager = new QuickdrawRadioTap();
         bountyWirelessManager->attach(&bountyPeerComms);
-        bountyMatchManager =
-        new MatchManager(bounty, &bountyStorage, bountyDeviceWirelessManager, &bountyFakeRdc);
+        bountyMatchManager = new MatchManager(bounty, nullptr, &bountyStorage,
+                                              bountyDeviceWirelessManager, &bountyFakeRdc);
     }
 
     void setupMatches() {

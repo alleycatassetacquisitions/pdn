@@ -2,6 +2,7 @@
 #include "device/drivers/logger.hpp"
 #include "wireless/match-packet.hpp"
 #include "game/posse-manager.hpp"
+#include "game/record-tag.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
 #include <algorithm>
@@ -10,9 +11,10 @@
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
-MatchManager::MatchManager(Player* player, StorageInterface* storage,
+MatchManager::MatchManager(Player* player, const RecordKey* recordKey, StorageInterface* storage,
                            WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
     : player(player)
+    , recordKey(recordKey)
     , rdc(rdc)
     , storage(storage)
     , matchChannel(wirelessManager, PktType::kMatchCommand) {
@@ -257,7 +259,17 @@ bool MatchManager::finalizeMatch() {
         return true;
     }
 
-    if (appendMatchToStorage(&*activeMatchState.match)) {
+    // Tagged once, here, under the key held now; a record that cannot be tagged is not kept.
+    MatchRecordContent content{};
+    match.serialize(content.recordBytes);
+    if (!tagMatchRecord(recordKey, content)) {
+        LOG_E(MATCH_MANAGER_TAG, "Match %s not stored: no record key to tag it with",
+              matchId.c_str());
+        clearCurrentMatch();
+        return true;
+    }
+
+    if (appendRecordToStorage(content)) {
         clearCurrentMatch();
         LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", matchId.c_str());
         return true;
@@ -315,19 +327,17 @@ uint32_t MatchManager::getCollectedHighWaterMark() {
     return storage->readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
 }
 
-bool MatchManager::appendMatchToStorage(const Match* match) {
-    if (!match || !storage) return false;
+bool MatchManager::appendRecordToStorage(const MatchRecordContent& content) {
+    if (!storage) return false;
 
     const uint32_t nextSeq = getMatchSequenceNumber() + 1;
     char key[16];
     snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
              static_cast<unsigned>((nextSeq - 1) % MATCH_RING_CAPACITY));
 
-    uint8_t buffer[MATCH_BINARY_SIZE] = {};
-    match->serialize(buffer);
-
-    if (storage->writeBytes(MATCHES_PREFS_NAMESPACE, key, buffer, MATCH_BINARY_SIZE) !=
-        MATCH_BINARY_SIZE) {
+    if (storage->writeBytes(MATCHES_PREFS_NAMESPACE, key,
+                            reinterpret_cast<const uint8_t*>(&content),
+                            MATCH_SLOT_SIZE) != MATCH_SLOT_SIZE) {
         LOG_E(MATCH_MANAGER_TAG, "Failed to save match binary at key %s", key);
         return false;
     }
@@ -342,25 +352,28 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
 
 bool MatchManager::readLowestPending(uint32_t& recordNumber, MatchRecordContent& content) {
     // A scratch copy, so a short read leaves the caller's buffer untouched.
-    uint8_t buffer[MATCH_BINARY_SIZE] = {};
+    MatchRecordContent slot{};
     // With no storage both numbers read 0, nothing is pending and nothing is loaded.
+    // A slot of another length has no tag to send (firmware that stored none wrote
+    // 112 bytes), so it is passed over the same way as one that cannot be read.
     if (!findLowestReadableRecord(
         getCollectedHighWaterMark(), getMatchSequenceNumber(), MATCH_RING_CAPACITY,
         highestUnreadableReported, recordNumber,
-        [this, &buffer](uint32_t seq) {
+        [this, &slot](uint32_t seq) {
             char key[16];
             snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
                      static_cast<unsigned>((seq - 1) % MATCH_RING_CAPACITY));
-            return storage->readBytes(MATCHES_PREFS_NAMESPACE, key, buffer, MATCH_BINARY_SIZE) ==
-                   MATCH_BINARY_SIZE;
+            return storage->readBytes(MATCHES_PREFS_NAMESPACE, key,
+                                      reinterpret_cast<uint8_t*>(&slot),
+                                      MATCH_SLOT_SIZE) == MATCH_SLOT_SIZE;
         },
         [](uint32_t seq) {
-            LOG_W(MATCH_MANAGER_TAG, "Stored match %u cannot be read", static_cast<unsigned>(seq));
+            LOG_W(MATCH_MANAGER_TAG, "Stored match %u is not a readable tagged record",
+                  static_cast<unsigned>(seq));
         })) {
         return false;
     }
-    memcpy(content.recordBytes, buffer, MATCH_BINARY_SIZE);
-    memset(content.tag, 0, sizeof(content.tag));
+    content = slot;
     return true;
 }
 

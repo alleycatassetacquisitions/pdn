@@ -16,14 +16,17 @@
 #include "game/match-manager.hpp"
 #include "game/match.hpp"
 #include "game/player.hpp"
+#include "game/record-tag.hpp"
 #include "record-relay-tests.hpp"
+#include "registration-test-helper.hpp"
 #include "wireless/match-packet.hpp"
 #include "wireless/record-relay-types.hpp"
 
 /**
  * The PDN of RecordRelayTests with the "matches" namespace in real in-memory
- * storage, so the relay reads the session's own MatchManager. No tag is
- * computed yet: every frame carries an all-zero tag.
+ * storage, so the relay reads the session's own MatchManager. The player is
+ * registered and holds a record key, so every match played here is stored
+ * with its tag.
  */
 class MatchRelayTests : public RecordRelayTests {
 public:
@@ -56,14 +59,11 @@ public:
 
         RecordRelayTests::SetUp();
 
-        // A match is stored only between two registered players, and its
-        // handshake is taken only from a direct peer. The jack itself stays
-        // Disconnected.
-        UUIDBytes selfId{};
-        UUIDBytes::parse("0b0b0b0b-0000-4000-8000-000000000001", selfId);
-        Team bounty{};
-        strncpy(bounty.name, "Bounty", sizeof(bounty.name) - 1);
-        player->applyRegistrationProfile(selfId, "LocalBounty", bounty, {});
+        // A match is stored only between two registered players by a PDN that
+        // holds a record key, and its handshake is taken only from a direct
+        // peer. The jack itself stays Disconnected.
+        registerTestPlayer(playerProvider, "0b0b0b0b-0000-4000-8000-000000000001", "LocalBounty",
+                           "Bounty");
         pdnDevice.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, opponentMac);
     }
 
@@ -108,29 +108,42 @@ public:
         return pdnPrefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
     }
 
-    /** The 112 bytes the PDN's storage holds for the match with @p sequenceNumber. */
-    std::array<uint8_t, MATCH_RECORD_SIZE> storedRecord(uint32_t sequenceNumber) {
+    /**
+     * The ring slot the PDN's storage holds for the match with @p sequenceNumber:
+     * its 112 record bytes, then its tag.
+     */
+    MatchRecordContent storedSlot(uint32_t sequenceNumber) {
         char key[16];
         snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
                  static_cast<unsigned>((sequenceNumber - 1) % MATCH_RING_CAPACITY));
-        std::array<uint8_t, MATCH_RECORD_SIZE> bytes{};
-        EXPECT_EQ(pdnPrefs.readBytes(MATCHES_PREFS_NAMESPACE, key, bytes.data(), bytes.size()),
-                  MATCH_RECORD_SIZE)
-        << "no stored record for match " << sequenceNumber;
-        return bytes;
+        MatchRecordContent slot{};
+        EXPECT_EQ(pdnPrefs.readBytes(MATCHES_PREFS_NAMESPACE, key,
+                                     reinterpret_cast<uint8_t*>(&slot), sizeof(slot)),
+                  MATCH_SLOT_SIZE)
+        << "no stored record and tag for match " << sequenceNumber;
+        return slot;
     }
 
     /**
      * The frame the PDN sends for the match with @p sequenceNumber: its record
-     * and an all-zero tag.
+     * and the tag stored with it.
      */
     MatchRecordFramePacket expectedFrame(uint32_t sequenceNumber) {
         MatchRecordFramePacket frame{};
         frame.kind = static_cast<uint8_t>(RecordKind::MATCH);
         frame.recordNumber = sequenceNumber;
-        const std::array<uint8_t, MATCH_RECORD_SIZE> bytes = storedRecord(sequenceNumber);
-        memcpy(frame.content.recordBytes, bytes.data(), bytes.size());
+        frame.content = storedSlot(sequenceNumber);
         return frame;
+    }
+
+    /**
+     * Restarts the PDN: the session is rebuilt over the same storage with
+     * nobody registered and no record key held.
+     */
+    void restartPdn() {
+        delete gameSession;
+        playerProvider.clear();
+        buildSession();
     }
 
     /** The record numbers of the match record frames sent, from index @p from on. */
@@ -189,17 +202,19 @@ inline void matchRelaySendsAMatchInARecordFrameNumberedByItsSequenceNumber(Match
     uint32_t recordNumber = 0;
     memcpy(&recordNumber, &bytes[2], sizeof(recordNumber));
     EXPECT_EQ(recordNumber, 12u);
-    const std::array<uint8_t, MATCH_RECORD_SIZE> stored = suite->storedRecord(12);
-    EXPECT_EQ(memcmp(&bytes[6], stored.data(), stored.size()), 0)
+    ASSERT_EQ(bytes.size(), 6 + MATCH_RECORD_SIZE + RECORD_TAG_SIZE);
+    const MatchRecordContent stored = suite->storedSlot(12);
+    EXPECT_EQ(memcmp(&bytes[6], stored.recordBytes, MATCH_RECORD_SIZE), 0)
     << "the record bytes are not the 112 bytes the PDN stored for match 12";
     Match carried{};
     carried.deserialize(&bytes[6]);
     EXPECT_STREQ(carried.getMatchId(), MatchRelayTests::matchIdOf(12).c_str());
-    // No tag is computed in this build: 16 zero bytes.
-    ASSERT_EQ(bytes.size(), 6 + MATCH_RECORD_SIZE + RECORD_TAG_SIZE);
-    for (size_t i = 6 + MATCH_RECORD_SIZE; i < bytes.size(); i++) {
-        ASSERT_EQ(bytes[i], 0) << "tag byte " << (i - 6 - MATCH_RECORD_SIZE);
-    }
+    EXPECT_EQ(memcmp(&bytes[6 + MATCH_RECORD_SIZE], stored.tag, RECORD_TAG_SIZE), 0)
+    << "the tag is not the 16 bytes the PDN stored with match 12";
+    MatchRecordContent tagged = stored;
+    ASSERT_TRUE(tagMatchRecord(suite->playerProvider.getRecordKey(), tagged));
+    EXPECT_EQ(memcmp(&bytes[6 + MATCH_RECORD_SIZE], tagged.tag, RECORD_TAG_SIZE), 0)
+    << "the tag sent is not the tag of the record bytes under the key held when the match ended";
     EXPECT_EQ(suite->collectedMark(), 11u) << "sending a record must not retire it";
 }
 
@@ -345,6 +360,81 @@ inline void matchRelayPassesOverAnUnreadableStoredMatch(MatchRelayTests* suite) 
 
     suite->hearBeacon(suite->fdnMac);
     EXPECT_EQ(suite->framesOf<MatchRecordTraits>().size(), 2u);
+}
+
+// match-collection, "Match record in a slot with no record tag is never sent".
+inline void matchRelayNeverSendsASlotWithNoTagAndSendsTheRecordAfterIt(MatchRelayTests* suite) {
+    suite->storeMatches(4);
+    suite->matchManager()->advanceMark(2);
+    // Match 3 as firmware that stored no tag left it: the 112 record bytes alone.
+    const MatchRecordContent third = suite->storedSlot(3);
+    ASSERT_EQ(suite->pdnPrefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_2", third.recordBytes,
+                                         MATCH_RECORD_SIZE),
+              MATCH_RECORD_SIZE);
+    const MatchRecordContent fourth = suite->storedSlot(4);
+
+    suite->hearBeacon(suite->fdnMac);
+    const std::vector<SentRecordFrame<MatchRecordFramePacket>> frames =
+    suite->framesOf<MatchRecordTraits>();
+    EXPECT_EQ(suite->sentMatchNumbers(), (std::vector<uint32_t>{4u}))
+    << "match 3 has no tag to send and must not hold back match 4";
+    ASSERT_EQ(frames.size(), 1u);
+    EXPECT_EQ(memcmp(&frames[0].frame.content, &fourth, sizeof(fourth)), 0)
+    << "match 4 did not go out with its own record bytes and stored tag";
+    EXPECT_EQ(suite->collectedMark(), 2u) << "passing over match 3 moved the mark";
+
+    suite->deliverAcknowledgement<MatchRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<MatchRecordTraits>(frames[0].frame));
+    EXPECT_EQ(suite->collectedMark(), 4u);
+    suite->hearBeacon(suite->fdnMac);
+    EXPECT_EQ(suite->sentMatchNumbers(), (std::vector<uint32_t>{4u})) << "match 3 was sent later";
+}
+
+// A stored tag belongs to the match, not to whoever holds the PDN when it is
+// delivered: the server finds the key from the players the record names.
+inline void matchRelaySendsTheStoredTagAfterARestartAndAnotherRegistration(MatchRelayTests* suite) {
+    suite->storeMatches(1);
+    const MatchRecordContent stored = suite->storedSlot(1);
+
+    suite->restartPdn();
+    ASSERT_FALSE(suite->playerProvider.hasPlayer());
+    ASSERT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+    suite->hearBeacon(suite->fdnMac);
+    std::vector<SentRecordFrame<MatchRecordFramePacket>> frames =
+    suite->framesOf<MatchRecordTraits>();
+    ASSERT_EQ(frames.size(), 1u) << "a PDN nobody is registered on did not send its stored match";
+    EXPECT_EQ(frames[0].recordNumber, 1u);
+    EXPECT_EQ(memcmp(&frames[0].frame.content, &stored, sizeof(stored)), 0)
+    << "after a restart the record or its tag is not what was stored when the match ended";
+    suite->reportDelivered<MatchRecordTraits>(frames[0]);
+
+    // Another player registers and brings another key.
+    registerTestPlayer(suite->playerProvider, "0c0c0c0c-0000-4000-8000-000000000009", "OtherBounty",
+                       "Bounty", 0x80);
+    suite->hearBeacon(suite->fdnMac);
+    frames = suite->framesOf<MatchRecordTraits>();
+    ASSERT_EQ(frames.size(), 2u);
+    EXPECT_EQ(frames[1].recordNumber, 1u);
+    EXPECT_EQ(memcmp(&frames[1].frame.content, &stored, sizeof(stored)), 0)
+    << "registering another player changed a stored record or its tag";
+    suite->reportDelivered<MatchRecordTraits>(frames[1]);
+
+    // That player's own match is tagged under the key held now, not the earlier one.
+    suite->storeMatches(1);
+    const MatchRecordContent second = suite->storedSlot(2);
+    MatchRecordContent underHeldKey = second;
+    ASSERT_TRUE(tagMatchRecord(suite->playerProvider.getRecordKey(), underHeldKey));
+    EXPECT_EQ(memcmp(second.tag, underHeldKey.tag, RECORD_TAG_SIZE), 0);
+    PlayerProvider earlierRegistration;
+    registerTestPlayer(earlierRegistration, "0b0b0b0b-0000-4000-8000-000000000001", "LocalBounty",
+                       "Bounty");
+    MatchRecordContent underEarlierKey = second;
+    ASSERT_TRUE(tagMatchRecord(earlierRegistration.getRecordKey(), underEarlierKey));
+    EXPECT_NE(memcmp(second.tag, underEarlierKey.tag, RECORD_TAG_SIZE), 0)
+    << "the second match was tagged under a key the PDN no longer holds";
+    const MatchRecordContent firstAgain = suite->storedSlot(1);
+    EXPECT_EQ(memcmp(&firstAgain, &stored, sizeof(stored)), 0)
+    << "storing a later match rewrote an earlier slot";
 }
 
 inline void matchRelaySendsAMatchOncePerTriggerUntilAcknowledged(MatchRelayTests* suite) {

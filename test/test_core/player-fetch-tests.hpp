@@ -11,6 +11,7 @@
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "device-player-codec-tests.hpp"
 #include "fdn-provisioning-tests.hpp"
+#include "registration-test-helper.hpp"
 #include "utility-tests.hpp"
 #include "game/player-provider.hpp"
 
@@ -94,15 +95,6 @@ public:
     MockDevice device;
     PdnProvisioningClient provisioningClient{device.wirelessManager};
 };
-
-// A record key counting up from `firstByte`, so two keys are told apart.
-inline ApplicationPayload makeTestRecordKey(uint8_t firstByte) {
-    ApplicationPayload key{};
-    for (size_t i = 0; i < key.size(); ++i) {
-        key[i] = static_cast<uint8_t>(firstByte + i);
-    }
-    return key;
-}
 
 /** A PROFILE_DELIVERED packet for TEST_PLAYER_ID named @p name, answering PIN 0007. */
 inline PlayerProvisionPacket makeProvisionPacket(const char* name) {

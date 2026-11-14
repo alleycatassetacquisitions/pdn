@@ -19,6 +19,7 @@
 #include "device-mock.hpp"
 #include "game/game-session.hpp"
 #include "game/match-manager.hpp"
+#include "game/player-provider.hpp"
 #include "game/player.hpp"
 #include "game/record-relay.hpp"
 #include "id-generator.hpp"
@@ -163,10 +164,15 @@ public:
         ON_CALL(*pdnDevice.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(pdnMac));
         pdnRadio.attach(*pdnDevice.mockPeerComms);
 
-        player = new Player();
+        player = playerProvider.getPlayer();
         char playerId[] = "0042";
         player->setUserID(playerId);
-        gameSession = new GameSession(player, &pdnDevice, nullptr);
+        buildSession();
+    }
+
+    /** Builds the PDN's session over the fixture's player, key holder and device. */
+    void buildSession() {
+        gameSession = new GameSession(player, playerProvider.getRecordKey(), &pdnDevice, nullptr);
         gameSession->setCrashRecordSource(&crashSource);
     }
 
@@ -176,7 +182,6 @@ public:
         gameSession = nullptr;
         delete fdnRecordStore;
         fdnRecordStore = nullptr;
-        delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
@@ -294,6 +299,7 @@ public:
     RecordRelayRadioLog pdnRadio;
     RecordRelayRadioLog fdnRadio;
     FakeRecordSource<CrashRecordTraits> crashSource;
+    PlayerProvider playerProvider;
     Player* player = nullptr;
     GameSession* gameSession = nullptr;
     FdnRecordStore* fdnRecordStore = nullptr;
@@ -556,8 +562,7 @@ recordRelayIgnoresAnAcknowledgementThatDoesNotMatchTheFrameItSent(RecordRelayTes
 
 /**
  * The match record lane of a relay on its own, fed by a fake source whose tag
- * the test chooses. A session's match records come from its MatchManager,
- * which hands out an all-zero tag.
+ * the test chooses, so the lane is shown to carry a tag without reading it.
  */
 class MatchRecordLaneTests : public testing::Test {
 public:
@@ -1039,16 +1044,19 @@ inline void recordRelayRelaysEachKindOnItsOwn() {
             char matchId[37];
             snprintf(matchId, sizeof(matchId), "%08u-b0b0-4000-8000-000000000000", number);
             const Match match(matchId);
-            uint8_t recordBytes[MATCH_BINARY_SIZE] = {};
-            match.serialize(recordBytes);
+            // Seeded as a match that ended earlier left it: record bytes, then a tag.
+            MatchRecordContent slot{};
+            match.serialize(slot.recordBytes);
+            memset(slot.tag, 0xB7, sizeof(slot.tag));
             char key[16];
             snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
                      static_cast<unsigned>((number - 1) % MATCH_RING_CAPACITY));
-            matchPrefs.writeBytes(MATCHES_PREFS_NAMESPACE, key, recordBytes, sizeof(recordBytes));
+            matchPrefs.writeBytes(MATCHES_PREFS_NAMESPACE, key,
+                                  reinterpret_cast<const uint8_t*>(&slot), sizeof(slot));
         }
 
         Player player;
-        MatchManager matchManager(&player, &matchPrefs, device.wirelessManager,
+        MatchManager matchManager(&player, nullptr, &matchPrefs, device.wirelessManager,
                                   &device.fakeRemoteDeviceCoordinator);
         ShootoutManager shootoutManager(&player, device.wirelessManager,
                                         &device.fakeRemoteDeviceCoordinator, &matchManager);
@@ -1127,12 +1135,13 @@ inline void recordRelayUnregistersItsPlayObservers(FakePlatformClock& clock) {
     secondRadio.attach(*secondDevice.mockPeerComms);
 
     Player player;
-    MatchManager firstMatchManager(&player, firstDevice.getStorage(), firstDevice.wirelessManager,
+    MatchManager firstMatchManager(&player, nullptr, firstDevice.getStorage(),
+                                   firstDevice.wirelessManager,
                                    &firstDevice.fakeRemoteDeviceCoordinator);
     ShootoutManager firstShootoutManager(&player, firstDevice.wirelessManager,
                                          &firstDevice.fakeRemoteDeviceCoordinator,
                                          &firstMatchManager);
-    MatchManager secondMatchManager(&player, secondDevice.getStorage(),
+    MatchManager secondMatchManager(&player, nullptr, secondDevice.getStorage(),
                                     secondDevice.wirelessManager,
                                     &secondDevice.fakeRemoteDeviceCoordinator);
     ShootoutManager secondShootoutManager(&player, secondDevice.wirelessManager,

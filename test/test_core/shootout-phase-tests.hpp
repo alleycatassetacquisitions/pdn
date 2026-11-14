@@ -108,7 +108,7 @@ inline void matchStartIsHeardOnceTheMatchIsPrimed(ShootoutManagerTests* suite) {
     std::array<uint8_t, 6> third = {0x07, 0, 0, 0, 0, 0};
     standUpAs(suite, selfMac);
     MockStorage storage;
-    MatchManager matchManager(&suite->player, &storage, nullptr, nullptr);
+    MatchManager matchManager(&suite->player, nullptr, &storage, nullptr, nullptr);
     suite->followRingHead(coord, &matchManager);
     suite->shootout->onRingClosedReceived(coord.data(), {me, coord, third});
     suite->shootout->startProposal();

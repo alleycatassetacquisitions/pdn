@@ -34,13 +34,13 @@ public:
 
         hunterWirelessManager = new QuickdrawRadioTap();
         hunterWirelessManager->attach(hunterDevice.mockPeerComms);
-        hunterMatchManager =
-        new MatchManager(hunter, &hunterStorage, hunterDevice.wirelessManager, &hunterFakeRdc);
+        hunterMatchManager = new MatchManager(hunter, nullptr, &hunterStorage,
+                                              hunterDevice.wirelessManager, &hunterFakeRdc);
 
         bountyWirelessManager = new QuickdrawRadioTap();
         bountyWirelessManager->attach(bountyDevice.mockPeerComms);
-        bountyMatchManager =
-        new MatchManager(bounty, &bountyStorage, bountyDevice.wirelessManager, &bountyFakeRdc);
+        bountyMatchManager = new MatchManager(bounty, nullptr, &bountyStorage,
+                                              bountyDevice.wirelessManager, &bountyFakeRdc);
     }
 
     void TearDown() override {
