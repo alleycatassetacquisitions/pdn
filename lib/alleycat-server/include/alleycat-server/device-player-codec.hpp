@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/player.hpp"
+#include "game/record-key.hpp"
 #include <string>
 
 /**
@@ -11,10 +12,13 @@
 namespace DevicePlayerCodec {
 
 /**
- * Decodes @p body into @p player's registration fields, replacing previous registration data.
+ * Decodes @p body into @p player's registration fields, replacing previous registration data,
+ * and hands the response's record key to @p recordKey. A valid profile with no record key,
+ * or with one of any length other than RECORD_KEY_SIZE, still decodes: @p recordKey then
+ * holds no key.
  *
- * @return false when @p body is not a valid DevicePlayerResponse.
+ * @return false when @p body is not a valid DevicePlayerResponse; @p recordKey then holds no key.
  */
-bool decode(const std::string& body, Player& player);
+bool decode(const std::string& body, Player& player, RecordKey& recordKey);
 
 }  // namespace DevicePlayerCodec

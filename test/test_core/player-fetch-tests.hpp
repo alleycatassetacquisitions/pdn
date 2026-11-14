@@ -68,6 +68,16 @@ public:
         device.fakeRemoteDeviceCoordinator.deliverApplicationFrame(jack, key);
     }
 
+    /**
+     * Carries the key frame the FDN last wrote to its jack over to the PDN's
+     * jack, then has the FDN's jack report the frame written.
+     */
+    void carryRecordKeyAcrossJack() {
+        ASSERT_FALSE(fdnRdc.getSentApplicationFrames().empty()) << "the FDN wrote no key frame";
+        deliverRecordKey(fdnRdc.getSentApplicationFrames().back().second);
+        fdnRdc.finishApplicationFrameWrite(SerialIdentifier::INPUT_JACK);
+    }
+
     /** Hands the PDN @p pkt over the radio as sent by @p fromMac. */
     void deliverProvision(const PlayerProvisionPacket& pkt, const uint8_t* fromMac) {
         device.mockPeerComms->triggerPacketCallback(
@@ -212,12 +222,12 @@ inline void fetchUserStoresProvisionedPlayerOnSuccess(PlayerFetchTestSuite* suit
     fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
 
-    const ApplicationPayload key = makeTestRecordKey(0xA0);
-    suite->deliverRecordKey(key);
     std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada");
     appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Bounty");
     appendTestAffiliationNamed(body, "Reboot Syndicate");
     suite->queuedRequests[0].onSuccess(body);
+    EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "the profile arrived ahead of the key";
+    suite->carryRecordKeyAcrossJack();
 
     fetch.onStateLoop(&suite->device);
     EXPECT_TRUE(suite->playerProvider.hasPlayer());
@@ -227,7 +237,8 @@ inline void fetchUserStoresProvisionedPlayerOnSuccess(PlayerFetchTestSuite* suit
     EXPECT_TRUE(roleCallbackFired) << "applying registration profile must notify connected peers";
     EXPECT_STREQ(player->getUserID().c_str(), "7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11");
     EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "0007");
-    EXPECT_TRUE(suite->holdsRecordKey(key));
+    EXPECT_TRUE(holdsTestRecordKey(*suite->playerProvider.getRecordKey()))
+    << "the PDN does not hold the key the server issued";
     EXPECT_TRUE(fetch.transitionToWelcome());
     fetch.onStateDismounted(&suite->device);
 }

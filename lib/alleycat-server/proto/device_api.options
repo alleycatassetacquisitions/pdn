@@ -12,6 +12,8 @@ alleycat.device.DevicePlayerResponse.name                 type:FT_CALLBACK
 alleycat.device.DevicePlayerResponse.team_id              max_size:16 fixed_length:true
 alleycat.device.DevicePlayerResponse.team_name            type:FT_CALLBACK
 alleycat.device.DevicePlayerResponse.affiliations         type:FT_CALLBACK
+# Read by a callback straight into the key holder, which takes exactly 32 bytes and skips any other length.
+alleycat.device.DevicePlayerResponse.record_key           type:FT_CALLBACK
 alleycat.device.DevicePlayerAffiliation.category_id       max_size:16 fixed_length:true
 alleycat.device.DevicePlayerAffiliation.category_name     type:FT_CALLBACK
 alleycat.device.DevicePlayerAffiliation.affiliation_id    max_size:16 fixed_length:true

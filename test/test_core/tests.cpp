@@ -1057,8 +1057,24 @@ TEST(DevicePlayerCodec, rejectsMissingRequiredUuids) { devicePlayerRejectsMissin
 
 TEST(DevicePlayerCodec, rejectsGarbageBody) { devicePlayerRejectsGarbageBody(); }
 
+TEST(DevicePlayerCodec, decodesRecordKeyBesideProfile) {
+    devicePlayerDecodesRecordKeyBesideProfile();
+}
+
+TEST(DevicePlayerCodec, decodesProfileWithoutUsableRecordKey) {
+    devicePlayerDecodesProfileWithoutUsableRecordKey();
+}
+
+TEST(DevicePlayerCodec, rejectedResponseYieldsNoRecordKey) {
+    devicePlayerRejectedResponseYieldsNoRecordKey();
+}
+
 TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
     playerApiQueuesDevicePlayerLookup(this);
+}
+
+TEST_F(AlleycatApiTestSuite, playerApiTakesRecordKeyOnlyFromVerifiedResponse) {
+    playerApiTakesRecordKeyOnlyFromVerifiedResponse(this);
 }
 
 // ============================================
@@ -1209,6 +1225,42 @@ TEST_F(FdnProvisioningTests, dropsLookupsWhileRegisteredPdnPlays) {
 
 TEST_F(FdnProvisioningTests, reportsLookupResultAndResendsUnconfirmedReply) {
     fdnReportsLookupResultAndResendsUnconfirmedReply(this);
+}
+
+TEST_F(FdnProvisioningTests, writesKeyToJackThenSendsProfile) {
+    fdnWritesKeyToJackThenSendsProfile(this);
+}
+
+TEST_F(FdnProvisioningTests, lookupWithoutUsableKeyFailsRegistration) {
+    fdnLookupWithoutUsableKeyFailsRegistration(this);
+}
+
+TEST_F(FdnProvisioningTests, keyFromUnverifiedLookupFailsRegistration) {
+    fdnKeyFromUnverifiedLookupFailsRegistration(this);
+}
+
+TEST_F(FdnProvisioningTests, jackRefusingKeyFrameFailsRegistration) {
+    fdnJackRefusingKeyFrameFailsRegistration(this);
+}
+
+TEST_F(FdnProvisioningTests, sendsNothingToPdnThatLeftBeforeKeyWasWritten) {
+    fdnSendsNothingToPdnThatLeftBeforeKeyWasWritten(this);
+}
+
+TEST_F(FdnProvisioningTests, lookupCancelledDuringKeyHandOffSendsNoProfile) {
+    fdnLookupCancelledDuringKeyHandOffSendsNoProfile(this);
+}
+
+TEST_F(FdnProvisioningTests, answerToCancelledLookupWritesNoKey) {
+    fdnAnswerToCancelledLookupWritesNoKey(this);
+}
+
+TEST_F(FdnProvisioningTests, writesKeyOnlyToTheJackOfThePdnThatAsked) {
+    fdnWritesKeyOnlyToTheJackOfThePdnThatAsked(this);
+}
+
+TEST_F(FdnProvisioningTests, servesRequestThatArrivedDuringAnotherPdnsKeyHandOff) {
+    fdnServesRequestThatArrivedDuringAnotherPdnsKeyHandOff(this);
 }
 
 // ============================================

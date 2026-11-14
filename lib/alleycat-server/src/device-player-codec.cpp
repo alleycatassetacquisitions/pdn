@@ -30,6 +30,27 @@ bool decodeDisplayName(pb_istream_t* stream, const pb_field_t* field, void** arg
     return pb_read(stream, nullptr, stream->bytes_left);
 }
 
+/**
+ * Takes a record key of exactly RECORD_KEY_SIZE bytes into the RecordKey at
+ * @p arg; a field of any other length is skipped and leaves it holding none.
+ */
+bool decodeRecordKey(pb_istream_t* stream, const pb_field_t* field, void** arg) {
+    (void)field;
+    RecordKey* recordKey = static_cast<RecordKey*>(*arg);
+    // A repeated field's last occurrence wins, as protobuf has it for scalars.
+    recordKey->clear();
+    if (stream->bytes_left != RECORD_KEY_SIZE) {
+        return pb_read(stream, nullptr, stream->bytes_left);
+    }
+    uint8_t bytes[RECORD_KEY_SIZE];
+    const bool wasRead = pb_read(stream, bytes, RECORD_KEY_SIZE);
+    if (wasRead) {
+        recordKey->set(bytes);
+    }
+    secureWipe(bytes, sizeof(bytes));
+    return wasRead;
+}
+
 bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg) {
     (void)field;
     std::vector<Affiliation>* affiliations = static_cast<std::vector<Affiliation>*>(*arg);
@@ -60,7 +81,8 @@ bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg
 
 namespace DevicePlayerCodec {
 
-bool decode(const std::string& body, Player& player) {
+bool decode(const std::string& body, Player& player, RecordKey& recordKey) {
+    recordKey.clear();
     UUIDBytes serverId;
     char serverName[PlayerLimits::NAME_BUFFER_SIZE] = {};
     Team team;
@@ -73,15 +95,18 @@ bool decode(const std::string& body, Player& player) {
     message.team_name.arg = team.name;
     message.affiliations.funcs.decode = &decodeAffiliation;
     message.affiliations.arg = &affiliations;
+    // SERVER-SEAM(pdn-record-auth-and-relay): record_key is a provisional field.
+    message.record_key.funcs.decode = &decodeRecordKey;
+    message.record_key.arg = &recordKey;
 
     pb_istream_t stream = pb_istream_from_buffer(
         reinterpret_cast<const pb_byte_t*>(body.data()), body.size());
-    if (!pb_decode(&stream, alleycat_device_DevicePlayerResponse_fields, &message)) {
-        return false;
-    }
+    const bool decoded = pb_decode(&stream, alleycat_device_DevicePlayerResponse_fields, &message);
 
     std::memcpy(serverId.bytes, message.id, UUIDBytes::SIZE);
-    if (serverId.isZero()) {
+    if (!decoded || serverId.isZero()) {
+        // The key field can have been read before the response proved invalid.
+        recordKey.clear();
         return false;
     }
     if (message.has_team_id) {

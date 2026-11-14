@@ -196,6 +196,7 @@ public:
     MOCK_METHOD(void, setHttpClientState, (HttpClientState), (override));
     MOCK_METHOD(HttpClientState, getHttpClientState, (), (override));
     MOCK_METHOD(bool, hasQueuedRequests, (), (override));
+    MOCK_METHOD(bool, isResponseServerVerified, (), (override));
 };
 
 class MockPeerComms : public PeerCommsInterface {
@@ -295,81 +296,81 @@ public:
      * into or out of CONNECTED, tells the jack observers. Seed the peer's type
      * and profile first: they are read when the connect is delivered. Unlike
      * the real coordinator, getJackStatus here has already moved by the time a
-     * disconnect is delivered.
+     * disconnect is delivered. A disconnect then settles the application frame
+     * accepted for the jack through the same hand-off the real link-down uses:
+     * DROPPED, or WRITTEN once beginApplicationFrameWrite() has taken it.
      */
     void setJackStatus(SerialIdentifier id, JackStatus status) {
-        const bool wasConnected = getJackStatus(id) == JackStatus::CONNECTED;
-        if (id == SerialIdentifier::OUTPUT_JACK) outputStatus = status;
-        else if (id == SerialIdentifier::INPUT_JACK) inputStatus = status;
-        const bool isConnected = getJackStatus(id) == JackStatus::CONNECTED;
-        if (isConnected != wasConnected) fireJackChange(id, isConnected);
+        FakeJack* jack = jackFor(id);
+        if (jack == nullptr) return;
+        const bool wasConnected = jack->status == JackStatus::CONNECTED;
+        jack->status = status;
+        const bool isConnected = status == JackStatus::CONNECTED;
+        if (isConnected == wasConnected) return;
+        fireJackChange(id, isConnected);
+        if (isConnected) return;
+        ApplicationFrameOutcome outcome = ApplicationFrameOutcome::DROPPED;
+        if (jack->handOff.drop(outcome)) fireApplicationFrameOutcome(id, outcome);
+        // A frame the writer had taken is past recall: it finishes it regardless.
+        if (jack->writerHasFrame) {
+            jack->handOff.finish();
+            jack->writerHasFrame = false;
+        }
     }
 
     /** Returns the stubbed status for `id`. */
     JackStatus getJackStatus(SerialIdentifier id) const override {
-        if (id == SerialIdentifier::OUTPUT_JACK) return outputStatus;
-        if (id == SerialIdentifier::INPUT_JACK) return inputStatus;
-        return JackStatus::DISCONNECTED;
+        const FakeJack* jack = jackFor(id);
+        return jack != nullptr ? jack->status : JackStatus::DISCONNECTED;
     }
 
     void setPeerDeviceType(SerialIdentifier id, DeviceType type) {
-        if (id == SerialIdentifier::OUTPUT_JACK) outputDeviceType = type;
-        else if (id == SerialIdentifier::INPUT_JACK) inputDeviceType = type;
+        FakeJack* jack = jackFor(id);
+        if (jack != nullptr) jack->deviceType = type;
     }
 
     DeviceType getPeerDeviceType(SerialIdentifier id) const override {
-        if (id == SerialIdentifier::OUTPUT_JACK) return outputDeviceType;
-        if (id == SerialIdentifier::INPUT_JACK) return inputDeviceType;
-        return DeviceType::UNKNOWN;
+        const FakeJack* jack = jackFor(id);
+        return jack != nullptr ? jack->deviceType : DeviceType::UNKNOWN;
     }
 
     /** Seeds a PDN peer profile on `id` carrying `gameRole`. */
     void setPeerRole(SerialIdentifier id, bool isHunter) {
-        setPeerDeviceType(id, DeviceType::PDN);
         PlayerProfile profile{};
         profile.gameRole = isHunter ? 1 : 0;
-        if (id == SerialIdentifier::OUTPUT_JACK) outputProfile = profile;
-        else if (id == SerialIdentifier::INPUT_JACK) inputProfile = profile;
+        setPeerProfile(id, profile);
     }
 
     /** Seeds a full PDN peer profile on `id`. */
     void setPeerProfile(SerialIdentifier id, const PlayerProfile& profile) {
         setPeerDeviceType(id, DeviceType::PDN);
-        if (id == SerialIdentifier::OUTPUT_JACK)
-            outputProfile = profile;
-        else if (id == SerialIdentifier::INPUT_JACK)
-            inputProfile = profile;
+        FakeJack* jack = jackFor(id);
+        if (jack != nullptr) jack->profile = profile;
     }
 
     /** Returns the seeded peer profile on `id`, or nullptr if unset. */
     const uint8_t* getPeerProfile(SerialIdentifier id, size_t& length) const override {
-        const std::optional<PlayerProfile>* slot = nullptr;
-        if (id == SerialIdentifier::OUTPUT_JACK) slot = &outputProfile;
-        else if (id == SerialIdentifier::INPUT_JACK) slot = &inputProfile;
-        if (slot == nullptr || !slot->has_value()) {
+        const FakeJack* jack = jackFor(id);
+        if (jack == nullptr || !jack->profile.has_value()) {
             length = 0;
             return nullptr;
         }
         length = sizeof(PlayerProfile);
-        return reinterpret_cast<const uint8_t*>(&slot->value());
+        return reinterpret_cast<const uint8_t*>(&jack->profile.value());
     }
 
     // Stubbable direct peer MACs — tests that exercise peer-MAC gating set
     // these; getPeerMac returns a pointer into the stored array or nullptr.
     void setPeerMac(SerialIdentifier id, const uint8_t* mac) {
-        if (id == SerialIdentifier::OUTPUT_JACK) {
-            outputPeerSet = (mac != nullptr);
-            if (mac) memcpy(outputPeerMac, mac, 6);
-        } else if (id == SerialIdentifier::INPUT_JACK) {
-            inputPeerSet = (mac != nullptr);
-            if (mac) memcpy(inputPeerMac, mac, 6);
-        }
+        FakeJack* jack = jackFor(id);
+        if (jack == nullptr) return;
+        jack->peerSet = (mac != nullptr);
+        if (mac) memcpy(jack->peerMac, mac, 6);
     }
 
     const uint8_t* getPeerMac(SerialIdentifier id) const override {
-        if (id == SerialIdentifier::OUTPUT_JACK && outputPeerSet) return outputPeerMac;
-        if (id == SerialIdentifier::INPUT_JACK && inputPeerSet) return inputPeerMac;
-        return nullptr;
+        const FakeJack* jack = jackFor(id);
+        return jack != nullptr && jack->peerSet ? jack->peerMac : nullptr;
     }
 
     // Production RDC reads its per-jack link machines. The fake stubs peer MACs
@@ -388,18 +389,83 @@ public:
         fireApplicationFrame(jack, payload);
     }
 
+    /**
+     * Offers the frame to this jack's ApplicationFrameHandOff, the one the
+     * real coordinator uses, once a peer is Connected on `jack`. An accepted
+     * frame is kept for getSentApplicationFrames() and stays unsettled until
+     * finishApplicationFrameWrite() or a disconnect.
+     */
+    bool sendApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload) override {
+        FakeJack* fakeJack = jackFor(jack);
+        if (applicationFramesRefused || fakeJack == nullptr ||
+            fakeJack->status != JackStatus::CONNECTED || !fakeJack->handOff.offer(payload)) {
+            return false;
+        }
+        sentApplicationFrames.emplace_back(jack, payload);
+        return true;
+    }
+
+    /** While refused, sendApplicationFrame() takes nothing, as a jack whose slot is busy. */
+    void setApplicationFramesRefused(bool refused) { applicationFramesRefused = refused; }
+
+    /** One accepted frame and the jack it was for. */
+    using SentApplicationFrame = std::pair<SerialIdentifier, ApplicationPayload>;
+
+    /** Every frame accepted so far, oldest first. */
+    const std::vector<SentApplicationFrame>& getSentApplicationFrames() const {
+        return sentApplicationFrames;
+    }
+
+    /** The writer takes the frame waiting on `jack`: a disconnect now settles it WRITTEN. */
+    void beginApplicationFrameWrite(SerialIdentifier jack) {
+        FakeJack* fakeJack = jackFor(jack);
+        if (fakeJack == nullptr || fakeJack->writerHasFrame) return;
+        fakeJack->writerHasFrame = fakeJack->handOff.takeForWrite() != nullptr;
+    }
+
+    /** The writer finishes the frame on `jack`, if any, and the outcome observers hear WRITTEN. */
+    void finishApplicationFrameWrite(SerialIdentifier jack) {
+        beginApplicationFrameWrite(jack);
+        FakeJack* fakeJack = jackFor(jack);
+        if (fakeJack == nullptr || !fakeJack->writerHasFrame) return;
+        fakeJack->handOff.finish();
+        fakeJack->writerHasFrame = false;
+        if (fakeJack->handOff.takeWritten()) {
+            fireApplicationFrameOutcome(jack, ApplicationFrameOutcome::WRITTEN);
+        }
+    }
+
 private:
+    // What a test has stubbed for one jack, its frame hand-off, and whether
+    // this fake's stand-in writer holds that hand-off's frame.
+    struct FakeJack {
+        JackStatus status = JackStatus::DISCONNECTED;
+        DeviceType deviceType = DeviceType::UNKNOWN;
+        std::optional<PlayerProfile> profile;
+        uint8_t peerMac[6] = {};
+        bool peerSet = false;
+        ApplicationFrameHandOff handOff;
+        bool writerHasFrame = false;
+    };
+
+    const FakeJack* jackFor(SerialIdentifier id) const {
+        if (id == SerialIdentifier::OUTPUT_JACK) return &outputJack;
+        if (id == SerialIdentifier::INPUT_JACK) return &inputJack;
+        if (id == SerialIdentifier::INPUT_JACK_SECONDARY) return &secondaryInputJack;
+        return nullptr;
+    }
+
+    FakeJack* jackFor(SerialIdentifier id) {
+        return const_cast<FakeJack*>(
+        static_cast<const FakeRemoteDeviceCoordinator*>(this)->jackFor(id));
+    }
+
+    FakeJack outputJack;
+    FakeJack inputJack;
+    FakeJack secondaryInputJack;
+    bool applicationFramesRefused = false;
+    std::vector<SentApplicationFrame> sentApplicationFrames;
     std::array<uint8_t, 6> ringHeadMac{};
-    JackStatus outputStatus = JackStatus::DISCONNECTED;
-    JackStatus inputStatus = JackStatus::DISCONNECTED;
-    DeviceType outputDeviceType = DeviceType::UNKNOWN;
-    DeviceType inputDeviceType = DeviceType::UNKNOWN;
-    std::optional<PlayerProfile> outputProfile;
-    std::optional<PlayerProfile> inputProfile;
-    uint8_t outputPeerMac[6] = {};
-    uint8_t inputPeerMac[6] = {};
-    bool outputPeerSet = false;
-    bool inputPeerSet = false;
 };
 
 // Stand-in RDC reporting a latched ring plus a head roster without driving the

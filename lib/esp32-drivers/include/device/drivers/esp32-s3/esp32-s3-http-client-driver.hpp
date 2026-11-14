@@ -19,6 +19,7 @@
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/wireless-types.hpp"
 #include "utils/http-date.hpp"
+#include "utils/secure-wipe.hpp"
 #include "utils/simple-timer.hpp"
 
 // Forward declaration for the event handler
@@ -93,6 +94,15 @@ public:
 
     /** True until every queued request has had its callback. */
     bool hasQueuedRequests() override { return !httpQueue.empty(); }
+
+    /**
+     * True inside the success callback of a response for which the configured
+     * server address is `https://` and the URL the transfer ended on is
+     * `https://` too. Redirects are followed, and the hops in between are not
+     * checked. The client checks an https server's certificate against the
+     * compiled-in CA bundle.
+     */
+    bool isResponseServerVerified() override { return responseServerVerified; }
 
     void disconnect() override {
         cleanupHttpClient();
@@ -453,6 +463,8 @@ private:
             return;
         }
 
+        // A retry starts over; what the failed attempt received goes first.
+        wipeResponseBody(request.responseData);
         request.responseData = "";
         responseTooLarge = false;
         request.inProgress = true;
@@ -518,6 +530,11 @@ private:
 
         const int statusCode = esp_http_client_get_status_code(httpClient);
         if (statusCode >= 200 && statusCode < 300) {
+            // The address this FDN was configured with and the URL the transfer
+            // ended on; a redirect in between is followed and not looked at.
+            responseServerVerified =
+            wifiConfig->baseUrl.rfind("https://", 0) == 0 &&
+            esp_http_client_get_transport_type(httpClient) == HTTP_TRANSPORT_OVER_SSL;
             completeFront(true, {});
             return;
         }
@@ -581,7 +598,14 @@ private:
         } else if (done.onError) {
             done.onError(error);
         }
+        responseServerVerified = false;
+        wipeResponseBody(done.responseData);
     }
+
+    // A player lookup's body carries a record key: the body is overwritten
+    // before its buffer is freed or reused. Buffers it outgrew while arriving
+    // are not.
+    static void wipeResponseBody(std::string& body) { secureWipe(&body[0], body.size()); }
 
     void handleHttpData(HttpRequest* request, void* data, int dataLen) {
         if (dataLen <= 0 || responseTooLarge) {
@@ -597,6 +621,7 @@ private:
     // Swap rather than clear, so the buffer's capacity is released too.
     void rejectOversizedResponse(HttpRequest* request) {
         responseTooLarge = true;
+        wipeResponseBody(request->responseData);
         std::string().swap(request->responseData);
     }
 
@@ -622,6 +647,8 @@ private:
     unsigned long retryAt = 0;
     // Set from the event handler; pumpHttpTransfer() fails the request on it.
     bool responseTooLarge = false;
+    // True only while the success callback of a verified response runs.
+    bool responseServerVerified = false;
 };
 
 // Defined after the class: syncs clock from the Date header, collects the

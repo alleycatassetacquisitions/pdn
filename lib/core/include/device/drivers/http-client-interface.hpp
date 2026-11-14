@@ -26,4 +26,10 @@ public:
     virtual HttpClientState getHttpClientState() = 0;
     /** True while a queued request has not had its callback. */
     virtual bool hasQueuedRequests() = 0;
+    /**
+     * True when the response whose success callback is running came over HTTPS
+     * with the server's certificate checked. Meaningful only inside a success
+     * callback; false anywhere else.
+     */
+    virtual bool isResponseServerVerified() = 0;
 };

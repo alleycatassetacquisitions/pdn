@@ -128,6 +128,8 @@ public:
         return HttpClientState::DISCONNECTED;
     }
     bool hasQueuedRequests() override { return false; }
+    /** Never: this client answers no request. */
+    bool isResponseServerVerified() override { return false; }
 
 private:
     uint8_t mac_[6] = {0};

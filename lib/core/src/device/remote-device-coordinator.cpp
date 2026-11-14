@@ -148,7 +148,7 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
         // Ahead of the link machine: a frame written since the last tick is
         // reported while the link it went out on still stands, if it does.
         if (link.applicationFrameHandOff.takeWritten()) {
-            applicationFrameOutcomeCallbacks.fire(jack, ApplicationFrameOutcome::WRITTEN);
+            fireApplicationFrameOutcome(jack, ApplicationFrameOutcome::WRITTEN);
         }
         if (link.machine) link.machine->onStateLoop(PDN);
     }
@@ -310,7 +310,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             // and a send from inside the outcome observer is refused.
             ApplicationFrameOutcome outcome = ApplicationFrameOutcome::DROPPED;
             if (helloByJack[jackIndex(jack)].applicationFrameHandOff.drop(outcome)) {
-                applicationFrameOutcomeCallbacks.fire(j, outcome);
+                fireApplicationFrameOutcome(j, outcome);
             }
             if (MacToUInt64(mac.data()) != 0) {
                 const bool wasFdn = getPeerDeviceType(j) == DeviceType::FDN;
