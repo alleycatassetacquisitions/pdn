@@ -222,15 +222,20 @@ const uint8_t* RemoteDeviceCoordinator::getConnectedPeerMac(DeviceType type) {
 }
 
 bool RemoteDeviceCoordinator::isConnectedPeer(DeviceType type, const uint8_t* mac) {
-    if (!mac) return false;
     for (SerialIdentifier jack : HELLO_JACKS) {
-        if (getJackStatus(jack) != JackStatus::CONNECTED || getPeerDeviceType(jack) != type) {
-            continue;
-        }
-        const uint8_t* peer = getPeerMac(jack);
-        if (peer && memcmp(peer, mac, 6) == 0) return true;
+        if (isConnectedPeer(jack, type, mac)) return true;
     }
     return false;
+}
+
+bool RemoteDeviceCoordinator::isConnectedPeer(SerialIdentifier jack, DeviceType type,
+                                              const uint8_t* mac) const {
+    if (!mac) return false;
+    if (getJackStatus(jack) != JackStatus::CONNECTED || getPeerDeviceType(jack) != type) {
+        return false;
+    }
+    const uint8_t* peer = getPeerMac(jack);
+    return peer != nullptr && memcmp(peer, mac, 6) == 0;
 }
 
 // ---- Per-jack HELLO connectivity ----
@@ -262,9 +267,8 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         JackHelloLink& link = helloByJack[jackIndex(jack)];
         link.parser.setHelloFrameHandler(
             [this, jack](const HelloPayload& hello) { onHelloReceived(jack, hello); });
-        link.parser.setApplicationFrameHandler([this, jack](const ApplicationPayload& payload) {
-            applicationFrameCallbacks.fire(jack, payload);
-        });
+        link.parser.setApplicationFrameHandler(
+        [this, jack](const ApplicationPayload& payload) { fireApplicationFrame(jack, payload); });
         // exec() runs on the main loop, so the parser is fed single-threaded.
         hw->setByteCallback([this, jack](uint8_t b) {
             helloByJack[jackIndex(jack)].parser.feed(&b, 1);

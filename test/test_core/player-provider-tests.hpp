@@ -73,6 +73,26 @@ inline void playerProviderClearDropsProfile() {
     EXPECT_STREQ(playerProvider.getPlayer()->getServerPlayerName(), "");
 }
 
+inline void playerProviderClearDropsAndOverwritesRecordKey() {
+    PlayerProvider playerProvider;
+    RecordKey* recordKey = playerProvider.getRecordKey();
+    EXPECT_FALSE(recordKey->isHeld());
+
+    uint8_t key[RECORD_KEY_SIZE];
+    for (size_t i = 0; i < RECORD_KEY_SIZE; ++i) {
+        key[i] = static_cast<uint8_t>(0xA0 + i);
+    }
+    recordKey->set(key);
+    ASSERT_TRUE(recordKey->isHeld());
+    EXPECT_EQ(memcmp(recordKey->getBytes(), key, RECORD_KEY_SIZE), 0);
+
+    playerProvider.clear();
+    EXPECT_FALSE(recordKey->isHeld());
+    const uint8_t wiped[RECORD_KEY_SIZE] = {};
+    EXPECT_EQ(memcmp(recordKey->getBytes(), wiped, RECORD_KEY_SIZE), 0)
+    << "the dropped key is still readable in memory";
+}
+
 inline void playerLegacyShimMapsHelixAffiliation() {
     PlayerProvider playerProvider;
     applyTestRegistration(playerProvider.getPlayer(), "11111111-2222-4333-8444-555555555555", "Bo");

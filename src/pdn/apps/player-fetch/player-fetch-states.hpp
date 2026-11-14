@@ -8,6 +8,9 @@
 #include "game/player-provider.hpp"
 #include "apps/player-fetch/pdn-provisioning-client.hpp"
 
+#include <array>
+#include <optional>
+
 class FirmwareUpdateManager;
 
 namespace PlayerFetchStateId {
@@ -56,9 +59,16 @@ private:
     int inputId[DIGIT_COUNT] = {0, 0, 0, 0};
 };
 
+/** The FDN a registration attempt sent its PIN to, and the jack it was Connected on. */
+struct RequestedFdn {
+    std::array<uint8_t, 6> mac{};
+    SerialIdentifier jack = SerialIdentifier::INPUT_JACK;
+};
+
 class FetchUserState : public TypedState<PDN> {
 public:
-    /** Asks the cabled FDN to look up the entered PIN, then waits for its PlayerProvisionPacket. */
+    /** Asks the cabled FDN to look up the entered PIN, then waits for its record key (jack) and
+     * PlayerProvisionPacket (radio). */
     FetchUserState(PdnProvisioningClient* provisioningClient, PlayerProvider* playerProvider);
 
     /** @return true when the fetched profile was stored and welcome should mount. */
@@ -75,6 +85,12 @@ public:
 private:
     void requestProvisionFromCabledFdn();
     void onProvisionPacket(const uint8_t* fromMac, const PlayerProvisionPacket& pkt);
+    void onApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload);
+    void onJackChange(SerialIdentifier jack, bool connected);
+    void completeRegistrationIfReady();
+    bool isAttemptLive() const;
+    void endAttemptWithoutProfile();
+    void failAttempt();
     void showLoadingGlyphs(PDN* pdn);
     void showAssetNotFoundPage(PDN* pdn);
     void beginFailurePage(PDN* pdn);
@@ -82,7 +98,8 @@ private:
     PdnProvisioningClient* provisioningClient = nullptr;
     PlayerProvider* playerProvider = nullptr;
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
-    bool requestEverSent = false;
+    std::optional<RequestedFdn> requestedFdn;
+    std::optional<PlayerProvisionPacket> heldProfile;
     SimpleTimer fetchTimer;
     SimpleTimer failurePageTimer;
     bool transitionToWelcomeState = false;

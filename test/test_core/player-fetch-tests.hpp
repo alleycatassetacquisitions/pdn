@@ -3,6 +3,9 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <set>
+#include <algorithm>
+#include <string>
+#include <vector>
 
 #include "alleycat-protobuf-test-helpers.hpp"
 #include "apps/player-fetch/player-fetch-states.hpp"
@@ -59,10 +62,37 @@ public:
         device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, fdnMac);
     }
 
+    /** Hands the PDN one record key frame as arrived on @p jack. */
+    void deliverRecordKey(const ApplicationPayload& key,
+                          SerialIdentifier jack = SerialIdentifier::INPUT_JACK) {
+        device.fakeRemoteDeviceCoordinator.deliverApplicationFrame(jack, key);
+    }
+
+    /** Hands the PDN @p pkt over the radio as sent by @p fromMac. */
+    void deliverProvision(const PlayerProvisionPacket& pkt, const uint8_t* fromMac) {
+        device.mockPeerComms->triggerPacketCallback(
+        fromMac, PktType::kPlayerProvision, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+    }
+
+    /** @return true when the session holds exactly @p key. */
+    bool holdsRecordKey(const ApplicationPayload& key) {
+        RecordKey* recordKey = playerProvider.getRecordKey();
+        return recordKey->isHeld() && memcmp(recordKey->getBytes(), key.data(), key.size()) == 0;
+    }
+
     PlayerProvider playerProvider;
     MockDevice device;
     PdnProvisioningClient provisioningClient{device.wirelessManager};
 };
+
+// A record key counting up from `firstByte`, so two keys are told apart.
+inline ApplicationPayload makeTestRecordKey(uint8_t firstByte) {
+    ApplicationPayload key{};
+    for (size_t i = 0; i < key.size(); ++i) {
+        key[i] = static_cast<uint8_t>(firstByte + i);
+    }
+    return key;
+}
 
 /** A PROFILE_DELIVERED packet for TEST_PLAYER_ID named @p name, answering PIN 0007. */
 inline PlayerProvisionPacket makeProvisionPacket(const char* name) {
@@ -182,6 +212,8 @@ inline void fetchUserStoresProvisionedPlayerOnSuccess(PlayerFetchTestSuite* suit
     fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
 
+    const ApplicationPayload key = makeTestRecordKey(0xA0);
+    suite->deliverRecordKey(key);
     std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada");
     appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Bounty");
     appendTestAffiliationNamed(body, "Reboot Syndicate");
@@ -195,6 +227,7 @@ inline void fetchUserStoresProvisionedPlayerOnSuccess(PlayerFetchTestSuite* suit
     EXPECT_TRUE(roleCallbackFired) << "applying registration profile must notify connected peers";
     EXPECT_STREQ(player->getUserID().c_str(), "7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11");
     EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "0007");
+    EXPECT_TRUE(suite->holdsRecordKey(key));
     EXPECT_TRUE(fetch.transitionToWelcome());
     fetch.onStateDismounted(&suite->device);
 }
@@ -203,26 +236,23 @@ inline void fetchUserIgnoresUncabledOrMalformedProvision(PlayerFetchTestSuite* s
     suite->playerProvider.setRegistrationPin("0007");
     FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
+    // With a key in hand, only the packet checks stand between these and the player.
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    ASSERT_TRUE(suite->playerProvider.getRecordKey()->isHeld());
 
     PlayerProvisionPacket otherPin = makeProvisionPacket("Stale");
     strncpy(otherPin.pin, "4321", sizeof(otherPin.pin) - 1);
-    suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
-                                                       reinterpret_cast<const uint8_t*>(&otherPin),
-                                                       sizeof(otherPin));
+    suite->deliverProvision(otherPin, suite->fdnMac);
     EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "a reply to an earlier PIN is not applied";
 
     const uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
     PlayerProvisionPacket spoofed = makeProvisionPacket("Spoofed");
-    suite->device.mockPeerComms->triggerPacketCallback(strangerMac, PktType::kPlayerProvision,
-                                                       reinterpret_cast<const uint8_t*>(&spoofed),
-                                                       sizeof(spoofed));
+    suite->deliverProvision(spoofed, strangerMac);
     EXPECT_FALSE(suite->playerProvider.hasPlayer());
 
     PlayerProvisionPacket unnamed = spoofed;
     unnamed.playerName[0] = '\0';
-    suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
-                                                       reinterpret_cast<const uint8_t*>(&unnamed),
-                                                       sizeof(unnamed));
+    suite->deliverProvision(unnamed, suite->fdnMac);
     suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
                                                        reinterpret_cast<const uint8_t*>(&spoofed),
                                                        sizeof(spoofed) - 1);
@@ -244,11 +274,11 @@ inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* s
 
     PlayerProvisionPacket late = makeProvisionPacket("Late");
     strncpy(late.pin, "9999", sizeof(late.pin) - 1);
-    suite->device.mockPeerComms->triggerPacketCallback(suite->fdnMac, PktType::kPlayerProvision,
-                                                       reinterpret_cast<const uint8_t*>(&late),
-                                                       sizeof(late));
+    suite->deliverProvision(late, suite->fdnMac);
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
     EXPECT_FALSE(fetch.transitionToWelcome())
-    << "a late packet after the failure page started must not flip to welcome";
+    << "a late packet or key after the failure page started must not flip to welcome";
+    EXPECT_FALSE(suite->playerProvider.hasPlayer());
 
     suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
     fetch.onStateLoop(&suite->device);
@@ -385,4 +415,327 @@ inline void fetchUserResendsAbandonedRequestWithinOneReplyWindow(PlayerFetchTest
     fetch.onStateLoop(&suite->device);
     EXPECT_TRUE(fetch.transitionToPinEntry());
     fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserRegistersOnKeyThenProfile(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+
+    const ApplicationPayload key = makeTestRecordKey(0xA0);
+    suite->deliverRecordKey(key);
+    EXPECT_FALSE(fetch.transitionToWelcome()) << "a key alone registers nobody";
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+
+    EXPECT_TRUE(suite->playerProvider.hasPlayer());
+    EXPECT_TRUE(fetch.transitionToWelcome());
+    fetch.onStateDismounted(&suite->device);
+    EXPECT_TRUE(suite->holdsRecordKey(key)) << "the key serves the session after registration";
+}
+
+// The key crosses the jack and the profile the radio, so the profile can win the race.
+inline void fetchUserRegistersOnProfileThenKey(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "a profile is not applied without a key";
+    EXPECT_FALSE(fetch.transitionToWelcome());
+    EXPECT_FALSE(fetch.transitionToPinEntry());
+
+    const ApplicationPayload key = makeTestRecordKey(0xA0);
+    suite->deliverRecordKey(key);
+    EXPECT_TRUE(suite->playerProvider.hasPlayer());
+    EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
+    EXPECT_TRUE(fetch.transitionToWelcome());
+    EXPECT_TRUE(suite->holdsRecordKey(key));
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserProfileWithoutKeyFailsAtTimeLimit(PlayerFetchTestSuite* suite) {
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(_, _, _)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Unable to"), _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Locate Asset"), _, _))
+    .Times(1);
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+    suite->fakeClock->advance(USER_DATA_FETCH_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    EXPECT_FALSE(suite->playerProvider.hasPlayer())
+    << "a key after the attempt failed must not revive its profile";
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+    EXPECT_FALSE(fetch.transitionToWelcome());
+
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch.transitionToPinEntry());
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserKeyWithoutProfileIsClearedAtTimeLimit(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    ASSERT_TRUE(suite->playerProvider.getRecordKey()->isHeld());
+
+    suite->fakeClock->advance(USER_DATA_FETCH_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+
+    suite->deliverProvision(makeProvisionPacket("Late"), suite->fdnMac);
+    EXPECT_FALSE(suite->playerProvider.hasPlayer());
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch.transitionToPinEntry());
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserLookupFailureDropsKeyAndHeldProfile(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+
+    PlayerProvisionPacket failed{};
+    failed.status = static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED);
+    strncpy(failed.pin, "0007", sizeof(failed.pin) - 1);
+
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    suite->deliverProvision(failed, suite->fdnMac);
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld())
+    << "the key outlived the registration that failed";
+    fetch.onStateDismounted(&suite->device);
+
+    fetch.onStateMounted(&suite->device);
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+    suite->deliverProvision(failed, suite->fdnMac);
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    EXPECT_FALSE(suite->playerProvider.hasPlayer());
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+    EXPECT_FALSE(fetch.transitionToWelcome());
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserAcceptsKeyOnlyFromTheFdnItAsked(PlayerFetchTestSuite* suite) {
+    const uint8_t otherMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x02};
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    suite->cableFdn(false);
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+
+    suite->deliverRecordKey(makeTestRecordKey(0x10));
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld())
+    << "no FDN is Connected and no PIN has been sent";
+
+    suite->cableFdn(true);
+    fetch.onStateLoop(&suite->device);
+
+    // A jack can name its peer without being Connected (the real one does from CONNECTING).
+    rdc.setPeerDeviceType(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN);
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, suite->fdnMac);
+    suite->deliverRecordKey(makeTestRecordKey(0x20), SerialIdentifier::OUTPUT_JACK);
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld())
+    << "the FDN is not Connected on that jack";
+
+    // A HELLO's source MAC is self-asserted, so a PDN peer can claim the FDN's.
+    rdc.setPeerDeviceType(SerialIdentifier::OUTPUT_JACK, DeviceType::PDN);
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    suite->deliverRecordKey(makeTestRecordKey(0x30), SerialIdentifier::OUTPUT_JACK);
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld()) << "a PDN peer wrote it";
+
+    rdc.setPeerDeviceType(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN);
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, otherMac);
+    suite->deliverRecordKey(makeTestRecordKey(0x40), SerialIdentifier::OUTPUT_JACK);
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld())
+    << "an FDN that was never sent the PIN wrote it";
+
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+    EXPECT_FALSE(suite->playerProvider.hasPlayer());
+
+    const ApplicationPayload key = makeTestRecordKey(0x50);
+    suite->deliverRecordKey(key);
+    EXPECT_TRUE(suite->holdsRecordKey(key));
+    EXPECT_TRUE(suite->playerProvider.hasPlayer());
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserLaterKeyReplacesHeldKey(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+
+    const ApplicationPayload later = makeTestRecordKey(0x60);
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    suite->deliverRecordKey(later);
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+    EXPECT_TRUE(suite->holdsRecordKey(later));
+
+    // Registration is complete: a frame after it belongs to no attempt.
+    suite->deliverRecordKey(makeTestRecordKey(0x10));
+    EXPECT_TRUE(suite->holdsRecordKey(later));
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserJackLossAfterKeyFailsAttempt(PlayerFetchTestSuite* suite) {
+    const uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02};
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    rdc.setPeerDeviceType(SerialIdentifier::OUTPUT_JACK, DeviceType::PDN);
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, peerMac);
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
+    ASSERT_TRUE(suite->playerProvider.getRecordKey()->isHeld())
+    << "a peer leaving the other jack is no concern of the registration";
+
+    suite->cableFdn(false);
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+    suite->cableFdn(true);
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    EXPECT_FALSE(suite->playerProvider.hasPlayer())
+    << "the attempt ended when the FDN's jack dropped";
+    EXPECT_FALSE(fetch.transitionToWelcome());
+
+    // Well inside the 10 s reply window: the failure does not wait for it.
+    fetch.onStateLoop(&suite->device);
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch.transitionToPinEntry());
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserJackLossWithProfileHeldFailsAttempt(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+
+    suite->cableFdn(false);
+    suite->cableFdn(true);
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    EXPECT_FALSE(suite->playerProvider.hasPlayer())
+    << "the attempt ended when the FDN's jack dropped";
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+
+    // Well inside the 10 s reply window: the failure does not wait for it.
+    fetch.onStateLoop(&suite->device);
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch.transitionToPinEntry());
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserSendsNoPinAfterRegistering(PlayerFetchTestSuite* suite) {
+    std::set<uint8_t> requestSeqIds;
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPlayerProvisionRequest, _, _))
+    .WillByDefault(
+    Invoke([&requestSeqIds](const uint8_t*, PktType, const uint8_t* data, const size_t) {
+        requestSeqIds.insert(data[0]);
+        return 1;
+    }));
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+    ASSERT_TRUE(fetch.transitionToWelcome());
+
+    // No SEND_SUCCESS ever came for the request, so the radio gives up on it after 1500 ms.
+    for (int step = 0; step < 20; ++step) {
+        suite->fakeClock->advance(100);
+        suite->device.wirelessManager->sync();
+    }
+    ASSERT_TRUE(suite->provisioningClient.isRequestAbandoned());
+    fetch.onStateLoop(&suite->device);
+    EXPECT_EQ(requestSeqIds.size(), 1u) << "a registered PDN asked to be registered again";
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void fetchUserLeavingAttemptDropsKeyAndProfile(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+    ASSERT_TRUE(fetch.transitionToWelcome());
+    fetch.onStateDismounted(&suite->device);
+
+    // Left mid-attempt from here on, as when another app is switched in before the FDN answers.
+    fetch.onStateMounted(&suite->device);
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld())
+    << "a new attempt started with the last session's key";
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    EXPECT_FALSE(fetch.transitionToWelcome()) << "the last attempt's profile completed this one";
+    fetch.onStateDismounted(&suite->device);
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+
+    fetch.onStateMounted(&suite->device);
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+    fetch.onStateDismounted(&suite->device);
+    fetch.onStateMounted(&suite->device);
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    EXPECT_FALSE(fetch.transitionToWelcome()) << "a profile outlived the attempt it answered";
+    fetch.onStateDismounted(&suite->device);
+}
+
+inline void pinEntryHoldsNoRecordKey(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.getRecordKey()->set(makeTestRecordKey(0xA0).data());
+    PinEntryState pinEntry(&suite->playerProvider);
+    pinEntry.onStateMounted(&suite->device);
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld())
+    << "re-entering PIN entry kept the last registration's key";
+
+    suite->deliverRecordKey(makeTestRecordKey(0xA0));
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld())
+    << "a key was accepted before any PIN was sent";
+    pinEntry.onStateDismounted(&suite->device);
+}
+
+inline void registrationWritesNoRecordKeyToStorage(PlayerFetchTestSuite* suite) {
+    std::vector<std::string> written;
+    ON_CALL(*suite->device.mockStorage, writeBytes(_, _, _, _))
+    .WillByDefault(
+    Invoke([&written](const std::string&, const std::string&, const uint8_t* data, size_t length) {
+        written.emplace_back(reinterpret_cast<const char*>(data), length);
+        return length;
+    }));
+    ON_CALL(*suite->device.mockStorage, write(_, _, _))
+    .WillByDefault(
+    Invoke([&written](const std::string&, const std::string&, const std::string& value) {
+        written.push_back(value);
+        return value.size();
+    }));
+
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+    const ApplicationPayload key = makeTestRecordKey(0xA0);
+    suite->deliverRecordKey(key);
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+    fetch.onStateLoop(&suite->device);
+    ASSERT_TRUE(fetch.transitionToWelcome());
+    fetch.onStateDismounted(&suite->device);
+
+    PlayerFetchWelcome welcome(&suite->playerProvider);
+    welcome.onStateMounted(&suite->device);
+    suite->fakeClock->advance(WELCOME_MESSAGE_TIMEOUT_MS + 1);
+    welcome.onStateLoop(&suite->device);
+    welcome.onStateDismounted(&suite->device);
+
+    // Half the key is already too much of it to find in storage.
+    const std::string keyHalf(reinterpret_cast<const char*>(key.data()), key.size() / 2);
+    for (const std::string& value : written) {
+        EXPECT_EQ(value.find(keyHalf), std::string::npos) << "the record key reached storage";
+    }
 }
