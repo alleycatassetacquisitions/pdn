@@ -1,9 +1,12 @@
 ## 1. Decisions
 
 - [x] 1.1 Archive `pdn-pin-entry-fdn-registration` first; this change builds on the PDN sending its PIN to the FDN
-- [ ] 1.2 Owner confirms the PIN limit numbers: `5` "no such PIN" answers within `600,000 ms`, then no lookups for `600,000 ms`, FDN-wide
-- [ ] 1.3 Owner confirms the session-only record key and that a PDN without a key sends match records with the all-zero tag
-- [ ] 1.4 Send the ranked server list (design.md) to the server team as a proposal, with the match record byte layout and the key and tag formulas
+- [ ] 1.2 Owner answers Open Question 1: the server is reachable only by FDNs and operators once the Wi-Fi password is changed, and `GET /players` is acceptable as it is
+- [ ] 1.3 Owner answers Open Question 2: FDNs keep taking match records only from a Connected PDN until the server verifies tags (a), or the exposure in between is accepted (b); on (a), add that condition to `record-relay` and the FDN intake
+- [ ] 1.4 Owner answers Open Question 3: the FDN's delay after an unknown PIN and its numbers
+- [ ] 1.5 Owner answers Open Question 4: the record key in volatile memory only, lost at restart
+- [ ] 1.6 Owner answers Open Question 5: a PDN with no key sends matches with the all-zero tag, which never count once the server verifies
+- [ ] 1.7 Send the ranked server list and its precondition (design.md) to the server team as a proposal, with the match record byte layout, the key and tag formulas and the test vector
 
 ## 2. Relay on the PDN (built by the open PRs)
 
@@ -15,7 +18,7 @@
 - [x] 2.6 Remove the crash log's broadcast sender, its send-status handler and the boot-time Wi-Fi crash upload from the PDN build; construct the PDN's crash reporter on the relay path (#427)
 - [x] 2.7 Remove the match store's 100 ms re-send loop and its Connected-FDN condition (#428)
 
-## 3. FDN store, intake and beacon (built by the open PRs)
+## 3. FDN record store, intake and beacon (built by the open PRs)
 
 - [x] 3.1 The beacon identifies its sender as an FDN and runs in every state while the radio is enabled (#426)
 - [x] 3.2 One record store for both kinds, generalised from the match spool, holding `32` crash records and `64` match records (#426)
@@ -24,55 +27,62 @@
 ## 4. Rework of #426, #427 and #428: no key ID, no crash trailer
 
 - [ ] 4.1 Record frame: remove the `17`-byte trailer; a crash record frame is `48` bytes and a match record frame is `134` bytes, ending in the `16`-byte tag
-- [ ] 4.2 Record check: the first `8` bytes of SHA-256 over the record bytes, followed by the tag for a match record
-- [ ] 4.3 FDN store entries: remove the key ID from every entry and the tag from crash entries; keep the tag on match entries
-- [ ] 4.4 Update the relay, intake and store tests of the three PRs to the new frames, and add: a crash frame with trailing bytes is dropped as a wrong length; an acknowledgement computed over the same match bytes and a different tag is ignored
+- [ ] 4.2 Record check: the first 8 bytes of SHA-256 over the record bytes and, for a match record, the tag appended to them
+- [ ] 4.3 FDN record store entries: remove the key ID from every entry and the tag from crash entries; keep the tag on match entries
+- [ ] 4.4 Update the relay, intake and record store tests of the three PRs to the new frames, and add: a crash frame with trailing bytes is dropped as a wrong length; an acknowledgement computed over the same match bytes and a different tag is ignored
 
 ## 5. Record key delivery
 
-- [ ] 5.1 FDN lookup names the Connected PDN's MAC address, behind the same marked seam as the upload fields until the server team agrees the format
-- [ ] 5.2 FDN accepts a record key only over HTTPS with the certificate verified, and refuses a server address that is not `https`; it discards a key that is not exactly `32` bytes and still delivers the profile
-- [ ] 5.3 Add one opaque application frame to the serial jack framing, handed up with the jack it arrived on; write it without interleaving with HELLO frames
+- [ ] 5.1 FDN lookup names the Connected PDN's MAC address, behind a marked seam until the server team agrees the format; the scenario "Lookup names the Connected PDN" is met only when 10.3 fills the seam
+- [ ] 5.2 FDN accepts no record key from a lookup that was not made over HTTPS with the certificate verified; it discards a key that is not exactly `32` bytes and still delivers the profile
+- [ ] 5.3 Add one opaque application frame to the serial jack framing, checked for length and CRC and handed up with the jack it arrived on; write it without interleaving with HELLO frames
 - [ ] 5.4 FDN delivers the key over the jack only, before it sends the profile, holds it in volatile memory only, and erases it once written or on disconnect
-- [ ] 5.5 PDN accepts a key only from a jack with an FDN Connected and only in the provisioning app after sending that FDN its PIN; it discards a damaged key or one that is not `32` bytes; it holds the key in volatile memory only and never sends, logs or displays it
-- [ ] 5.6 Tests: key delivered over the jack before the profile; a key offered over the radio, or before the PDN has sent its PIN, is ignored; a response with no key still registers the PDN; a malformed key is discarded on the FDN and on the PDN; a key from a lookup without a verified certificate is not accepted; the FDN erases the key on disconnect; no key is in the PDN's non-volatile storage; the PDN holds no key after a restart
+- [ ] 5.5 PDN accepts a key only from a jack with an FDN Connected and only in the provisioning app after sending that FDN its PIN; it discards a key whose frame fails its integrity check or that is not `32` bytes; it holds the key in volatile memory only, sends it to no device and never logs or displays it
+- [ ] 5.6 PDN replaces the held key with one accepted later in the same session, and drops the key when it leaves registration without a profile applied
+- [ ] 5.7 Wipe working copies of the key after use on the PDN and the FDN, and keep the key off task stacks where practical, because a core dump written to flash on a crash can contain it
+- [ ] 5.8 Tests: key delivered over the jack before the profile; a key offered over the radio, or before the PDN has sent its PIN, is ignored; a response with no key still registers the PDN; a malformed key is discarded on the FDN and on the PDN; a key from a lookup without a verified certificate is not accepted; the FDN erases the key on disconnect; no key is in the PDN's non-volatile storage; the PDN holds no key after a restart; a later key replaces the held one; the key is dropped when no profile follows it
 
 ## 6. Tag at match end
 
-- [ ] 6.1 Confirm HMAC-SHA-256 links in the PDN build with hardware SHA
+- [ ] 6.1 Add HMAC-SHA-256 over the portable SHA-256 in lib/core so native tests and the PDN build share it
 - [ ] 6.2 When a match ends, compute the tag over the `112` record bytes under the held key, or use `16` zero bytes when no key is held, and store it in the record's ring slot (`128` bytes)
-- [ ] 6.3 Read a `112`-byte slot written by earlier firmware as carrying the all-zero tag
+- [ ] 6.3 Read a slot holding `112` bytes and no tag as carrying the all-zero tag
 - [ ] 6.4 Send each match record with its stored tag, whether or not it is all zero
-- [ ] 6.5 Tests: tag vectors shared with the server team; all-zero tag without a key; the stored tag is sent unchanged after a restart and after registering to another player; a `112`-byte slot is sent with the all-zero tag; a crash record frame carries no tag
+- [ ] 6.5 Tests: the fixed test vector in `record-authentication`, shared with the server team; all-zero tag without a key; the stored tag is sent unchanged after a restart and after registering to another player; a `112`-byte slot is sent with the all-zero tag; a crash record frame carries no tag
 
 ## 7. FDN uploads
 
-- [ ] 7.1 Upload local and relayed crash records on the periodic uplink as well as at boot, so the once-per-boot latch no longer blocks later uploads; start the uplink when crash records are waiting, not only match records
-- [ ] 7.2 Upload a relayed crash record in today's device-log shape under the originating PDN's MAC address, with no new field
-- [ ] 7.3 Retire a relayed crash record on success and on `400`, `413`, `415` or `422`, and continue with the next; on any other failure stop and keep the record for the next cycle
-- [ ] 7.4 Add one marked seam in the match upload encoder for the sender's MAC address, the raw `112` record bytes and the `16`-byte tag; send today's shape until the server team agrees the field format
-- [ ] 7.5 Tests: a relayed crash record uploads under the PDN's MAC address; each of `400`, `413`, `415` and `422` retires the record and the next uploads; `503` stops the cycle and keeps both; the seam is given the MAC address, record bytes and tag exactly as stored; a bad tag is relayed unchanged
+- [ ] 7.1 Upload local and relayed crash records at boot and on the periodic uplink, so the once-per-boot latch no longer blocks later uploads; start the uplink when crash records are waiting, not only match records
+- [ ] 7.2 Upload the FDN's own crash records first, then the relayed ones; a failure on an own record stops the own records for that cycle and does not stop the relayed ones
+- [ ] 7.3 Upload a relayed crash record in today's device-log shape under the originating PDN's MAC address, with no new field
+- [ ] 7.4 Retire a relayed crash record on success and on `400`, `413`, `415` or `422`, and continue with the next; on any other failure stop the relayed records and keep them for the next cycle; the FDN's own records advance only on success
+- [ ] 7.5 Add one marked seam in the match upload encoder for the sender's MAC address, the raw `112` record bytes and the `16`-byte tag; send today's shape until the server team agrees the field format; the scenario "Uploaded match carries the sender, the record bytes and the tag alongside the decoded fields" is met only when 10.3 fills the seam
+- [ ] 7.6 Tests: a relayed crash record uploads under the PDN's MAC address; relayed crash records upload on the periodic uplink after the boot upload; each of `400`, `413`, `415` and `422` retires the record and the next uploads; `503` stops the relayed records and keeps both; `400` on an own record leaves it pending and the relayed record still uploads; the seam is given the MAC address, record bytes and tag exactly as stored; a bad tag is relayed unchanged
 
-## 8. FDN PIN lookup limit
+## 8. FDN delay after an unknown PIN
 
-- [ ] 8.1 Count, in volatile memory and FDN-wide, the lookups the server answers with `404`; after `5` within `600,000 ms` make no lookup for `600,000 ms` and answer each request with the lookup-failure notification without contacting the server
-- [ ] 8.2 Tests: the fifth `404` stops lookups; a request during the stop gets the failure notification and no request reaches the server; lookups resume after `600,000 ms`; a successful lookup does not reset the count; `404` answers spread over more than `600,000 ms` do not stop lookups; a timeout or `503` is not counted; the stop applies to a PDN on the other jack
+- [ ] 8.1 After a lookup answered with `404`, make no lookup for a delay: `2,000 ms` after the first, doubling with each further `404` up to `120,000 ms`, none again after `600,000 ms` without a `404`; FDN-wide, in volatile memory, unchanged by a successful lookup
+- [ ] 8.2 During a delay, answer a PIN request with the lookup-failure notification without contacting the server
+- [ ] 8.3 FDN display: `"LOOKUPS"` / `"PAUSED"` for `3000 ms` on a request answered during a delay
+- [ ] 8.4 Tests: `2,000 ms` after the first `404`; doubling to `4,000`, `8,000` and `16,000 ms`; the cap at `120,000 ms` from the seventh `404`; a request during a delay gets the failure notification, reaches no server and does not extend the delay; lookups resume when the delay ends; the delay is none again after `600,000 ms` without a `404`; a successful lookup changes nothing; a timeout or `503` is not counted; the delay applies to a PDN on the other jack; a restart clears it; the paused display
 
 ## 9. Server (proposals to the server team, in rank order; outside this repository)
 
-- [ ] 9.1 Keep both copies of a match and flag contradicted and unconfirmed ones
-- [ ] 9.2 The lookup takes the PDN's MAC address and returns the derived key; match uploads carry the sender's MAC address, the raw bytes and the tag, and are verified
-- [ ] 9.3 Optional winner, for ties
-- [ ] 9.4 Rate-limit the PIN lookup
-- [ ] 9.5 Block a PDN or a player
+- [ ] 9.1 Record the server team's answer on the precondition: the lookup and `GET /players` are not reachable by players
+- [ ] 9.2 Record the server team's answer on item 1: keep both copies of a match and flag contradicted and unconfirmed ones
+- [ ] 9.3 Record the server team's answer on item 2: the lookup takes the PDN's MAC address and returns the derived key; match uploads carry the sender's MAC address, the raw bytes and the tag, and are verified
+- [ ] 9.4 Record the server team's answer on item 3: optional winner, for ties
+- [ ] 9.5 Record the server team's answer on item 4: rate-limit the PIN lookup
+- [ ] 9.6 Record the server team's answer on item 5: block a PDN or a player
 
 ## 10. Migration and specs
 
-- [ ] 10.1 Roll out one firmware build on every FDN and PDN; no server change is needed first
-- [ ] 10.2 When the server team agrees item 9.2, fill the lookup and upload seams (5.1, 7.4) with the agreed field format
-- [ ] 10.3 After PDN Wi-Fi is removed, change the venue Wi-Fi password and rebuild every FDN; until then anyone holding a PDN can join the network
-- [ ] 10.4 At archive, edit the Purpose paragraphs of `crash-reporting`, `match-collection` and `fdn-apps`, which still describe cabled collection and cannot be changed by a delta
-- [ ] 10.5 Owner updates the threat model, which is kept outside this repository: record intake from any MAC address, the beacon handler on the PDN, the jack key frame, the derived key and the server secret, the FDN PIN limit, and the four accepted risks in design.md
+- [ ] 10.1 First roll-out: one firmware build on every FDN and PDN; no server change is needed first
+- [ ] 10.2 After PDN Wi-Fi is removed and before the server returns keys, change the venue Wi-Fi password and rebuild every FDN; until then anyone holding a PDN can join the network
+- [ ] 10.3 Second roll-out, to every FDN: when the server team has agreed item 2's formats, fill the lookup and upload seams (5.1, 7.5); this can be the rebuild of 10.2
+- [ ] 10.4 Agree with the server team that keys are derived first with verification off, and that verification is turned on between events or at an announced time; until then copies with the all-zero tag count
+- [ ] 10.5 At archive, edit the Purpose paragraphs of `crash-reporting`, `match-collection` and `fdn-apps`, which still describe cabled collection and cannot be changed by a delta
+- [ ] 10.6 Owner updates the threat model, which is kept outside this repository, with the entries under Risks in design.md
 
 ## 11. Verification
 
@@ -80,4 +90,6 @@
 - [ ] 11.2 On devices: an FDN switched off mid-transfer loses no record; the PDN delivers on a later beacon
 - [ ] 11.3 On devices: register a PDN and capture the radio; the record key does not appear in any frame
 - [ ] 11.4 On devices: a PDN Connected to an FDN in symbol match still hears beacons and delivers
-- [ ] 11.5 On devices: enter five unknown PINs at one FDN; the sixth request is answered at once with the failure screen and no lookup reaches the server for `600,000 ms`
+- [ ] 11.5 On devices, against a test server that returns a key: register, play a match, capture the match record frame, and check its tag equals the first 16 bytes of HMAC-SHA-256 under that key over the frame's `112` record bytes
+- [ ] 11.6 On devices, against a test server that returns no key: restart that PDN, register, play a match, capture the frame, and check its tag is all zero
+- [ ] 11.7 On devices: enter unknown PINs at one FDN; the FDN shows `"LOOKUPS"` / `"PAUSED"` for a request during a delay, and the server receives no more than one lookup per `120,000 ms` once the delay has reached its cap

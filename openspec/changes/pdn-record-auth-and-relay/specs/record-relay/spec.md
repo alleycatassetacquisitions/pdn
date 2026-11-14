@@ -66,7 +66,7 @@ A PDN SHALL send record frames by reliable unicast (`wireless-transport`) and SH
 
 ### Requirement: Stored acknowledgement
 
-An FDN's stored acknowledgement SHALL carry the record kind, the record number and a record check: the first `8` bytes of SHA-256 over the record bytes and, for a match record, the record tag that follows them, as the FDN stored them. A PDN SHALL treat a stored acknowledgement as answering a record only when its kind, number and record check all match the record frame as the PDN last sent it.
+An FDN's stored acknowledgement SHALL carry the record kind, the record number and a record check: the first `8` bytes of SHA-256 over the record bytes and, for a match record, the tag appended to them, as the FDN stored them. A PDN SHALL treat a stored acknowledgement as answering a record only when its kind, number and record check all match the record frame as the PDN last sent it.
 
 #### Scenario: An acknowledgement for the same match record bytes under a different tag does not count
 - **WHEN** a PDN that sent match record 3 receives a stored acknowledgement for match record 3 whose record check was computed over the same record bytes and a different record tag
@@ -98,14 +98,14 @@ A PDN SHALL advance its mark for a record it has sent, and send the next, only w
 
 ### Requirement: FDN record acceptance without a cable
 
-While its peer-to-peer radio is enabled an FDN SHALL accept a record frame from any PDN, Connected on a jack or not. It SHALL store the record kind, record number, record bytes, the record tag of a match record, and the sender's 6-byte MAC address (the frame's radio source address) unchanged in bounded non-volatile storage, and SHALL send the stored acknowledgement for that record only after storing.
+While its peer-to-peer radio is enabled an FDN SHALL accept a record frame from any PDN, Connected on a jack or not. It SHALL store the record kind, record number, record bytes, the record tag of a match record, and the sender's 6-byte MAC address (the frame's radio source address) unchanged in its record store, which is bounded and non-volatile, and SHALL send the stored acknowledgement for that record only after storing.
 
 #### Scenario: A record from a PDN that is not plugged in is stored and acknowledged
 - **WHEN** an FDN with room for crash records receives a crash record frame from a PDN that is not Connected on any of its jacks
 - **THEN** the FDN stores the record with the sender's MAC address and then sends the stored acknowledgement
 
 #### Scenario: Acknowledgement follows storage
-- **WHEN** an FDN loses power after receiving a record frame and before the record is in non-volatile storage
+- **WHEN** an FDN loses power after receiving a record frame and before the record is in its record store
 - **THEN** no stored acknowledgement was sent and the PDN still holds the record as pending
 
 ### Requirement: FDN drops malformed record frames
@@ -122,7 +122,7 @@ An FDN SHALL drop, without storing or acknowledging, a record frame whose record
 
 ### Requirement: FDN duplicates and full storage
 
-An FDN SHALL treat a record frame as a duplicate only when it holds a record with the same sender, kind, number, record bytes and, for a match record, record tag, and SHALL acknowledge a duplicate without storing it again. A frame that matches a held record's sender, kind and number but differs in bytes or tag SHALL be stored as a separate record. When its storage for that record kind is full the FDN SHALL send no stored acknowledgement for a frame it would have to store.
+An FDN SHALL treat a record frame as a duplicate only when it holds a record with the same sender, kind, number, record bytes and, for a match record, record tag, and SHALL acknowledge a duplicate without storing it again. A frame that matches a held record's sender, kind and number but differs in bytes or tag SHALL be stored as a separate record. When its record store is full for that record kind the FDN SHALL send no stored acknowledgement for a frame it would have to store.
 
 #### Scenario: A resent record is acknowledged once more and stored once
 - **WHEN** an FDN that holds a record receives the identical record frame from the same PDN again

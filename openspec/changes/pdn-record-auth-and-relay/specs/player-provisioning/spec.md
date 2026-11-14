@@ -13,7 +13,7 @@ When a player's credential is presented at an FDN while a PDN is Connected on a 
   - Up to `5` affiliations SHALL be retained in server response order; any additional affiliations beyond the first `5` SHALL be skipped without failing the decode.
   - If initial player statistics (career wins, losses, matches played, win streak, or reaction-time history) are provided, they SHALL be retained in the decoded profile; otherwise, session statistics SHALL initialize to `0`.
 - The response MAY carry the record key for the Connected PDN and the looked-up player (`record-authentication`):
-  - The FDN SHALL accept a record key only from a lookup made over HTTPS with the server's certificate verified.
+  - The FDN SHALL accept no record key from a lookup that was not made over HTTPS with the server's certificate verified.
   - The FDN SHALL discard a record key that is not exactly `32` bytes, and SHALL still deliver the profile.
   - The FDN SHALL hold a record key in volatile memory only, SHALL NOT log, display, or store it, and SHALL erase it as soon as it has been written to the serial jack or the PDN disconnects.
 - If the HTTP response body cannot be decoded as a valid player profile, or if the HTTP layer reports a transport or non-2xx error, the FDN SHALL report a lookup failure to the cabled PDN rather than delivering a partial profile.
@@ -49,7 +49,7 @@ Once the FDN decodes a valid player profile (or a lookup failure) for a Connecte
 - An unprovisioned PDN whose session has no registered profile SHALL advertise the unregistered sentinel identity (nil 16-byte UUID, mapping to `0xFFFF` on any 16-bit wire field and never `0`) in its outbound connection context until a profile is applied.
 - The PDN SHALL accept a provisioned profile or lookup-failure notification **only while mounted in the provisioning app** and **only when the wireless sender MAC address matches the verified MAC address of an FDN currently Connected on a physical serial jack** (ignoring wireless provisioning frames from any uncabled sender or after the PDN has entered gameplay).
 - When the FDN holds a record key for the Connected PDN, the FDN SHALL deliver the record key to that PDN over the serial jack only, before it sends the profile, and SHALL NOT send a record key over the peer-to-peer radio.
-- The PDN SHALL accept a record key only over a serial jack on which an FDN is Connected, and only while mounted in the provisioning app after it has sent that FDN its PIN. The PDN SHALL discard a record key that arrives damaged or is not exactly `32` bytes. The PDN SHALL hold an accepted record key for the session only (`record-authentication`).
+- The PDN SHALL accept a record key only over a serial jack on which an FDN is Connected, and only while mounted in the provisioning app after it has sent that FDN its PIN. The PDN SHALL discard a record key whose frame fails its integrity check or that is not exactly `32` bytes. A record key accepted later in the same session replaces the one held, and the PDN drops its record key when it leaves registration without a profile applied (`record-authentication`).
 - Once provisioned, the PDN's connection context and peer profile exchanged with cabled neighbors SHALL carry the player's 16-byte player UUID, 16-byte team UUID, standing role (`Hunter` or `Bounty`), and display name (truncated to fit the wire profile field).
 
 #### Scenario: Unprovisioned PDN advertises unregistered sentinel before profile delivery
@@ -73,8 +73,12 @@ Once the FDN decodes a valid player profile (or a lookup failure) for a Connecte
 - **THEN** the PDN ignores it and still holds no record key
 
 #### Scenario: Damaged record key is discarded by the PDN
-- **WHEN** a PDN that has sent its PIN to a Connected FDN receives over the serial jack a record key that arrives damaged or is `31` bytes long
+- **WHEN** a PDN that has sent its PIN to a Connected FDN receives over the serial jack a record key whose frame fails its integrity check, or a record key that is `31` bytes long
 - **THEN** the PDN discards it and holds no record key
+
+#### Scenario: Record key is dropped when no profile follows it
+- **WHEN** a PDN accepts a record key over the serial jack and then receives the lookup-failure notification, or no profile within its wait for the FDN's reply
+- **THEN** the PDN returns to the registration screen and holds no record key
 
 #### Scenario: Lookup response with no record key still registers the PDN
 - **WHEN** a PDN is registered at a Connected FDN and the lookup response carries a profile and no record key
@@ -82,34 +86,46 @@ Once the FDN decodes a valid player profile (or a lookup failure) for a Connecte
 
 ## ADDED Requirements
 
-### Requirement: FDN limit on PIN lookups
+### Requirement: FDN delay after an unknown PIN
 
-An FDN SHALL count, in volatile memory and across every PDN and both jacks, the lookups the server answers with HTTP `404` (no such PIN). Once `5` such answers fall within `600,000 ms`, the FDN SHALL make no lookup for the next `600,000 ms` and SHALL answer each lookup request in that time with the lookup-failure notification without contacting the server. A successful lookup SHALL NOT reset the count.
+After a lookup the server answers with HTTP `404`, an FDN SHALL make no lookup for a delay: `2,000 ms` after the first `404`, doubling with each further `404` up to `120,000 ms`, and none again once `600,000 ms` pass without a `404`. During a delay the FDN SHALL answer a PIN request with the lookup-failure notification without contacting the server. A successful lookup SHALL NOT change the delay. The delay state SHALL be FDN-wide and held in volatile memory.
 
-#### Scenario: Fifth unknown PIN within the window stops lookups
-- **WHEN** the server answers an FDN's fifth lookup within `600,000 ms` with HTTP `404`
-- **THEN** the FDN makes no lookup for the next `600,000 ms`
+#### Scenario: First 404 starts a 2,000 ms delay
+- **WHEN** the server answers an FDN's lookup with HTTP `404` and no `404` was received in the `600,000 ms` before it
+- **THEN** the FDN makes no lookup for `2,000 ms`
 
-#### Scenario: Lookup request while lookups are stopped is answered without contacting the server
-- **WHEN** a PDN Connected on an FDN's jack sends a PIN while that FDN's lookups are stopped
-- **THEN** the FDN sends the PDN the lookup-failure notification and sends no request to the server
+#### Scenario: Each further 404 doubles the delay
+- **WHEN** the server answers an FDN's lookups with HTTP `404` a second, third and fourth time, each within `600,000 ms` of the one before
+- **THEN** the FDN makes no lookup for `4,000 ms`, `8,000 ms` and `16,000 ms` after them in turn
 
-#### Scenario: Lookups resume after the stop ends
-- **WHEN** `600,000 ms` have passed since an FDN's lookups were stopped and a Connected PDN sends a PIN
+#### Scenario: The delay stops growing at 120,000 ms
+- **WHEN** the server answers an FDN's lookup with HTTP `404` for the seventh time or more, each within `600,000 ms` of the one before
+- **THEN** the FDN makes no lookup for `120,000 ms`
+
+#### Scenario: PIN request during a delay is answered without contacting the server
+- **WHEN** a PDN Connected on an FDN's jack sends a PIN while a delay is running on that FDN
+- **THEN** the FDN sends the PDN the lookup-failure notification, sends no request to the server, and the delay neither restarts nor grows
+
+#### Scenario: Lookups resume when the delay ends
+- **WHEN** a delay has ended on an FDN and a Connected PDN sends a PIN
 - **THEN** the FDN issues the lookup to the server
 
-#### Scenario: A successful lookup does not reset the count
-- **WHEN** the server answers four of an FDN's lookups with HTTP `404`, then one with a profile, then one with HTTP `404`, all within `600,000 ms`
-- **THEN** the FDN makes no lookup for the next `600,000 ms`
+#### Scenario: The delay returns to none after 600,000 ms without a 404
+- **WHEN** `600,000 ms` pass after an FDN's last HTTP `404` and the server then answers a lookup with HTTP `404`
+- **THEN** the FDN makes no lookup for `2,000 ms`
 
-#### Scenario: Unknown PINs spread over more than the window do not stop lookups
-- **WHEN** the server answers five of an FDN's lookups with HTTP `404` and the first and the fifth answers are more than `600,000 ms` apart
-- **THEN** the FDN's lookups are not stopped
+#### Scenario: A successful lookup changes nothing
+- **WHEN** the server answers an FDN's lookups with HTTP `404` three times, then with a profile, then with HTTP `404`, each within `600,000 ms` of the one before
+- **THEN** the FDN makes no lookup for `16,000 ms` after the last `404`
 
 #### Scenario: A lookup that fails for another reason is not counted
 - **WHEN** an FDN's lookup fails with a transport error, a timeout or HTTP `503`
-- **THEN** the FDN reports a lookup failure to the PDN and the count of unknown PINs does not change
+- **THEN** the FDN reports a lookup failure to the PDN and no delay starts or grows
 
-#### Scenario: The limit is the same for every Connected PDN
-- **WHEN** an FDN's lookups are stopped after PINs sent by one PDN and a second PDN becomes Connected on its other jack and sends a PIN
+#### Scenario: The delay applies to every Connected PDN
+- **WHEN** a delay is running on an FDN after PINs sent by one PDN and a second PDN Connected on its other jack sends a PIN
 - **THEN** the FDN sends the second PDN the lookup-failure notification and sends no request to the server
+
+#### Scenario: Restarting the FDN clears the delay
+- **WHEN** an FDN restarts while a delay is running
+- **THEN** no delay is running after the restart and the next HTTP `404` starts a `2,000 ms` delay

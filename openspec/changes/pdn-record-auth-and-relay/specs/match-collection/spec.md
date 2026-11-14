@@ -5,7 +5,7 @@
 Every completed standalone 1v1 match on a PDN SHALL be persisted in a bounded non-volatile ring buffer in binary form alongside a monotonic sequence counter and collection watermark:
 
 - Each persisted standalone match SHALL increment the PDN's persisted `match_sequence_number` by `1` (starting at `1`) and write the binary match record into a `32`-slot circular buffer indexed by `(match_sequence_number - 1) mod 32`.
-- The PDN SHALL write each match record's `16`-byte record tag (`record-authentication`) into the same slot as the record. A slot that holds a match record without a record tag, written before this change, SHALL be read as carrying `16` zero bytes.
+- The PDN SHALL write each match record's `16`-byte record tag (`record-authentication`) into the same slot as the record. A slot holding `112` bytes and no record tag SHALL be read as carrying `16` zero bytes.
 - Binary match records containing raw 16-byte UUIDs (which may include `0x00` bytes) SHALL round-trip through non-volatile storage without null-byte truncation.
 - If more than `32` matches occur before an FDN collects them, newer matches SHALL overwrite the oldest slots in the `32`-slot ring buffer without failing or blocking gameplay.
 - The PDN SHALL persist a separate `collected_high_water_mark` (`0` initially). If `collected_high_water_mark > match_sequence_number` (such as after storage corruption), the PDN SHALL clamp `collected_high_water_mark` to `match_sequence_number`. A retained match with sequence number `N` is pending FDN collection whenever `N > collected_high_water_mark` and `N > match_sequence_number - 32`.
@@ -23,7 +23,7 @@ Every completed standalone 1v1 match on a PDN SHALL be persisted in a bounded no
 - **WHEN** a PDN stores a match record with its record tag and restarts before an FDN collects it
 - **THEN** the PDN reads back the same `112` record bytes and the same `16`-byte record tag
 
-#### Scenario: Match record stored before this change is read with the all-zero tag
+#### Scenario: Match record in a slot with no record tag is read with the all-zero tag
 - **WHEN** a PDN reads a pending match record from a slot that holds the `112` record bytes and no record tag
 - **THEN** the PDN sends that record with `16` zero bytes as its record tag
 
@@ -33,7 +33,7 @@ A PDN with pending match records SHALL send them to an FDN as `record-relay` req
 
 - The PDN SHALL read retained uncollected match records in oldest-first order (from `max(collected_high_water_mark + 1, match_sequence_number - 31)` to `match_sequence_number`) and send them as record frames (`record-relay`) whose record number is the match record's sequence number on that PDN. Each match record SHALL be sent with the record tag stored with it (`record-authentication`), whether or not that tag is all zero.
 - The PDN's persisted `collected_high_water_mark` SHALL be the mark that the stored acknowledgement advances (`record-relay`); the stored acknowledgement for a match record SHALL advance it to that match's sequence number.
-- The FDN SHALL stage ingested PDN match records in a capacity-bounded non-volatile spool (retaining up to `64` match records awaiting server upload). Acceptance into the spool, the stored acknowledgement, duplicates and a full spool SHALL follow `record-relay`; while the spool is full the PDN retains the uncollected records in its own 32-slot ring buffer until the FDN drains its spool to the server.
+- The FDN SHALL stage ingested PDN match records in its record store (`record-relay`), retaining up to `64` match records awaiting server upload. Acceptance into the record store, the stored acknowledgement, duplicates and a full record store SHALL follow `record-relay`; while the record store is full of match records the PDN retains the uncollected records in its own 32-slot ring buffer until the FDN uploads its stored match records to the server.
 - If the PDN loses contact with the FDN before all pending matches are acknowledged by the FDN, `collected_high_water_mark` SHALL reflect the last acknowledged match so only the remaining uncollected matches are sent on the next FDN contact.
 
 #### Scenario: Partial FDN collection advances watermark only for acknowledged matches
@@ -73,5 +73,5 @@ An FDN holding ingested match records SHALL upload them to the central server in
 - **THEN** the request is rejected locally and no HTTP request is queued
 
 #### Scenario: Uploaded match carries the sender, the record bytes and the tag alongside the decoded fields
-- **WHEN** an FDN uploads a match record it spooled from a record frame sent by the PDN with MAC address `aa:bb:cc:dd:ee:ff`
+- **WHEN** an FDN uploads a match record it stored from a record frame sent by the PDN with MAC address `aa:bb:cc:dd:ee:ff`
 - **THEN** the uploaded match carries, in addition to the decoded match fields, that MAC address, the `112` match record bytes and the `16`-byte record tag exactly as the FDN received them
