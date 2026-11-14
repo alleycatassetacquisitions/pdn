@@ -100,6 +100,18 @@ public:
     }
 
     /**
+     * Gives the active match both draw times (ms) with both results in, then
+     * finalizes it.
+     */
+    void finishMatchWithDrawTimes(unsigned long hunterMs, unsigned long bountyMs) {
+        matchManager->setHunterDrawTime(hunterMs);
+        matchManager->setBountyDrawTime(bountyMs);
+        matchManager->setReceivedButtonPush();
+        matchManager->setReceivedDrawResult();
+        ASSERT_TRUE(matchManager->finalizeMatch());
+    }
+
+    /**
      * Bounty-side match with its MATCH_ID_ACK reported delivered. Both players have
      * non-nil UUIDs, so finalizeMatch can store it.
      */
@@ -827,6 +839,115 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsSelfPlayerUuidButAcceptsDemoOppo
     ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
     EXPECT_EQ(matchManager->getCurrentMatch()->getHunterPlayerId(), distinctId);
     EXPECT_EQ(matchManager->getCurrentMatch()->getBountyPlayerId(), selfId);
+}
+
+// The invited PDN refuses an invitation naming its own player; this is the other
+// direction, where a modified opponent answers the invitation with the inviter's UUID.
+TEST_F(MatchManagerTestSuite, inviterRefusesAnAckNamingItsOwnPlayer) {
+    UUIDBytes selfId{};
+    UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", selfId);
+    Team hunters{};
+    strncpy(hunters.name, "Hunter", sizeof(hunters.name) - 1);
+    player->applyRegistrationProfile(selfId, "LocalHunter", hunters, {});
+    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    matchManager->initializeMatch(opponentMac);
+    ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
+    const std::string refusedMatchId = matchManager->getCurrentMatch()->getMatchId();
+    const size_t sentBeforeAck = radioTap.sentFrames.size();
+    MatchCommand selfAck(opponentMac, MatchCmd::MATCH_ID_ACK, refusedMatchId.c_str(), 0, false,
+                         selfId, UUIDBytes{});
+    matchManager->listenForMatchEvents(selfAck);
+
+    EXPECT_FALSE(matchManager->isMatchReady()) << "a match against the local player went ready";
+    EXPECT_FALSE(matchManager->getCurrentMatch().has_value()) << "the refused match stayed pending";
+
+    // A match left pending would keep retransmitting its invitation to the opponent.
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 2 + 1);
+    device.wirelessManager->sync();
+    EXPECT_EQ(radioTap.sentFrames.size(), sentBeforeAck)
+    << "the refusal sent a frame or left the invitation retrying";
+
+    UUIDBytes distinctId{};
+    UUIDBytes::parse("aaaaaaaa-bbbb-4000-8000-cccccccccccc", distinctId);
+    matchManager->initializeMatch(opponentMac);
+    ASSERT_TRUE(matchManager->getCurrentMatch().has_value())
+    << "the refusal blocked the next invitation";
+    MatchCommand honestAck(opponentMac, MatchCmd::MATCH_ID_ACK,
+                           matchManager->getCurrentMatch()->getMatchId(), 0, false, distinctId,
+                           UUIDBytes{});
+    matchManager->listenForMatchEvents(honestAck);
+    EXPECT_TRUE(matchManager->isMatchReady());
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterPlayerId(), selfId);
+    EXPECT_EQ(matchManager->getCurrentMatch()->getBountyPlayerId(), distinctId);
+}
+
+// A PDN re-registered between its invitation and the acknowledgement passes the
+// handshake check with a match naming one player twice.
+TEST_F(MatchManagerTestSuite, matchNamingOnePlayerOnBothSidesIsNotStored) {
+    NativePrefsDriver& prefs = makeNativePrefs("same-player-prefs");
+    rebuildMatchManager(&prefs);
+    UUIDBytes firstId{};
+    UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", firstId);
+    UUIDBytes secondId{};
+    UUIDBytes::parse("aaaaaaaa-bbbb-4000-8000-cccccccccccc", secondId);
+    Team hunters{};
+    strncpy(hunters.name, "Hunter", sizeof(hunters.name) - 1);
+    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    const auto playAsHunterAgainst = [&](const UUIDBytes& ackPlayerId) {
+        MatchCommand ack(opponentMac, MatchCmd::MATCH_ID_ACK,
+                         matchManager->getCurrentMatch()->getMatchId(), 0, false, ackPlayerId,
+                         UUIDBytes{});
+        matchManager->listenForMatchEvents(ack);
+        ASSERT_TRUE(matchManager->isMatchReady());
+        finishMatchWithDrawTimes(120, 180);
+    };
+
+    player->applyRegistrationProfile(firstId, "LocalHunter", hunters, {});
+    matchManager->initializeMatch(opponentMac);
+    ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
+    player->applyRegistrationProfile(secondId, "LocalHunter", hunters, {});
+    playAsHunterAgainst(firstId);
+    EXPECT_FALSE(matchManager->getCurrentMatch().has_value());
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u) << "a same-player match was stored";
+
+    // Without the re-registration the record names two players and is stored.
+    matchManager->initializeMatch(opponentMac);
+    ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
+    playAsHunterAgainst(firstId);
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 1u);
+}
+
+// A demo player's UUID is nil on both PDNs; equal nil UUIDs are not the same player.
+TEST_F(MatchManagerTestSuite, twoDemoPlayersStillPlayEachOtherAndStoreNothing) {
+    NativePrefsDriver& prefs = makeNativePrefs("two-demo-prefs");
+    rebuildMatchManager(&prefs);
+    ASSERT_TRUE(player->getServerPlayerId().isZero());
+    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    player->setIsHunter(true);
+    matchManager->initializeMatch(opponentMac);
+    ASSERT_TRUE(matchManager->getCurrentMatch().has_value());
+    MatchCommand demoAck(opponentMac, MatchCmd::MATCH_ID_ACK,
+                         matchManager->getCurrentMatch()->getMatchId(), 0, false, UUIDBytes{},
+                         UUIDBytes{});
+    matchManager->listenForMatchEvents(demoAck);
+    EXPECT_TRUE(matchManager->isMatchReady()) << "the inviting demo PDN refused a demo opponent";
+    finishMatchWithDrawTimes(120, 180);
+
+    player->setIsHunter(false);
+    MatchCommand demoInvitation(opponentMac, MatchCmd::SEND_MATCH_ID,
+                                "12345678-1234-4000-8000-000000000004", 0, true, UUIDBytes{},
+                                UUIDBytes{});
+    matchManager->listenForMatchEvents(demoInvitation);
+    ASSERT_TRUE(matchManager->getCurrentMatch().has_value())
+    << "the invited demo PDN refused a demo opponent";
+    radioTap.confirmLastSend();
+    EXPECT_TRUE(matchManager->isMatchReady());
+    finishMatchWithDrawTimes(120, 180);
+
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u) << "a demo match is never stored";
 }
 
 // didWin() cannot supply the record's winner: on a tie it is false on both devices.

@@ -99,7 +99,7 @@ public:
     bool isMatchReady() const;
 
     /** Finalizes the active match and clears it unless the storage write fails. Shootout,
-     * demo, tied and half-reported matches are not stored. */
+     * demo, same-player, tied and half-reported matches are not stored. */
     bool finalizeMatch();
 
     /** Sets the hunter draw time (ms) on the active match. */
