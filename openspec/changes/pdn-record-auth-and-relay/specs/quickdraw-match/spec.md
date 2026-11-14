@@ -9,12 +9,13 @@ When the countdown completes, the device SHALL open the active draw window for u
   - The device computes the player's raw reaction time (elapsed milliseconds since the draw window opened plus $75\text{ ms}$ per early countdown press) and effective draw time (raw reaction time minus posse supporter boost, with no floor).
   - The device records the raw reaction time in the player's personal reaction-time history and in its match draw slot (Hunter slot or Bounty slot) on the match record, snapshots the posse boost and early-press penalty, uses the effective draw time for winner determination and the result screen, and reliably sends a draw-result frame carrying its raw reaction time and its posse boost alongside its match draw slot to the opponent. The boost it applies and sends is at most a full posse's worth (18 supporters, $270\text{ ms}$).
 - **Validating an incoming draw result from the opponent**:
-  - The device SHALL accept a draw-result frame only if it comes from the active opponent for the active match ID, names the opponent's match draw slot (never the local player's draw slot), carries a raw reaction time of $0\text{ ms}$ or more, and, in a standalone match, arrives after the local draw window has opened. The same window check applies to a never-pressed report in a standalone match. No minimum raw reaction time applies: the countdown is a fixed rhythm, so an honest press that anticipates the draw can land at or near $0\text{ ms}$. A refused frame changes no state and nothing is sent in reply. It records the opponent's raw reaction time in the opponent's match draw slot on the match record, and takes the opponent's effective draw time for winner determination and the result screen as that raw time minus the frame's boost.
+  - The device SHALL accept a draw-result frame only if it comes from the active opponent for the active match ID, names the opponent's match draw slot (never the local player's draw slot), and carries a raw reaction time of $0\text{ ms}$ or more. No minimum raw reaction time applies: the countdown is a fixed rhythm, so an honest press that anticipates the draw can land at or near $0\text{ ms}$. A refused frame changes no state and nothing is sent in reply. It records the opponent's raw reaction time in the opponent's match draw slot on the match record, and takes the opponent's effective draw time for winner determination and the result screen as that raw time minus the frame's boost.
+  - In a standalone match, a draw result or never-pressed report that passes these checks and the signed-frame check before the local draw window has opened SHALL be held, not refused, and applied the moment the window opens, exactly as one arriving at that instant would be. Only the latest held result counts. A held result SHALL NOT resolve the match before the local draw window opens, and it is discarded with the match key when the match ends or is abandoned (including a cable drop that abandons it). In a shootout match a result is applied when it arrives.
   - The device SHALL hold a received boost to a full posse's worth: a frame claiming more than $270\text{ ms}$ is treated as claiming $270\text{ ms}$.
 - **Pressing before receiving the opponent's result (post-push wait)**:
   - If the local player presses before receiving a draw result or never-pressed report from the opponent, the device waits up to a **2500 ms** result grace period (`750 ms` opponent button-push grace window plus the `1500 ms` reliable-channel retry deadline plus a `250 ms` margin) for the opponent's result to arrive, then transitions to match resolution as soon as the opponent's result arrives or the 2500 ms grace period expires.
 - **Receiving the opponent's result before pressing (post-receive wait)**:
-  - If the device receives the opponent's draw result or never-pressed report while in the draw window before pressing locally, it records the opponent's draw time and enters a **750 ms** button-push grace window during which the local player can still press (scored on the button down-edge `PRESS`).
+  - If the device receives the opponent's draw result or never-pressed report while in the draw window before pressing locally, or the window opens on a held one, it records the opponent's draw time and enters a **750 ms** button-push grace window during which the local player can still press (scored on the button down-edge `PRESS`).
   - If the local player presses within that 750 ms grace window, the device sends its draw result and immediately resolves the match.
   - If the 750 ms grace window expires without a local press, the device records a pity draw time (elapsed time since draw window start), marks itself as never having pressed, reliably sends a never-pressed report to the opponent, and resolves the match as a loss.
 
@@ -34,9 +35,29 @@ When the countdown completes, the device SHALL open the active draw window for u
 - **WHEN** during a standalone match's open draw window a PDN receives, from the active opponent, a correctly signed draw result carrying a raw reaction time of $3\text{ ms}$
 - **THEN** the PDN records $3\text{ ms}$ in the opponent's draw slot and takes it for winner determination
 
-#### Scenario: Standalone result before the draw window opens is refused
-- **WHEN** a PDN still in the standalone match countdown receives, from the active opponent, a draw result or a never-pressed report
-- **THEN** the PDN ignores the frame and the match continues unchanged
+#### Scenario: Standalone result before the draw window opens is held until it opens
+- **WHEN** a PDN still in the standalone match countdown receives, from the active opponent, a correctly signed draw result of $0\text{ ms}$, and its own draw window opens $30\text{ ms}$ later
+- **THEN** the PDN records nothing and does not resolve the match during the countdown; when its window opens it records $0\text{ ms}$ in the opponent's draw slot and enters the 750 ms grace window, and both PDNs resolve the match the same way
+
+#### Scenario: Held result and a boosted press within the grace window
+- **WHEN** a Bounty holds a Hunter's draw result of raw $0\text{ ms}$ with a $100\text{ ms}$ boost, and presses $180\text{ ms}$ after its own window opens with a $270\text{ ms}$ boost
+- **THEN** the Bounty records $180\text{ ms}$, compares $-100$ with $-90\text{ ms}$, and resolves the match as a loss
+
+#### Scenario: Held result and no press within the grace window
+- **WHEN** a PDN's window opens on a held draw result and the local player does not press within the 750 ms grace window
+- **THEN** the PDN sends a never-pressed report with a pity draw time measured from its own window opening, and resolves the match as a loss
+
+#### Scenario: Only the latest held result counts
+- **WHEN** during the standalone countdown a PDN receives two correctly signed results from the active opponent, the second with the higher frame counter
+- **THEN** when its draw window opens it applies only the second
+
+#### Scenario: Held result is discarded with the match
+- **WHEN** a PDN holds an early result and the match ends or is abandoned before the result is applied
+- **THEN** the result is discarded with the match key and nothing of it applies to the next match
+
+#### Scenario: Forged early result is not held
+- **WHEN** during the standalone countdown a PDN receives a draw result from the opponent's MAC whose tag does not verify under the match key, or that carries no tag
+- **THEN** it drops the frame, holds nothing, and its draw window opens with no opponent result
 
 ## ADDED Requirements
 
