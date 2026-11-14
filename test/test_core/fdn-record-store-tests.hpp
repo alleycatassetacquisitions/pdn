@@ -210,8 +210,12 @@ private:
             memcpy(sent.recordCheck.data(), ack.recordCheck, RECORD_CHECK_SIZE);
         }
         if (fdnRecordStore != nullptr) {
-            sent.storedWhenSent = fdnRecordStore->getStoredCount(
-            type == PktType::kCrashRecordAck ? RecordKind::CRASH : RecordKind::MATCH);
+            RecordKind kind =
+            type == PktType::kCrashRecordAck ? RecordKind::CRASH : RecordKind::MATCH;
+            if (sent.kind == static_cast<uint8_t>(RecordKind::LEGACY_MATCH)) {
+                kind = RecordKind::LEGACY_MATCH;
+            }
+            sent.storedWhenSent = fdnRecordStore->getStoredCount(kind);
         }
         sentAcks.push_back(sent);
     }
@@ -310,6 +314,82 @@ inline void fdnDropsARecordFrameWhoseKindIsNotTheChannels(FdnRecordStoreTests* s
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 0u);
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
     EXPECT_TRUE(suite->sentAcks.empty());
+}
+
+// Legacy matches share the match slots but may take only
+// FDN_LEGACY_MATCH_RECORD_CAPACITY of them: past that a PDN keeps its legacy
+// match, unacknowledged, and current matches still find room.
+inline void
+fdnStoresLegacyMatchesUpToTheirCapAndAcknowledgesNoneBeyond(FdnRecordStoreTests* suite) {
+    for (uint32_t number = 0; number <= FDN_LEGACY_MATCH_RECORD_CAPACITY; number++) {
+        MatchRecordFramePacket legacy =
+        FdnRecordStoreTests::matchFrame(number, static_cast<uint8_t>(number + 1));
+        legacy.kind = static_cast<uint8_t>(RecordKind::LEGACY_MATCH);
+        suite->deliver(PktType::kMatchRecord, suite->pdnMac, legacy);
+    }
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::LEGACY_MATCH),
+              FDN_LEGACY_MATCH_RECORD_CAPACITY);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u)
+    << "a legacy match was filed as a current one";
+    ASSERT_EQ(suite->sentAcks.size(), FDN_LEGACY_MATCH_RECORD_CAPACITY)
+    << "a legacy match past the cap was acknowledged, so its PDN would retire it";
+    EXPECT_EQ(suite->sentAcks.back().kind, static_cast<uint8_t>(RecordKind::LEGACY_MATCH));
+    EXPECT_EQ(suite->sentAcks.back().recordNumber, FDN_LEGACY_MATCH_RECORD_CAPACITY - 1);
+
+    // The rest of the match slots stay for current matches, and no more.
+    const size_t currentRoom = FDN_MATCH_RECORD_CAPACITY - FDN_LEGACY_MATCH_RECORD_CAPACITY;
+    for (uint32_t number = 1; number <= currentRoom + 1; number++) {
+        suite->deliver(PktType::kMatchRecord, suite->otherPdnMac,
+                       FdnRecordStoreTests::matchFrame(number, static_cast<uint8_t>(number)));
+    }
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), currentRoom);
+    EXPECT_EQ(suite->sentAcks.size(), FDN_LEGACY_MATCH_RECORD_CAPACITY + currentRoom)
+    << "a match beyond the shared slots was acknowledged";
+}
+
+// Nothing retires a legacy match, so a write storage refused for one must not
+// stop the store taking current matches and crash records; room they free lets
+// legacy matches in again.
+inline void fdnRefusedLegacyWriteLeavesCurrentRecordsAccepted(FdnRecordStoreTests* suite) {
+    MatchRecordFramePacket legacy = FdnRecordStoreTests::matchFrame(0, 0x4C);
+    legacy.kind = static_cast<uint8_t>(RecordKind::LEGACY_MATCH);
+    suite->fdnPrefs.refuseBlobWrites = true;
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac, legacy);
+    ASSERT_TRUE(suite->sentAcks.empty()) << "a legacy match the storage refused was acknowledged";
+    suite->fdnPrefs.refuseBlobWrites = false;
+
+    suite->deliver(PktType::kMatchRecord, suite->otherPdnMac,
+                   FdnRecordStoreTests::matchFrame(1, 0x61));
+    suite->deliver(PktType::kCrashRecord, suite->otherPdnMac,
+                   FdnRecordStoreTests::crashFrame(1, 0x62));
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u)
+    << "a refused legacy write stopped the store taking current matches";
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u)
+    << "a refused legacy write stopped the store taking crash records";
+
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac, legacy);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::LEGACY_MATCH), 0u)
+    << "storage that refused a legacy match was asked again before room was freed";
+    ASSERT_TRUE(suite->retireMatchBatch());
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac, legacy);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::LEGACY_MATCH), 1u)
+    << "room the match ring freed did not let a legacy match in";
+}
+
+// Each kind's unreadable head is its own: dropping legacy matches leaves current ones alone.
+inline void fdnDropsOnlyTheUnreadableHeadOfTheKindAskedFor(FdnRecordStoreTests* suite) {
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac, FdnRecordStoreTests::matchFrame(1, 0x51));
+    MatchRecordFramePacket legacy = FdnRecordStoreTests::matchFrame(0, 0x4C);
+    legacy.kind = static_cast<uint8_t>(RecordKind::LEGACY_MATCH);
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac, legacy);
+    const uint8_t torn[3] = {1, 2, 3};
+    suite->fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_0", torn, sizeof(torn));
+    suite->fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "l_0", torn, sizeof(torn));
+
+    suite->fdnRecordStore->dropUnreadableOldest(RecordKind::LEGACY_MATCH);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::LEGACY_MATCH), 0u);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u)
+    << "dropping unreadable legacy matches dropped a current one";
 }
 
 inline void fdnDropsARecordFrameOfTheWrongLength(FdnRecordStoreTests* suite) {
