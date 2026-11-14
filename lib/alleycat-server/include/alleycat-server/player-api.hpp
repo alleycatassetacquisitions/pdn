@@ -17,9 +17,10 @@ constexpr const char GET_DEVICE_PLAYERS_ENDPOINT[] = "/device/players/by-pin/";
 /**
  * GET /device/players/by-pin/{pin} — decodes protobuf into @p player's registration fields
  * and hands the player's record key to @p recordKey. On success @p recordKey holds a key
- * only when the response carried one of RECORD_KEY_SIZE bytes and came over HTTPS with the
- * server's certificate checked. On a decode error it holds none; any other error leaves it
- * as it was.
+ * only when the response carried one of RECORD_KEY_SIZE bytes and came over HTTPS from a
+ * server that presented the pinned key. On a decode error it holds none; any other error
+ * leaves it as it was. A server presenting another key, or any HTTPS server when no pin
+ * is configured, fails the lookup with WirelessError::SERVER_NOT_TRUSTED.
  * The server answers 400 for a malformed PIN and 404 when no player matches.
  */
 inline void getDevicePlayerByPin(WirelessManager* wirelessManager, const std::string& pin,
@@ -34,10 +35,10 @@ inline void getDevicePlayerByPin(WirelessManager* wirelessManager, const std::st
             onError({WirelessError::INVALID_RESPONSE, "Failed to decode device player response"});
             return;
         }
-        // Anyone on the path of an unverified response could have read the key
-        // or put their own in its place.
+        // Anyone on the path of a response from a server that did not present
+        // the pinned key could have read the key or put their own in its place.
         if (recordKey->isHeld() && !wirelessManager->isHttpResponseServerVerified()) {
-            LOG_E("PLAYER_API", "Record key refused: the lookup was not over verified HTTPS");
+            LOG_E("PLAYER_API", "Record key refused: the server did not present the pinned key");
             recordKey->clear();
         }
         onSuccess(*player);

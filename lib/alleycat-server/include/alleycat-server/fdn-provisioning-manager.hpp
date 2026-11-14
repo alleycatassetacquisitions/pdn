@@ -26,6 +26,10 @@ enum class ProvisionLookupResult : uint8_t {
     // The server gave a profile, but the jack did not report the key written to
     // a still-Connected PDN, or the lookup was cancelled first.
     KEY_NOT_ISSUED,
+    // The server presented a key other than the one pinned in this FDN's
+    // firmware, or the firmware pins none, so nothing it sent was used. The PDN
+    // is told LOOKUP_FAILED.
+    SERVER_NOT_TRUSTED,
 };
 
 /**
@@ -190,10 +194,12 @@ private:
             }
             handOffRecordKey();
         },
-        [this](const WirelessErrorInfo&) {
+        [this](const WirelessErrorInfo& error) {
             // Giving Wi-Fi up fails the request of a lookup that has already ended.
             if (phase != LookupPhase::AWAITING_SERVER) return;
-            endLookup(ProvisionLookupResult::LOOKUP_FAILED);
+            endLookup(error.code == WirelessError::SERVER_NOT_TRUSTED
+                      ? ProvisionLookupResult::SERVER_NOT_TRUSTED
+                      : ProvisionLookupResult::LOOKUP_FAILED);
         });
     }
 
