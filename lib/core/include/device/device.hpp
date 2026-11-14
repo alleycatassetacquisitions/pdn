@@ -39,6 +39,12 @@ public:
 
     void loadAppConfig(AppConfig config, StateId launchAppId);
 
+    /**
+     * Dismounts the running app and forgets every app, so the objects the apps
+     * point at can be destroyed before the next loadAppConfig.
+     */
+    void unloadAppConfig();
+
     virtual int begin() = 0;
 
     /**

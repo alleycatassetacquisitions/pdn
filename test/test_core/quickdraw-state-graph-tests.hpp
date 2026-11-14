@@ -306,3 +306,17 @@ inline void registrationHandsOffFromWelcomeMessage() {
     EXPECT_LT(edge->getEntryStateId().id, 0);
     EXPECT_EQ(apps.app(HUB_APP_ID)->getStateMap()[0]->getStateId(), AWAKEN_SEQUENCE);
 }
+
+// The handover rule: a running PDN offers no way back to registration, so only a
+// restart reaches PIN entry. No hand-off from the hub, a match, a shootout or symbol
+// match names the registration app.
+inline void gameplayAppsHaveNoHandOffToRegistration() {
+    QuickdrawAppsForTest apps;
+    for (State* state : apps.gameplayStates()) {
+        for (const StateTransition* edge : state->getTransitions()) {
+            if (edge->getNextState() != nullptr) continue;
+            EXPECT_NE(edge->getTargetAppId().id, PLAYER_FETCH_APP_ID)
+            << "state " << state->getStateId() << " hands off to registration";
+        }
+    }
+}

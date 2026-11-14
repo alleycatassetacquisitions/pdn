@@ -9,10 +9,7 @@ void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
     // Resolved against the outgoing config, so it has to run before the move. A
     // reconfiguration otherwise leaves the previous app's state mounted with nothing
     // able to reach it again — two live mounts on one device.
-    StateMachine* mounted = getActiveApp();
-    if (mounted != nullptr) {
-        mounted->onStateDismounted(this);
-    }
+    unloadAppConfig();
 
     this->appConfig = std::move(config);
     this->currentAppId = launchAppId;
@@ -26,6 +23,14 @@ void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
     // last asked for. Both Device mount paths write it for that reason.
     launch->setEntryState(StateId(-1));
     launch->onStateMounted(this);
+}
+
+void Device::unloadAppConfig() {
+    StateMachine* mounted = getActiveApp();
+    if (mounted != nullptr) {
+        mounted->onStateDismounted(this);
+    }
+    appConfig.clear();
 }
 
 void Device::setActiveApp(StateId appId, StateId entryStateId) {

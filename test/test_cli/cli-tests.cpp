@@ -403,8 +403,8 @@ TEST_F(CliCommandTestSuite, CabledProvisionTransitions) {
     cliDeviceCabledProvisionTransitions(this);
 }
 
-TEST_F(CliCommandTestSuite, RebootResetsState) {
-    cliCommandRebootResetsState(this);
+TEST_F(CliCommandTestSuite, RebootLandsOnPinEntryWithNothingHeld) {
+    cliCommandRebootLandsOnPinEntryWithNothingHeld(this);
 }
 
 TEST_F(CliCommandTestSuite, RebootFromLaterState) {

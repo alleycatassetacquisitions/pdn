@@ -654,6 +654,10 @@ TEST(QuickdrawStateGraph, registrationHandsOffFromWelcomeMessage) {
     registrationHandsOffFromWelcomeMessage();
 }
 
+TEST(QuickdrawStateGraph, gameplayAppsHaveNoHandOffToRegistration) {
+    gameplayAppsHaveNoHandOffToRegistration();
+}
+
 // ============================================
 // SERIAL TESTS
 // ============================================
@@ -842,6 +846,10 @@ TEST(TextLines, fitALongestNameWithSpacesOnThreeLines) {
 
 TEST(TextLines, showAllOfANameThatOnlyFitsWhenFilled) {
     textLinesShowAllOfANameThatOnlyFitsWhenFilled();
+}
+
+TEST(TextLines, fillThreeLinesWithALongestNameWithoutSpaces) {
+    textLinesFillThreeLinesWithALongestNameWithoutSpaces();
 }
 
 TEST(TextLines, splitAWordWiderThanTheLimit) { textLinesSplitAWordWiderThanTheLimit(); }
@@ -1115,6 +1123,10 @@ TEST(PlayerProvider, clearDropsProfile) { playerProviderClearDropsProfile(); }
 
 TEST(PlayerProvider, clearDropsAndOverwritesRecordKey) {
     playerProviderClearDropsAndOverwritesRecordKey();
+}
+
+TEST(PlayerProvider, clearDropsThePinAndKeepsRoleAndSessionStatistics) {
+    playerProviderClearDropsThePinAndKeepsRoleAndSessionStatistics();
 }
 
 TEST(PlayerRegistrationShim, mapsHelixAffiliation) { playerLegacyShimMapsHelixAffiliation(); }
@@ -1908,6 +1920,10 @@ TEST_F(IdleStateTests, nineClicksReturnToTheNameScreen) {
 }
 
 TEST_F(IdleStateTests, remountStartsOnTheNameScreen) { idleRemountStartsOnTheNameScreen(this); }
+
+TEST_F(IdleStateTests, nameScreenShowsDemoForTheDemoProfile) {
+    idleNameScreenShowsDemoForTheDemoProfile(this);
+}
 
 TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
     pairingCodeFirmwareHoldStartsAnUpdate(this);
