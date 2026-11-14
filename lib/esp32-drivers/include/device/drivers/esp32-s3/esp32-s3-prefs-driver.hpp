@@ -18,7 +18,7 @@
  * UnknownStorageNamespaceException.
  *
  * Usage:
- *   new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE})
+ *   new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCH_RING_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE})
  */
 class Esp32S3PrefsDriver : public StorageDriverInterface {
 public:
