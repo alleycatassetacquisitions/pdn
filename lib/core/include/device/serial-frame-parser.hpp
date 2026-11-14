@@ -7,10 +7,11 @@
 #include <functional>
 #include <vector>
 
-// Serial frame protocol constants. Two opcodes share the wire: HELLO, which
-// carries physical-connectivity discovery/liveness, and one opaque application
-// frame for a payload that has to reach the jack's peer without crossing the
-// radio. Everything else rides ESP-NOW. The framing (preamble + opcode +
+// Serial frame protocol constants. Three opcodes share the wire: HELLO, which
+// carries physical-connectivity discovery/liveness, and two opaque application
+// frame kinds (the record key and the match key) for payloads that have to
+// reach the jack's peer without crossing the radio. Old parsers drop the
+// opcodes they do not know. Everything else rides ESP-NOW. The framing (preamble + opcode +
 // payload + CRC-16) recreates for UART what 802.11 gives ESP-NOW for free:
 // message boundaries and integrity on a raw byte stream with flaky TRS contacts.
 constexpr uint8_t FRAME_PREAMBLE_0 = 0xAA;
@@ -22,13 +23,17 @@ constexpr uint8_t OP_HELLO = 0x00;
 constexpr size_t HELLO_PAYLOAD_LEN = 14;
 constexpr size_t HELLO_FRAME_LEN = 2 + 1 + HELLO_PAYLOAD_LEN + 2;
 // 0x01 is reserved.
-constexpr uint8_t OP_APPLICATION = 0x02;
+constexpr uint8_t OP_RECORD_KEY = 0x02;
+constexpr uint8_t OP_MATCH_KEY = 0x03;
 // Fixed payload length, so the opcode alone frames it, as for HELLO; the serial
 // layer gives the bytes no meaning. This is the transport's payload capacity,
 // bounded by the silent-link budget the coordinator's static_assert checks: a
 // consumer static_asserts its own payload size against it.
 constexpr size_t APPLICATION_PAYLOAD_LEN = 32;
 constexpr size_t APPLICATION_FRAME_LEN = 2 + 1 + APPLICATION_PAYLOAD_LEN + 2;
+
+// One opcode per application-frame kind; every kind is APPLICATION_PAYLOAD_LEN long.
+enum class ApplicationFrameKind : uint8_t { RECORD_KEY = OP_RECORD_KEY, MATCH_KEY = OP_MATCH_KEY };
 
 // Set once this device's context exchange with the head it currently holds has
 // been delivered; cleared by a head change until re-confirmed under the new one.
@@ -62,13 +67,15 @@ using ApplicationPayload = std::array<uint8_t, APPLICATION_PAYLOAD_LEN>;
 using ApplicationFrame = std::array<uint8_t, APPLICATION_FRAME_LEN>;
 
 /**
- * Frames `payload` into `frame`: preamble, OP_APPLICATION, the payload, then
- * the CRC-16 over opcode + payload. Written in place so the caller decides
+ * Frames `payload` into `frame`: preamble, the opcode of `kind`, the payload,
+ * then the CRC-16 over opcode + payload. Written in place so the caller decides
  * where the only copy of the payload lives.
  */
-void encodeApplicationFrame(const ApplicationPayload& payload, ApplicationFrame& frame);
+void encodeApplicationFrame(ApplicationFrameKind kind, const ApplicationPayload& payload,
+                            ApplicationFrame& frame);
 
-using ApplicationFrameHandler = std::function<void(const ApplicationPayload&)>;
+using ApplicationFrameHandler =
+std::function<void(ApplicationFrameKind kind, const ApplicationPayload& payload)>;
 
 // Parses one jack's serial byte stream into framed binary frames
 // (preamble 0xAA 0x55 + opcode + payload + CRC-16). One instance per jack.

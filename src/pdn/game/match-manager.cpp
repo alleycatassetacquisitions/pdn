@@ -5,6 +5,8 @@
 #include "game/record-tag.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
+#include "utils/hardware-random.hpp"
+#include "utils/secure-wipe.hpp"
 #include <ArduinoJson.h>
 #include <algorithm>
 #include <optional>
@@ -13,6 +15,21 @@
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
 namespace {
+
+static_assert(MATCH_KEY_FRAME_KEY_OFFSET + MATCH_KEY_SIZE == APPLICATION_PAYLOAD_LEN,
+              "the match key frame is the match ID and the key, filling the payload");
+
+// The decoded form of a match frame from @p mac, boost included.
+MatchCommand commandFromPacket(const uint8_t* mac, const MatchPacket& packet) {
+    MatchCommand command(mac, packet.command, packet.matchId, packet.playerDrawTime,
+                         packet.isHunter, packet.playerUuid, packet.teamUuid);
+    command.boostMs = packet.boostMs;
+    return command;
+}
+
+bool isShootoutMatchId(const char* matchId) {
+    return strncmp(matchId, kShootoutMatchIdPrefix, sizeof(kShootoutMatchIdPrefix) - 1) == 0;
+}
 
 void matchSlotKey(uint32_t slot, char (&key)[16]) {
     snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX, static_cast<unsigned>(slot));
@@ -65,11 +82,14 @@ MatchManager::MatchManager(Player* player, const RecordKey* recordKey, StorageIn
     , rdc(rdc)
     , storage(storage)
     , matchChannel(wirelessManager, PktType::kMatchCommand) {
+    matchChannel.setAdmitFilter(
+    [this](const uint8_t* fromMac, const MatchPacket& p) { return admitMatchFrame(fromMac, p); });
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
-        MatchCommand command(fromMac, p.command, p.matchId, p.playerDrawTime, p.isHunter,
-                             p.playerUuid, p.teamUuid);
-        command.boostMs = p.boostMs;
-        listenForMatchEvents(command);
+        if (p.command == MatchCmd::SEND_MATCH_ID) {
+            onMatchInitiation(fromMac, p);
+            return;
+        }
+        listenForMatchEvents(commandFromPacket(fromMac, p));
     });
     // The bounty readies on the radio's SEND_SUCCESS for its MATCH_ID_ACK, not on
     // sending it, so a lost ack no longer starts its countdown ahead of the hunter's.
@@ -88,6 +108,14 @@ MatchManager::MatchManager(Player* player, const RecordKey* recordKey, StorageIn
         }
         clearCurrentMatch();
     });
+    if (rdc != nullptr) {
+        rdc->setOnApplicationFrame(
+        [this](SerialIdentifier jack, ApplicationFrameKind kind,
+               const ApplicationPayload& payload) { onApplicationFrame(jack, kind, payload); },
+        this);
+        rdc->setOnJackChange(
+        [this](SerialIdentifier jack, bool connected) { onJackChange(jack, connected); }, this);
+    }
     initialize();
 }
 
@@ -101,12 +129,22 @@ uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* m
     IdGenerator::copyId(packet.matchId, matchId);
     packet.playerUuid = player->getServerPlayerId();
     packet.teamUuid = player->getRegistrationTeam().id;
+    if (activeMatchState.matchKeyIsHeld) {
+        packet.counter = ++activeMatchState.txCounter;
+        signMatchPacket(activeMatchState.matchKey, packet);
+    }
 
     LOG_I(MATCH_MANAGER_TAG, "Sending command %i to %s", command, MacToString(mac));
     return matchChannel.sendReliable(mac, packet);
 }
 
 MatchManager::~MatchManager() {
+    if (rdc != nullptr) {
+        rdc->setOnApplicationFrame(nullptr, this);
+        rdc->setOnJackChange(nullptr, this);
+    }
+    secureWipe(activeMatchState.matchKey.data(), activeMatchState.matchKey.size());
+    wipePendingMatchKey();
     if (storage) {
         storage->end();
     }
@@ -120,8 +158,7 @@ void MatchManager::setShootoutManager(ShootoutManager* manager) { shootoutManage
 
 bool MatchManager::currentMatchIsShootout() const {
     return activeMatchState.match.has_value() &&
-           strncmp(activeMatchState.match->getMatchId(), kShootoutMatchIdPrefix,
-                   sizeof(kShootoutMatchIdPrefix) - 1) == 0;
+           isShootoutMatchId(activeMatchState.match->getMatchId());
 }
 
 void MatchManager::clearShootoutMatch() {
@@ -136,6 +173,8 @@ void MatchManager::clearCurrentMatch() {
     if (!activeMatchState.hasPressedButton && !activeMatchState.gracePeriodExpiredNoResult) {
         matchChannel.cancel(activeMatchState.opponentMac.data());
     }
+    // Retransmits that outlive the match were signed when queued and need no key.
+    secureWipe(activeMatchState.matchKey.data(), activeMatchState.matchKey.size());
     activeMatchState = ActiveMatchState{};
 }
 
@@ -170,6 +209,24 @@ void MatchManager::setOpponentIdentity(bool opponentIsHunter, const UUIDBytes& p
     }
 }
 
+void MatchManager::installMatchKey(const MatchKey& key, uint32_t opponentCounter) {
+    activeMatchState.matchKey = key;
+    activeMatchState.matchKeyIsHeld = true;
+    activeMatchState.txCounter = 0;
+    activeMatchState.rxCounter = opponentCounter;
+}
+
+void MatchManager::wipePendingMatchKey() {
+    if (pendingMatchKey.has_value()) {
+        secureWipe(pendingMatchKey->key.data(), pendingMatchKey->key.size());
+    }
+    pendingMatchKey.reset();
+}
+
+SerialIdentifier MatchManager::opponentJack() const {
+    return PosseManager::opponentJackFor(player->isHunter());
+}
+
 void MatchManager::initializeMatch(uint8_t* opponentMac) {
     if (activeMatchState.match.has_value()) {
         return;
@@ -178,7 +235,37 @@ void MatchManager::initializeMatch(uint8_t* opponentMac) {
     auto* clock = SimpleTimer::getPlatformClock();
     LOG_D(MATCH_MANAGER_TAG, "TIMING initializeMatch T=%lu", clock ? clock->milliseconds() : 0UL);
 
-    primeMatch(IdGenerator::getInstance().generateId(), opponentMac, player->isHunter());
+    if (rdc == nullptr) {
+        LOG_E(MATCH_MANAGER_TAG, "No coordinator to carry the match key; no match started");
+        return;
+    }
+    const char* matchId = IdGenerator::getInstance().generateId();
+    UUIDBytes matchIdBytes;
+    if (!UUIDBytes::parse(matchId, matchIdBytes)) {
+        LOG_E(MATCH_MANAGER_TAG, "Generated match ID is not a UUID; no match started");
+        return;
+    }
+
+    // Drawn fresh for every match, so no frame of one match verifies in another.
+    MatchKey key;
+    fillHardwareRandom(key.data(), key.size());
+    ApplicationPayload keyFrame;
+    memcpy(keyFrame.data() + MATCH_KEY_FRAME_ID_OFFSET, matchIdBytes.bytes, UUIDBytes::SIZE);
+    memcpy(keyFrame.data() + MATCH_KEY_FRAME_KEY_OFFSET, key.data(), key.size());
+    // Queued before the initiation goes out: the Bounty pairs the two, and the
+    // radio frame overtakes the serial one either way.
+    const bool accepted =
+    rdc->sendApplicationFrame(opponentJack(), ApplicationFrameKind::MATCH_KEY, keyFrame);
+    secureWipe(keyFrame.data(), keyFrame.size());
+    if (!accepted) {
+        LOG_E(MATCH_MANAGER_TAG, "Opponent jack refused the match key; no match started");
+        secureWipe(key.data(), key.size());
+        return;
+    }
+
+    primeMatch(matchId, opponentMac, player->isHunter());
+    installMatchKey(key, 0);
+    secureWipe(key.data(), key.size());
     sendCommand(activeMatchState.opponentMac.data(), MatchCmd::SEND_MATCH_ID,
                 activeMatchState.match->getMatchId(), 0, 0, activeMatchState.localIsHunter);
 }
@@ -198,9 +285,11 @@ void MatchManager::initializeShootoutMatch(const char* matchId, const uint8_t* o
 }
 
 void MatchManager::receiveMatch(const char* matchId, bool opponentIsHunter, uint8_t* opponentMac,
+                                const MatchKey& matchKey, uint32_t opponentCounter,
                                 const UUIDBytes& opponentPlayerUuid,
                                 const UUIDBytes& opponentTeamUuid) {
     primeMatch(matchId, opponentMac, player->isHunter());
+    installMatchKey(matchKey, opponentCounter);
     setOpponentIdentity(opponentIsHunter, opponentPlayerUuid, opponentTeamUuid);
 
     auto* clock = SimpleTimer::getPlatformClock();
@@ -217,7 +306,7 @@ void MatchManager::setMatchLocalStartTime(unsigned long localStartTimeMs) {
 }
 
 unsigned long MatchManager::getMatchLocalStartTime() const {
-    return activeMatchState.matchLocalStartTime;
+    return activeMatchState.matchLocalStartTime.value_or(0);
 }
 
 bool MatchManager::matchResultsAreIn() {
@@ -644,11 +733,12 @@ void MatchManager::initialize() {
     };
 }
 
-bool MatchManager::isFromActiveMatchOpponent(const MatchCommand& command) const {
+bool MatchManager::isFromActiveMatchOpponent(const uint8_t* fromMac, const char* matchId) const {
     if (!activeMatchState.match.has_value()) return false;
-    if (memcmp(command.wifiMacAddr, activeMatchState.opponentMac.data(), 6) != 0) return false;
-    if (strcmp(command.matchId, activeMatchState.match->getMatchId()) != 0) return false;
-    return true;
+    if (memcmp(fromMac, activeMatchState.opponentMac.data(), 6) != 0) return false;
+    // Bounded: a frame's match ID comes off the wire and need not be terminated.
+    return strncmp(matchId, activeMatchState.match->getMatchId(), IdGenerator::UUID_BUFFER_SIZE) ==
+           0;
 }
 
 void MatchManager::listenForMatchEvents(const MatchCommand& command) {
@@ -659,8 +749,8 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
         // One match at a time, and a tournament pairs its own players.
         if (activeMatchState.match.has_value()) return;
         if (shootoutManager && shootoutManager->active()) return;
-        // Gate on RDC peering — no active match exists yet, so the sender
-        // must be authenticated via the cable-established direct peer.
+        // Only the cabled peer may start a match; the key off the cable
+        // authenticates it (pairInitiationWithKey).
         if (!rdc || !rdc->isDirectPeer(command.wifiMacAddr)) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
             return;
@@ -676,11 +766,17 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
                         player->isHunter());
             return;
         }
+        // Without the key off the cable the opponent's results could not be
+        // told from forgeries, so no match starts.
+        if (command.matchKey == nullptr) {
+            LOG_I(MATCH_MANAGER_TAG, "SEND_MATCH_ID not verified under a match key; no match yet");
+            return;
+        }
         receiveMatch(command.matchId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr),
-                     command.playerUuid, command.teamUuid);
+                     *command.matchKey, command.counter, command.playerUuid, command.teamUuid);
     } else if (command.command == MatchCmd::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
-        if (!isFromActiveMatchOpponent(command)) return;
+        if (!isFromActiveMatchOpponent(command.wifiMacAddr, command.matchId)) return;
         if (activeMatchState.matchIsReady || activeMatchState.pendingAckSeqId != 0) return;
         if (!player->getServerPlayerId().isZero() &&
             command.playerUuid == player->getServerPlayerId()) {
@@ -697,25 +793,40 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
         activeMatchState.matchIsReady = true;
     } else if (command.command == MatchCmd::MATCH_ROLE_MISMATCH) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ROLE_MISMATCH command from opponent");
-        if (!isFromActiveMatchOpponent(command)) return;
+        if (!isFromActiveMatchOpponent(command.wifiMacAddr, command.matchId)) return;
         if (activeMatchState.matchIsReady || activeMatchState.pendingAckSeqId != 0) return;
         clearCurrentMatch();
         return;
     } else if (command.command == MatchCmd::DRAW_RESULT ||
                command.command == MatchCmd::NEVER_PRESSED) {
         LOG_I(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
-        if (!isFromActiveMatchOpponent(command)) return;
+        if (!isFromActiveMatchOpponent(command.wifiMacAddr, command.matchId)) return;
         // An opponent's frame naming this device's slot would overwrite the
         // local time and so pick the winner.
         if (command.isHunter == activeMatchState.localIsHunter) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: names the local draw slot");
             return;
         }
-        // Not a reaction time, and as a signed effective time it could beat
-        // any honest draw.
-        if (command.playerDrawTime < 0) {
-            LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: negative draw time");
-            return;
+        if (currentMatchIsShootout()) {
+            // Shootout starts are fan-out retries, so windows open apart and the
+            // floor would refuse honest draws; its matches are never stored.
+            // Negative is still no reaction time, and would beat any honest draw.
+            if (command.playerDrawTime < 0) {
+                LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: negative draw time");
+                return;
+            }
+        } else {
+            // The countdown is fixed, so a result before the window opens, or
+            // faster than a human, is a guess or a forgery.
+            if (!activeMatchState.matchLocalStartTime.has_value()) {
+                LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: before the draw window");
+                return;
+            }
+            if (command.playerDrawTime < MIN_DRAW_TIME_MS) {
+                LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: %ld ms is below the human floor",
+                      command.playerDrawTime);
+                return;
+            }
         }
 
         const long opponentTime = command.playerDrawTime;
@@ -735,6 +846,129 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
     } else {
         LOG_W(MATCH_MANAGER_TAG, "Received unexpected command in Match Manager: %d", command.command);
     }
+}
+
+void MatchManager::onApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                                      const ApplicationPayload& payload) {
+    if (kind != ApplicationFrameKind::MATCH_KEY) return;
+    // A key belongs to the match it starts. This also drops this device's own
+    // key echoed back through the contacts as the plug leaves.
+    if (activeMatchState.match.has_value()) return;
+    // The frame names no sender: only the peer on the opponent jack can have
+    // written it. That link may still be connecting, since each side reaches
+    // Connected on its own; pairing waits for it to be a Connected PDN.
+    if (jack != opponentJack()) {
+        LOG_W(MATCH_MANAGER_TAG, "Ignoring a match key from a jack other than the opponent jack");
+        return;
+    }
+    const uint8_t* peerMac = rdc->getPeerMac(jack);
+    if (peerMac == nullptr) {
+        LOG_W(MATCH_MANAGER_TAG, "Ignoring a match key: no peer on the opponent jack");
+        return;
+    }
+    wipePendingMatchKey();
+    PendingMatchKey& held = pendingMatchKey.emplace(PendingMatchKey{});
+    memcpy(held.fromMac.data(), peerMac, held.fromMac.size());
+    memcpy(held.matchId.bytes, payload.data() + MATCH_KEY_FRAME_ID_OFFSET, UUIDBytes::SIZE);
+    memcpy(held.key.data(), payload.data() + MATCH_KEY_FRAME_KEY_OFFSET, held.key.size());
+    pairInitiationWithKey();
+}
+
+void MatchManager::onJackChange(SerialIdentifier jack, bool connected) {
+    if (jack != opponentJack()) return;
+    if (connected) {
+        // A key that arrived while this link was still connecting can pair now.
+        pairInitiationWithKey();
+        return;
+    }
+    // A match already started keeps its key through a reseat; MatchApp
+    // abandons it, and so wipes the key, if the cable stays out.
+    wipePendingMatchKey();
+    pendingInitiation.reset();
+}
+
+void MatchManager::onMatchInitiation(const uint8_t* fromMac, const MatchPacket& packet) {
+    if (!activeMatchState.match.has_value()) {
+        // Held first: the key frame can still be on the cable.
+        PendingInitiation& held = pendingInitiation.emplace(PendingInitiation{});
+        memcpy(held.fromMac.data(), fromMac, held.fromMac.size());
+        held.packet = packet;
+        if (pairInitiationWithKey()) return;
+    }
+    // No key yet: the gates and the role-mismatch reply need none, and nothing is primed.
+    listenForMatchEvents(commandFromPacket(fromMac, packet));
+}
+
+bool MatchManager::pairInitiationWithKey() {
+    if (!pendingMatchKey.has_value() || !pendingInitiation.has_value()) return false;
+    if (pendingMatchKey->fromMac != pendingInitiation->fromMac) return false;
+    if (!rdc->isConnectedPeer(opponentJack(), DeviceType::PDN, pendingMatchKey->fromMac.data())) {
+        return false;
+    }
+    const MatchPacket& packet = pendingInitiation->packet;
+    char matchIdText[IdGenerator::UUID_BUFFER_SIZE];
+    IdGenerator::copyId(matchIdText, packet.matchId);
+    UUIDBytes initiationId;
+    if (!UUIDBytes::parse(matchIdText, initiationId) || initiationId != pendingMatchKey->matchId) {
+        return false;
+    }
+    if (packet.counter == 0 || !matchPacketTagVerifies(pendingMatchKey->key, packet)) {
+        // Only the initiation goes: the genuine one may still be on its way.
+        LOG_W(MATCH_MANAGER_TAG, "Dropping SEND_MATCH_ID: its tag does not verify");
+        pendingInitiation.reset();
+        return true;
+    }
+
+    // The command points at local copies, so both slots can go before it runs.
+    const std::array<uint8_t, 6> fromMac = pendingInitiation->fromMac;
+    MatchKey key = pendingMatchKey->key;
+    MatchCommand command = commandFromPacket(fromMac.data(), packet);
+    command.counter = packet.counter;
+    command.matchKey = &key;
+    wipePendingMatchKey();
+    pendingInitiation.reset();
+    listenForMatchEvents(command);
+    secureWipe(key.data(), key.size());
+    return true;
+}
+
+bool MatchManager::admitMatchFrame(const uint8_t* fromMac, const MatchPacket& packet) {
+    // Unsigned by design: a role mismatch comes from a device that holds no key
+    // (forging one only denies a match), and an initiation is verified when it
+    // pairs with the key off the cable.
+    if (packet.command == MatchCmd::MATCH_ROLE_MISMATCH ||
+        packet.command == MatchCmd::SEND_MATCH_ID) {
+        return true;
+    }
+    if (isShootoutMatchId(packet.matchId)) return true;
+
+    if (!activeMatchState.matchKeyIsHeld) {
+        LOG_W(MATCH_MANAGER_TAG, "Dropping match frame %d: no match key held", packet.command);
+        return false;
+    }
+    if (!isFromActiveMatchOpponent(fromMac, packet.matchId)) {
+        LOG_W(MATCH_MANAGER_TAG, "Dropping match frame %d: not from the active match's opponent",
+              packet.command);
+        return false;
+    }
+    // A frame of this device's own, reflected back, carries a good tag.
+    if ((packet.isHunter != 0) == activeMatchState.localIsHunter) {
+        LOG_W(MATCH_MANAGER_TAG, "Dropping match frame %d: names this device's role",
+              packet.command);
+        return false;
+    }
+    if (!matchPacketTagVerifies(activeMatchState.matchKey, packet)) {
+        LOG_W(MATCH_MANAGER_TAG, "Dropping match frame %d: tag does not verify", packet.command);
+        return false;
+    }
+    if (packet.counter <= activeMatchState.rxCounter) {
+        LOG_W(MATCH_MANAGER_TAG, "Dropping match frame %d: counter %u is not above %u",
+              packet.command, static_cast<unsigned>(packet.counter),
+              static_cast<unsigned>(activeMatchState.rxCounter));
+        return false;
+    }
+    activeMatchState.rxCounter = packet.counter;
+    return true;
 }
 
 void MatchManager::sendNeverPressed(unsigned long pityTime) {

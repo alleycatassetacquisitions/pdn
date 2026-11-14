@@ -61,9 +61,12 @@ public:
     void performHandshake() {
         uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
         uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
-        hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
-        bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
+        // Both cable ends read Connected to a PDN so the hunter's match key
+        // goes out and the bounty accepts it.
+        connectPdnPeer(hunterFakeRdc, SerialIdentifier::OUTPUT_JACK, bountyMac);
+        connectPdnPeer(bountyFakeRdc, SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
+        carryMatchKeyAcrossJack(hunterFakeRdc, bountyFakeRdc);
         bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
         hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
         bountyWirelessManager->confirmLastSend();

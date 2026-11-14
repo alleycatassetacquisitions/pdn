@@ -42,8 +42,10 @@ struct ApplicationFrameNode : CabledRdcNode {
     explicit ApplicationFrameNode(const uint8_t nodeMac[6])
         : CabledRdcNode(nodeMac) {
         rdc.setOnApplicationFrame(
-        [this](SerialIdentifier jack, const ApplicationPayload& payload) {
+        [this](SerialIdentifier jack, ApplicationFrameKind kind,
+               const ApplicationPayload& payload) {
             receivedJacks.push_back(jack);
+            receivedKinds.push_back(kind);
             receivedPayloads.push_back(payload);
         },
         this);
@@ -60,6 +62,7 @@ struct ApplicationFrameNode : CabledRdcNode {
     }
 
     std::vector<SerialIdentifier> receivedJacks;
+    std::vector<ApplicationFrameKind> receivedKinds;
     std::vector<ApplicationPayload> receivedPayloads;
     std::vector<JackOutcome> outcomes;
     int disconnectCount = 0;
@@ -85,7 +88,7 @@ inline bool splitWholeFrames(const TappedSerialDriver& jack, size_t from,
         size_t payloadLength = 0;
         if (opcode == OP_HELLO) {
             payloadLength = HELLO_PAYLOAD_LEN;
-        } else if (opcode == OP_APPLICATION) {
+        } else if (opcode == OP_RECORD_KEY) {
             payloadLength = APPLICATION_PAYLOAD_LEN;
         } else {
             return false;
@@ -204,7 +207,8 @@ inline void rdcApplicationFrameReachesThePeerOnThatJackOnly(RdcApplicationFrameT
     suite->plug(c, a);  // c.out -> a.in
 
     const ApplicationPayload payload = testApplicationPayload(0x10);
-    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, payload));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, payload));
     EXPECT_TRUE(b->receivedPayloads.empty()) << "nothing leaves before the HELLO writer runs";
     EXPECT_TRUE(a->outcomes.empty());
 
@@ -226,6 +230,31 @@ inline void rdcApplicationFrameReachesThePeerOnThatJackOnly(RdcApplicationFrameT
     EXPECT_TRUE(b->outcomes.empty()) << "the receiver was told about a frame it never sent";
 }
 
+// Both kinds share the jack and the hand-off slot; the peer is told which one arrived.
+inline void rdcApplicationFrameArrivesWithTheKindItWasSent(RdcApplicationFrameTests* suite) {
+    ApplicationFrameNode* a = suite->addNode(0x0A);
+    ApplicationFrameNode* b = suite->addNode(0x0B);
+    suite->plug(a, b);
+
+    const ApplicationPayload matchKey = testApplicationPayload(0x30);
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                            ApplicationFrameKind::MATCH_KEY, matchKey));
+    suite->run(1);
+    const ApplicationPayload recordKey = testApplicationPayload(0x50);
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, recordKey));
+    suite->run(1);
+
+    ASSERT_EQ(b->receivedPayloads.size(), 2u);
+    EXPECT_EQ(b->receivedKinds,
+              std::vector<ApplicationFrameKind>(
+              {ApplicationFrameKind::MATCH_KEY, ApplicationFrameKind::RECORD_KEY}));
+    EXPECT_EQ(b->receivedPayloads[0], matchKey);
+    EXPECT_EQ(b->receivedPayloads[1], recordKey);
+    EXPECT_EQ(a->outcomes, std::vector<JackOutcome>({writtenOn(SerialIdentifier::OUTPUT_JACK),
+                                                     writtenOn(SerialIdentifier::OUTPUT_JACK)}));
+}
+
 inline void
 rdcApplicationFrameTravelsEitherWayAndEachJackQueuesItsOwn(RdcApplicationFrameTests* suite) {
     ApplicationFrameNode* a = suite->addNode(0x0A);
@@ -235,7 +264,8 @@ rdcApplicationFrameTravelsEitherWayAndEachJackQueuesItsOwn(RdcApplicationFrameTe
     suite->plug(c, a);
 
     const ApplicationPayload upward = testApplicationPayload(0x20);
-    ASSERT_TRUE(b->rdc.sendApplicationFrame(SerialIdentifier::INPUT_JACK, upward));
+    ASSERT_TRUE(b->rdc.sendApplicationFrame(SerialIdentifier::INPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, upward));
     suite->run(1);
     ASSERT_EQ(a->receivedPayloads.size(), 1u);
     EXPECT_EQ(a->receivedJacks[0], SerialIdentifier::OUTPUT_JACK);
@@ -245,8 +275,10 @@ rdcApplicationFrameTravelsEitherWayAndEachJackQueuesItsOwn(RdcApplicationFrameTe
     // One waiting on the OUTPUT jack does not stand in the way of the INPUT jack.
     const ApplicationPayload toOutputPeer = testApplicationPayload(0x30);
     const ApplicationPayload toInputPeer = testApplicationPayload(0x60);
-    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, toOutputPeer));
-    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::INPUT_JACK, toInputPeer));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, toOutputPeer));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::INPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, toInputPeer));
     suite->run(1);
 
     ASSERT_EQ(b->receivedPayloads.size(), 1u);
@@ -273,6 +305,7 @@ inline void rdcApplicationFrameNeverInterleavesWithHello(RdcApplicationFrameTest
     for (int cadence = 0; cadence < 6; ++cadence) {
         if (cadence % 2 == 0) {
             ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                                    ApplicationFrameKind::RECORD_KEY,
                                                     sent[static_cast<size_t>(cadence / 2)]));
         }
         suite->run(1);
@@ -281,9 +314,9 @@ inline void rdcApplicationFrameNeverInterleavesWithHello(RdcApplicationFrameTest
     std::vector<WireFrame> frames;
     ASSERT_TRUE(splitWholeFrames(a->out, cabledFrom, frames))
     << "a byte on the cable belongs to no whole frame";
-    const std::vector<uint8_t> expectedOrder = {OP_HELLO, OP_APPLICATION, OP_HELLO,
-                                                OP_HELLO, OP_APPLICATION, OP_HELLO,
-                                                OP_HELLO, OP_APPLICATION, OP_HELLO};
+    const std::vector<uint8_t> expectedOrder = {OP_HELLO, OP_RECORD_KEY, OP_HELLO,
+                                                OP_HELLO, OP_RECORD_KEY, OP_HELLO,
+                                                OP_HELLO, OP_RECORD_KEY, OP_HELLO};
     EXPECT_EQ(opcodesOf(frames), expectedOrder);
     ASSERT_EQ(frames.size(), expectedOrder.size());
     EXPECT_EQ(frames[1].payload, payloadBytes(sent[0]));
@@ -298,7 +331,7 @@ inline void rdcApplicationFrameNeverInterleavesWithHello(RdcApplicationFrameTest
         if (memcmp(hello.source, a->mac, 6) == 0) ++helloCount;
     });
     parser.setApplicationFrameHandler(
-    [&](const ApplicationPayload& payload) { parsed.push_back(payload); });
+    [&](ApplicationFrameKind, const ApplicationPayload& payload) { parsed.push_back(payload); });
     parser.feed(a->out.wire.data() + cabledFrom, a->out.wire.size() - cabledFrom);
     EXPECT_EQ(helloCount, 6);
     EXPECT_EQ(parsed, sent);
@@ -322,7 +355,8 @@ inline void rdcApplicationFrameQueuedMidHelloFollowsThatHello(RdcApplicationFram
     bool accepted = false;
     a->out.afterByte = [&](size_t count) {
         if (count != from + 5) return;
-        accepted = a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, payload);
+        accepted = a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                               ApplicationFrameKind::RECORD_KEY, payload);
     };
     a->rdc.emitHello();
     a->out.afterByte = nullptr;
@@ -330,7 +364,7 @@ inline void rdcApplicationFrameQueuedMidHelloFollowsThatHello(RdcApplicationFram
     ASSERT_TRUE(accepted);
     std::vector<WireFrame> frames;
     ASSERT_TRUE(splitWholeFrames(a->out, from, frames)) << "the frame cut into the HELLO";
-    EXPECT_EQ(opcodesOf(frames), std::vector<uint8_t>({OP_HELLO, OP_APPLICATION}));
+    EXPECT_EQ(opcodesOf(frames), std::vector<uint8_t>({OP_HELLO, OP_RECORD_KEY}));
 }
 
 // The other half of that race: the main loop runs while the writer is part-way
@@ -343,7 +377,8 @@ inline void rdcMainLoopDuringAWriteLeavesTheFrameIntact(RdcApplicationFrameTests
 
     const ApplicationPayload first = testApplicationPayload(0x10);
     const ApplicationPayload second = testApplicationPayload(0x90);
-    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, first));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, first));
 
     const size_t from = a->out.wire.size();
     bool acceptedMidWrite = true;
@@ -351,7 +386,8 @@ inline void rdcMainLoopDuringAWriteLeavesTheFrameIntact(RdcApplicationFrameTests
     a->out.afterByte = [&](size_t count) {
         // Ten bytes into the application frame, which follows the HELLO.
         if (count != from + HELLO_FRAME_LEN + 10) return;
-        acceptedMidWrite = a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, second);
+        acceptedMidWrite = a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                                       ApplicationFrameKind::RECORD_KEY, second);
         a->rdc.sync(&a->device);
         outcomesMidWrite = a->outcomes.size();
     };
@@ -362,7 +398,7 @@ inline void rdcMainLoopDuringAWriteLeavesTheFrameIntact(RdcApplicationFrameTests
     EXPECT_EQ(outcomesMidWrite, 0u) << "reported written with bytes still to go";
     std::vector<WireFrame> frames;
     ASSERT_TRUE(splitWholeFrames(a->out, from, frames));
-    ASSERT_EQ(opcodesOf(frames), std::vector<uint8_t>({OP_HELLO, OP_APPLICATION}));
+    ASSERT_EQ(opcodesOf(frames), std::vector<uint8_t>({OP_HELLO, OP_RECORD_KEY}));
     EXPECT_EQ(frames[1].payload, payloadBytes(first));
 
     // The refused frame was not kept for later.
@@ -383,7 +419,8 @@ rdcFrameBegunBeforeADisconnectIsFinishedAndReportedWrittenOnce(RdcApplicationFra
     suite->plug(a, b);
 
     const ApplicationPayload payload = testApplicationPayload(0x10);
-    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, payload));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, payload));
 
     const size_t from = a->out.wire.size();
     std::vector<JackOutcome> outcomesAtDisconnect;
@@ -401,7 +438,7 @@ rdcFrameBegunBeforeADisconnectIsFinishedAndReportedWrittenOnce(RdcApplicationFra
     EXPECT_EQ(outcomesAtDisconnect, writtenOnce);
     std::vector<WireFrame> frames;
     ASSERT_TRUE(splitWholeFrames(a->out, from, frames)) << "the frame was cut short";
-    ASSERT_EQ(opcodesOf(frames), std::vector<uint8_t>({OP_HELLO, OP_APPLICATION}));
+    ASSERT_EQ(opcodesOf(frames), std::vector<uint8_t>({OP_HELLO, OP_RECORD_KEY}));
     EXPECT_EQ(frames[1].payload, payloadBytes(payload));
 
     // The cable is still in, so the frame arrives and the link comes back. The
@@ -413,8 +450,8 @@ rdcFrameBegunBeforeADisconnectIsFinishedAndReportedWrittenOnce(RdcApplicationFra
     ASSERT_EQ(b->receivedPayloads.size(), 1u);
     EXPECT_EQ(b->receivedPayloads[0], payload);
     EXPECT_EQ(a->outcomes, writtenOnce);
-    EXPECT_TRUE(
-    a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, testApplicationPayload(0x90)));
+    EXPECT_TRUE(a->rdc.sendApplicationFrame(
+    SerialIdentifier::OUTPUT_JACK, ApplicationFrameKind::RECORD_KEY, testApplicationPayload(0x90)));
 }
 
 // At most one frame per jack is in hand: a second send is refused, not queued
@@ -427,12 +464,15 @@ rdcSecondApplicationFrameIsRefusedUntilTheFirstIsReported(RdcApplicationFrameTes
 
     const ApplicationPayload first = testApplicationPayload(0x10);
     const ApplicationPayload second = testApplicationPayload(0x90);
-    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, first));
-    EXPECT_FALSE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, second));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, first));
+    EXPECT_FALSE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                             ApplicationFrameKind::RECORD_KEY, second));
 
     // Written, but the main loop has not ticked to report it.
     a->rdc.emitHello();
-    EXPECT_FALSE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, second));
+    EXPECT_FALSE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                             ApplicationFrameKind::RECORD_KEY, second));
     EXPECT_TRUE(a->outcomes.empty());
 
     suite->deliver();
@@ -441,7 +481,8 @@ rdcSecondApplicationFrameIsRefusedUntilTheFirstIsReported(RdcApplicationFrameTes
     EXPECT_EQ(b->receivedPayloads[0], first) << "a refused frame replaced the waiting one";
     ASSERT_EQ(a->outcomes, std::vector<JackOutcome>({writtenOn(SerialIdentifier::OUTPUT_JACK)}));
 
-    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, second));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, second));
     suite->run(1);
     ASSERT_EQ(b->receivedPayloads.size(), 2u);
     EXPECT_EQ(b->receivedPayloads[1], second);
@@ -456,7 +497,8 @@ inline void rdcApplicationFrameWaitingAtDisconnectIsDropped(RdcApplicationFrameT
     suite->plug(a, b);
 
     const ApplicationPayload undelivered = testApplicationPayload(0x10);
-    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, undelivered));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, undelivered));
     const size_t from = a->out.wire.size();
 
     suite->silenceLinksOf(a);
@@ -478,7 +520,8 @@ inline void rdcApplicationFrameWaitingAtDisconnectIsDropped(RdcApplicationFrameT
 
     // The jack takes a new frame for the new link, and that one is what arrives.
     const ApplicationPayload next = testApplicationPayload(0x90);
-    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, next));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                            ApplicationFrameKind::RECORD_KEY, next));
     suite->run(1);
     ASSERT_EQ(b->receivedPayloads.size(), 1u);
     EXPECT_EQ(b->receivedPayloads[0], next);
@@ -502,7 +545,8 @@ rdcApplicationFrameSentFromTheDisconnectObserverIsDropped(RdcApplicationFrameTes
     a->rdc.setOnJackChange(
     [&](SerialIdentifier jack, bool connected) {
         if (connected) return;
-        acceptedInObserver = a->rdc.sendApplicationFrame(jack, payload);
+        acceptedInObserver =
+        a->rdc.sendApplicationFrame(jack, ApplicationFrameKind::RECORD_KEY, payload);
     },
     &observer);
     const size_t from = a->out.wire.size();
@@ -525,8 +569,8 @@ rdcReportedApplicationFrameIsNotReportedAgainAtDisconnect(RdcApplicationFrameTes
     ApplicationFrameNode* b = suite->addNode(0x0B);
     suite->plug(a, b);
 
-    ASSERT_TRUE(
-    a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, testApplicationPayload(0x10)));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(
+    SerialIdentifier::OUTPUT_JACK, ApplicationFrameKind::RECORD_KEY, testApplicationPayload(0x10)));
     suite->run(1);
     const std::vector<JackOutcome> writtenOnce = {writtenOn(SerialIdentifier::OUTPUT_JACK)};
     ASSERT_EQ(a->outcomes, writtenOnce);
@@ -545,8 +589,8 @@ inline void rdcWrittenFrameIsReportedBeforeAPeerSwapOpensANewLink(RdcApplication
     ApplicationFrameNode* b = suite->addNode(0x0B);
     suite->plug(a, b);
 
-    ASSERT_TRUE(
-    a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, testApplicationPayload(0x10)));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(
+    SerialIdentifier::OUTPUT_JACK, ApplicationFrameKind::RECORD_KEY, testApplicationPayload(0x10)));
     a->rdc.emitHello();
     ASSERT_TRUE(a->outcomes.empty());
 
@@ -571,14 +615,16 @@ inline void rdcApplicationFrameIsRefusedWithoutAConnectedPeer(RdcApplicationFram
     const ApplicationPayload payload = testApplicationPayload(0x10);
 
     ASSERT_EQ(a->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::DISCONNECTED);
-    EXPECT_FALSE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, payload));
+    EXPECT_FALSE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                             ApplicationFrameKind::RECORD_KEY, payload));
 
     // A peer is heard but its context exchange has not finished.
     b->rdc.emitHello();
     pumpCable(b->in, a->out);
     a->rdc.sync(&a->device);
     ASSERT_EQ(a->rdc.getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTING);
-    EXPECT_FALSE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, payload));
+    EXPECT_FALSE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                             ApplicationFrameKind::RECORD_KEY, payload));
 
     const size_t from = a->out.wire.size();
     a->rdc.emitHello();
@@ -608,7 +654,8 @@ inline void rdcLinkStaysConnectedAcrossApplicationFrames(RdcApplicationFrameTest
     std::vector<ApplicationPayload> sent;
     for (uint8_t step = 0; step < 5; ++step) {
         sent.push_back(testApplicationPayload(static_cast<uint8_t>(step * 0x20)));
-        ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, sent.back()));
+        ASSERT_TRUE(a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                                ApplicationFrameKind::RECORD_KEY, sent.back()));
         a->rdc.emitHello();
         b->rdc.emitHello();
         suite->fakeClock->advance(worstHelloGapMs);
@@ -636,12 +683,13 @@ inline void rdcApplicationFrameObserversAreKeptPerOwner(RdcApplicationFrameTests
     int secondFrameCount = 0;
     int secondOutcomeCount = 0;
     b->rdc.setOnApplicationFrame(
-    [&](SerialIdentifier, const ApplicationPayload&) { ++secondFrameCount; }, &secondOwner);
+    [&](SerialIdentifier, ApplicationFrameKind, const ApplicationPayload&) { ++secondFrameCount; },
+    &secondOwner);
     a->rdc.setOnApplicationFrameOutcome(
     [&](SerialIdentifier, ApplicationFrameOutcome) { ++secondOutcomeCount; }, &secondOwner);
 
-    ASSERT_TRUE(
-    a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, testApplicationPayload(0x10)));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(
+    SerialIdentifier::OUTPUT_JACK, ApplicationFrameKind::RECORD_KEY, testApplicationPayload(0x10)));
     suite->run(1);
     EXPECT_EQ(b->receivedPayloads.size(), 1u);
     EXPECT_EQ(secondFrameCount, 1);
@@ -650,8 +698,8 @@ inline void rdcApplicationFrameObserversAreKeptPerOwner(RdcApplicationFrameTests
 
     b->rdc.setOnApplicationFrame(nullptr, &secondOwner);
     a->rdc.setOnApplicationFrameOutcome(nullptr, &secondOwner);
-    ASSERT_TRUE(
-    a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, testApplicationPayload(0x50)));
+    ASSERT_TRUE(a->rdc.sendApplicationFrame(
+    SerialIdentifier::OUTPUT_JACK, ApplicationFrameKind::RECORD_KEY, testApplicationPayload(0x50)));
     suite->run(1);
     EXPECT_EQ(b->receivedPayloads.size(), 2u);
     EXPECT_EQ(secondFrameCount, 1);
@@ -674,7 +722,8 @@ inline void rdcDestructionClearsAWaitingFrameAndReportsNothing(RdcApplicationFra
     a->rdc.setOnApplicationFrameOutcome(
     [&](SerialIdentifier, ApplicationFrameOutcome) { ++reportCount; }, &reportCount);
     const ApplicationPayload payload = testApplicationPayload(0x10);
-    const bool accepted = a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK, payload);
+    const bool accepted = a->rdc.sendApplicationFrame(SerialIdentifier::OUTPUT_JACK,
+                                                      ApplicationFrameKind::RECORD_KEY, payload);
     const uint8_t* first = static_cast<const uint8_t*>(storage);
     const uint8_t* last = first + sizeof(ApplicationFrameNode);
     const bool heldBefore = std::search(first, last, payload.begin(), payload.end()) != last;
@@ -701,7 +750,7 @@ inline void rdcApplicationFrameIsHandedUpWhateverTheLinkState(RdcApplicationFram
 
     const ApplicationPayload payload = testApplicationPayload(0x10);
     ApplicationFrame frame{};
-    encodeApplicationFrame(payload, frame);
+    encodeApplicationFrame(ApplicationFrameKind::RECORD_KEY, payload, frame);
     std::vector<uint8_t> damaged(frame.begin(), frame.end());
     damaged[12] ^= 0x04;
     deliverFrame(a->in, damaged);

@@ -62,7 +62,7 @@ A PDN whose own player UUID is non-nil SHALL NOT play a standalone match against
 
 ### Requirement: Match key over the jack
 
-At the start of each standalone match the Hunter SHALL draw a 16-byte match key from the hardware random number generator and send it, with the match ID, as a serial application frame of kind `0x03` on its opponent jack before sending the match initiation. The Bounty SHALL take the key only from the Connected PDN on its opponent jack, and both SHALL wipe it when the match ends or is cleared.
+At the start of each standalone match the Hunter SHALL draw a 16-byte match key from the hardware random number generator and send it, with the match ID, as a serial application frame of kind `0x03` on its opponent jack before the match initiation. The Bounty SHALL use a key only from the peer on its opponent jack once that peer is a Connected PDN. Both SHALL wipe the key when the match ends or is cleared.
 
 #### Scenario: Hunter sends the match key before the initiation
 - **WHEN** a Hunter starts a standalone match
@@ -75,6 +75,10 @@ At the start of each standalone match the Hunter SHALL draw a 16-byte match key 
 #### Scenario: Key from another jack is ignored
 - **WHEN** a Bounty receives a kind `0x03` frame on a jack other than its opponent jack
 - **THEN** it keeps no key from it
+
+#### Scenario: Key that arrives before the Bounty's link is Connected
+- **WHEN** a Bounty whose opponent jack link is still connecting receives the Hunter's key frame and then its match initiation
+- **THEN** it primes no match until that link is Connected to a PDN, and then primes the match from the held key and initiation without waiting for the Hunter to retry
 
 #### Scenario: Key is wiped when the match ends
 - **WHEN** a standalone match is finalized, abandoned or cleared

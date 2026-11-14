@@ -80,7 +80,8 @@ public:
     /** Hands the PDN one record key frame as arrived on @p jack. */
     void deliverRecordKey(const ApplicationPayload& key,
                           SerialIdentifier jack = SerialIdentifier::INPUT_JACK) {
-        device.fakeRemoteDeviceCoordinator.deliverApplicationFrame(jack, key);
+        device.fakeRemoteDeviceCoordinator.deliverApplicationFrame(
+        jack, ApplicationFrameKind::RECORD_KEY, key);
     }
 
     /**
@@ -89,7 +90,10 @@ public:
      */
     void carryRecordKeyAcrossJack() {
         ASSERT_FALSE(fdnRdc.getSentApplicationFrames().empty()) << "the FDN wrote no key frame";
-        deliverRecordKey(fdnRdc.getSentApplicationFrames().back().second);
+        const FakeRemoteDeviceCoordinator::SentApplicationFrame& sent =
+        fdnRdc.getSentApplicationFrames().back();
+        device.fakeRemoteDeviceCoordinator.deliverApplicationFrame(SerialIdentifier::INPUT_JACK,
+                                                                   sent.kind, sent.payload);
         fdnRdc.finishApplicationFrameWrite(SerialIdentifier::INPUT_JACK);
     }
 
@@ -470,6 +474,28 @@ inline void awaitBandRegistersOnProfileThenKey(PlayerFetchTestSuite* suite) {
     EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
     EXPECT_TRUE(awaitBand.transitionToWelcome());
     EXPECT_TRUE(suite->holdsRecordKey(key));
+    awaitBand.onStateDismounted(&suite->device);
+}
+
+// Every application-frame kind reaches this consumer, so a match-key frame must
+// not be taken for the record key while an attempt is open.
+inline void awaitBandIgnoresMatchKeyFrameDuringAttempt(PlayerFetchTestSuite* suite) {
+    AwaitBandState awaitBand(suite->device.wirelessManager, &suite->playerProvider);
+    awaitBand.onStateMounted(&suite->device);
+    suite->deliverProvision(makeProvisionPacket("Ada"), suite->fdnMac);
+
+    suite->device.fakeRemoteDeviceCoordinator.deliverApplicationFrame(
+    SerialIdentifier::INPUT_JACK, ApplicationFrameKind::MATCH_KEY, makeTestRecordKey(0x70));
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld()) << "a match key was taken";
+    EXPECT_FALSE(suite->playerProvider.hasPlayer());
+    EXPECT_FALSE(suite->failurePageShowsAfterTick(awaitBand));
+    EXPECT_FALSE(awaitBand.transitionToWelcome()) << "the attempt stopped waiting for its key";
+
+    const ApplicationPayload key = makeTestRecordKey(0xA0);
+    suite->deliverRecordKey(key);
+    EXPECT_TRUE(suite->holdsRecordKey(key));
+    EXPECT_TRUE(suite->playerProvider.hasPlayer());
+    EXPECT_TRUE(awaitBand.transitionToWelcome());
     awaitBand.onStateDismounted(&suite->device);
 }
 

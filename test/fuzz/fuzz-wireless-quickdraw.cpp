@@ -103,6 +103,8 @@ private:
     std::vector<uint8_t> lastSentBytes;
 };
 
+// A PDN Connected on the input jack, whose cable takes every match key offered:
+// the harness drives MatchManager's key and tag checks, not the jack's hand-off.
 class FuzzRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
     const uint8_t* getPeerMac(SerialIdentifier jack) const override {
@@ -112,6 +114,15 @@ public:
         return nullptr;
     }
 
+    JackStatus getJackStatus(SerialIdentifier jack) const override {
+        return jack == SerialIdentifier::INPUT_JACK ? JackStatus::CONNECTED
+                                                    : JackStatus::DISCONNECTED;
+    }
+
+    DeviceType getPeerDeviceType(SerialIdentifier jack) const override {
+        return jack == SerialIdentifier::INPUT_JACK ? DeviceType::PDN : DeviceType::UNKNOWN;
+    }
+
     bool isDirectPeer(const uint8_t* mac) const override {
         if (mac == nullptr) {
             return false;
@@ -119,7 +130,31 @@ public:
         return std::memcmp(mac, peerMac, 6) == 0;
     }
 
+    bool sendApplicationFrame(SerialIdentifier, ApplicationFrameKind kind,
+                              const ApplicationPayload& payload) override {
+        if (kind == ApplicationFrameKind::MATCH_KEY) {
+            rememberMatchKey(payload);
+        }
+        return true;
+    }
+
+    /** Hands up a MATCH_KEY frame as written by the PDN on the input jack. */
+    void deliverMatchKey(const ApplicationPayload& payload) {
+        rememberMatchKey(payload);
+        fireApplicationFrame(SerialIdentifier::INPUT_JACK, ApplicationFrameKind::MATCH_KEY,
+                             payload);
+    }
+
+    /** The key of the last MATCH_KEY frame sent or delivered, so the harness can sign as the
+     * opponent. */
+    MatchKey lastMatchKey{};
+
 private:
+    void rememberMatchKey(const ApplicationPayload& payload) {
+        std::memcpy(lastMatchKey.data(), payload.data() + MATCH_KEY_FRAME_KEY_OFFSET,
+                    lastMatchKey.size());
+    }
+
     uint8_t peerMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
 };
 
@@ -207,17 +242,37 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                     break;
                 }
                 MatchPacket pkt{};
-                if (matchManager.getCurrentMatch().has_value()) {
-                    std::memcpy(pkt.matchId, matchManager.getCurrentMatch()->getMatchId(),
-                                IdGenerator::UUID_BUFFER_SIZE);
-                } else {
-                    std::memset(pkt.matchId, 'A', IdGenerator::UUID_BUFFER_SIZE);
-                }
                 pkt.isHunter = data[pos];
                 pkt.command = static_cast<int>(data[pos + 1] % 12U);
                 pkt.seqId = data[pos + 2];
                 pkt.playerDrawTime = static_cast<long>(static_cast<int8_t>(data[pos])) * 100L;
                 pos += 3;
+                if (matchManager.getCurrentMatch().has_value()) {
+                    std::memcpy(pkt.matchId, matchManager.getCurrentMatch()->getMatchId(),
+                                IdGenerator::UUID_BUFFER_SIZE);
+                } else if (pkt.command == MatchCmd::SEND_MATCH_ID) {
+                    // An initiation primes only beside its key off the cable, so the
+                    // harness lays one out as a Hunter would.
+                    IdGenerator::copyId(pkt.matchId, IdGenerator::getInstance().generateId());
+                    UUIDBytes matchIdBytes{};
+                    if (UUIDBytes::parse(pkt.matchId, matchIdBytes)) {
+                        ApplicationPayload keyFrame{};
+                        std::memcpy(keyFrame.data() + MATCH_KEY_FRAME_ID_OFFSET, matchIdBytes.bytes,
+                                    UUIDBytes::SIZE);
+                        for (size_t i = MATCH_KEY_FRAME_KEY_OFFSET; i < keyFrame.size(); ++i) {
+                            keyFrame[i] = static_cast<uint8_t>(pkt.seqId + i);
+                        }
+                        rdc.deliverMatchKey(keyFrame);
+                    }
+                } else {
+                    std::memset(pkt.matchId, 'A', IdGenerator::UUID_BUFFER_SIZE);
+                }
+                // The low seqId bit signs the frame under the last key; the rest is its
+                // counter, so replayed and stale counters are reachable too.
+                if ((pkt.seqId & 1U) != 0U) {
+                    pkt.counter = static_cast<uint32_t>(pkt.seqId >> 1U);
+                    signMatchPacket(rdc.lastMatchKey, pkt);
+                }
                 peerComms.deliverRxExact(PktType::kMatchCommand, peerMac,
                                          reinterpret_cast<const uint8_t*>(&pkt),
                                          sizeof(MatchPacket));

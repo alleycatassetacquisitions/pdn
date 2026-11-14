@@ -1796,7 +1796,7 @@ inline void aTournamentResetLeavesACableMatchAlone(ShootoutManagerTests* suite) 
     suite->rebuildShootout(&matchManager);
 
     matchManager.receiveMatch("b5f1c0de-0000-4000-8000-00000000cafe", /*opponentIsHunter=*/true,
-                              opponent);
+                              opponent, testMatchKey(0x30), 1);
     ASSERT_TRUE(matchManager.getCurrentMatch().has_value());
 
     suite->shootout->resetToIdle();

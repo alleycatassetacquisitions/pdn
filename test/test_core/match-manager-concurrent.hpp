@@ -28,7 +28,7 @@ inline void matchManagerConcurrentDriverVsReader() {
     player.setIsHunter(false);
     FakeRemoteDeviceCoordinator rdc;
     const uint8_t peerMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-    rdc.setPeerMac(SerialIdentifier::INPUT_JACK, peerMac);
+    connectPdnPeer(rdc, SerialIdentifier::INPUT_JACK, peerMac);
 
     NativePeerCommsDriver driver("tsan-test-driver");
     driver.initialize();
@@ -46,23 +46,26 @@ inline void matchManagerConcurrentDriverVsReader() {
     MatchManager mm(&player, nullptr, &storage, &wireless, &rdc);
     mm.clearCurrentMatch();
 
+    // An initiation primes a match only once paired with its key off the cable;
+    // the key is in before the WiFi task starts, so the first drained one primes.
+    const char* matchId = "c0c0c0c0-0000-4000-8000-000000000001";
+    const MatchKey key = testMatchKey(0x30);
+    rdc.deliverApplicationFrame(SerialIdentifier::INPUT_JACK, ApplicationFrameKind::MATCH_KEY,
+                                matchKeyPayload(matchId, key));
+    MatchPacket initiation = {};
+    strncpy(initiation.matchId, matchId, sizeof(initiation.matchId) - 1);
+    initiation.command = MatchCmd::SEND_MATCH_ID;
+    initiation.isHunter = true;
+    initiation.playerDrawTime = 0;
+    signMatchFrame(initiation, key, 1);
+
     std::atomic<bool> running{true};
 
     // Simulates the WiFi task: only enqueues after the fix — never touches MatchManager.
     std::thread wifiTask([&]() {
-        int iter = 0;
         while (running.load(std::memory_order_relaxed)) {
-            char matchId[37] = {};
-            snprintf(matchId, sizeof(matchId), "match-%08d", iter++);
-
-            MatchPacket pkt = {};
-            strncpy(pkt.matchId, matchId, sizeof(pkt.matchId) - 1);
-            pkt.command = MatchCmd::SEND_MATCH_ID;
-            pkt.isHunter       = true;
-            pkt.playerDrawTime = 0;
-
             driver.receivePacket(peerMac, PktType::kMatchCommand,
-                                 reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+                                 reinterpret_cast<const uint8_t*>(&initiation), sizeof(initiation));
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     });

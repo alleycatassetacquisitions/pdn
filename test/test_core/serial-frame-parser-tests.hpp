@@ -75,17 +75,20 @@ public:
 
     /**
      * Records every frame of either kind in arrival order: the first source
-     * byte of each HELLO, the whole payload of each application frame.
+     * byte of each HELLO, the kind and whole payload of each application frame.
      */
     void recordBothFrameKinds() {
         parser.setHelloFrameHandler(
         [this](const HelloPayload& hello) { helloSources.push_back(hello.source[0]); });
-        parser.setApplicationFrameHandler([this](const ApplicationPayload& payload) {
+        parser.setApplicationFrameHandler(
+        [this](ApplicationFrameKind kind, const ApplicationPayload& payload) {
+            applicationKinds.push_back(kind);
             applicationPayloads.emplace_back(payload.begin(), payload.end());
         });
     }
 
     std::vector<uint8_t> helloSources;
+    std::vector<ApplicationFrameKind> applicationKinds;
     std::vector<std::vector<uint8_t>> applicationPayloads;
 
     SerialFrameParser parser;
@@ -363,7 +366,7 @@ TEST_F(SerialFrameParserTests, splitPreambleAcrossFeeds) {
 
 // ---- Application frame ----
 
-// Preamble, OP_APPLICATION 0x02, payload 00..1F, then the precomputed
+// Preamble, OP_RECORD_KEY 0x02, payload 00..1F, then the precomputed
 // CRC-16/XMODEM of (opcode + payload), 0xD966. Laid out by hand so the wire
 // contract is pinned independently of the codec and of buildFrame.
 inline std::vector<uint8_t> handLaidApplicationFrame() {
@@ -385,7 +388,70 @@ TEST_F(SerialFrameParserTests, applicationFrameDecodesFromHandLaidBytes) {
 
     ASSERT_EQ(applicationPayloads.size(), 1u);
     EXPECT_EQ(applicationPayloads[0], applicationPayload(0x00));
+    EXPECT_EQ(applicationKinds,
+              std::vector<ApplicationFrameKind>({ApplicationFrameKind::RECORD_KEY}));
     EXPECT_TRUE(helloSources.empty());
+}
+
+// Preamble, OP_MATCH_KEY 0x03, payload 00..1F, then the precomputed
+// CRC-16/XMODEM of (opcode + payload), 0x54BA.
+inline std::vector<uint8_t> handLaidMatchKeyFrame() {
+    std::vector<uint8_t> frame = {0xAA, 0x55, 0x03};
+    for (uint8_t b = 0x00; b <= 0x1F; ++b) {
+        frame.push_back(b);
+    }
+    frame.push_back(0x54);
+    frame.push_back(0xBA);
+    return frame;
+}
+
+TEST_F(SerialFrameParserTests, matchKeyFrameDecodesFromHandLaidBytes) {
+    recordBothFrameKinds();
+
+    const std::vector<uint8_t> frame = handLaidMatchKeyFrame();
+    ASSERT_EQ(frame.size(), 37u);
+    feed(frame);
+
+    ASSERT_EQ(applicationPayloads.size(), 1u);
+    EXPECT_EQ(applicationKinds,
+              std::vector<ApplicationFrameKind>({ApplicationFrameKind::MATCH_KEY}));
+    EXPECT_EQ(applicationPayloads[0], applicationPayload(0x00));
+    EXPECT_TRUE(helloSources.empty());
+}
+
+TEST_F(SerialFrameParserTests, applicationFrameRoundTripKeepsTheKind) {
+    recordBothFrameKinds();
+    ApplicationPayload recordKey{};
+    recordKey.fill(0x5A);
+    ApplicationPayload matchKey{};
+    matchKey.fill(0xA5);
+
+    ApplicationFrame frame{};
+    encodeApplicationFrame(ApplicationFrameKind::MATCH_KEY, matchKey, frame);
+    EXPECT_EQ(frame[2], OP_MATCH_KEY);
+    parser.feed(frame.data(), frame.size());
+    encodeApplicationFrame(ApplicationFrameKind::RECORD_KEY, recordKey, frame);
+    EXPECT_EQ(frame[2], OP_RECORD_KEY);
+    parser.feed(frame.data(), frame.size());
+
+    EXPECT_EQ(applicationKinds,
+              std::vector<ApplicationFrameKind>(
+              {ApplicationFrameKind::MATCH_KEY, ApplicationFrameKind::RECORD_KEY}));
+    ASSERT_EQ(applicationPayloads.size(), 2u);
+    EXPECT_EQ(applicationPayloads[0], std::vector<uint8_t>(matchKey.begin(), matchKey.end()));
+    EXPECT_EQ(applicationPayloads[1], std::vector<uint8_t>(recordKey.begin(), recordKey.end()));
+}
+
+// An opcode this parser does not know, even one sized like an application
+// frame, is dropped and the stream recovers on the next HELLO.
+TEST_F(SerialFrameParserTests, unknownApplicationOpcodeIsDroppedAndTheNextHelloParses) {
+    recordBothFrameKinds();
+
+    feed(buildFrame(0x04, applicationPayload()));
+    feed(buildFrame(OP_HELLO, helloPayload(0xA1)));
+
+    EXPECT_TRUE(applicationPayloads.empty());
+    EXPECT_EQ(helloSources, std::vector<uint8_t>({0xA1}));
 }
 
 TEST_F(SerialFrameParserTests, encodeApplicationFrameEmitsExactFrameBytes) {
@@ -396,10 +462,10 @@ TEST_F(SerialFrameParserTests, encodeApplicationFrameEmitsExactFrameBytes) {
     // Pre-filled so a byte the codec failed to write would show.
     ApplicationFrame frame;
     frame.fill(0xEE);
-    encodeApplicationFrame(payload, frame);
+    encodeApplicationFrame(ApplicationFrameKind::RECORD_KEY, payload, frame);
 
     EXPECT_EQ(std::vector<uint8_t>(frame.begin(), frame.end()), handLaidApplicationFrame());
-    EXPECT_EQ(buildFrame(OP_APPLICATION, applicationPayload(0x00)), handLaidApplicationFrame());
+    EXPECT_EQ(buildFrame(OP_RECORD_KEY, applicationPayload(0x00)), handLaidApplicationFrame());
 }
 
 TEST_F(SerialFrameParserTests, applicationFrameRoundTripsThroughParser) {
@@ -415,7 +481,7 @@ TEST_F(SerialFrameParserTests, applicationFrameRoundTripsThroughParser) {
     sent[5] = 0x00;
     sent[31] = 0xFF;
     ApplicationFrame frame{};
-    encodeApplicationFrame(sent, frame);
+    encodeApplicationFrame(ApplicationFrameKind::RECORD_KEY, sent, frame);
     parser.feed(frame.data(), frame.size());
 
     ASSERT_EQ(applicationPayloads.size(), 1u);
@@ -427,7 +493,7 @@ TEST_F(SerialFrameParserTests, applicationFrameWithNoHandlerIsSkipped) {
     int helloCount = 0;
     parser.setHelloFrameHandler([&](const HelloPayload&) { ++helloCount; });
 
-    feed(buildFrame(OP_APPLICATION, applicationPayload()));
+    feed(buildFrame(OP_RECORD_KEY, applicationPayload()));
     feed(buildFrame(OP_HELLO, helloPayload()));
 
     EXPECT_EQ(helloCount, 1);
@@ -437,7 +503,7 @@ TEST_F(SerialFrameParserTests, corruptedApplicationFrameIsDroppedAndTheNextHello
     recordBothFrameKinds();
 
     // One payload bit flipped under an intact CRC.
-    std::vector<uint8_t> damagedPayload = buildFrame(OP_APPLICATION, applicationPayload());
+    std::vector<uint8_t> damagedPayload = buildFrame(OP_RECORD_KEY, applicationPayload());
     damagedPayload[10] ^= 0x01;
     feed(damagedPayload);
     EXPECT_TRUE(applicationPayloads.empty());
@@ -445,7 +511,7 @@ TEST_F(SerialFrameParserTests, corruptedApplicationFrameIsDroppedAndTheNextHello
     EXPECT_EQ(helloSources, std::vector<uint8_t>({0xA1}));
 
     // An intact payload under a damaged CRC.
-    std::vector<uint8_t> damagedCrc = buildFrame(OP_APPLICATION, applicationPayload());
+    std::vector<uint8_t> damagedCrc = buildFrame(OP_RECORD_KEY, applicationPayload());
     damagedCrc[damagedCrc.size() - 2] ^= 0xFF;
     damagedCrc[damagedCrc.size() - 1] ^= 0xFF;
     feed(damagedCrc);
@@ -454,7 +520,7 @@ TEST_F(SerialFrameParserTests, corruptedApplicationFrameIsDroppedAndTheNextHello
     EXPECT_EQ(helloSources, std::vector<uint8_t>({0xA1, 0xA2}));
 
     // And the parser still takes a good application frame afterwards.
-    feed(buildFrame(OP_APPLICATION, applicationPayload(0x07)));
+    feed(buildFrame(OP_RECORD_KEY, applicationPayload(0x07)));
     ASSERT_EQ(applicationPayloads.size(), 1u);
     EXPECT_EQ(applicationPayloads[0], applicationPayload(0x07));
 }
@@ -466,12 +532,12 @@ TEST_F(SerialFrameParserTests, applicationFrameOfTheWrongLengthIsDropped) {
     // parser frames 32 from the opcode, so neither CRC lines up.
     std::vector<uint8_t> oneShort = applicationPayload();
     oneShort.pop_back();
-    feed(buildFrame(OP_APPLICATION, oneShort));
+    feed(buildFrame(OP_RECORD_KEY, oneShort));
     feed(buildFrame(OP_HELLO, helloPayload(0xA1)));
 
     std::vector<uint8_t> oneLong = applicationPayload();
     oneLong.push_back(0x77);
-    feed(buildFrame(OP_APPLICATION, oneLong));
+    feed(buildFrame(OP_RECORD_KEY, oneLong));
     feed(buildFrame(OP_HELLO, helloPayload(0xA2)));
 
     EXPECT_TRUE(applicationPayloads.empty());
@@ -485,7 +551,7 @@ TEST_F(SerialFrameParserTests, truncatedApplicationFrameCostsNoHello) {
     // the HELLO frames behind it: all of the first and the head of the second.
     // Replaying what it swallowed has to give both back, or one lost
     // application frame would cost two HELLO cadences of liveness.
-    std::vector<uint8_t> truncated = buildFrame(OP_APPLICATION, applicationPayload());
+    std::vector<uint8_t> truncated = buildFrame(OP_RECORD_KEY, applicationPayload());
     truncated.resize(10);
     feed(truncated);
     fakeClock->advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
@@ -503,7 +569,7 @@ TEST_F(SerialFrameParserTests, damagedHelloInsideATruncatedApplicationFrameCosts
     // The replay of the failed application frame holds a whole HELLO that fails
     // its own CRC, so the resync runs inside the resync. The frames after it
     // still have to come out in order.
-    std::vector<uint8_t> truncated = buildFrame(OP_APPLICATION, applicationPayload());
+    std::vector<uint8_t> truncated = buildFrame(OP_RECORD_KEY, applicationPayload());
     truncated.resize(10);
     std::vector<uint8_t> damagedHello = buildFrame(OP_HELLO, helloPayload(0xA1));
     damagedHello[8] ^= 0x10;
@@ -519,11 +585,11 @@ TEST_F(SerialFrameParserTests, damagedHelloInsideATruncatedApplicationFrameCosts
 TEST_F(SerialFrameParserTests, helloDamagedIntoTheApplicationOpcodeCostsOnlyItself) {
     recordBothFrameKinds();
 
-    // A HELLO whose opcode byte arrives as OP_APPLICATION sends the parser
+    // A HELLO whose opcode byte arrives as OP_RECORD_KEY sends the parser
     // after 32 payload bytes it will never get: the rest of that HELLO and all
     // but the last byte of the next one. The next one must still be delivered.
     std::vector<uint8_t> damaged = buildFrame(OP_HELLO, helloPayload(0xA1));
-    damaged[2] = OP_APPLICATION;
+    damaged[2] = OP_RECORD_KEY;
     feed(damaged);
     fakeClock->advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
     feed(buildFrame(OP_HELLO, helloPayload(0xA2)));
@@ -537,7 +603,7 @@ TEST_F(SerialFrameParserTests, helloDamagedIntoTheApplicationOpcodeCostsOnlyItse
 TEST_F(SerialFrameParserTests, stalledApplicationFrameTimesOutBeforeTheNextHello) {
     recordBothFrameKinds();
 
-    std::vector<uint8_t> partial = buildFrame(OP_APPLICATION, applicationPayload());
+    std::vector<uint8_t> partial = buildFrame(OP_RECORD_KEY, applicationPayload());
     partial.resize(20);
     feed(partial);
 
@@ -558,10 +624,10 @@ TEST_F(SerialFrameParserTests, helloAndApplicationFramesInterleavedAtFrameBounda
         stream.insert(stream.end(), frame.begin(), frame.end());
     };
     append(buildFrame(OP_HELLO, helloPayload(0xA1)));
-    append(buildFrame(OP_APPLICATION, applicationPayload(0x01)));
+    append(buildFrame(OP_RECORD_KEY, applicationPayload(0x01)));
     append(buildFrame(OP_HELLO, helloPayload(0xA2)));
-    append(buildFrame(OP_APPLICATION, applicationPayload(0x02)));
-    append(buildFrame(OP_APPLICATION, applicationPayload(0x03)));
+    append(buildFrame(OP_RECORD_KEY, applicationPayload(0x02)));
+    append(buildFrame(OP_RECORD_KEY, applicationPayload(0x03)));
     append(buildFrame(OP_HELLO, helloPayload(0xA3)));
 
     const std::vector<uint8_t> expectedHellos = {0xA1, 0xA2, 0xA3};
@@ -590,7 +656,7 @@ TEST_F(SerialFrameParserTests, applicationPayloadHoldingAHelloFrameIsNotParsedAs
     // only the application frame may come out.
     std::vector<uint8_t> payload = buildFrame(OP_HELLO, helloPayload(0xA1));
     payload.resize(APPLICATION_PAYLOAD_LEN, 0x5A);
-    feed(buildFrame(OP_APPLICATION, payload));
+    feed(buildFrame(OP_RECORD_KEY, payload));
 
     ASSERT_EQ(applicationPayloads.size(), 1u);
     EXPECT_EQ(applicationPayloads[0], payload);

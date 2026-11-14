@@ -27,8 +27,8 @@ void AwaitBandState::onStateMounted(PDN* pdn) {
 
     remoteDeviceCoordinator = pdn->getRemoteDeviceCoordinator();
     remoteDeviceCoordinator->setOnApplicationFrame(
-    [this](SerialIdentifier jack, const ApplicationPayload& payload) {
-        onApplicationFrame(jack, payload);
+    [this](SerialIdentifier jack, ApplicationFrameKind kind, const ApplicationPayload& payload) {
+        onApplicationFrame(jack, kind, payload);
     },
     this);
     remoteDeviceCoordinator->setOnJackChange(
@@ -155,7 +155,10 @@ void AwaitBandState::onProvisionPacket(const uint8_t* fromMac, const PlayerProvi
     completeRegistrationIfReady();
 }
 
-void AwaitBandState::onApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload) {
+void AwaitBandState::onApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                                        const ApplicationPayload& payload) {
+    // Every application-frame kind reaches this consumer; only the record key is ours.
+    if (kind != ApplicationFrameKind::RECORD_KEY) return;
     if (!isAttemptOpen()) return;
     // A frame carries no source, so the jack's Connected peer is all that says who wrote it.
     if (attemptFdn.has_value()) {

@@ -36,6 +36,22 @@ inline void stubFixtureRdcDirectPeer(MockDevice& device) {
     device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::OUTPUT_JACK, dummyMac);
 }
 
+// A match key goes out on the opponent jack, which must read Connected for
+// initializeMatch to start a match. The cable is put back as the test had it, and
+// the key's write is finished so a later match on the same jack can send its own.
+inline void initializeFixtureMatch(MockDevice& device, Player* player, MatchManager* matchManager) {
+    FakeRemoteDeviceCoordinator& rdc = device.fakeRemoteDeviceCoordinator;
+    const SerialIdentifier jack = PosseManager::opponentJackFor(player->isHunter());
+    const bool wasConnected = rdc.getJackStatus(jack) == JackStatus::CONNECTED;
+    rdc.setJackStatus(jack, JackStatus::CONNECTED);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    matchManager->initializeMatch(dummyMac);
+    rdc.finishApplicationFrameWrite(jack);
+    if (!wasConnected) {
+        rdc.setJackStatus(jack, JackStatus::DISCONNECTED);
+    }
+}
+
 static const uint8_t kTestMacBytes[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
 // Stands a ShootoutManager up to MATCH_IN_PROGRESS with this device in the match
@@ -463,8 +479,7 @@ inline void idleDoesNotTransitionWithMatchButNotReady(IdleStateTests* suite) {
     suite->idleState->onStateMounted(&suite->device);
 
     // Hunter initiates but has not yet received MATCH_ID_ACK
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
 
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
     EXPECT_FALSE(suite->idleState->transitionToMatchCountdown());
@@ -478,7 +493,7 @@ inline void idleTransitionsToMatchCountdownWhenMatchIsReady(IdleStateTests* suit
 
     // Hunter initiates match, then receives ACK from bounty
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     const char* matchId = suite->matchManager->getCurrentMatch()->getMatchId();
     MatchCommand ack(dummyMac, MatchCmd::MATCH_ID_ACK, matchId, 0, false);
     suite->matchManager->listenForMatchEvents(ack);
@@ -493,8 +508,7 @@ inline void idleDismountClearsUnreadyMatch(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
     suite->idleState->onStateMounted(&suite->device);
 
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
     ASSERT_FALSE(suite->matchManager->isMatchReady());
 
@@ -580,8 +594,7 @@ public:
         stubFixtureRdcDirectPeer(device);
         matchManager = new MatchManager(player, nullptr, &storage, device.wirelessManager,
                                         &device.fakeRemoteDeviceCoordinator);
-        uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-        matchManager->initializeMatch(dummyMac);
+        initializeFixtureMatch(device, player, matchManager);
 
         posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
@@ -824,8 +837,7 @@ public:
         posseManager = new PosseManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
         // Create a match for testing via the production wireless path
-        uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-        matchManager->initializeMatch(dummyMac);
+        initializeFixtureMatch(device, player, matchManager);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -1330,8 +1342,7 @@ public:
 // Test: Hunter wins with faster time
 inline void resultHunterWinsWithFasterTime(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setHunterDrawTime(200);
     suite->matchManager->setBountyDrawTime(300);
     suite->matchManager->setReceivedButtonPush();
@@ -1348,6 +1359,9 @@ inline void resultBountyWinsWithFasterTime(MatchResultTests* suite) {
     uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     MatchCommand sendMatchCmd(hunterMac, MatchCmd::SEND_MATCH_ID, "test-match-id-000000000000000",
                               0, true);
+    MatchKey key = testMatchKey(0x30);
+    sendMatchCmd.matchKey = &key;
+    sendMatchCmd.counter = 1;
     suite->matchManager->listenForMatchEvents(sendMatchCmd);
     suite->matchManager->setHunterDrawTime(250);
     suite->matchManager->setBountyDrawTime(150);
@@ -1360,8 +1374,7 @@ inline void resultBountyWinsWithFasterTime(MatchResultTests* suite) {
 // Test: Tied times favor opponent (local player loses)
 inline void resultTiedTimesFavorOpponent(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setHunterDrawTime(250);
     suite->matchManager->setBountyDrawTime(250);
     suite->matchManager->setReceivedButtonPush();
@@ -1374,8 +1387,7 @@ inline void resultTiedTimesFavorOpponent(MatchResultTests* suite) {
 // Test: Opponent timeout means auto win
 inline void resultOpponentTimeoutMeansAutoWin(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setHunterDrawTime(300);
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setOpponentNeverPressed();
@@ -1386,8 +1398,7 @@ inline void resultOpponentTimeoutMeansAutoWin(MatchResultTests* suite) {
 // Test: Win transitions to Win state
 inline void resultWinTransitionsToWinState(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setHunterDrawTime(200);
     suite->matchManager->setBountyDrawTime(300);
     suite->matchManager->setReceivedButtonPush();
@@ -1403,8 +1414,7 @@ inline void resultWinTransitionsToWinState(MatchResultTests* suite) {
 // Test: Lose transitions to Lose state
 inline void resultLoseTransitionsToLoseState(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setHunterDrawTime(400);
     suite->matchManager->setBountyDrawTime(200);
     suite->matchManager->setReceivedButtonPush();
@@ -1424,8 +1434,7 @@ inline void resultPlayerStatsUpdatedOnWin(MatchResultTests* suite) {
     int initialWins = suite->player->getWins();
     int initialStreak = suite->player->getStreak();
     uint64_t initialMatches = suite->player->getDisplayedMatchesPlayed();
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setHunterDrawTime(200);
     suite->matchManager->setBountyDrawTime(300);
     suite->matchManager->setReceivedButtonPush();
@@ -1450,8 +1459,7 @@ inline void resultPlayerStatsUpdatedOnLoss(MatchResultTests* suite) {
     
     int initialLosses = suite->player->getLosses();
     uint64_t initialMatches = suite->player->getDisplayedMatchesPlayed();
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setHunterDrawTime(400);
     suite->matchManager->setBountyDrawTime(200);
     suite->matchManager->setReceivedButtonPush();
@@ -1476,8 +1484,7 @@ inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
     EXPECT_CALL(suite->storage, writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, _))
     .Times(testing::AtLeast(1))
     .WillRepeatedly(Return(sizeof(uint32_t)));
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     UUIDBytes bountyId{};
     UUIDBytes::parse("0b0b0b0b-0000-4000-8000-000000000004", bountyId);
     suite->matchManager->getCurrentMatch()->setBountyPlayerId(bountyId);
@@ -1625,8 +1632,7 @@ inline void cleanupCountdownClearsButtonCallbacks(StateCleanupTests* suite) {
 // edge the machine takes is decided by registration order in populateStateMap, so
 // no state can tell from its own flags whether it is handing off or leaving.
 inline void matchAppDismountEndsTheMatch(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
 
     MatchApp app(suite->ctx);
@@ -1655,8 +1661,7 @@ inline void matchAppDismountEndsTheMatch(StateCleanupTests* suite) {
 // whose exits used to be enumerated by flag — the case that broke was an abort
 // winning while the press flag was set.
 inline void aMatchStateDismountLeavesTheMatchToTheApp(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
 
     MatchState matchState(suite->ctx);
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1676,8 +1681,7 @@ inline void aMatchStateDismountLeavesTheMatchToTheApp(StateCleanupTests* suite) 
 
 // Test: MatchReceivedResult state clears button callbacks on dismount
 inline void cleanupMatchReceivedResultClearsButtonCallbacks(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
 
@@ -1692,8 +1696,7 @@ inline void cleanupMatchReceivedResultClearsButtonCallbacks(StateCleanupTests* s
 
 // Test: MatchState invalidates timer on dismount
 inline void cleanupMatchStateInvalidatesTimer(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
 
     MatchState matchState(suite->ctx);
 
@@ -1721,8 +1724,7 @@ inline void cleanupMatchStateInvalidatesTimer(StateCleanupTests* suite) {
 
 // The draw window's own loop does not read the cable; the app's abandon edge does.
 inline void matchStateLoopIgnoresTheCable(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
     .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
@@ -1763,8 +1765,7 @@ inline void cleanupCountdownStateInvalidatesTimer(StateCleanupTests* suite) {
 }
 
 inline void cleanupMatchResultResetsStateOnDismount(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setHunterDrawTime(200);
     suite->matchManager->setBountyDrawTime(300);
     suite->matchManager->setReceivedButtonPush();
@@ -1799,9 +1800,8 @@ inline void resultStatesStopTheirAnimationOnDismount(StateCleanupTests* suite) {
 
 // Test: Match manager clears current match properly
 inline void cleanupMatchManagerClearsCurrentMatch(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
-    
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
+
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
     
     suite->matchManager->clearCurrentMatch();
@@ -1813,8 +1813,7 @@ inline void cleanupMatchManagerClearsCurrentMatch(StateCleanupTests* suite) {
 
 // Test: Match manager clears match state on match clear
 inline void cleanupMatchManagerClearsMatchState(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
 
     // Set up match state
     suite->matchManager->setMatchLocalStartTime(5000);
@@ -1838,8 +1837,7 @@ inline void cleanupMatchManagerClearsMatchState(StateCleanupTests* suite) {
 // Test: MatchState removes button callbacks when transitioning to MatchReceivedResult
 inline void
 cleanupMatchStateClearsCallbacksWhenGoingToMatchReceivedResult(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
 
     MatchState matchState(suite->ctx);
 
@@ -1867,8 +1865,7 @@ cleanupMatchStateClearsCallbacksWhenGoingToMatchReceivedResult(StateCleanupTests
 // same dismount also runs on the way to MatchResult — which scores the match off
 // that match, and used to be handed an empty one on this exact path.
 inline void pushedLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setReceivedButtonPush();
 
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
@@ -1897,8 +1894,7 @@ inline void mountMatchApp(StateCleanupTests* suite, MatchApp& app) {
     .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     app.onStateMounted(&suite->device);
 }
 
@@ -1919,6 +1915,8 @@ inline void matchAppAbandonsOnlyALastingDisconnect(StateCleanupTests* suite) {
     rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
     suite->fakeClock->advance(2000);
     EXPECT_FALSE(app.isMatchAbandoned());
+    EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
+    << "a reseated blip cost the match, and so its key";
 
     // The window is measured from the edge, not from whichever tick next asks.
     rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
@@ -1928,6 +1926,8 @@ inline void matchAppAbandonsOnlyALastingDisconnect(StateCleanupTests* suite) {
     EXPECT_TRUE(app.isMatchAbandoned());
 
     app.onStateDismounted(&suite->device);
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value())
+    << "the match, and so its key, outlived a cable pulled past the window";
 }
 
 // The window belongs to the match, not to whichever state is on screen.
@@ -2061,8 +2061,7 @@ inline void matchAppDeletedWhileMountedStopsWatching(StateCleanupTests* suite) {
 }
 
 inline void receivedResultLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) {
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
+    initializeFixtureMatch(suite->device, suite->player, suite->matchManager);
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
 

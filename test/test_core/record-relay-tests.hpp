@@ -241,10 +241,20 @@ public:
         << "nothing on the PDN listens for stored acknowledgements";
     }
 
-    /** Starts a match the way the cable handshake does. */
+    /**
+     * Starts a match the way the cable handshake does: the opponent PDN is
+     * Connected on the opponent jack of the player's standing role while the
+     * match key is written, then unplugged, so the jacks are as each test found them.
+     */
     void startMatch() {
+        FakeRemoteDeviceCoordinator& rdc = pdnDevice.fakeRemoteDeviceCoordinator;
+        const SerialIdentifier jack =
+        PosseManager::opponentJackFor(gameSession->getContext().player->isHunter());
+        connectPdnPeer(rdc, jack, opponentMac);
         gameSession->getContext().matchManager->initializeMatch(opponentMac);
         ASSERT_TRUE(gameSession->getContext().matchManager->getCurrentMatch().has_value());
+        rdc.finishApplicationFrameWrite(jack);
+        rdc.setJackStatus(jack, JackStatus::DISCONNECTED);
     }
 
     /** Ends the match startMatch() began. */
@@ -848,17 +858,23 @@ inline void
 recordRelayCancelsASendInFlightWhenAnInboundCommandStartsAMatch(RecordRelayTests* suite) {
     suite->crashSource.newestNumber = 1;
     suite->player->setIsHunter(false);
-    suite->pdnDevice.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK,
-                                                            suite->opponentMac);
+    connectPdnPeer(suite->pdnDevice.fakeRemoteDeviceCoordinator, SerialIdentifier::INPUT_JACK,
+                   suite->opponentMac);
 
     suite->hearBeacon(suite->fdnMac);
     ASSERT_EQ(suite->framesOf<CrashRecordTraits>().size(), 1u);
 
+    const char* matchId = "0f0f0f0f-0000-4000-8000-00000000000a";
+    const MatchKey key = testMatchKey(0x30);
+    suite->pdnDevice.fakeRemoteDeviceCoordinator.deliverApplicationFrame(
+    SerialIdentifier::INPUT_JACK, ApplicationFrameKind::MATCH_KEY, matchKeyPayload(matchId, key));
+
     MatchPacket command{};
-    IdGenerator::copyId(command.matchId, "0f0f0f0f-0000-4000-8000-00000000000a");
+    IdGenerator::copyId(command.matchId, matchId);
     command.isHunter = 1;
     command.command = MatchCmd::SEND_MATCH_ID;
     command.seqId = 1;
+    signMatchFrame(command, key, 1);
     ASSERT_TRUE(suite->pdnDevice.mockPeerComms->triggerPacketCallback(
     suite->opponentMac, PktType::kMatchCommand, reinterpret_cast<const uint8_t*>(&command),
     sizeof(command)));

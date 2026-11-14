@@ -399,9 +399,11 @@ public:
         return false;
     }
 
-    /** Hands `payload` to the application-frame consumers as a frame that arrived on `jack`. */
-    void deliverApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload) {
-        fireApplicationFrame(jack, payload);
+    /** Hands `payload` to the application-frame consumers as a `kind` frame that arrived on `jack`.
+     */
+    void deliverApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                                 const ApplicationPayload& payload) {
+        fireApplicationFrame(jack, kind, payload);
     }
 
     /**
@@ -410,21 +412,26 @@ public:
      * frame is kept for getSentApplicationFrames() and stays unsettled until
      * finishApplicationFrameWrite() or a disconnect.
      */
-    bool sendApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload) override {
+    bool sendApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                              const ApplicationPayload& payload) override {
         FakeJack* fakeJack = jackFor(jack);
         if (applicationFramesRefused || fakeJack == nullptr ||
-            fakeJack->status != JackStatus::CONNECTED || !fakeJack->handOff.offer(payload)) {
+            fakeJack->status != JackStatus::CONNECTED || !fakeJack->handOff.offer(kind, payload)) {
             return false;
         }
-        sentApplicationFrames.emplace_back(jack, payload);
+        sentApplicationFrames.push_back(SentApplicationFrame{jack, kind, payload});
         return true;
     }
 
     /** While refused, sendApplicationFrame() takes nothing, as a jack whose slot is busy. */
     void setApplicationFramesRefused(bool refused) { applicationFramesRefused = refused; }
 
-    /** One accepted frame and the jack it was for. */
-    using SentApplicationFrame = std::pair<SerialIdentifier, ApplicationPayload>;
+    /** One accepted frame, the jack it was for and its kind. */
+    struct SentApplicationFrame {
+        SerialIdentifier jack;
+        ApplicationFrameKind kind;
+        ApplicationPayload payload;
+    };
 
     /** Every frame accepted so far, oldest first. */
     const std::vector<SentApplicationFrame>& getSentApplicationFrames() const {
@@ -604,6 +611,80 @@ private:
     void* sendStatusContext = nullptr;
     std::array<uint8_t, 6> lastDestination{};
 };
+
+// ---- Match key over a fake cable ----
+
+/** Makes `jack` read Connected to a PDN whose MAC is `peerMac`, as a match key's source must. */
+inline void connectPdnPeer(FakeRemoteDeviceCoordinator& rdc, SerialIdentifier jack,
+                           const uint8_t* peerMac) {
+    rdc.setPeerMac(jack, peerMac);
+    rdc.setPeerDeviceType(jack, DeviceType::PDN);
+    rdc.setJackStatus(jack, JackStatus::CONNECTED);
+}
+
+/** A fixed key whose bytes count up from `first`. */
+inline MatchKey testMatchKey(uint8_t first) {
+    MatchKey key{};
+    for (size_t i = 0; i < key.size(); ++i) {
+        key[i] = static_cast<uint8_t>(first + i);
+    }
+    return key;
+}
+
+/** A MATCH_KEY payload as a Hunter lays it out: the match ID's 16 bytes, then the key. */
+inline ApplicationPayload matchKeyPayload(const char* matchId, const MatchKey& key) {
+    ApplicationPayload payload{};
+    UUIDBytes id{};
+    EXPECT_TRUE(UUIDBytes::parse(matchId, id)) << "a match key names a UUID match ID";
+    memcpy(payload.data() + MATCH_KEY_FRAME_ID_OFFSET, id.bytes, UUIDBytes::SIZE);
+    memcpy(payload.data() + MATCH_KEY_FRAME_KEY_OFFSET, key.data(), key.size());
+    return payload;
+}
+
+/** The last MATCH_KEY frame `rdc` accepted, or nullptr when it accepted none. */
+inline const FakeRemoteDeviceCoordinator::SentApplicationFrame*
+lastSentMatchKeyFrame(const FakeRemoteDeviceCoordinator& rdc) {
+    const std::vector<FakeRemoteDeviceCoordinator::SentApplicationFrame>& frames =
+    rdc.getSentApplicationFrames();
+    for (size_t i = frames.size(); i > 0; --i) {
+        if (frames[i - 1].kind == ApplicationFrameKind::MATCH_KEY) return &frames[i - 1];
+    }
+    return nullptr;
+}
+
+/** The key in the last MATCH_KEY frame `rdc` accepted; false when it accepted none. */
+inline bool lastSentMatchKey(const FakeRemoteDeviceCoordinator& rdc, MatchKey& key) {
+    const FakeRemoteDeviceCoordinator::SentApplicationFrame* frame = lastSentMatchKeyFrame(rdc);
+    if (frame == nullptr) return false;
+    memcpy(key.data(), frame->payload.data() + MATCH_KEY_FRAME_KEY_OFFSET, key.size());
+    return true;
+}
+
+/**
+ * Carries the last MATCH_KEY frame `hunterRdc` accepted across the cable: the
+ * writer finishes it on `hunterJack`, so that jack takes the next one, and
+ * `bountyRdc` hands it up as arrived on `bountyJack`.
+ */
+inline void carryMatchKeyAcrossJack(FakeRemoteDeviceCoordinator& hunterRdc,
+                                    FakeRemoteDeviceCoordinator& bountyRdc,
+                                    SerialIdentifier hunterJack = SerialIdentifier::OUTPUT_JACK,
+                                    SerialIdentifier bountyJack = SerialIdentifier::INPUT_JACK) {
+    const FakeRemoteDeviceCoordinator::SentApplicationFrame* frame =
+    lastSentMatchKeyFrame(hunterRdc);
+    if (frame == nullptr) {
+        ADD_FAILURE() << "the Hunter queued no match key";
+        return;
+    }
+    const ApplicationPayload payload = frame->payload;
+    hunterRdc.finishApplicationFrameWrite(hunterJack);
+    bountyRdc.deliverApplicationFrame(bountyJack, ApplicationFrameKind::MATCH_KEY, payload);
+}
+
+/** Signs `packet` under `key` as frame number `counter` of its sender. */
+inline void signMatchFrame(MatchPacket& packet, const MatchKey& key, uint32_t counter) {
+    packet.counter = counter;
+    signMatchPacket(key, packet);
+}
 
 // Fake light strip for LightManager
 class FakeLightStrip : public LightStrip {

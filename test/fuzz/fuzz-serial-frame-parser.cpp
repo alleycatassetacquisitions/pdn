@@ -38,9 +38,16 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     });
 
     ApplicationPayload lastApplicationPayload{};
+    ApplicationFrameKind lastApplicationKind = ApplicationFrameKind::RECORD_KEY;
     size_t applicationCount = 0;
 
-    parser.setApplicationFrameHandler([&](const ApplicationPayload& payload) {
+    parser.setApplicationFrameHandler(
+    [&](ApplicationFrameKind kind, const ApplicationPayload& payload) {
+        // Only the opcodes of known kinds may be reported as one.
+        if (kind != ApplicationFrameKind::RECORD_KEY && kind != ApplicationFrameKind::MATCH_KEY) {
+            __builtin_trap();
+        }
+        lastApplicationKind = kind;
         lastApplicationPayload = payload;
         ++applicationCount;
     });
@@ -66,7 +73,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 pos += len;
             }
         } else if (action == ACTION_FEED_VALID_CRC_FRAME && (param & 1U) == 0U) {
-            // The parameter's low bit picks which of the two frame kinds is fed.
+            // The parameter's low bit picks HELLO or an application frame; the
+            // next bit picks which application kind.
+            const ApplicationFrameKind kind =
+            (param & 2U) == 0U ? ApplicationFrameKind::RECORD_KEY : ApplicationFrameKind::MATCH_KEY;
             if (size - pos < APPLICATION_PAYLOAD_LEN) {
                 break;
             }
@@ -75,8 +85,15 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             pos += payload.size();
 
             ApplicationFrame framed{};
-            encodeApplicationFrame(payload, framed);
+            encodeApplicationFrame(kind, payload, framed);
+            const size_t countBefore = applicationCount;
             feedExactCopy(parser, framed.data(), framed.size());
+            // A partial frame left by earlier input may swallow this one, but a
+            // frame decoded with this payload must carry the kind it was framed as.
+            if (applicationCount == countBefore + 1 && lastApplicationPayload == payload &&
+                lastApplicationKind != kind) {
+                __builtin_trap();
+            }
         } else if (action == ACTION_FEED_VALID_CRC_FRAME) {
             if (size - pos < HELLO_PAYLOAD_LEN) {
                 break;
@@ -132,19 +149,24 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         applicationSentinel[i] = static_cast<uint8_t>(0xC0 + i);
     }
 
-    size_t countBeforeApplicationSentinel = applicationCount;
-    ApplicationFrame applicationFrame{};
-    encodeApplicationFrame(applicationSentinel, applicationFrame);
-    size_t applicationSplit = (size > 0) ? (data[0] % applicationFrame.size()) : 0;
-    feedExactCopy(parser, applicationFrame.data(), applicationSplit);
-    feedExactCopy(parser, applicationFrame.data() + applicationSplit,
-                  applicationFrame.size() - applicationSplit);
+    // Each kind in turn; the first leaves the parser between frames for the second.
+    const ApplicationFrameKind sentinelKinds[] = {ApplicationFrameKind::RECORD_KEY,
+                                                  ApplicationFrameKind::MATCH_KEY};
+    for (ApplicationFrameKind sentinelKind : sentinelKinds) {
+        size_t countBeforeApplicationSentinel = applicationCount;
+        ApplicationFrame applicationFrame{};
+        encodeApplicationFrame(sentinelKind, applicationSentinel, applicationFrame);
+        size_t applicationSplit = (size > 0) ? (data[0] % applicationFrame.size()) : 0;
+        feedExactCopy(parser, applicationFrame.data(), applicationSplit);
+        feedExactCopy(parser, applicationFrame.data() + applicationSplit,
+                      applicationFrame.size() - applicationSplit);
 
-    if (applicationCount != countBeforeApplicationSentinel + 1) {
-        __builtin_trap();
-    }
-    if (lastApplicationPayload != applicationSentinel) {
-        __builtin_trap();
+        if (applicationCount != countBeforeApplicationSentinel + 1) {
+            __builtin_trap();
+        }
+        if (lastApplicationPayload != applicationSentinel || lastApplicationKind != sentinelKind) {
+            __builtin_trap();
+        }
     }
 
     SimpleTimer::setPlatformClock(nullptr);

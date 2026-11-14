@@ -261,7 +261,9 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         link.parser.setHelloFrameHandler(
             [this, jack](const HelloPayload& hello) { onHelloReceived(jack, hello); });
         link.parser.setApplicationFrameHandler(
-        [this, jack](const ApplicationPayload& payload) { fireApplicationFrame(jack, payload); });
+        [this, jack](ApplicationFrameKind kind, const ApplicationPayload& payload) {
+            fireApplicationFrame(jack, kind, payload);
+        });
         // exec() runs on the main loop, so the parser is fed single-threaded.
         hw->setByteCallback([this, jack](uint8_t b) {
             helloByJack[jackIndex(jack)].parser.feed(&b, 1);
@@ -373,14 +375,14 @@ static_assert(RemoteDeviceCoordinator::HELLO_CADENCE_MS +
               RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS,
               "an application frame between two HELLO frames must fit the silent-link window");
 
-bool RemoteDeviceCoordinator::sendApplicationFrame(SerialIdentifier jack,
+bool RemoteDeviceCoordinator::sendApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
                                                    const ApplicationPayload& payload) {
     JackHelloLink& link = helloByJack[jackIndex(jack)];
     if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED) {
         LOG_E("RDC", "application frame refused: no peer Connected on the jack");
         return false;
     }
-    if (!link.applicationFrameHandOff.offer(payload)) {
+    if (!link.applicationFrameHandOff.offer(kind, payload)) {
         LOG_E("RDC", "application frame refused: the jack's last one is not finished");
         return false;
     }

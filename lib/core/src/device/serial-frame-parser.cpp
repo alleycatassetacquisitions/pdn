@@ -32,8 +32,9 @@ std::vector<uint8_t> encodeFramed(const HelloPayload& hello) {
     return std::vector<uint8_t>(frame.begin(), frame.end());
 }
 
-void encodeApplicationFrame(const ApplicationPayload& payload, ApplicationFrame& frame) {
-    encodeFrame(OP_APPLICATION, payload.data(), payload.size(), frame.data());
+void encodeApplicationFrame(ApplicationFrameKind kind, const ApplicationPayload& payload,
+                            ApplicationFrame& frame) {
+    encodeFrame(static_cast<uint8_t>(kind), payload.data(), payload.size(), frame.data());
 }
 
 unsigned long SerialFrameParser::nowMs() {
@@ -44,7 +45,8 @@ unsigned long SerialFrameParser::nowMs() {
 bool SerialFrameParser::isKnownOpcode(uint8_t opcode, size_t& payloadLen) {
     switch (opcode) {
         case OP_HELLO: payloadLen = HELLO_PAYLOAD_LEN; return true;
-        case OP_APPLICATION: payloadLen = APPLICATION_PAYLOAD_LEN; return true;
+        case OP_RECORD_KEY:
+        case OP_MATCH_KEY: payloadLen = APPLICATION_PAYLOAD_LEN; return true;
         default: return false;
     }
 }
@@ -175,11 +177,12 @@ void SerialFrameParser::dispatchFrame() {
                 helloFrameHandler(hello);
             }
             break;
-        case OP_APPLICATION:
+        case OP_RECORD_KEY:
+        case OP_MATCH_KEY:
             if (applicationFrameHandler) {
                 ApplicationPayload payload;
                 std::memcpy(payload.data(), parser.payloadBuf.data(), payload.size());
-                applicationFrameHandler(payload);
+                applicationFrameHandler(static_cast<ApplicationFrameKind>(parser.opcode), payload);
                 secureWipe(payload.data(), payload.size());
             }
             break;

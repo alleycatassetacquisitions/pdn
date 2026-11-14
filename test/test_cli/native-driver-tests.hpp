@@ -847,7 +847,7 @@ inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
     ApplicationPayload recordKey{};
     recordKey.fill(0xA5);
     ApplicationFrame keyFrame{};
-    encodeApplicationFrame(recordKey, keyFrame);
+    encodeApplicationFrame(ApplicationFrameKind::RECORD_KEY, recordKey, keyFrame);
     device.serialInDriver->injectBytes(std::vector<uint8_t>(keyFrame.begin(), keyFrame.end()));
     device.serialInDriver->exec();
 

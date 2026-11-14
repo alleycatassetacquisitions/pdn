@@ -55,6 +55,10 @@ public:
      * input for a standing bounty. The other one carries its supporters.
      */
     SerialIdentifier opponentJack() const;
+    /** The opponent jack of a device whose standing role is hunter when `isHunter`. */
+    static SerialIdentifier opponentJackFor(bool isHunter) {
+        return isHunter ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK;
+    }
     /**
      * This challenger's supporter chain at any depth: the direct supporter-jack
      * peer, which a cable proves, plus every device that named this one as its

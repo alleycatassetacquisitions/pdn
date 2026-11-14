@@ -119,10 +119,10 @@ public:
     /** @return true when the last frame the FDN wrote to a jack is the test key, on @p jack. */
     bool wroteTestKeyTo(SerialIdentifier jack) const {
         if (fdnRdc.getSentApplicationFrames().empty()) return false;
-        const std::pair<SerialIdentifier, ApplicationPayload>& sent =
+        const FakeRemoteDeviceCoordinator::SentApplicationFrame& sent =
         fdnRdc.getSentApplicationFrames().back();
-        return sent.first == jack &&
-               std::string(sent.second.begin(), sent.second.end()) == testRecordKeyWire();
+        return sent.jack == jack && sent.kind == ApplicationFrameKind::RECORD_KEY &&
+               std::string(sent.payload.begin(), sent.payload.end()) == testRecordKeyWire();
     }
 
     /** @return true when reply @p index went to @p mac. */
@@ -414,7 +414,8 @@ inline void fdnWritesKeyOnlyToThePendingJack(FdnProvisioningTests* suite) {
 
     // Some other frame finishes on the primary jack.
     ApplicationPayload unrelated{};
-    ASSERT_TRUE(suite->fdnRdc.sendApplicationFrame(SerialIdentifier::INPUT_JACK, unrelated));
+    ASSERT_TRUE(suite->fdnRdc.sendApplicationFrame(SerialIdentifier::INPUT_JACK,
+                                                   ApplicationFrameKind::RECORD_KEY, unrelated));
     suite->fdnRdc.finishApplicationFrameWrite(SerialIdentifier::INPUT_JACK);
     EXPECT_TRUE(suite->replies.empty()) << "another jack's report released the profile";
     EXPECT_TRUE(fdnProv.isLookupInFlight());

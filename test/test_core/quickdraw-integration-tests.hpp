@@ -70,15 +70,18 @@ public:
         ON_CALL(peerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     }
 
-    /** Creates a packet as if sent by the local player's opponent. */
+    /** Creates a packet as if sent by the local player's opponent, signed as its next frame. */
     MatchPacket createPacket(int command, long hunterTime = 0, long bountyTime = 0) {
+        MatchPacket packet;
         if (player->isHunter()) {
             // Opponent is the bounty: send bountyTime with isHunter=false
-            return createTestPacket(getMatchId(), command, bountyTime, false);
+            packet = createTestPacket(getMatchId(), command, bountyTime, false);
         } else {
             // Opponent is the hunter: send hunterTime with isHunter=true
-            return createTestPacket(getMatchId(), command, hunterTime, true);
+            packet = createTestPacket(getMatchId(), command, hunterTime, true);
         }
+        signMatchFrame(packet, opponentKey, ++opponentCounter);
+        return packet;
     }
 
     /** Delivers a packet into the test wireless manager from macAddr (or defaultMac). */
@@ -100,6 +103,10 @@ public:
     QuickdrawRadioTap* wirelessManager = nullptr;
     WirelessManager* deviceWirelessManager = nullptr;
     FakeRemoteDeviceCoordinator fakeRdc;
+    // The key and last counter the opponent signs createPacket frames with: the
+    // hunter's own key after SetUp; a test that re-primes the match sets both.
+    MatchKey opponentKey{};
+    uint32_t opponentCounter = 0;
     FakePlatformClock* fakeClock = nullptr;
 
 private:
@@ -123,15 +130,17 @@ private:
         matchManager = new MatchManager(player, nullptr, &storage, deviceWirelessManager, &fakeRdc);
         // Stub the RDC with the opponent MAC this fixture uses so the
         // SEND_MATCH_ID gate in listenForMatchEvents passes for delivered packets.
+        // The output jack is Connected because initializeMatch sends the key on it.
         {
             uint8_t stubMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-            fakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, stubMac);
+            connectPdnPeer(fakeRdc, SerialIdentifier::OUTPUT_JACK, stubMac);
             fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, stubMac);
         }
 
         // Must match processPacket's defaultMac so isFromActiveMatchOpponent accepts delivered frames.
         uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         matchManager->initializeMatch(opponentMac);
+        ASSERT_TRUE(lastSentMatchKey(fakeRdc, opponentKey));
         matchManager->setMatchLocalStartTime(DEFAULT_START_TIME);
     }
 
@@ -253,10 +262,12 @@ private:
         uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
         uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
         // Stub each side's RDC direct peer with the other side's MAC so the
-        // SEND_MATCH_ID gate accepts the delivered packets.
-        hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
-        bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
+        // SEND_MATCH_ID gate accepts the delivered packets, and Connect the
+        // cable so the hunter's match key reaches the bounty.
+        connectPdnPeer(hunterFakeRdc, SerialIdentifier::OUTPUT_JACK, bountyMac);
+        connectPdnPeer(bountyFakeRdc, SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
+        carryMatchKeyAcrossJack(hunterFakeRdc, bountyFakeRdc);
         bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
         hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
         bountyWirelessManager->confirmLastSend();
@@ -309,6 +320,9 @@ inline void packetParsingSuppressesRetransmit(PacketParsingTests* suite) {
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 180);
 
+    // The retransmit is re-signed under a fresh counter so the admit filter
+    // passes it and the seqId dedupe is what drops it.
+    signMatchFrame(packet, suite->opponentKey, ++suite->opponentCounter);
     suite->matchManager->getCurrentMatch()->setBountyDrawTime(0);
     suite->wirelessManager->deliverBytesTo(
         macAddr, reinterpret_cast<const uint8_t*>(&packet), sizeof(packet));
@@ -339,7 +353,12 @@ inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suit
     suite->matchManager->clearCurrentMatch();
     suite->player->setIsHunter(false);
     uint8_t hunterMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    suite->matchManager->receiveMatch("a1111111-2222-4000-8000-333333333333", true, hunterMac);
+    suite->opponentKey = testMatchKey(0x30);
+    suite->opponentCounter = 1;
+    suite->matchManager->receiveMatch("a1111111-2222-4000-8000-333333333333", true, hunterMac,
+                                      suite->opponentKey, suite->opponentCounter);
+    // Clearing the match closed the draw window the fixture opened.
+    suite->matchManager->setMatchLocalStartTime(PacketParsingTests::DEFAULT_START_TIME);
 
     MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 200, 0);
     suite->processPacket(packet);

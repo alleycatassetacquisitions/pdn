@@ -1,6 +1,7 @@
 #include "utils/server-key-pin.hpp"
 
 #include "device/drivers/logger.hpp"
+#include "utils/constant-time-equal.hpp"
 
 #include <cstring>
 
@@ -54,11 +55,8 @@ bool ServerKeyPin::matchesKey(const uint8_t* spki, size_t length,
     hash.finish(digest);
     formatDigest(digest, presentedKeyHash);
 
-    uint8_t difference = 0;
-    for (size_t i = 0; i < SHA256_DIGEST_SIZE; ++i) {
-        difference |= static_cast<uint8_t>(digest[i] ^ pinnedDigest[i]);
-    }
-    return pinIsSet && difference == 0;
+    const bool digestMatches = constantTimeEqual(digest, pinnedDigest, SHA256_DIGEST_SIZE);
+    return pinIsSet && digestMatches;
 }
 
 uint32_t ServerKeyPin::verifiedFlags(int depth, bool keyMatches, uint32_t incomingFlags,

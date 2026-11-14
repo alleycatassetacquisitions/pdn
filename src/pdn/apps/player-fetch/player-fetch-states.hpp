@@ -69,7 +69,8 @@ private:
     };
 
     void onProvisionPacket(const uint8_t* fromMac, const PlayerProvisionPacket& pkt);
-    void onApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload);
+    void onApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                            const ApplicationPayload& payload);
     void onJackChange(SerialIdentifier jack, bool connected);
     bool isAttemptOpen() const;
     bool findFdnJack(const uint8_t* fdnMac, SerialIdentifier& jack) const;

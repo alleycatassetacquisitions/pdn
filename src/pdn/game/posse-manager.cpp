@@ -74,9 +74,7 @@ PosseManager::~PosseManager() {
     rdc->setOnRingMembershipChange(nullptr, this);
 }
 
-SerialIdentifier PosseManager::opponentJack() const {
-    return player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK;
-}
+SerialIdentifier PosseManager::opponentJack() const { return opponentJackFor(player->isHunter()); }
 
 SerialIdentifier PosseManager::supporterJack() const {
     return player->isHunter() ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;

@@ -95,8 +95,11 @@ public:
     void finishMatch(const std::string& matchId) {
         UUIDBytes hunterId{};
         UUIDBytes::parse("0a0a0a0a-0000-4000-8000-000000000002", hunterId);
-        const MatchCommand sendMatchId(opponentMac, MatchCmd::SEND_MATCH_ID, matchId.c_str(), 0,
-                                       true, hunterId);
+        MatchCommand sendMatchId(opponentMac, MatchCmd::SEND_MATCH_ID, matchId.c_str(), 0, true,
+                                 hunterId);
+        const MatchKey key = testMatchKey(0x30);
+        sendMatchId.matchKey = &key;
+        sendMatchId.counter = 1;
         matchManager()->listenForMatchEvents(sendMatchId);
         ASSERT_TRUE(matchManager()->getCurrentMatch().has_value())
         << "the match handshake was refused";

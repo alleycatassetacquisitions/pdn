@@ -376,7 +376,8 @@ private:
         // The coordinator keeps its own copy of an accepted frame and clears it
         // as the frame is written or dropped, so neither copy here outlives the call.
         recordKey.clear();
-        const bool accepted = rdc->sendApplicationFrame(lookupJack, keyFrame);
+        const bool accepted =
+        rdc->sendApplicationFrame(lookupJack, ApplicationFrameKind::RECORD_KEY, keyFrame);
         secureWipe(keyFrame.data(), keyFrame.size());
         if (!accepted) {
             LOG_E("FDN_PROVISION", "Jack refused the record key frame");

@@ -45,6 +45,11 @@ inline constexpr const char LEGACY_PREF_COUNT_KEY[] = "count";
 inline constexpr const char LEGACY_PREF_TEST_KEY[] = "test_key";
 inline constexpr size_t LEGACY_UNTAGGED_SLOT_SIZE = MATCH_RECORD_SIZE;
 
+// The human floor: a standalone opponent's raw reaction time below this is a
+// guess timed to the fixed countdown, not a reaction, and is refused. The
+// start is stamped before the stimulus, so measured times only overstate.
+inline constexpr long MIN_DRAW_TIME_MS = 80;
+
 struct LastMatchDisplay {
     // Effective draw times, as used for winner calc: raw minus boost, so a big
     // enough posse behind a fast draw puts them below zero.
@@ -72,11 +77,20 @@ struct ActiveMatchState {
     unsigned long penaltyMs = 0;
     // From the opponent's draw result, held to PosseManager::getMaxBoostMs().
     unsigned long opponentBoostMs = 0;
-    unsigned long matchLocalStartTime = 0;
+    // Set when the local draw window opens; a standalone match takes no
+    // opponent result before it.
+    std::optional<unsigned long> matchLocalStartTime;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
     std::optional<Match> match;
     std::array<uint8_t, 6> opponentMac = {};
+    // Standalone matches: the match key that signs this match's frames, the
+    // last frame counter sent and the last one accepted from the opponent.
+    // A shootout match holds none.
+    bool matchKeyIsHeld = false;
+    MatchKey matchKey = {};
+    uint32_t txCounter = 0;
+    uint32_t rxCounter = 0;
 
     unsigned long calculateButtonMasherPenalty() {
         return BUTTON_MASHER_PENALTY_MS * buttonMasherCount;
@@ -86,21 +100,30 @@ struct ActiveMatchState {
 class MatchManager : public RecordSource<MatchRecordTraits> {
 public:
     /**
-     * Claims the kMatchCommand channel on wirelessManager. storage is required;
-     * wirelessManager and rdc may be null in tests; with a null rdc every
-     * SEND_MATCH_ID is refused. recordKey is borrowed and read only when a
-     * finished match is tagged; while it is null or holds no key, no match is
-     * stored.
+     * Claims the kMatchCommand channel on wirelessManager and, with an rdc,
+     * registers for its application frames and jack changes. storage is
+     * required; wirelessManager and rdc may be null in tests; with a null rdc
+     * no standalone match starts either way. recordKey is borrowed and read
+     * only when a finished match is tagged; while it is null or holds no key,
+     * no match is stored.
      */
     MatchManager(Player* player, const RecordKey* recordKey, StorageInterface* storage,
                  WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
     ~MatchManager();
 
-    /** Initializes a match and sends SEND_MATCH_ID to opponentMac. */
+    /**
+     * Draws a match key from the hardware RNG, queues it with a new match ID on
+     * the opponent jack, then sends SEND_MATCH_ID to opponentMac. Starts
+     * nothing when the jack refuses the key.
+     */
     void initializeMatch(uint8_t* opponentMac);
 
-    /** Primes a match from an incoming SEND_MATCH_ID and replies with MATCH_ID_ACK. */
+    /**
+     * Primes a match from a SEND_MATCH_ID verified under matchKey, whose frame
+     * counter was opponentCounter, and replies with a signed MATCH_ID_ACK.
+     */
     void receiveMatch(const char* matchId, bool opponentIsHunter, uint8_t* opponentMac,
+                      const MatchKey& matchKey, uint32_t opponentCounter,
                       const UUIDBytes& opponentPlayerUuid = UUIDBytes{},
                       const UUIDBytes& opponentTeamUuid = UUIDBytes{});
 
@@ -126,7 +149,7 @@ public:
     /** Sets the bounty draw time (ms) on the active match. */
     bool setBountyDrawTime(unsigned long bountyTimeMs);
 
-    /** Records the local timestamp when the match draw window starts. */
+    /** Records the local timestamp when the match draw window starts, and opens the window. */
     void setMatchLocalStartTime(unsigned long localStartTimeMs);
 
     bool didWin();
@@ -138,7 +161,7 @@ public:
      */
     bool isLocalHunter() const { return activeMatchState.localIsHunter; }
 
-    /** Timestamp when the match draw window started. */
+    /** Timestamp when the match draw window started; 0 while it has not opened. */
     unsigned long getMatchLocalStartTime() const;
 
     bool matchResultsAreIn();
@@ -177,7 +200,7 @@ public:
     void onRecordAcknowledged(RecordKind kind, uint32_t recordNumber,
                               const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) override;
 
-    /** Clears the active match and resets all per-match state flags. */
+    /** Clears the active match, wipes its match key, and resets all per-match state flags. */
     void clearCurrentMatch();
 
     /**
@@ -208,7 +231,12 @@ public:
      */
     void setShootoutManager(ShootoutManager* manager);
 
-    /** Dispatches an inbound match command (handshake or active-match event). */
+    /**
+     * Dispatches an inbound match command (handshake or active-match event).
+     * The channel's admit filter has checked every signed standalone frame's
+     * tag, counter and role before this; a SEND_MATCH_ID primes a match only
+     * with the matchKey it was verified under.
+     */
     void listenForMatchEvents(const MatchCommand& command);
 
     /** Button callback that records a valid match draw press and sends DRAW_RESULT. */
@@ -229,6 +257,22 @@ public:
     void setOpponentNeverPressed() { activeMatchState.opponentNeverPressed = true; }
 
 private:
+    // Bounty: the latest match key off the opponent jack, held with the MAC of
+    // the peer there, until an initiation for the same match pairs with it.
+    // It may arrive while that link is still connecting; it is used only once
+    // the peer is a Connected PDN.
+    struct PendingMatchKey {
+        std::array<uint8_t, 6> fromMac = {};
+        UUIDBytes matchId;
+        MatchKey key = {};
+    };
+    // Bounty: the latest initiation, held because the key frame on the cable
+    // can trail the radio frame by a HELLO cadence.
+    struct PendingInitiation {
+        std::array<uint8_t, 6> fromMac = {};
+        MatchPacket packet = {};
+    };
+
     /** True when the active match carries a shootout-derived match id. */
     bool currentMatchIsShootout() const;
 
@@ -242,6 +286,8 @@ private:
     ActiveMatchState activeMatchState;
     LastMatchDisplay lastMatchDisplay;
     CallbackList<std::function<void()>> matchStartedCallbacks;
+    std::optional<PendingMatchKey> pendingMatchKey;
+    std::optional<PendingInitiation> pendingInitiation;
 
     parameterizedCallbackFunction matchButtonPush;
     parameterizedCallbackFunction buttonMasher;
@@ -250,9 +296,33 @@ private:
     ReliableChannel<MatchPacket> matchChannel;
 
     void initialize();
-    /** @return the seqId the frame went out under. */
+    /**
+     * Signed, under the next frame counter, while the active match holds a key.
+     * @return the seqId the frame went out under.
+     */
     uint8_t sendCommand(const uint8_t* mac, int command, const char* matchId, long drawTime,
                         unsigned long boostMs, bool isHunter);
+    // The opponent jack by standing role, which a match key may arrive on.
+    SerialIdentifier opponentJack() const;
+    // Installs @p key with no frame sent yet and @p opponentCounter as the last
+    // counter accepted from the opponent.
+    void installMatchKey(const MatchKey& key, uint32_t opponentCounter);
+    void wipePendingMatchKey();
+    // Holds a MATCH_KEY frame from the peer on the opponent jack while no match is active.
+    void onApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                            const ApplicationPayload& payload);
+    // A cable pulled from the opponent jack takes the key it carried with it;
+    // the jack reaching Connected lets a key held while connecting pair.
+    void onJackChange(SerialIdentifier jack, bool connected);
+    // Holds an inbound SEND_MATCH_ID, pairs it with the held key, or runs the keyless gates.
+    void onMatchInitiation(const uint8_t* fromMac, const MatchPacket& packet);
+    // True when the held key and initiation name the same match and peer, that
+    // peer is the Connected PDN on the opponent jack, and they were dealt with:
+    // primed, or the initiation dropped for a bad tag.
+    bool pairInitiationWithKey();
+    // ReliableChannel admit filter: tag, counter, role and source of every
+    // signed standalone frame, before duplicate detection.
+    bool admitMatchFrame(const uint8_t* fromMac, const MatchPacket& packet);
     // The slot's raw draw time minus its player's posse boost; below zero when
     // the boost is the larger. Needs an active match.
     long getEffectiveDrawTime(bool hunterSlot) const;
@@ -279,14 +349,13 @@ private:
     // Unparseable JSON-era strings below this were logged.
     uint32_t legacyJsonReportedBelow = 0;
 
-    // Returns true when `command` belongs to the currently-active match and
-    // was sent by that match's opponent. All post-handshake match commands
-    // (MATCH_ID_ACK, MATCH_ROLE_MISMATCH, DRAW_RESULT, NEVER_PRESSED) must
-    // pass this gate before mutating match state — otherwise any neighbor
-    // in ESP-NOW range could forge a result for a match they're not in.
-    // SEND_MATCH_ID is intentionally exempt: it's the packet that
-    // establishes the peering in the first place.
-    bool isFromActiveMatchOpponent(const MatchCommand& command) const;
+    // True when a frame from @p fromMac naming @p matchId belongs to the active
+    // match and was sent by that match's opponent. All post-handshake match
+    // commands (MATCH_ID_ACK, MATCH_ROLE_MISMATCH, DRAW_RESULT, NEVER_PRESSED)
+    // must pass this gate before mutating match state, and the admit filter
+    // applies it to signed frames before checking their tags. SEND_MATCH_ID is
+    // exempt: it is the packet that establishes the match in the first place.
+    bool isFromActiveMatchOpponent(const uint8_t* fromMac, const char* matchId) const;
 
     // Emplace match with given id/opponent/draw slot. Common path for both the
     // cable-handshake init and the Shootout MATCH_START init.

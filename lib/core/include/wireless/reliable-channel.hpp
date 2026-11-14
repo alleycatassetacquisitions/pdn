@@ -233,6 +233,9 @@ private:
 // for that peer is the delivery evidence.
 template <class P> class ReliableChannel : public TypedChannelBase<P> {
 public:
+    /** Decides whether one decoded inbound frame may go on to duplicate detection. */
+    using AdmitFilter = std::function<bool(const uint8_t* fromMac, const P&)>;
+
     /**
      * See ReliableChannelBase; the payload struct P is the wire format. `mode`
      * picks SUPERSEDE_PER_TARGET for a channel carrying current state (a newer
@@ -264,14 +267,25 @@ public:
     }
 
     /**
-     * Decode + dispatch one inbound packet, deduped on the sender's last seqId
-     * first, because a sender that missed SEND_SUCCESS retransmits. Also the
-     * untyped entry for the driver packet handler and the transport's
-     * deliverIncoming seam.
+     * Registers the check every decoded inbound frame must pass before
+     * duplicate detection; null admits every frame. A refused frame is dropped
+     * without touching the sender's seqId cursor, so a forgery cannot claim the
+     * seqId of the genuine frame behind it and have that one dropped as a
+     * retransmit.
+     */
+    void setAdmitFilter(AdmitFilter filter) { admitFilter = std::move(filter); }
+
+    /**
+     * Decode + dispatch one inbound packet: the admit filter first, then the
+     * dedupe on the sender's last seqId, because a sender that missed
+     * SEND_SUCCESS retransmits. Also the untyped entry for the driver packet
+     * handler and the transport's deliverIncoming seam. False for a frame that
+     * does not decode or that the filter refuses.
      */
     bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) override {
         P p;
         if (!this->decodeInbound(data, len, p)) return false;
+        if (admitFilter && !admitFilter(fromMac, p)) return false;
         if (this->isDuplicateReliableRx(fromMac, p.seqId)) return true;
         this->dispatch(fromMac, p);
         return true;
@@ -303,6 +317,7 @@ public:
 
 private:
     Resender::SendMode sendMode;
+    AdmitFilter admitFilter;
 };
 
 // Reliable fan-out: one broadcast frame per send, each named recipient cleared

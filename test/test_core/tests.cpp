@@ -12,6 +12,7 @@
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
 #include "match-manager-tests.hpp"
+#include "match-frame-auth-tests.hpp"
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "quickdraw-state-graph-tests.hpp"
@@ -984,7 +985,7 @@ TEST_F(MatchManagerTestSuite, matchStartTimeTracking) {
 }
 
 TEST_F(MatchManagerTestSuite, clearCurrentMatchResetsMasherCount) {
-    matchManagerClearCurrentMatchResetsMasherCount(matchManager, player);
+    matchManagerClearCurrentMatchResetsMasherCount(this);
 }
 
 TEST_F(MatchManagerTestSuite, matchIsReadyFalseBeforeHandshake) {
@@ -1231,6 +1232,10 @@ TEST_F(PlayerFetchTestSuite, awaitBandRegistersOnKeyThenProfile) {
 
 TEST_F(PlayerFetchTestSuite, awaitBandRegistersOnProfileThenKey) {
     awaitBandRegistersOnProfileThenKey(this);
+}
+
+TEST_F(PlayerFetchTestSuite, awaitBandIgnoresMatchKeyFrameDuringAttempt) {
+    awaitBandIgnoresMatchKeyFrameDuringAttempt(this);
 }
 
 TEST_F(PlayerFetchTestSuite, awaitBandProfileWithoutKeyFailsAtTimeLimit) {
@@ -2814,6 +2819,9 @@ TEST(RDCHelloStandalone, fdnContextCarriesEachPdnsRegistrationTurn) {
 
 TEST_F(RdcApplicationFrameTests, reachesThePeerOnThatJackOnly) {
     rdcApplicationFrameReachesThePeerOnThatJackOnly(this);
+}
+TEST_F(RdcApplicationFrameTests, arrivesWithTheKindItWasSent) {
+    rdcApplicationFrameArrivesWithTheKindItWasSent(this);
 }
 TEST_F(RdcApplicationFrameTests, travelsEitherWayAndEachJackQueuesItsOwn) {
     rdcApplicationFrameTravelsEitherWayAndEachJackQueuesItsOwn(this);

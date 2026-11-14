@@ -82,13 +82,17 @@ WIRELESS_SRCS=(
     lib/core/src/device/light-manager.cpp
     lib/core/src/game/match.cpp
     lib/core/src/game/player.cpp
+    lib/core/src/game/record-tag.cpp
     lib/core/src/game/symbol.cpp
     lib/core/src/utils/UUID.cpp
     lib/core/src/utils/uuid-bytes.cpp
+    lib/core/src/utils/hmac-sha256.cpp
+    lib/core/src/utils/sha256.cpp
     lib/core/src/utils/simple-timer.cpp
     lib/core/src/utils/logger.cpp
     src/pdn/game/match-manager.cpp
     src/pdn/game/shootout-manager.cpp
+    src/pdn/wireless/match-packet.cpp
 )
 
 generate_seeds_and_dict() {
@@ -98,9 +102,13 @@ generate_seeds_and_dict() {
     printf '\xaa\x55\x00\x11\x22\x33\x44\x55\x66\x01\xde\xad\xbe\xef\x00\x01\x01\xdc\x48' \
         > "$SEEDS_DIR/serial/valid_hello.bin"
 
-    # Valid application frame seed: 0xAA 0x55 + OP_APPLICATION(0x02) + 32-byte payload + CRC16(0xD966)
+    # Valid record key frame seed: 0xAA 0x55 + OP_RECORD_KEY(0x02) + 32-byte payload + CRC16(0xD966)
     printf '\xaa\x55\x02\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\xd9\x66' \
         > "$SEEDS_DIR/serial/valid_application.bin"
+
+    # Valid match key frame seed: 0xAA 0x55 + OP_MATCH_KEY(0x03) + 32-byte payload + CRC16(0x54BA)
+    printf '\xaa\x55\x03\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x54\xba' \
+        > "$SEEDS_DIR/serial/valid_match_key.bin"
 
     printf '12345678-abcd-ef01-2345-6789abcdef01' > "$SEEDS_DIR/match/valid_match_id.txt"
 
@@ -112,6 +120,7 @@ kw_shootout="SHT-"
 kw_preamble="\xaa\x55"
 kw_hello="\xaa\x55\x00"
 kw_application="\xaa\x55\x02"
+kw_match_key="\xaa\x55\x03"
 EOF
 
     # Instrument only project sources and harnesses, skipping the STL.

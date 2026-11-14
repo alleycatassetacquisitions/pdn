@@ -247,16 +247,19 @@ public:
     bool isContextSendPending(const uint8_t* mac) const;
 
     // ---- Application frame ----
-    // The one frame a jack carries besides HELLO: a fixed-length payload for the
-    // peer on that jack, for bytes that must not cross the radio. RDC frames it,
-    // checks it and hands it up with the jack; it never reads the payload.
+    // The frames a jack carries besides HELLO: fixed-length payloads of one of
+    // the application-frame kinds, for the peer on that jack, for bytes that
+    // must not cross the radio. RDC frames it, checks it and hands it up with
+    // the jack and kind; it never reads the payload.
 
     /**
-     * Receives one CRC-valid application frame: the jack it arrived on and its
-     * payload, which is valid only for the call.
+     * Receives one CRC-valid application frame: the jack it arrived on, its
+     * kind and its payload, which is valid only for the call. Every kind shares
+     * the one consumer list, so a consumer must check the kind as well as who
+     * is Connected on `jack`.
      */
-    using ApplicationFrameCallback =
-    std::function<void(SerialIdentifier jack, const ApplicationPayload& payload)>;
+    using ApplicationFrameCallback = std::function<void(
+    SerialIdentifier jack, ApplicationFrameKind kind, const ApplicationPayload& payload)>;
 
     /**
      * Registers `owner`'s application-frame consumer; a null callback removes
@@ -275,7 +278,7 @@ public:
     }
 
     /**
-     * Queues `payload` as one application frame for the peer Connected on
+     * Queues `payload` as one `kind` application frame for the peer Connected on
      * `jack`; the HELLO writer puts it on the jack whole, straight after that
      * jack's next HELLO frame. Call from the main loop only. Returns false and
      * queues nothing when no peer is Connected on `jack`, or while the frame
@@ -287,7 +290,8 @@ public:
      * reads Connected there: it is normally reported DROPPED; on a device it
      * may be written and reported WRITTEN.
      */
-    virtual bool sendApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload);
+    virtual bool sendApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                                      const ApplicationPayload& payload);
 
     /** Reports how one accepted application frame ended, and on which jack. */
     using ApplicationFrameOutcomeCallback =
@@ -379,8 +383,9 @@ protected:
     void fireRingMembershipChange(bool inRing) { ringMembershipChangeCallbacks.fire(inRing); }
 
     /** Hands one application frame to every consumer as arrived on `jack`. */
-    void fireApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload) {
-        applicationFrameCallbacks.fire(jack, payload);
+    void fireApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                              const ApplicationPayload& payload) {
+        applicationFrameCallbacks.fire(jack, kind, payload);
     }
 
     /**

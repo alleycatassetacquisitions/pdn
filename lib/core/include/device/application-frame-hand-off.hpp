@@ -31,15 +31,15 @@ enum class ApplicationFrameOutcome : uint8_t {
 class ApplicationFrameHandOff {
 public:
     /**
-     * Main loop. Frames `payload` into the slot for the writer. False, taking
+     * Main loop. Frames `payload` as a `kind` frame into the slot for the writer. False, taking
      * nothing, unless the slot is empty: an earlier frame is still waiting,
      * being written, or written with takeWritten() yet to collect it.
      */
-    bool offer(const ApplicationPayload& payload) {
+    bool offer(ApplicationFrameKind kind, const ApplicationPayload& payload) {
         // Only this side ever leaves EMPTY, so the buffer cannot change hands
         // between the load and the store that publishes it.
         if (state.load() != State::EMPTY) return false;
-        encodeApplicationFrame(payload, frame);
+        encodeApplicationFrame(kind, payload, frame);
         state.store(State::OFFERED);
         return true;
     }

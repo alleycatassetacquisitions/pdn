@@ -31,7 +31,7 @@ inline ApplicationPayload sequencedPayload(uint32_t sequence) {
 
 inline ApplicationFrame framed(const ApplicationPayload& payload) {
     ApplicationFrame frame{};
-    encodeApplicationFrame(payload, frame);
+    encodeApplicationFrame(ApplicationFrameKind::RECORD_KEY, payload, frame);
     return frame;
 }
 
@@ -54,7 +54,7 @@ inline void applicationFrameHandOffGivesTheWriterTheOfferedFrameOnce() {
     const ApplicationPayload payload = sequencedPayload(7);
 
     EXPECT_EQ(handOff.takeForWrite(), nullptr) << "an empty slot handed out a frame";
-    ASSERT_TRUE(handOff.offer(payload));
+    ASSERT_TRUE(handOff.offer(ApplicationFrameKind::RECORD_KEY, payload));
 
     const ApplicationFrame* frame = handOff.takeForWrite();
     ASSERT_NE(frame, nullptr);
@@ -74,19 +74,22 @@ inline void applicationFrameHandOffHoldsOneFrameAtATime() {
     const ApplicationPayload first = sequencedPayload(1);
     const ApplicationPayload second = sequencedPayload(2);
 
-    ASSERT_TRUE(handOff.offer(first));
-    EXPECT_FALSE(handOff.offer(second)) << "accepted while the first was waiting";
+    ASSERT_TRUE(handOff.offer(ApplicationFrameKind::RECORD_KEY, first));
+    EXPECT_FALSE(handOff.offer(ApplicationFrameKind::RECORD_KEY, second))
+    << "accepted while the first was waiting";
 
     const ApplicationFrame* frame = handOff.takeForWrite();
     ASSERT_NE(frame, nullptr);
-    EXPECT_FALSE(handOff.offer(second)) << "accepted while the first was being written";
+    EXPECT_FALSE(handOff.offer(ApplicationFrameKind::RECORD_KEY, second))
+    << "accepted while the first was being written";
     EXPECT_EQ(*frame, framed(first)) << "a refused offer wrote over the frame in hand";
 
     handOff.finish();
-    EXPECT_FALSE(handOff.offer(second)) << "accepted before the first was collected";
+    EXPECT_FALSE(handOff.offer(ApplicationFrameKind::RECORD_KEY, second))
+    << "accepted before the first was collected";
 
     ASSERT_TRUE(handOff.takeWritten());
-    ASSERT_TRUE(handOff.offer(second));
+    ASSERT_TRUE(handOff.offer(ApplicationFrameKind::RECORD_KEY, second));
     frame = handOff.takeForWrite();
     ASSERT_NE(frame, nullptr);
     EXPECT_EQ(*frame, framed(second));
@@ -96,13 +99,13 @@ inline void applicationFrameHandOffDropTakesBackAFrameTheWriterHasNotTaken() {
     ApplicationFrameHandOff handOff;
 
     // One full pass first, only to learn where the slot keeps its frame.
-    ASSERT_TRUE(handOff.offer(sequencedPayload(1)));
+    ASSERT_TRUE(handOff.offer(ApplicationFrameKind::RECORD_KEY, sequencedPayload(1)));
     const ApplicationFrame* buffer = handOff.takeForWrite();
     ASSERT_NE(buffer, nullptr);
     handOff.finish();
     ASSERT_TRUE(handOff.takeWritten());
 
-    ASSERT_TRUE(handOff.offer(sequencedPayload(2)));
+    ASSERT_TRUE(handOff.offer(ApplicationFrameKind::RECORD_KEY, sequencedPayload(2)));
     ASSERT_FALSE(isAllZero(*buffer)) << "the check below would pass on an unfilled buffer";
 
     ApplicationFrameOutcome outcome = ApplicationFrameOutcome::WRITTEN;
@@ -113,7 +116,7 @@ inline void applicationFrameHandOffDropTakesBackAFrameTheWriterHasNotTaken() {
     EXPECT_FALSE(handOff.takeWritten());
     EXPECT_FALSE(handOff.drop(outcome)) << "one frame was settled twice";
 
-    EXPECT_TRUE(handOff.offer(sequencedPayload(3)));
+    EXPECT_TRUE(handOff.offer(ApplicationFrameKind::RECORD_KEY, sequencedPayload(3)));
 }
 
 // The writer already holds the frame: it cannot be recalled, so it counts as
@@ -121,7 +124,7 @@ inline void applicationFrameHandOffDropTakesBackAFrameTheWriterHasNotTaken() {
 inline void applicationFrameHandOffDropAfterTheWriterTookTheFrameSettlesItWritten() {
     ApplicationFrameHandOff handOff;
     const ApplicationPayload payload = sequencedPayload(5);
-    ASSERT_TRUE(handOff.offer(payload));
+    ASSERT_TRUE(handOff.offer(ApplicationFrameKind::RECORD_KEY, payload));
     const ApplicationFrame* frame = handOff.takeForWrite();
     ASSERT_NE(frame, nullptr);
 
@@ -130,18 +133,19 @@ inline void applicationFrameHandOffDropAfterTheWriterTookTheFrameSettlesItWritte
     EXPECT_EQ(outcome, ApplicationFrameOutcome::WRITTEN);
     EXPECT_EQ(*frame, framed(payload)) << "the frame changed under the writer";
     EXPECT_FALSE(handOff.drop(outcome)) << "one frame was settled twice";
-    EXPECT_FALSE(handOff.offer(sequencedPayload(6))) << "accepted while the writer held the slot";
+    EXPECT_FALSE(handOff.offer(ApplicationFrameKind::RECORD_KEY, sequencedPayload(6)))
+    << "accepted while the writer held the slot";
 
     handOff.finish();
     EXPECT_TRUE(isAllZero(*frame));
     EXPECT_FALSE(handOff.takeWritten()) << "a settled frame was reported again";
     EXPECT_FALSE(handOff.drop(outcome));
-    EXPECT_TRUE(handOff.offer(sequencedPayload(6)));
+    EXPECT_TRUE(handOff.offer(ApplicationFrameKind::RECORD_KEY, sequencedPayload(6)));
 }
 
 inline void applicationFrameHandOffDropAfterFinishSettlesItWrittenOnce() {
     ApplicationFrameHandOff handOff;
-    ASSERT_TRUE(handOff.offer(sequencedPayload(5)));
+    ASSERT_TRUE(handOff.offer(ApplicationFrameKind::RECORD_KEY, sequencedPayload(5)));
     ASSERT_NE(handOff.takeForWrite(), nullptr);
     handOff.finish();
 
@@ -150,7 +154,7 @@ inline void applicationFrameHandOffDropAfterFinishSettlesItWrittenOnce() {
     EXPECT_EQ(outcome, ApplicationFrameOutcome::WRITTEN);
     EXPECT_FALSE(handOff.takeWritten()) << "a settled frame was reported again";
     EXPECT_FALSE(handOff.drop(outcome));
-    EXPECT_TRUE(handOff.offer(sequencedPayload(6)));
+    EXPECT_TRUE(handOff.offer(ApplicationFrameKind::RECORD_KEY, sequencedPayload(6)));
 }
 
 inline void applicationFrameHandOffEmptySlotSettlesNothing() {
@@ -222,7 +226,8 @@ inline void applicationFrameHandOffKeepsEveryFrameWholeAcrossTwoThreads() {
     for (uint32_t sequence = 0; sequence < FRAME_COUNT && !stalled; ++sequence) {
         const ApplicationPayload payload = sequencedPayload(sequence);
         // Refused only while the writer still holds a frame drop() settled.
-        if (!yieldUntilReached([&]() { return handOff.offer(payload); })) {
+        if (!yieldUntilReached(
+            [&]() { return handOff.offer(ApplicationFrameKind::RECORD_KEY, payload); })) {
             stalled = true;
         } else if (sequence % 3 == 0) {
             if (yieldUntilReached([&]() { return handOff.takeWritten(); })) {
