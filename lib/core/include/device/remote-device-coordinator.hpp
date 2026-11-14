@@ -276,7 +276,7 @@ public:
      * reads Connected there: it is normally reported DROPPED; on a device it
      * may be written and reported WRITTEN.
      */
-    bool sendApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload);
+    virtual bool sendApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload);
 
     /** Reports how one accepted application frame ended, and on which jack. */
     using ApplicationFrameOutcomeCallback =
@@ -370,6 +370,15 @@ protected:
     /** Hands one application frame to every consumer as arrived on `jack`. */
     void fireApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload) {
         applicationFrameCallbacks.fire(jack, payload);
+    }
+
+    /**
+     * Tells every outcome observer how the frame accepted for `jack` ended.
+     * The jack hand-offs are its source here; a coordinator double that stands
+     * in for them calls it too.
+     */
+    void fireApplicationFrameOutcome(SerialIdentifier jack, ApplicationFrameOutcome outcome) {
+        applicationFrameOutcomeCallbacks.fire(jack, outcome);
     }
 
 private:

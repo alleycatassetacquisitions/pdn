@@ -794,7 +794,9 @@ inline void fdnLookupThatNeverGetsWifiFailsAtItsOwnTimeLimit(FdnRecordUploaderTe
     FakeRemoteDeviceCoordinator rdc;
     FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc);
     fdnProvisioningManager.setOnLookupDone(
-    [&results](const char* name) { results.push_back(name != nullptr ? name : "<failed>"); });
+    [&results](ProvisionLookupResult result, const char* name) {
+        results.push_back(result == ProvisionLookupResult::LOOKUP_FAILED ? "<failed>" : name);
+    });
     suite->ownCrashSource.newestNumber = 1;
     ASSERT_TRUE(suite->fdnRecordUploader->uploadAllRecords());
     startPinLookup(suite, rdc);

@@ -34,6 +34,10 @@ message DevicePlayerResponse {
   // count limit. Names reflect current renames and use the PDN display profile.
   // These are membership details, not permissions or match-time scoring snapshots.
   repeated DevicePlayerAffiliation affiliations = 9;
+  // SERVER-SEAM(pdn-record-auth-and-relay): provisional name and number until the
+  // server team agrees them. The 32-byte record key for this player; the PDN tags
+  // its match records with it. Absent from a server that does not return keys.
+  optional bytes record_key = 10;
 }
 
 // One current player assignment. Categories and affiliations belong to the

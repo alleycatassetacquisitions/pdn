@@ -100,7 +100,7 @@ public:
     bool transitionToIdle();
 
 private:
-    enum class Screen { WAITING, LOOKING_UP, WELCOME, FAILED };
+    enum class Screen { WAITING, LOOKING_UP, WELCOME, FAILED, KEY_NOT_ISSUED, SERVER_NOT_TRUSTED };
 
     void render(FDN* fdn);
 

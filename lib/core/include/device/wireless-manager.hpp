@@ -126,6 +126,13 @@ public:
     bool hasQueuedHttpRequests() { return httpClient->hasQueuedRequests(); }
 
     /**
+     * True when the HTTP response whose success callback is running came over
+     * HTTPS from a server that presented the pinned key. Ask from inside that
+     * callback.
+     */
+    bool isHttpResponseServerVerified() { return httpClient->isResponseServerVerified(); }
+
+    /**
      * Takes Wi-Fi for @p owner, a component about to queue HTTP requests of
      * its own. One component owns Wi-Fi at a time: leaving it fails every
      * queued request, so two users of it would end each other's.

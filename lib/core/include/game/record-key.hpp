@@ -8,8 +8,8 @@
 
 constexpr size_t RECORD_KEY_SIZE = 32;
 
-/** Holds the player's record key for the session, in memory only; read it through getBytes() at the
- * moment of use and keep no copy. */
+/** Holds a player's record key in memory only (on a PDN for the session; on an FDN until it is
+ * copied into the jack frame); read it through getBytes() at the moment of use and keep no copy. */
 class RecordKey {
 public:
     /** Starts with no key held. */

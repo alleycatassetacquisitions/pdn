@@ -26,4 +26,12 @@ public:
     virtual HttpClientState getHttpClientState() = 0;
     /** True while a queued request has not had its callback. */
     virtual bool hasQueuedRequests() = 0;
+    /**
+     * True when the response whose success callback is running came over HTTPS
+     * from a server that presented the pinned key (WifiConfig::serverKeySha256).
+     * Meaningful only inside a success callback; false anywhere else. A server
+     * presenting any other key fails its requests with SERVER_NOT_TRUSTED, as
+     * does every HTTPS server when no well-formed pin is configured.
+     */
+    virtual bool isResponseServerVerified() = 0;
 };

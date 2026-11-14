@@ -40,6 +40,7 @@
 #include "uuid-bytes-tests.hpp"
 #include "sha256-tests.hpp"
 #include "hmac-sha256-tests.hpp"
+#include "server-key-pin-tests.hpp"
 #include "fdn-record-store-tests.hpp"
 #include "fdn-record-uploader-tests.hpp"
 #include "fdn-beacon-tests.hpp"
@@ -1057,8 +1058,24 @@ TEST(DevicePlayerCodec, rejectsMissingRequiredUuids) { devicePlayerRejectsMissin
 
 TEST(DevicePlayerCodec, rejectsGarbageBody) { devicePlayerRejectsGarbageBody(); }
 
+TEST(DevicePlayerCodec, decodesRecordKeyBesideProfile) {
+    devicePlayerDecodesRecordKeyBesideProfile();
+}
+
+TEST(DevicePlayerCodec, decodesProfileWithoutUsableRecordKey) {
+    devicePlayerDecodesProfileWithoutUsableRecordKey();
+}
+
+TEST(DevicePlayerCodec, rejectedResponseYieldsNoRecordKey) {
+    devicePlayerRejectedResponseYieldsNoRecordKey();
+}
+
 TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
     playerApiQueuesDevicePlayerLookup(this);
+}
+
+TEST_F(AlleycatApiTestSuite, playerApiTakesRecordKeyOnlyFromVerifiedResponse) {
+    playerApiTakesRecordKeyOnlyFromVerifiedResponse(this);
 }
 
 // ============================================
@@ -1211,6 +1228,46 @@ TEST_F(FdnProvisioningTests, reportsLookupResultAndResendsUnconfirmedReply) {
     fdnReportsLookupResultAndResendsUnconfirmedReply(this);
 }
 
+TEST_F(FdnProvisioningTests, writesKeyToJackThenSendsProfile) {
+    fdnWritesKeyToJackThenSendsProfile(this);
+}
+
+TEST_F(FdnProvisioningTests, lookupWithoutUsableKeyFailsRegistration) {
+    fdnLookupWithoutUsableKeyFailsRegistration(this);
+}
+
+TEST_F(FdnProvisioningTests, keyFromUnverifiedLookupFailsRegistration) {
+    fdnKeyFromUnverifiedLookupFailsRegistration(this);
+}
+
+TEST_F(FdnProvisioningTests, jackRefusingKeyFrameFailsRegistration) {
+    fdnJackRefusingKeyFrameFailsRegistration(this);
+}
+
+TEST_F(FdnProvisioningTests, sendsNothingToPdnThatLeftBeforeKeyWasWritten) {
+    fdnSendsNothingToPdnThatLeftBeforeKeyWasWritten(this);
+}
+
+TEST_F(FdnProvisioningTests, lookupCancelledDuringKeyHandOffSendsNoProfile) {
+    fdnLookupCancelledDuringKeyHandOffSendsNoProfile(this);
+}
+
+TEST_F(FdnProvisioningTests, answerToCancelledLookupWritesNoKey) {
+    fdnAnswerToCancelledLookupWritesNoKey(this);
+}
+
+TEST_F(FdnProvisioningTests, writesKeyOnlyToTheJackOfThePdnThatAsked) {
+    fdnWritesKeyOnlyToTheJackOfThePdnThatAsked(this);
+}
+
+TEST_F(FdnProvisioningTests, servesRequestThatArrivedDuringAnotherPdnsKeyHandOff) {
+    fdnServesRequestThatArrivedDuringAnotherPdnsKeyHandOff(this);
+}
+
+TEST_F(FdnProvisioningTests, untrustedServerFailsRegistrationWithoutAKey) {
+    fdnUntrustedServerFailsRegistrationWithoutAKey(this);
+}
+
 // ============================================
 // SHA-256 AND RECORD CHECK TESTS
 // ============================================
@@ -1252,6 +1309,14 @@ TEST(RecordCheck, ofAMatchRecordIsFirstEightBytesOfSha256OverItsBytesThenItsTag)
 }
 
 TEST(RecordCheck, changesWithTheTag) { recordCheckChangesWithTheTag(); }
+
+TEST(ServerKeyPin, trustsTheKeyItWasComputedFrom) { serverKeyPinTrustsTheKeyItWasComputedFrom(); }
+
+TEST(ServerKeyPin, refusesAKeyOneBitAway) { serverKeyPinRefusesAKeyOneBitAway(); }
+
+TEST(ServerKeyPin, thatIsMalformedTrustsNothing) { serverKeyPinThatIsMalformedTrustsNothing(); }
+
+TEST(ServerKeyPin, flagsFollowOnlyTheLeafKey) { serverKeyPinFlagsFollowOnlyTheLeafKey(); }
 
 // ============================================
 // FDN RECORD STORE AND INTAKE TESTS

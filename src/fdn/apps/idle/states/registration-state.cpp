@@ -18,8 +18,16 @@ RegistrationState::~RegistrationState() {
 void RegistrationState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted — unprovisioned PDN cabled");
     fdnProvisioningManager->setLookupDuringPlayAllowed(true);
-    fdnProvisioningManager->setOnLookupDone([this](const char* name) {
-        screen = name != nullptr ? Screen::WELCOME : Screen::FAILED;
+    fdnProvisioningManager->setOnLookupDone([this](ProvisionLookupResult result, const char* name) {
+        if (result == ProvisionLookupResult::PROFILE_DELIVERED) {
+            screen = Screen::WELCOME;
+        } else if (result == ProvisionLookupResult::KEY_NOT_ISSUED) {
+            screen = Screen::KEY_NOT_ISSUED;
+        } else if (result == ProvisionLookupResult::SERVER_NOT_TRUSTED) {
+            screen = Screen::SERVER_NOT_TRUSTED;
+        } else {
+            screen = Screen::FAILED;
+        }
         playerName = name != nullptr ? name : "";
         resultTimer.setTimer(RESULT_DISPLAY_MS);
         displayIsDirty = true;
@@ -57,7 +65,10 @@ void RegistrationState::onStateDismounted(FDN* fdn) {
 bool RegistrationState::transitionToIdle() {
     if (!isConnected()) return true;
     if (fdnProvisioningManager->isLookupInFlight()) return false;
-    if (screen == Screen::WELCOME || screen == Screen::FAILED) return resultTimer.expired();
+    if (screen == Screen::WELCOME || screen == Screen::FAILED || screen == Screen::KEY_NOT_ISSUED ||
+        screen == Screen::SERVER_NOT_TRUSTED) {
+        return resultTimer.expired();
+    }
     return !fdnProvisioningManager->hasUnprovisionedPdnCabled();
 }
 
@@ -73,6 +84,12 @@ void RegistrationState::render(FDN* fdn) {
     } else if (screen == Screen::FAILED) {
         top = "UNABLE TO";
         bottom = "LOCATE ASSET";
+    } else if (screen == Screen::KEY_NOT_ISSUED) {
+        top = "UNABLE TO";
+        bottom = "ISSUE KEY";
+    } else if (screen == Screen::SERVER_NOT_TRUSTED) {
+        top = "SERVER";
+        bottom = "NOT TRUSTED";
     }
     fdn->getDisplay()
     ->invalidateScreen()

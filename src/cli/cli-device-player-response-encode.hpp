@@ -3,6 +3,7 @@
 #ifdef NATIVE_BUILD
 
 #include "alleycat-server/device_api.pb.h"
+#include "game/record-key.hpp"
 #include "utils/uuid-bytes.hpp"
 
 #include <pb_encode.h>
@@ -24,6 +25,18 @@ inline bool encodeMinimal(const UUIDBytes& playerId, const char* displayName, st
         pb_ostream_from_buffer(reinterpret_cast<pb_byte_t*>(buffer.data()), buffer.size());
     if (!pb_encode_tag(&stream, PB_WT_STRING, alleycat_device_DevicePlayerResponse_id_tag) ||
         !pb_encode_string(&stream, reinterpret_cast<const pb_byte_t*>(idWire.data()), idWire.size())) {
+        return false;
+    }
+    outBody.append(buffer.data(), stream.bytes_written);
+    // SERVER-SEAM(pdn-record-auth-and-relay): record_key is a provisional field.
+    // The simulated server gives every player the same key.
+    const std::string keyWire(RECORD_KEY_SIZE, '\xA5');
+    buffer.assign(keyWire.size() + 16, '\0');
+    stream = pb_ostream_from_buffer(reinterpret_cast<pb_byte_t*>(buffer.data()), buffer.size());
+    if (!pb_encode_tag(&stream, PB_WT_STRING,
+                       alleycat_device_DevicePlayerResponse_record_key_tag) ||
+        !pb_encode_string(&stream, reinterpret_cast<const pb_byte_t*>(keyWire.data()),
+                          keyWire.size())) {
         return false;
     }
     outBody.append(buffer.data(), stream.bytes_written);

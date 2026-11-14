@@ -1,6 +1,8 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -9,6 +11,7 @@
 #include "alleycat-server/player-api.hpp"
 #include "game/player.hpp"
 #include "game/player-types.hpp"
+#include "game/record-key.hpp"
 #include "uuid-bytes-tests.hpp"
 
 constexpr const char* TEST_PLAYER_ID = "7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11";
@@ -26,14 +29,47 @@ inline std::string uuidWireBytes(const char* text) {
 
 // Fixtures are written field by field so they can carry values the device truncates or rejects.
 
-/** Encodes a player header; an empty name is omitted, as proto3 omits it. */
-inline std::string encodeTestPlayer(const std::string& id, const std::string& name) {
+/** A record key as the server sends it: @p length bytes counting up from 0xC0. */
+inline std::string testRecordKeyWire(size_t length = RECORD_KEY_SIZE) {
+    std::string key;
+    for (size_t i = 0; i < length; ++i) {
+        key.push_back(static_cast<char>(0xC0 + i));
+    }
+    return key;
+}
+
+/** True when @p recordKey holds exactly the bytes of testRecordKeyWire(). */
+inline bool holdsTestRecordKey(const RecordKey& recordKey) {
+    return recordKey.isHeld() &&
+           memcmp(recordKey.getBytes(), testRecordKeyWire().data(), RECORD_KEY_SIZE) == 0;
+}
+
+// SERVER-SEAM(pdn-record-auth-and-relay): record_key is a provisional field.
+inline void appendTestRecordKey(std::string& body, const std::string& key) {
+    appendTestBytesField(body, alleycat_device_DevicePlayerResponse_record_key_tag, key);
+}
+
+/** Encodes a player header with no record key; an empty name is omitted, as proto3 omits it. */
+inline std::string encodeTestPlayerWithoutKey(const std::string& id, const std::string& name) {
     std::string body;
     appendTestBytesField(body, alleycat_device_DevicePlayerResponse_id_tag, id);
     if (!name.empty()) {
         appendTestBytesField(body, alleycat_device_DevicePlayerResponse_name_tag, name);
     }
     return body;
+}
+
+/** Encodes a player header carrying testRecordKeyWire(), as a server that issues keys answers. */
+inline std::string encodeTestPlayer(const std::string& id, const std::string& name) {
+    std::string body = encodeTestPlayerWithoutKey(id, name);
+    appendTestRecordKey(body, testRecordKeyWire());
+    return body;
+}
+
+/** Decodes the profile of @p body for a test that does not look at the record key. */
+inline bool decodeTestProfile(const std::string& body, Player& player) {
+    RecordKey recordKey;
+    return DevicePlayerCodec::decode(body, player, recordKey);
 }
 
 inline void appendTestTeam(std::string& body, const std::string& teamId,
@@ -72,7 +108,7 @@ inline void devicePlayerDecodesTeamAndAffiliations() {
                           uuidWireBytes("a2a2a2a2-0000-4000-8000-000000000002"), "Runners");
 
     Player player;
-    ASSERT_TRUE(DevicePlayerCodec::decode(body, player));
+    ASSERT_TRUE(decodeTestProfile(body, player));
 
     EXPECT_EQ(player.getServerPlayerId(), makeTestUuid(TEST_PLAYER_ID));
     EXPECT_STREQ(player.getServerPlayerName(), "Alex");
@@ -96,8 +132,7 @@ inline void devicePlayerDecodesTeamAndAffiliations() {
 
 inline void devicePlayerDecodesUnassignedPlayer() {
     Player player;
-    ASSERT_TRUE(
-    DevicePlayerCodec::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"), player));
+    ASSERT_TRUE(decodeTestProfile(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"), player));
 
     EXPECT_FALSE(player.hasTeam());
     EXPECT_STREQ(player.getRegistrationTeam().name, "");
@@ -108,8 +143,7 @@ inline void devicePlayerDecodesMaximumLengthName() {
     const std::string name(TEST_DISPLAY_NAME_LENGTH, 'x');
 
     Player player;
-    ASSERT_TRUE(
-    DevicePlayerCodec::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), name), player));
+    ASSERT_TRUE(decodeTestProfile(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), name), player));
 
     EXPECT_EQ(std::string(player.getServerPlayerName()), name);
 }
@@ -123,7 +157,7 @@ inline void devicePlayerTruncatesLongDisplayNames() {
                           uuidWireBytes(TEST_AFFILIATION_ID), longName);
 
     Player player;
-    ASSERT_TRUE(DevicePlayerCodec::decode(body, player));
+    ASSERT_TRUE(decodeTestProfile(body, player));
 
     EXPECT_EQ(std::string(player.getServerPlayerName()), displayName);
     EXPECT_EQ(std::string(player.getRegistrationTeam().name), displayName);
@@ -137,8 +171,7 @@ inline void devicePlayerTruncatesLongDisplayNames() {
 
 inline void devicePlayerDecodesAbsentName() {
     Player player;
-    ASSERT_TRUE(
-    DevicePlayerCodec::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), ""), player));
+    ASSERT_TRUE(decodeTestProfile(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), ""), player));
 
     EXPECT_STREQ(player.getServerPlayerName(), "");
 }
@@ -150,7 +183,7 @@ inline void devicePlayerDecodesMaximumAffiliations() {
     }
 
     Player player;
-    ASSERT_TRUE(DevicePlayerCodec::decode(body, player));
+    ASSERT_TRUE(decodeTestProfile(body, player));
 
     EXPECT_EQ(player.getRegistrationAffiliations().size(), PlayerLimits::MAX_AFFILIATIONS);
 }
@@ -166,7 +199,7 @@ inline void devicePlayerDropsAffiliationsPastLimit() {
     appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Night Shift");
 
     Player player;
-    ASSERT_TRUE(DevicePlayerCodec::decode(body, player));
+    ASSERT_TRUE(decodeTestProfile(body, player));
 
     ASSERT_EQ(player.getRegistrationAffiliations().size(), PlayerLimits::MAX_AFFILIATIONS);
     EXPECT_STREQ(player.getRegistrationAffiliations()[0].affiliationName, "First");
@@ -191,13 +224,12 @@ inline void devicePlayerRejectsWrongLengthUuids() {
                           "Affiliation");
 
     Player player;
-    ASSERT_TRUE(
-    DevicePlayerCodec::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"), player));
+    ASSERT_TRUE(decodeTestProfile(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"), player));
     const UUIDBytes idBefore = player.getServerPlayerId();
     const size_t affiliationCountBefore = player.getRegistrationAffiliations().size();
-    EXPECT_FALSE(DevicePlayerCodec::decode(encodeTestPlayer(shortId, "Alex"), player));
-    EXPECT_FALSE(DevicePlayerCodec::decode(badTeamId, player));
-    EXPECT_FALSE(DevicePlayerCodec::decode(badAffiliationId, player));
+    EXPECT_FALSE(decodeTestProfile(encodeTestPlayer(shortId, "Alex"), player));
+    EXPECT_FALSE(decodeTestProfile(badTeamId, player));
+    EXPECT_FALSE(decodeTestProfile(badAffiliationId, player));
     EXPECT_EQ(player.getServerPlayerId(), idBefore)
     << "a failed decode must leave the player untouched";
     EXPECT_EQ(player.getRegistrationAffiliations().size(), affiliationCountBefore);
@@ -219,19 +251,21 @@ inline void devicePlayerRejectsMissingRequiredUuids() {
                          affiliation);
 
     Player player;
-    EXPECT_FALSE(DevicePlayerCodec::decode(missingPlayerId, player));
-    EXPECT_FALSE(DevicePlayerCodec::decode(missingCategoryId, player));
+    EXPECT_FALSE(decodeTestProfile(missingPlayerId, player));
+    EXPECT_FALSE(decodeTestProfile(missingCategoryId, player));
 }
 
 inline void devicePlayerRejectsGarbageBody() {
     Player player;
-    EXPECT_FALSE(DevicePlayerCodec::decode("not a protobuf", player));
+    EXPECT_FALSE(decodeTestProfile("not a protobuf", player));
 }
 
 inline void playerApiQueuesDevicePlayerLookup(AlleycatApiTestSuite* suite) {
     Player player;
+    RecordKey recordKey;
     PlayerApi::getDevicePlayerByPin(
-    suite->wirelessManager, "0007", &player, [](Player&) {}, [](const WirelessErrorInfo&) {});
+    suite->wirelessManager, "0007", &player, &recordKey, [](Player&) {},
+    [](const WirelessErrorInfo&) {});
 
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
     EXPECT_EQ(suite->queuedRequests[0].method, "GET");
@@ -240,4 +274,87 @@ inline void playerApiQueuesDevicePlayerLookup(AlleycatApiTestSuite* suite) {
     ASSERT_EQ(suite->queuedRequests[0].requestHeaders.size(), 1u);
     EXPECT_EQ(suite->queuedRequests[0].requestHeaders[0].first, "Accept");
     EXPECT_EQ(suite->queuedRequests[0].requestHeaders[0].second, "application/protobuf");
+}
+
+inline void devicePlayerDecodesRecordKeyBesideProfile() {
+    std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
+    appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Night Shift");
+
+    Player player;
+    RecordKey recordKey;
+    ASSERT_TRUE(DevicePlayerCodec::decode(body, player, recordKey));
+
+    EXPECT_TRUE(holdsTestRecordKey(recordKey));
+    EXPECT_STREQ(player.getServerPlayerName(), "Alex");
+    EXPECT_STREQ(player.getRegistrationTeam().name, "Night Shift")
+    << "fields after the record key must still decode";
+}
+
+// A profile with no key the FDN can use is still a profile: the FDN tells
+// "no key issued" apart from "no such player".
+inline void devicePlayerDecodesProfileWithoutUsableRecordKey() {
+    const std::string id = uuidWireBytes(TEST_PLAYER_ID);
+    std::vector<std::string> bodies = {encodeTestPlayerWithoutKey(id, "Alex")};
+    for (size_t length : {size_t{0}, RECORD_KEY_SIZE - 1, RECORD_KEY_SIZE + 1, size_t{300}}) {
+        bodies.push_back(encodeTestPlayerWithoutKey(id, "Alex"));
+        appendTestRecordKey(bodies.back(), testRecordKeyWire(length));
+    }
+    // The field's last occurrence is the one that counts.
+    bodies.push_back(encodeTestPlayer(id, "Alex"));
+    appendTestRecordKey(bodies.back(), testRecordKeyWire(RECORD_KEY_SIZE - 1));
+
+    for (const std::string& body : bodies) {
+        Player player;
+        RecordKey recordKey;
+        const uint8_t staleKey[RECORD_KEY_SIZE] = {0x5A};
+        recordKey.set(staleKey);
+        ASSERT_TRUE(DevicePlayerCodec::decode(body, player, recordKey)) << body.size();
+        EXPECT_STREQ(player.getServerPlayerName(), "Alex");
+        EXPECT_FALSE(recordKey.isHeld())
+        << "a response of " << body.size() << " bytes left a key in the holder";
+    }
+}
+
+inline void devicePlayerRejectedResponseYieldsNoRecordKey() {
+    const std::string nilId(UUIDBytes::SIZE, '\0');
+    // The key is read in before the field that makes the response undecodable.
+    std::string brokenAfterKey = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
+    appendTestTeam(brokenAfterKey, uuidWireBytes(TEST_TEAM_ID) + '\0', "Night Shift");
+
+    Player player;
+    RecordKey recordKey;
+    EXPECT_FALSE(DevicePlayerCodec::decode(encodeTestPlayer(nilId, "Alex"), player, recordKey));
+    EXPECT_FALSE(recordKey.isHeld()) << "a key was taken from a response with no valid player";
+    EXPECT_FALSE(DevicePlayerCodec::decode(brokenAfterKey, player, recordKey));
+    EXPECT_FALSE(recordKey.isHeld()) << "a key was taken from a response that did not decode";
+}
+
+// A lookup from a server that did not present the pinned key gives a profile
+// and no key, however well-formed the key in it is.
+inline void playerApiTakesRecordKeyOnlyFromVerifiedResponse(AlleycatApiTestSuite* suite) {
+    Player player;
+    RecordKey recordKey;
+    int answered = 0;
+    const std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
+    const std::function<void(Player&)> onSuccess = [&answered](Player&) { answered++; };
+    const std::function<void(const WirelessErrorInfo&)> onError = [](const WirelessErrorInfo&) {
+        FAIL() << "a decodable profile was reported as an error";
+    };
+
+    ON_CALL(suite->httpClient, isResponseServerVerified()).WillByDefault(testing::Return(false));
+    PlayerApi::getDevicePlayerByPin(suite->wirelessManager, "0007", &player, &recordKey, onSuccess,
+                                    onError);
+    ASSERT_EQ(suite->queuedRequests.size(), 1u);
+    suite->queuedRequests[0].onSuccess(body);
+    EXPECT_EQ(answered, 1);
+    EXPECT_STREQ(player.getServerPlayerName(), "Alex");
+    EXPECT_FALSE(recordKey.isHeld()) << "a key from an unverified server was accepted";
+
+    ON_CALL(suite->httpClient, isResponseServerVerified()).WillByDefault(testing::Return(true));
+    PlayerApi::getDevicePlayerByPin(suite->wirelessManager, "0007", &player, &recordKey, onSuccess,
+                                    onError);
+    ASSERT_EQ(suite->queuedRequests.size(), 2u);
+    suite->queuedRequests[1].onSuccess(body);
+    EXPECT_EQ(answered, 2);
+    EXPECT_TRUE(holdsTestRecordKey(recordKey));
 }

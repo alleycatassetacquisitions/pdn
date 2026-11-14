@@ -10,7 +10,8 @@
 #include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <esp_crt_bundle.h>
+#include <mbedtls/ssl.h>
+#include <mbedtls/x509_crt.h>
 #include <esp_mac.h>
 #include <esp_http_client.h>
 #include <queue>
@@ -19,6 +20,8 @@
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/wireless-types.hpp"
 #include "utils/http-date.hpp"
+#include "utils/secure-wipe.hpp"
+#include "utils/server-key-pin.hpp"
 #include "utils/simple-timer.hpp"
 
 // Forward declaration for the event handler
@@ -49,6 +52,9 @@ public:
 
     ~Esp32S3HttpClient() override {
         disconnect();
+        if (tlsClient == this) {
+            tlsClient = nullptr;
+        }
     }
 
     int initialize() override {
@@ -93,6 +99,16 @@ public:
 
     /** True until every queued request has had its callback. */
     bool hasQueuedRequests() override { return !httpQueue.empty(); }
+
+    /**
+     * True inside the success callback of a response for which the configured
+     * server address is `https://` and the server presented the pinned key
+     * (WifiConfig::serverKeySha256) in the handshake. Redirects are not
+     * followed: a redirect answer is a failed request. A server presenting any
+     * other key fails the request with SERVER_NOT_TRUSTED, and with no
+     * well-formed pin configured so does every `https://` request.
+     */
+    bool isResponseServerVerified() override { return responseServerVerified; }
 
     void disconnect() override {
         cleanupHttpClient();
@@ -360,15 +376,23 @@ private:
     }
 
     bool initializeHttpClient() {
+        serverKeyPin = ServerKeyPin(wifiConfig->serverKeySha256);
+        // The attach hook below has no context argument, so it finds the
+        // client through this; a device builds one HTTP client.
+        tlsClient = this;
+
         esp_http_client_config_t config = {};
         config.event_handler = esp32_http_event_handler;
         config.timeout_ms = 10000;
         config.user_data = this;
         config.keep_alive_enable = true;
         config.url = wifiConfig->baseUrl.c_str();
-        // The server certificate is checked against the CA bundle compiled into
-        // IDF, hostname included.
-        config.crt_bundle_attach = esp_crt_bundle_attach;
+        // Trust comes from the pinned key alone, checked by our own hook in
+        // place of IDF's CA bundle; no public CA vouches for anything.
+        config.crt_bundle_attach = attachServerKeyCheck;
+        // Every hop of a redirect would need the pin checked; a redirect is
+        // answered as a failed request instead.
+        config.disable_auto_redirect = true;
         config.is_async = true;
 
         httpClient = esp_http_client_init(&config);
@@ -380,11 +404,45 @@ private:
         return httpClient != nullptr;
     }
 
+    // esp-tls calls this per TLS connection after setting VERIFY_REQUIRED and
+    // ignores the return; mbedTLS refuses a handshake with no CA chain, so an
+    // empty placeholder stands in (as esp_crt_bundle does) and
+    // verifyServerCertificate alone decides.
+    static esp_err_t attachServerKeyCheck(void* conf) {
+        if (conf == nullptr || tlsClient == nullptr) {
+            LOG_E(HTTP_TAG, "No HTTP client to check the server key; the handshake will fail");
+            return ESP_FAIL;
+        }
+        auto* sslConfig = static_cast<mbedtls_ssl_config*>(conf);
+        mbedtls_ssl_conf_ca_chain(sslConfig, &placeholderCa, nullptr);
+        mbedtls_ssl_conf_verify(sslConfig, &verifyServerCertificate, tlsClient);
+        return ESP_OK;
+    }
+
+    // Only the leaf's key decides; ServerKeyPin::verifiedFlags holds the rule.
+    // A leaf matching the pin clears host-name and date flags too, since the
+    // venue may lack DNS or a clock.
+    static int verifyServerCertificate(void* context, mbedtls_x509_crt* certificate, int depth,
+                                       uint32_t* flags) {
+        auto* client = static_cast<Esp32S3HttpClient*>(context);
+        bool keyMatches = false;
+        if (depth == 0) {
+            keyMatches = client->serverKeyPin.matchesKey(
+            certificate->pk_raw.p, certificate->pk_raw.len, client->presentedKeyHash);
+            client->serverKeyCheck = keyMatches ? ServerKeyCheck::PINNED : ServerKeyCheck::REFUSED;
+        }
+        *flags =
+        ServerKeyPin::verifiedFlags(depth, keyMatches, *flags, MBEDTLS_X509_BADCERT_NOT_TRUSTED);
+        return 0;
+    }
+
     void cleanupHttpClient() {
         if (httpClient) {
             esp_http_client_cleanup(httpClient);
             httpClient = nullptr;
         }
+        // The connection whose handshake set this is gone with the handle.
+        serverKeyCheck = ServerKeyCheck::UNCHECKED;
     }
 
     // Headers persist on the reused handle. Delete by name: delete_all would drop Host/User-Agent.
@@ -453,6 +511,8 @@ private:
             return;
         }
 
+        // A retry starts over; what the failed attempt received goes first.
+        wipeResponseBody(request.responseData);
         request.responseData = "";
         responseTooLarge = false;
         request.inProgress = true;
@@ -509,6 +569,19 @@ private:
         }
         HttpRequest& request = httpQueue.front();
         if (err != ESP_OK) {
+            if (serverKeyCheck == ServerKeyCheck::REFUSED) {
+                const bool pinIsSet = serverKeyPin.isSet();
+                LOG_E(HTTP_TAG, "Server presented key %s; %s (%s)", presentedKeyHash,
+                      pinIsSet ? "not the pinned one"
+                               : "SERVER_KEY_SHA256 is not 64 hex digits, so no server is trusted",
+                      request.path.c_str());
+                resetHttpClient();
+                // No retry: the same server presents the same key.
+                completeFront(
+                false, {WirelessError::SERVER_NOT_TRUSTED,
+                        pinIsSet ? "Server key does not match the pin" : "No server key pinned"});
+                return;
+            }
             LOG_E(HTTP_TAG, "Request failed: %s (%s)", esp_err_to_name(err), request.path.c_str());
             resetHttpClient();
             endAttempt({WirelessError::CONNECTION_FAILED, esp_err_to_name(err)});
@@ -518,6 +591,13 @@ private:
 
         const int statusCode = esp_http_client_get_status_code(httpClient);
         if (statusCode >= 200 && statusCode < 300) {
+            // Redirects are not followed, so the transfer ended on the address
+            // this FDN was configured with; serverKeyCheck says whether that
+            // connection's handshake presented the pinned key.
+            responseServerVerified =
+            wifiConfig->baseUrl.rfind("https://", 0) == 0 &&
+            esp_http_client_get_transport_type(httpClient) == HTTP_TRANSPORT_OVER_SSL &&
+            serverKeyCheck == ServerKeyCheck::PINNED;
             completeFront(true, {});
             return;
         }
@@ -581,7 +661,14 @@ private:
         } else if (done.onError) {
             done.onError(error);
         }
+        responseServerVerified = false;
+        wipeResponseBody(done.responseData);
     }
+
+    // A player lookup's body carries a record key: the body is overwritten
+    // before its buffer is freed or reused. Buffers it outgrew while arriving
+    // are not.
+    static void wipeResponseBody(std::string& body) { secureWipe(&body[0], body.size()); }
 
     void handleHttpData(HttpRequest* request, void* data, int dataLen) {
         if (dataLen <= 0 || responseTooLarge) {
@@ -597,6 +684,7 @@ private:
     // Swap rather than clear, so the buffer's capacity is released too.
     void rejectOversizedResponse(HttpRequest* request) {
         responseTooLarge = true;
+        wipeResponseBody(request->responseData);
         std::string().swap(request->responseData);
     }
 
@@ -622,6 +710,22 @@ private:
     unsigned long retryAt = 0;
     // Set from the event handler; pumpHttpTransfer() fails the request on it.
     bool responseTooLarge = false;
+    // True only while the success callback of a verified response runs.
+    bool responseServerVerified = false;
+    // Parsed from wifiConfig each time the client is built.
+    ServerKeyPin serverKeyPin;
+    // What the current connection's handshake made of the server's key: not
+    // yet checked (no TLS handshake on this handle), the pinned key, or
+    // refused, which fails the handshake.
+    enum class ServerKeyCheck : uint8_t { UNCHECKED, PINNED, REFUSED };
+    ServerKeyCheck serverKeyCheck = ServerKeyCheck::UNCHECKED;
+    // The SHA-256 of the key the server presented, for the log.
+    char presentedKeyHash[SERVER_KEY_PIN_HEX_LENGTH + 1] = {};
+
+    // The client the TLS hooks report to; see initializeHttpClient.
+    static inline Esp32S3HttpClient* tlsClient = nullptr;
+    // Satisfies mbedTLS's need for a CA chain; nothing chains to it.
+    static inline mbedtls_x509_crt placeholderCa{};
 };
 
 // Defined after the class: syncs clock from the Date header, collects the
