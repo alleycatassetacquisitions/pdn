@@ -248,8 +248,11 @@ bool MatchManager::finalizeMatch() {
 
     // Shootout matches are local-ephemeral: no save, no upload. Neither is a match
     // with a demo player, which has no server identity for the record to name.
+    // Nor is a record naming one player in both slots (the server refuses it); the
+    // handshake checks should already have refused that opponent.
     if (currentMatchIsShootout() || match.getHunterPlayerId().isZero() ||
-        match.getBountyPlayerId().isZero() || !winnerIsShared) {
+        match.getBountyPlayerId().isZero() ||
+        match.getHunterPlayerId() == match.getBountyPlayerId() || !winnerIsShared) {
         clearCurrentMatch();
         return true;
     }
@@ -507,6 +510,14 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
         if (activeMatchState.matchIsReady || activeMatchState.pendingAckSeqId != 0) return;
+        if (!player->getServerPlayerId().isZero() &&
+            command.playerUuid == player->getServerPlayerId()) {
+            // Cleared as on MATCH_ROLE_MISMATCH; nothing is sent, so the opponent's
+            // side still goes ready.
+            LOG_W(MATCH_MANAGER_TAG, "Rejecting MATCH_ID_ACK: self playerUuid");
+            clearCurrentMatch();
+            return;
+        }
         matchChannel.cancel(activeMatchState.opponentMac.data());
         setOpponentIdentity(!activeMatchState.localIsHunter, command.playerUuid, command.teamUuid);
         auto* clock = SimpleTimer::getPlatformClock();
