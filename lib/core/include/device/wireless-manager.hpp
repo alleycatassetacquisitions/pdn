@@ -42,7 +42,9 @@ static const char* WM_TAG = "WirelessManager";
  */
 class WirelessManager {
 public:
-    WirelessManager(PeerCommsInterface* peerComms, HttpClientInterface* httpClient)
+    /** A null @p httpClient keeps the manager in ESPNOW mode and refuses every HTTP request. */
+    explicit WirelessManager(PeerCommsInterface* peerComms,
+                             HttpClientInterface* httpClient = nullptr)
         : peerComms(peerComms)
         , httpClient(httpClient)
         , currentMode(WirelessMode::ESPNOW) {  // Start in ESP-NOW mode (safer default)
@@ -54,38 +56,13 @@ public:
     void initialize() {
         LOG_I(WM_TAG, "Initializing wireless manager...");
 
-        httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
+        if (httpClient != nullptr) {
+            httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
+        }
         peerComms->setPeerCommsState(PeerCommsState::ENABLED);
         currentMode = WirelessMode::ESPNOW;
 
         LOG_I(WM_TAG, "Wireless manager initialized in ESP-NOW mode");
-    }
-
-    /** Disables ESP-NOW and connects the HTTP client over WiFi. */
-    void enableWifiMode() {
-        if (currentMode == WirelessMode::WIFI &&
-            httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
-            LOG_D(WM_TAG, "Already in WiFi mode");
-            return;
-        }
-
-        LOG_I(WM_TAG, "Switching to WiFi mode...");
-
-        if (peerComms->getPeerCommsState() == PeerCommsState::ENABLED) {
-            LOG_D(WM_TAG, "Disabling ESP-NOW...");
-            peerComms->setPeerCommsState(PeerCommsState::DISABLED);
-        }
-
-        LOG_D(WM_TAG, "Connecting HTTP client...");
-        httpClient->setHttpClientState(HttpClientState::CONNECTED);
-
-        currentMode = WirelessMode::WIFI;
-
-        if (httpClient->isConnected()) {
-            LOG_I(WM_TAG, "WiFi mode enabled successfully");
-        } else {
-            LOG_W(WM_TAG, "WiFi mode enabled but connection pending...");
-        }
     }
 
     /** Disconnects the HTTP client and enables ESP-NOW on the fixed channel. */
@@ -98,7 +75,8 @@ public:
 
         LOG_I(WM_TAG, "Switching to ESP-NOW mode...");
 
-        if (httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
+        if (httpClient != nullptr &&
+            httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
             LOG_D(WM_TAG, "Disconnecting HTTP client...");
             httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
         }
@@ -123,14 +101,18 @@ public:
     }
 
     /** True while a queued HTTP request has not had its callback. */
-    bool hasQueuedHttpRequests() { return httpClient->hasQueuedRequests(); }
+    bool hasQueuedHttpRequests() {
+        return httpClient != nullptr && httpClient->hasQueuedRequests();
+    }
 
     /**
      * True when the HTTP response whose success callback is running came over
      * HTTPS from a server that presented the pinned key. Ask from inside that
      * callback.
      */
-    bool isHttpResponseServerVerified() { return httpClient->isResponseServerVerified(); }
+    bool isHttpResponseServerVerified() {
+        return httpClient != nullptr && httpClient->isResponseServerVerified();
+    }
 
     /**
      * Takes Wi-Fi for @p owner, a component about to queue HTTP requests of
@@ -162,8 +144,15 @@ public:
         enablePeerCommsMode();
     }
 
-    /** Queues an HTTP request, automatically switching to WiFi mode if needed. */
+    /**
+     * Queues an HTTP request, automatically switching to WiFi mode if needed.
+     * @return false when the request was not queued, as always without an HTTP client.
+     */
     bool queueHttpRequest(HttpRequest&& request) {
+        if (httpClient == nullptr) {
+            LOG_E(WM_TAG, "Cannot queue HTTP request - no HTTP client");
+            return false;
+        }
         if (currentMode != WirelessMode::WIFI) {
             LOG_I(WM_TAG, "Auto-switching to WiFi mode for HTTP request");
             enableWifiMode();
@@ -222,6 +211,33 @@ public:
     void sync() { reliableTransport.sync(); }
 
 private:
+    /** Disables ESP-NOW and connects the HTTP client over WiFi. */
+    void enableWifiMode() {
+        if (currentMode == WirelessMode::WIFI &&
+            httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
+            LOG_D(WM_TAG, "Already in WiFi mode");
+            return;
+        }
+
+        LOG_I(WM_TAG, "Switching to WiFi mode...");
+
+        if (peerComms->getPeerCommsState() == PeerCommsState::ENABLED) {
+            LOG_D(WM_TAG, "Disabling ESP-NOW...");
+            peerComms->setPeerCommsState(PeerCommsState::DISABLED);
+        }
+
+        LOG_D(WM_TAG, "Connecting HTTP client...");
+        httpClient->setHttpClientState(HttpClientState::CONNECTED);
+
+        currentMode = WirelessMode::WIFI;
+
+        if (httpClient->isConnected()) {
+            LOG_I(WM_TAG, "WiFi mode enabled successfully");
+        } else {
+            LOG_W(WM_TAG, "WiFi mode enabled but connection pending...");
+        }
+    }
+
     PeerCommsInterface* peerComms;
     HttpClientInterface* httpClient;
     WirelessMode currentMode;

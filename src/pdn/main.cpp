@@ -12,7 +12,6 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "device/drivers/esp32-s3/ws2812b-led-strip-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-haptics-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-serial-driver.hpp"
-#include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
@@ -29,23 +28,8 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "apps/player-fetch/player-fetch.hpp"
 #include "id-generator.hpp"
 #include "game/match-manager.hpp"
-#include "wireless/wireless-types.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "game/quickdraw-resources.hpp"
-
-// WiFi configuration - injected at compile time from wifi_credentials.ini
-// See wifi_credentials.ini.example for template
-#ifndef WIFI_SSID
-#error "WIFI_SSID not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
-#endif
-#ifndef WIFI_PASSWORD
-#error "WIFI_PASSWORD not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
-#endif
-#ifndef BASE_URL
-#error "BASE_URL not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
-#endif
-
-WifiConfig* wifiConfig = nullptr;
 
 CrashLogger* crashLogger = nullptr;
 Esp32S3FirmwareStore* firmwareStore = nullptr;
@@ -59,7 +43,6 @@ WS2812BLedStripDriver* lightDriver = nullptr;
 Esp32S3HapticsDriver* hapticsDriver = nullptr;
 Esp32s3SerialOut* serialOutDriver = nullptr;
 Esp32s3SerialIn* serialInDriver = nullptr;
-Esp32S3HttpClient* httpClientDriver = nullptr;
 EspNowDriver* peerCommsDriver = nullptr;
 Esp32S3Logger* loggerDriver = nullptr;
 Esp32S3PrefsDriver* storageDriver = nullptr;
@@ -106,28 +89,24 @@ static void setup() {
     hapticsDriver = new Esp32S3HapticsDriver(HAPTICS_DRIVER_NAME, motorPin);
     serialOutDriver = new Esp32s3SerialOut(SERIAL_OUT_DRIVER_NAME, TXt, TXr);
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, RXt, RXr);
-    
-    // WiFi credentials are compile-time constants from build flags
-    wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
+
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
-    httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
     storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
 
     // Create driver configuration
     DriverConfig pdnConfig = {
-        {DISPLAY_DRIVER_NAME, displayDriver},
-        {PRIMARY_BUTTON_DRIVER_NAME, primaryButtonDriver},
-        {SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonDriver},
-        {LIGHT_DRIVER_NAME, lightDriver},
-        {HAPTICS_DRIVER_NAME, hapticsDriver},
-        {SERIAL_OUT_DRIVER_NAME, serialOutDriver},
-        {SERIAL_IN_DRIVER_NAME, serialInDriver},
-        {HTTP_CLIENT_DRIVER_NAME, httpClientDriver},
-        {PEER_COMMS_DRIVER_NAME, peerCommsDriver},
-        {PLATFORM_CLOCK_DRIVER_NAME, clockDriver},
-        {LOGGER_DRIVER_NAME, loggerDriver},
-        {STORAGE_DRIVER_NAME, storageDriver},
-        {FIRMWARE_STORE_DRIVER_NAME, firmwareStore},
+    {DISPLAY_DRIVER_NAME, displayDriver},
+    {PRIMARY_BUTTON_DRIVER_NAME, primaryButtonDriver},
+    {SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonDriver},
+    {LIGHT_DRIVER_NAME, lightDriver},
+    {HAPTICS_DRIVER_NAME, hapticsDriver},
+    {SERIAL_OUT_DRIVER_NAME, serialOutDriver},
+    {SERIAL_IN_DRIVER_NAME, serialInDriver},
+    {PEER_COMMS_DRIVER_NAME, peerCommsDriver},
+    {PLATFORM_CLOCK_DRIVER_NAME, clockDriver},
+    {LOGGER_DRIVER_NAME, loggerDriver},
+    {STORAGE_DRIVER_NAME, storageDriver},
+    {FIRMWARE_STORE_DRIVER_NAME, firmwareStore},
     };
 
     pdn = PDN::createPDN(pdnConfig);

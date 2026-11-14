@@ -33,8 +33,8 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
 ## Features
 
 - **Extensible Platform**: The PDN currently supports a single experience - the Neotropolis Quickdraw game, however, it is trivial to create new State Machines to support new game experiences.
-- **Peripheral Rich**: The base PDN design supports a 128x64 OLED, 19 LEDs, vibration haptics, 2 buttons, ESP-NOW, HTTP and Serial communication.
-- **Real-Time Tracking**: The PDN supports connecting to a server to update player data in real time.
+- **Peripheral Rich**: The base PDN design supports a 128x64 OLED, 19 LEDs, vibration haptics, 2 buttons, ESP-NOW and Serial communication.
+- **Player Tracking**: A PDN has no Wi-Fi of its own; its player data and match results reach the server through an FDN it is cabled to.
 - **Modular Design**: The PDN framework works off of a "Driver" framework that allows for customizing the hardware, whether to support new hardware platforms or new peripherals.
 
 ## Installation
@@ -64,7 +64,7 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    platformio upgrade
    ```
 
-4. Configure WiFi credentials (for ESP32-S3 builds):
+4. Create the local build config (every build needs the file: PlatformIO reads it when it loads the project; only FDN images embed the WiFi values):
    ```bash
    cp wifi_credentials.ini.example wifi_credentials.ini
    ```

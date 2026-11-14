@@ -8,7 +8,7 @@ FirmwareUpdate::FirmwareUpdate(int stateId, FirmwareUpdateManager* firmwareUpdat
     , firmwareUpdateManager(firmwareUpdateManager) {}
 
 void FirmwareUpdate::onStateMounted(Device* device) {
-    // A seed run sends on ESP-NOW directly, so it takes the radio from any HTTP trip.
+    // A seed run sends on ESP-NOW directly, so the radio has to be on it.
     device->getWirelessManager()->enablePeerCommsMode();
     firmwareUpdateManager->beginSeeding();
 
