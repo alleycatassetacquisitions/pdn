@@ -7,7 +7,7 @@
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
 
-// X-3: a standalone match's results are refused before the draw window opens,
+// X-3: a standalone match's results are held until the draw window opens,
 // and its frames are signed under a key the Hunter sends over the cable.
 // Two managers, each with its own radio tap and fake coordinator; the test
 // plays the radio and the cable between them.
@@ -119,28 +119,130 @@ public:
 
 // ---- (a) Sanity checks ----
 
-// Catches: a result taken during the countdown, which only a guess or a forgery can produce.
-TEST_F(MatchFrameAuthTests, drawResultBeforeTheWindowOpensIsDropped) {
+// Catches: the countdown-skew result dropped (the channel has acked it and never
+// resends it, so the two PDNs disagree), or taken while this PDN still counts down.
+TEST_F(MatchFrameAuthTests, zeroMillisecondPressBeforeTheBountysWindowIsHeldAndBothAgree) {
     performHandshake();
     hunterMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
-    const MatchPacket result = hunterPressesAfter(200);
+    const MatchPacket result = hunterPressesAfter(0);
 
     bountyRadio.deliverFrameFrom(hunterMac, &result);
+    EXPECT_FALSE(bountyMatchManager->getHasReceivedDrawResult()) << "taken during the countdown";
+    EXPECT_FALSE(bountyMatchManager->matchResultsAreIn());
 
-    EXPECT_FALSE(bountyMatchManager->getHasReceivedDrawResult());
+    fakeClock->advance(30);
+    bountyMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    ASSERT_TRUE(bountyMatchManager->getHasReceivedDrawResult()) << "the early result was dropped";
     EXPECT_EQ(bountyMatchManager->getCurrentMatch()->getHunterDrawTime(), 0u);
+    EXPECT_FALSE(bountyMatchManager->matchResultsAreIn()) << "resolved before the local press";
+
+    fakeClock->advance(120);
+    bountyMatchManager->getMatchButtonPush()(bountyMatchManager);
+    hunterRadio.deliverFrameFrom(bountyMac, bountyRadio.lastFrame());
+    ASSERT_TRUE(hunterMatchManager->matchResultsAreIn());
+    ASSERT_TRUE(bountyMatchManager->matchResultsAreIn());
+    EXPECT_EQ(bountyMatchManager->getCurrentMatch()->getBountyDrawTime(), 120u);
+    EXPECT_EQ(hunterMatchManager->getCurrentMatch()->getBountyDrawTime(), 120u);
+    EXPECT_TRUE(hunterMatchManager->didWin());
+    EXPECT_FALSE(bountyMatchManager->didWin());
 }
 
-// Catches: the window gate applied to draw results only, not to never-pressed reports.
-TEST_F(MatchFrameAuthTests, neverPressedBeforeTheWindowOpensIsDropped) {
+// Catches: the hold applied to draw results only, not to never-pressed reports.
+TEST_F(MatchFrameAuthTests, neverPressedBeforeTheWindowOpensIsHeldThenApplied) {
     performHandshake();
     hunterMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
     hunterMatchManager->sendNeverPressed(900);
 
     bountyRadio.deliverFrameFrom(hunterMac, hunterRadio.lastFrame());
-
     EXPECT_FALSE(bountyMatchManager->getHasReceivedDrawResult());
+
+    bountyMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    ASSERT_TRUE(bountyMatchManager->getHasReceivedDrawResult());
+    EXPECT_EQ(bountyMatchManager->getCurrentMatch()->getHunterDrawTime(), 900u);
     EXPECT_FALSE(bountyMatchManager->matchResultsAreIn());
+    fakeClock->advance(50);
+    bountyMatchManager->getMatchButtonPush()(bountyMatchManager);
+    EXPECT_TRUE(bountyMatchManager->matchResultsAreIn());
+    EXPECT_TRUE(bountyMatchManager->didWin()) << "the held never-pressed report was not applied";
+}
+
+// Catches: the first held result kept over a later one from the same opponent.
+TEST_F(MatchFrameAuthTests, onlyTheLatestHeldResultCounts) {
+    performHandshake();
+    hunterMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    const MatchPacket first = hunterPressesAfter(5);
+    MatchKey key{};
+    ASSERT_TRUE(lastSentMatchKey(hunterRdc, key));
+    MatchPacket later = first;
+    later.playerDrawTime = 40;
+    signMatchFrame(later, key, first.counter + 1);
+    later.seqId = static_cast<uint8_t>(first.seqId + 1);
+
+    bountyRadio.deliverFrameFrom(hunterMac, &first);
+    bountyRadio.deliverFrameFrom(hunterMac, &later);
+    bountyMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+
+    ASSERT_TRUE(bountyMatchManager->getHasReceivedDrawResult());
+    EXPECT_EQ(bountyMatchManager->getCurrentMatch()->getHunterDrawTime(), 40u);
+}
+
+// Catches: a held result outliving an abandoned match (MatchApp clears the match
+// when the cable stays out) and scoring in the next one.
+TEST_F(MatchFrameAuthTests, heldResultIsDiscardedWhenTheMatchIsAbandoned) {
+    performHandshake();
+    hunterMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    const MatchPacket result = hunterPressesAfter(0);
+    bountyRadio.deliverFrameFrom(hunterMac, &result);
+
+    bountyRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::DISCONNECTED);
+    bountyMatchManager->clearCurrentMatch();
+    hunterMatchManager->clearCurrentMatch();
+    bountyRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    performHandshake();
+    bountyMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+
+    EXPECT_FALSE(bountyMatchManager->getHasReceivedDrawResult())
+    << "the abandoned match's result scored in the next one";
+}
+
+// Catches: a held result outliving a finished match.
+TEST_F(MatchFrameAuthTests, heldResultIsDiscardedWhenTheMatchIsFinalized) {
+    performHandshake();
+    hunterMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    hunterMatchManager->sendNeverPressed(900);
+    bountyRadio.deliverFrameFrom(hunterMac, hunterRadio.lastFrame());
+
+    ASSERT_TRUE(bountyMatchManager->finalizeMatch());
+    hunterMatchManager->clearCurrentMatch();
+    performHandshake();
+    bountyMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+
+    EXPECT_FALSE(bountyMatchManager->getHasReceivedDrawResult())
+    << "the finished match's result scored in the next one";
+}
+
+// Catches: a hold placed ahead of the admit filter, so a forgery sent during the
+// countdown is kept and scores when the window opens.
+TEST_F(MatchFrameAuthTests, forgedOrUntaggedEarlyResultIsDroppedNotHeld) {
+    performHandshake();
+    hunterMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    const MatchPacket genuine = hunterPressesAfter(250);
+    MatchPacket wrongKey = genuine;
+    wrongKey.playerDrawTime = 0;
+    wrongKey.boostMs = 270;
+    signMatchFrame(wrongKey, testMatchKey(0x40), genuine.counter);
+    MatchPacket untagged = wrongKey;
+    memset(untagged.tag, 0, sizeof(untagged.tag));
+    untagged.counter = 0;
+
+    bountyRadio.deliverFrameFrom(hunterMac, &wrongKey);
+    bountyRadio.deliverFrameFrom(hunterMac, &untagged);
+    bountyMatchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    EXPECT_FALSE(bountyMatchManager->getHasReceivedDrawResult()) << "a forged result was held";
+
+    bountyRadio.deliverFrameFrom(hunterMac, &genuine);
+    ASSERT_TRUE(bountyMatchManager->getHasReceivedDrawResult());
+    EXPECT_EQ(bountyMatchManager->getCurrentMatch()->getHunterDrawTime(), 250u);
 }
 
 // Catches: a reaction-time floor. The countdown is a fixed rhythm, so an honest
