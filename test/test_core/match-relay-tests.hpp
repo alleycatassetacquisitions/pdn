@@ -23,40 +23,54 @@
 #include "wireless/record-relay-types.hpp"
 
 /**
- * The PDN of RecordRelayTests with the "matches" namespace in real in-memory
- * storage, so the relay reads the session's own MatchManager. The player is
- * registered and holds a record key, so every match played here is stored
- * with its tag.
+ * The PDN of RecordRelayTests with its match namespaces, this firmware's ring
+ * and older firmware's "matches", in real in-memory storage, so the relay reads
+ * the session's own MatchManager. The player is registered and holds a record
+ * key, so every match played here is stored with its tag.
  */
 class MatchRelayTests : public RecordRelayTests {
 public:
-    /** Puts real storage under the "matches" namespace before the session reads it. */
+    /** Puts real storage under both match namespaces before the session reads them. */
     void SetUp() override {
         using testing::_;
         using testing::StrEq;
         MockStorage& storage = *pdnDevice.mockStorage;
-        ON_CALL(storage, readUInt(StrEq(MATCHES_PREFS_NAMESPACE), _, _))
-        .WillByDefault(
-        [this](const std::string& ns, const std::string& key, uint32_t defaultValue) {
-            return pdnPrefs.readUInt(ns, key, defaultValue);
-        });
-        ON_CALL(storage, writeUInt(StrEq(MATCHES_PREFS_NAMESPACE), _, _))
-        .WillByDefault([this](const std::string& ns, const std::string& key, uint32_t value) {
-            return pdnPrefs.writeUInt(ns, key, value);
-        });
-        ON_CALL(storage, readBytes(StrEq(MATCHES_PREFS_NAMESPACE), _, _, _))
-        .WillByDefault(
-        [this](const std::string& ns, const std::string& key, uint8_t* buffer, size_t maxLength) {
-            return pdnPrefs.readBytes(ns, key, buffer, maxLength);
-        });
-        ON_CALL(storage, writeBytes(StrEq(MATCHES_PREFS_NAMESPACE), _, _, _))
-        .WillByDefault(
-        [this](const std::string& ns, const std::string& key, const uint8_t* data, size_t length) {
-            return pdnPrefs.writeBytes(ns, key, data, length);
-        });
-        ON_CALL(storage, clear(StrEq(MATCHES_PREFS_NAMESPACE)))
-        .WillByDefault([this](const std::string& ns) { return pdnPrefs.clear(ns); });
-
+        for (const char* matchNamespace :
+             {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_PREFS_NAMESPACE}) {
+            ON_CALL(storage, readUInt(StrEq(matchNamespace), _, _))
+            .WillByDefault(
+            [this](const std::string& ns, const std::string& key, uint32_t defaultValue) {
+                return pdnPrefs.readUInt(ns, key, defaultValue);
+            });
+            ON_CALL(storage, writeUInt(StrEq(matchNamespace), _, _))
+            .WillByDefault([this](const std::string& ns, const std::string& key, uint32_t value) {
+                return pdnPrefs.writeUInt(ns, key, value);
+            });
+            ON_CALL(storage, readBytes(StrEq(matchNamespace), _, _, _))
+            .WillByDefault(
+            [this](const std::string& ns, const std::string& key, uint8_t* buffer,
+                   size_t maxLength) { return pdnPrefs.readBytes(ns, key, buffer, maxLength); });
+            ON_CALL(storage, writeBytes(StrEq(matchNamespace), _, _, _))
+            .WillByDefault(
+            [this](const std::string& ns, const std::string& key, const uint8_t* data,
+                   size_t length) { return pdnPrefs.writeBytes(ns, key, data, length); });
+            ON_CALL(storage, read(StrEq(matchNamespace), _, _))
+            .WillByDefault(
+            [this](const std::string& ns, const std::string& key, const std::string& defaultValue) {
+                return pdnPrefs.read(ns, key, defaultValue);
+            });
+            ON_CALL(storage, readUChar(StrEq(matchNamespace), _, _))
+            .WillByDefault(
+            [this](const std::string& ns, const std::string& key, uint8_t defaultValue) {
+                return pdnPrefs.readUChar(ns, key, defaultValue);
+            });
+            ON_CALL(storage, remove(StrEq(matchNamespace), _))
+            .WillByDefault([this](const std::string& ns, const std::string& key) {
+                return pdnPrefs.remove(ns, key);
+            });
+            ON_CALL(storage, clear(StrEq(matchNamespace)))
+            .WillByDefault([this](const std::string& ns) { return pdnPrefs.clear(ns); });
+        }
         RecordRelayTests::SetUp();
 
         // A match is stored only between two registered players by a PDN that
@@ -105,7 +119,7 @@ public:
 
     /** collected_high_water_mark as the PDN's storage holds it. */
     uint32_t collectedMark() {
-        return pdnPrefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
+        return pdnPrefs.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
     }
 
     /**
@@ -117,11 +131,52 @@ public:
         snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
                  static_cast<unsigned>((sequenceNumber - 1) % MATCH_RING_CAPACITY));
         MatchRecordContent slot{};
-        EXPECT_EQ(pdnPrefs.readBytes(MATCHES_PREFS_NAMESPACE, key,
+        EXPECT_EQ(pdnPrefs.readBytes(MATCH_RING_PREFS_NAMESPACE, key,
                                      reinterpret_cast<uint8_t*>(&slot), sizeof(slot)),
                   MATCH_SLOT_SIZE)
         << "no stored record and tag for match " << sequenceNumber;
         return slot;
+    }
+
+    /**
+     * Leaves @p count matches in "matches" as firmware that stored no tag did:
+     * a ring of 112-byte slots, of which the first @p collected were collected.
+     * @return Their record bytes, oldest first.
+     */
+    std::vector<MatchRecordContent> seedUntaggedLegacyRing(uint32_t count, uint32_t collected) {
+        std::vector<MatchRecordContent> records;
+        for (uint32_t number = 1; number <= count; number++) {
+            char matchId[37];
+            snprintf(matchId, sizeof(matchId), "%08u-01d0-4000-8000-000000000000", number);
+            MatchRecordContent record{};
+            Match(matchId).serialize(record.recordBytes);
+            char key[16];
+            snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
+                     static_cast<unsigned>((number - 1) % MATCH_RING_CAPACITY));
+            EXPECT_EQ(pdnPrefs.writeBytes(LEGACY_MATCHES_PREFS_NAMESPACE, key, record.recordBytes,
+                                          LEGACY_UNTAGGED_SLOT_SIZE),
+                      LEGACY_UNTAGGED_SLOT_SIZE);
+            records.push_back(record);
+        }
+        pdnPrefs.writeUInt(LEGACY_MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, count);
+        pdnPrefs.writeUInt(LEGACY_MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, collected);
+        return records;
+    }
+
+    /** collectedSeq of older firmware's ring in "matches". */
+    uint32_t legacyCollectedMark() {
+        return pdnPrefs.readUInt(LEGACY_MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0);
+    }
+
+    /** Stores @p json as the JSON-era match under index @p index, as deployed firmware did. */
+    void seedJsonEraMatch(uint8_t index, const std::string& json) {
+        char key[16];
+        snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX, static_cast<unsigned>(index));
+        pdnPrefs.write(LEGACY_MATCHES_PREFS_NAMESPACE, key, json);
+        if (pdnPrefs.readUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_COUNT_KEY, 0) <= index) {
+            pdnPrefs.writeUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_COUNT_KEY, index + 1);
+        }
+        pdnPrefs.writeUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_TEST_KEY, 123);
     }
 
     /**
@@ -177,7 +232,8 @@ public:
         RecordRelayTests::TearDown();
     }
 
-    NativePrefsDriver pdnPrefs{"relay-pdn-prefs", {MATCHES_PREFS_NAMESPACE}};
+    NativePrefsDriver pdnPrefs{"relay-pdn-prefs",
+                               {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_PREFS_NAMESPACE}};
     std::vector<HttpRequest> fdnHttpRequests;
 };
 
@@ -185,7 +241,7 @@ public:
 
 inline void matchRelaySendsAMatchInARecordFrameNumberedByItsSequenceNumber(MatchRelayTests* suite) {
     suite->storeMatches(12);
-    suite->matchManager()->advanceMark(11);
+    suite->pdnPrefs.writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 11);
     ASSERT_EQ(suite->collectedMark(), 11u);
 
     suite->hearBeacon(suite->fdnMac);
@@ -336,7 +392,7 @@ matchRelayIgnoresAnAcknowledgementFromADeviceTheRecordWasNotSentTo(MatchRelayTes
 inline void matchRelayPassesOverAnUnreadableStoredMatch(MatchRelayTests* suite) {
     suite->storeMatches(2);
     const uint8_t torn[3] = {1, 2, 3};
-    suite->pdnPrefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_0", torn, sizeof(torn));
+    suite->pdnPrefs.writeBytes(MATCH_RING_PREFS_NAMESPACE, "match_0", torn, sizeof(torn));
 
     suite->connectPeer(SerialIdentifier::OUTPUT_JACK, DeviceType::FDN, suite->fdnMac);
     std::vector<SentRecordFrame<MatchRecordFramePacket>> frames =
@@ -362,32 +418,119 @@ inline void matchRelayPassesOverAnUnreadableStoredMatch(MatchRelayTests* suite) 
     EXPECT_EQ(suite->framesOf<MatchRecordTraits>().size(), 2u);
 }
 
-// match-collection, "Match record in a slot with no record tag is never sent".
-inline void matchRelayNeverSendsASlotWithNoTagAndSendsTheRecordAfterIt(MatchRelayTests* suite) {
-    suite->storeMatches(4);
-    suite->matchManager()->advanceMark(2);
-    // Match 3 as firmware that stored no tag left it: the 112 record bytes alone.
-    const MatchRecordContent third = suite->storedSlot(3);
-    ASSERT_EQ(suite->pdnPrefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_2", third.recordBytes,
-                                         MATCH_RECORD_SIZE),
-              MATCH_RECORD_SIZE);
-    const MatchRecordContent fourth = suite->storedSlot(4);
+inline const char LEGACY_JSON_MATCH[] =
+R"({"match_id":"0e0e0e0e-0000-4000-8000-000000000007","hunter":"1234","bounty":"5678",)"
+R"("winner_is_hunter":true,"hunter_time":180,"bounty_time":240})";
+
+// A slot older firmware stored without a tag goes out with a zero tag, and its
+// acknowledgement moves that firmware's mark, not this one's.
+inline void
+matchRelaySendsAnUntaggedLegacySlotWithAZeroTagAndAdvancesItsMark(MatchRelayTests* suite) {
+    const std::vector<MatchRecordContent> legacy = suite->seedUntaggedLegacyRing(3, 1);
+
+    suite->hearBeacon(suite->fdnMac);
+    std::vector<SentRecordFrame<MatchRecordFramePacket>> frames =
+    suite->framesOf<MatchRecordTraits>();
+    ASSERT_EQ(frames.size(), 1u) << "an untagged legacy slot was not sent";
+    EXPECT_EQ(frames[0].frame.kind, static_cast<uint8_t>(RecordKind::MATCH));
+    EXPECT_EQ(frames[0].frame.recordNumber, 2u);
+    EXPECT_EQ(memcmp(frames[0].frame.content.recordBytes, legacy[1].recordBytes, MATCH_RECORD_SIZE),
+              0)
+    << "the record bytes are not the 112 bytes older firmware stored";
+    const uint8_t zeroTag[RECORD_TAG_SIZE] = {};
+    EXPECT_EQ(memcmp(frames[0].frame.content.tag, zeroTag, RECORD_TAG_SIZE), 0)
+    << "an untagged copy must carry a zero tag";
+    EXPECT_EQ(suite->legacyCollectedMark(), 1u) << "sending a legacy record retired it";
+
+    suite->deliverAcknowledgement<MatchRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<MatchRecordTraits>(frames[0].frame));
+    EXPECT_EQ(suite->legacyCollectedMark(), 2u);
+    EXPECT_EQ(suite->collectedMark(), 0u) << "a legacy acknowledgement moved this firmware's mark";
+    frames = suite->framesOf<MatchRecordTraits>();
+    ASSERT_EQ(frames.size(), 2u);
+    EXPECT_EQ(frames[1].frame.recordNumber, 3u);
+}
+
+// A JSON-era match goes out as a legacy match with the fields it was stored
+// with, and its string is erased only once an FDN acknowledged storing it.
+inline void
+matchRelaySendsAJsonEraMatchAsALegacyMatchAndErasesItOnlyOnItsAck(MatchRelayTests* suite) {
+    suite->seedJsonEraMatch(0, LEGACY_JSON_MATCH);
 
     suite->hearBeacon(suite->fdnMac);
     const std::vector<SentRecordFrame<MatchRecordFramePacket>> frames =
     suite->framesOf<MatchRecordTraits>();
-    EXPECT_EQ(suite->sentMatchNumbers(), (std::vector<uint32_t>{4u}))
-    << "match 3 has no tag to send and must not hold back match 4";
     ASSERT_EQ(frames.size(), 1u);
-    EXPECT_EQ(memcmp(&frames[0].frame.content, &fourth, sizeof(fourth)), 0)
-    << "match 4 did not go out with its own record bytes and stored tag";
-    EXPECT_EQ(suite->collectedMark(), 2u) << "passing over match 3 moved the mark";
+    ASSERT_EQ(frames[0].length, 134u) << "a legacy match goes in the match record frame";
+    EXPECT_EQ(frames[0].frame.kind, static_cast<uint8_t>(RecordKind::LEGACY_MATCH));
+    EXPECT_EQ(frames[0].frame.recordNumber, 0u);
+    LegacyMatchContent carried{};
+    memcpy(&carried, &frames[0].frame.content, sizeof(carried));
+    EXPECT_EQ(std::string(carried.matchId, strnlen(carried.matchId, sizeof(carried.matchId))),
+              "0e0e0e0e-0000-4000-8000-000000000007");
+    EXPECT_EQ(std::string(carried.hunterPin, sizeof(carried.hunterPin)), "1234");
+    EXPECT_EQ(std::string(carried.bountyPin, sizeof(carried.bountyPin)), "5678");
+    EXPECT_EQ(carried.hunterTimeMs, 180u);
+    EXPECT_EQ(carried.bountyTimeMs, 240u);
+    EXPECT_EQ(carried.winnerIsHunter, 1u);
+    const uint8_t zeroTag[RECORD_TAG_SIZE] = {};
+    EXPECT_EQ(memcmp(carried.tag, zeroTag, RECORD_TAG_SIZE), 0);
+
+    suite->reportDelivered<MatchRecordTraits>(frames[0]);
+    EXPECT_EQ(suite->pdnPrefs.read(LEGACY_MATCHES_PREFS_NAMESPACE, "match_0", ""),
+              LEGACY_JSON_MATCH)
+    << "a legacy match was erased before an FDN acknowledged it";
 
     suite->deliverAcknowledgement<MatchRecordTraits>(
     suite->fdnMac, RecordRelayTests::acknowledgementFor<MatchRecordTraits>(frames[0].frame));
-    EXPECT_EQ(suite->collectedMark(), 4u);
+    EXPECT_EQ(suite->pdnPrefs.read(LEGACY_MATCHES_PREFS_NAMESPACE, "match_0", ""), "");
+    EXPECT_EQ(suite->pdnPrefs.readUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_COUNT_KEY, 0),
+              0u)
+    << "the count stayed once every JSON-era match was delivered";
+    EXPECT_EQ(suite->pdnPrefs.readUChar(LEGACY_MATCHES_PREFS_NAMESPACE, LEGACY_PREF_TEST_KEY, 0),
+              0u);
     suite->hearBeacon(suite->fdnMac);
-    EXPECT_EQ(suite->sentMatchNumbers(), (std::vector<uint32_t>{4u})) << "match 3 was sent later";
+    EXPECT_EQ(suite->framesOf<MatchRecordTraits>().size(), 1u)
+    << "a delivered match was sent again";
+}
+
+// Priority is asked again before every send: a match played while older
+// firmware's backlog is pending goes next, ahead of the rest of it.
+inline void matchRelaySendsANewMatchAheadOfPendingLegacyRecords(MatchRelayTests* suite) {
+    suite->seedUntaggedLegacyRing(2, 0);
+    suite->seedJsonEraMatch(0, LEGACY_JSON_MATCH);
+
+    suite->hearBeacon(suite->fdnMac);
+    std::vector<SentRecordFrame<MatchRecordFramePacket>> frames =
+    suite->framesOf<MatchRecordTraits>();
+    ASSERT_EQ(frames.size(), 1u);
+    EXPECT_EQ(frames[0].frame.recordNumber, 1u)
+    << "the legacy ring goes before the JSON-era matches";
+
+    suite->storeMatches(1);
+    suite->deliverAcknowledgement<MatchRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<MatchRecordTraits>(frames[0].frame));
+    ASSERT_EQ(suite->legacyCollectedMark(), 1u);
+    frames = suite->framesOf<MatchRecordTraits>();
+    ASSERT_EQ(frames.size(), 2u);
+    const MatchRecordContent played = suite->storedSlot(1);
+    EXPECT_EQ(memcmp(&frames[1].frame.content, &played, sizeof(played)), 0)
+    << "the match just played waited behind older firmware's records";
+
+    suite->deliverAcknowledgement<MatchRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<MatchRecordTraits>(frames[1].frame));
+    EXPECT_EQ(suite->collectedMark(), 1u);
+    EXPECT_EQ(suite->legacyCollectedMark(), 1u);
+    frames = suite->framesOf<MatchRecordTraits>();
+    ASSERT_EQ(frames.size(), 3u);
+    EXPECT_EQ(frames[2].frame.kind, static_cast<uint8_t>(RecordKind::MATCH));
+    EXPECT_EQ(frames[2].frame.recordNumber, 2u) << "the legacy backlog resumes after it";
+
+    suite->deliverAcknowledgement<MatchRecordTraits>(
+    suite->fdnMac, RecordRelayTests::acknowledgementFor<MatchRecordTraits>(frames[2].frame));
+    frames = suite->framesOf<MatchRecordTraits>();
+    ASSERT_EQ(frames.size(), 4u);
+    EXPECT_EQ(frames[3].frame.kind, static_cast<uint8_t>(RecordKind::LEGACY_MATCH));
 }
 
 // A stored tag belongs to the match, not to whoever holds the PDN when it is

@@ -35,7 +35,7 @@ inline constexpr const char CRASH_LOG_SERIAL_COMMAND[] = "CRASHLOG";
  * Esp32S3PrefsDriver; call capture() after storage is initialized and poll
  * serial in loop().
  */
-class CrashLogger : public RecordSource<CrashRecordTraits> {
+class CrashLogger : public SingleKindRecordSource<CrashRecordTraits> {
 public:
     /** @param prefsDriver Shared prefs driver with CRASH_LOG_NAMESPACE registered. */
     explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver)

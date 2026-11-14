@@ -2,7 +2,7 @@
 
 ### Requirement: Record frame
 
-A PDN SHALL send each crash record or match record in a record frame carrying, in order: the record kind (`1` byte: `0x01` crash record, `0x02` match record), a 4-byte record number, the record bytes (`42` for a crash record, `112` for a match record) and, for a match record only, its `16`-byte record tag (`record-authentication`). A record frame SHALL be sent as one peer-to-peer frame.
+A PDN SHALL send each crash record or match record in a record frame carrying, in order: the record kind (`1` byte: `0x01` crash record, `0x02` match record, `0x03` legacy match record), a 4-byte record number, the record bytes (`42` for a crash record, `112` otherwise) and, for a match or legacy match record only, its `16`-byte record tag (`record-authentication`). A record frame SHALL be sent as one peer-to-peer frame.
 
 #### Scenario: Crash record frame
 - **WHEN** a PDN sends crash record 7
@@ -34,11 +34,23 @@ A PDN's relay target SHALL be the FDN that caused it to send: the FDN whose beac
 
 ### Requirement: Pending records
 
-A record SHALL be pending when the PDN holds it, its number is above that record kind's mark, and it can be sent as a record frame. A stored match slot that does not hold `128` bytes cannot be sent and SHALL NOT be pending (`match-collection`). Wherever this capability says "lowest pending record", such a slot is passed over.
+A record SHALL be pending when the PDN holds it, its number is above its source's mark, and it can be sent as a record frame. A match record stored by older firmware SHALL be pending only while no match record stored by this firmware is pending, re-checked before every send. Wherever this capability says "lowest pending record", that order applies.
 
-#### Scenario: A slot that cannot be sent is not the lowest pending record
-- **WHEN** a PDN's match mark is `2`, the slot for match `3` holds `112` bytes, the slot for match `4` holds `128` bytes, and the PDN hears an FDN's beacon
-- **THEN** the PDN sends match `4` as its lowest pending match record, and that FDN's stored acknowledgement for match `4` advances the match mark to `4`
+#### Scenario: A current match record goes before an older firmware's record
+- **WHEN** a PDN holds a pending `112`-byte slot written by older firmware, stores a new match record, and hears an FDN's beacon
+- **THEN** the PDN sends the new match record first, and the older one after the new one's stored acknowledgement
+
+### Requirement: Match records stored by older firmware are sent untagged
+
+A PDN SHALL send a `112`-byte match slot with no record tag, written by older firmware, as a match record with a record tag of `16` zero bytes, and a JSON-era match record as a legacy match record (`0x03`) whose record bytes hold the match ID text (`40`), both PINs (`4` each), both draw times (`4` each) and winner-is-hunter (`1`), zero-filled, with a record tag of `16` zero bytes. The all-zero record tag marks a record as untagged.
+
+#### Scenario: JSON-era match is sent as a legacy match record
+- **WHEN** a PDN holds JSON-era match `5` and hears an FDN's beacon with no current match record pending
+- **THEN** it sends a legacy match record frame with record number `5`, the record bytes laid out as required and a record tag of `16` zero bytes, and erases match `5` only after that FDN's stored acknowledgement
+
+#### Scenario: An older firmware's ring slot is sent untagged
+- **WHEN** a PDN holds a pending `112`-byte slot written by older firmware and no current match record is pending
+- **THEN** it sends that slot's `112` bytes as a match record with a record tag of `16` zero bytes
 
 ### Requirement: Relay triggers
 
@@ -125,12 +137,20 @@ While its peer-to-peer radio is enabled an FDN SHALL accept a record frame from 
 An FDN SHALL drop, without storing or acknowledging, a record frame whose record kind it does not know or whose length is not the length of a record frame of that kind.
 
 #### Scenario: Unknown record kind
-- **WHEN** an FDN receives a record frame whose record kind is neither crash record nor match record
+- **WHEN** an FDN receives a record frame whose record kind is neither crash record, match record nor legacy match record
 - **THEN** it stores nothing and sends no stored acknowledgement
 
 #### Scenario: Wrong length for the kind
 - **WHEN** an FDN receives a frame marked as a crash record whose length is that of a match record frame
 - **THEN** it stores nothing and sends no stored acknowledgement
+
+### Requirement: FDN legacy match records are capped and held
+
+An FDN SHALL store a legacy match record (`0x03`) in its match record store, and SHALL send no stored acknowledgement for one while it holds `32` legacy match records. It SHALL NOT upload legacy match records until the server provides a field for them; they stay stored.
+
+#### Scenario: Legacy match records cannot crowd out current matches
+- **WHEN** an FDN holding `32` legacy match records and fewer than `64` match records receives a legacy match record frame and then a match record frame
+- **THEN** it stores and acknowledges nothing for the first frame, and stores and acknowledges the second
 
 ### Requirement: FDN duplicates and full storage
 

@@ -91,7 +91,9 @@ static void setup() {
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, RXt, RXr);
 
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
-    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
+    storageDriver = new Esp32S3PrefsDriver(
+    STORAGE_DRIVER_NAME,
+    {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
 
     // Create driver configuration
     DriverConfig pdnConfig = {

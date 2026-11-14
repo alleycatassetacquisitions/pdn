@@ -6,7 +6,7 @@ Every completed standalone 1v1 match on a PDN that holds a record key when the m
 
 - Each persisted standalone match SHALL increment the PDN's persisted `match_sequence_number` by `1` (starting at `1`) and write the binary match record into a `32`-slot circular buffer indexed by `(match_sequence_number - 1) mod 32`.
 - The PDN SHALL write each match record's `16`-byte record tag (`record-authentication`) into the same slot as the record. A match that ends while the PDN holds no record key SHALL NOT be persisted (`record-authentication`).
-- A stored slot that does not hold `128` bytes, such as a slot of `112` bytes and no record tag written by firmware that stored none, cannot be sent. Such a slot SHALL NOT be pending, whatever its sequence number: the PDN SHALL NOT send it, and SHALL send the pending records after it as if it were absent.
+- Match records stored by older firmware, whether `112`-byte ring slots with no record tag or JSON-era records, SHALL be kept: a firmware update SHALL NOT discard or overwrite them, and each SHALL be erased only once its stored acknowledgement arrives. They SHALL be sent untagged as `record-relay` requires, and SHALL be pending only while no match record stored by this firmware is pending.
 - Binary match records containing raw 16-byte UUIDs (which may include `0x00` bytes) SHALL round-trip through non-volatile storage without null-byte truncation.
 - If more than `32` matches occur before an FDN collects them, newer matches SHALL overwrite the oldest slots in the `32`-slot ring buffer without failing or blocking gameplay.
 - The PDN SHALL persist a separate `collected_high_water_mark` (`0` initially). If `collected_high_water_mark > match_sequence_number` (such as after storage corruption), the PDN SHALL clamp `collected_high_water_mark` to `match_sequence_number`. A retained match with sequence number `N` is pending FDN collection whenever `N > collected_high_water_mark` and `N > match_sequence_number - 32`.
@@ -24,9 +24,9 @@ Every completed standalone 1v1 match on a PDN that holds a record key when the m
 - **WHEN** a PDN stores a match record with its record tag and restarts before an FDN collects it
 - **THEN** the PDN reads back the same `112` record bytes and the same `16`-byte record tag
 
-#### Scenario: Match record in a slot with no record tag is never sent
-- **WHEN** a PDN's pending matches are `3`, in a slot that holds `112` record bytes and no record tag, and `4`, in a slot that holds the record bytes and a record tag, and the PDN hears an FDN's beacon
-- **THEN** the PDN sends match `4` with its stored record tag and does not send match `3`, then or later
+#### Scenario: Match record stored by older firmware is sent untagged after current matches
+- **WHEN** a PDN holds a `112`-byte match slot with no record tag written by older firmware and a pending match record with its record tag stored by this firmware, and hears an FDN's beacon
+- **THEN** the PDN sends the current match record first and then the older one, with a record tag of `16` zero bytes, and discards neither before its stored acknowledgement
 
 ### Requirement: PDN-to-FDN match transfer, FDN spool bounds, and watermark advancement
 

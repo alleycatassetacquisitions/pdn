@@ -5,10 +5,10 @@
 #include "wireless/record-relay-types.hpp"
 
 /**
- * One kind of record a PDN holds until an FDN has stored it; Traits names the
- * kind. The record relay asks a source only for its lowest pending record and
- * tells it only that a record was acknowledged; when, to whom and how often a
- * record is sent is the relay's business.
+ * One channel's records a PDN holds until an FDN has stored them; Traits names
+ * the channel. The record relay asks a source only for its lowest pending
+ * record and tells it only that a record was acknowledged; when, to whom and
+ * how often a record is sent is the relay's business.
  */
 template <class Traits> class RecordSource {
 public:
@@ -16,9 +16,35 @@ public:
     virtual ~RecordSource() = default;
 
     /**
-     * Writes the lowest-numbered record above the mark into @p content (its
-     * bytes and, for a kind that carries one, its tag) and its number into
-     * @p recordNumber. Reading changes nothing: the mark moves
+     * Writes the lowest pending record into @p content (its bytes and, for a
+     * kind that carries one, its tag), its number into @p recordNumber and the
+     * kind its frame goes out under into @p kind. Reading changes nothing: a
+     * record is retired only by onRecordAcknowledged. A source that cannot read
+     * a record it should hold passes over it here and offers the next one.
+     * @return false when nothing can be offered: nothing is pending, or every
+     * pending record is unreadable; the outputs are then untouched.
+     */
+    virtual bool readLowestPendingFrame(uint32_t& recordNumber, RecordKind& kind,
+                                        typename Traits::Content& content) = 0;
+
+    /**
+     * An FDN acknowledged storing the frame of @p kind and @p recordNumber whose
+     * record check is @p recordCheck; the source retires that record. A record
+     * already retired is left as it is.
+     */
+    virtual void onRecordAcknowledged(RecordKind kind, uint32_t recordNumber,
+                                      const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) = 0;
+};
+
+/**
+ * A source whose records are all of Traits::KIND and numbered under one mark,
+ * which an acknowledgement moves.
+ */
+template <class Traits> class SingleKindRecordSource : public RecordSource<Traits> {
+public:
+    /**
+     * Writes the lowest-numbered record above the mark into @p content and its
+     * number into @p recordNumber. Reading changes nothing: the mark moves
      * only in advanceMark, so a record is never retired without an
      * acknowledgement. A source that cannot read a record it should hold
      * passes over it here and offers the next one.
@@ -32,6 +58,24 @@ public:
      * A number at or below the mark is ignored: a mark never moves backwards.
      */
     virtual void advanceMark(uint32_t recordNumber) = 0;
+
+    /** readLowestPending, under Traits::KIND. */
+    bool readLowestPendingFrame(uint32_t& recordNumber, RecordKind& kind,
+                                typename Traits::Content& content) override {
+        if (!readLowestPending(recordNumber, content)) {
+            return false;
+        }
+        kind = Traits::KIND;
+        return true;
+    }
+
+    /** Moves the mark to @p recordNumber; one mark needs neither kind nor check. */
+    void onRecordAcknowledged(RecordKind kind, uint32_t recordNumber,
+                              const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) override {
+        (void)kind;
+        (void)recordCheck;
+        advanceMark(recordNumber);
+    }
 };
 
 // What follows is the arithmetic every source shares: records are numbered

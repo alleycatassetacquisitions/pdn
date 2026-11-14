@@ -8,7 +8,7 @@
 - [x] 1.6 Owner answered Open Question 5: registration fails when no key arrives, so a PDN with no key is not registered and no match record without a key exists
 - [ ] 1.7 Send the ranked server list (design.md) to the server team as a proposal, with the match record byte layout, the key and tag formulas and the test vector
 - [x] 1.8 Owner ruled after the answers above: the key is derived from the server secret and the player alone; the lookup request is unchanged; the sender's MAC address on a match upload is a troubleshooting note only; blocking is by player only; one person registering two PDNs as two different players is an accepted risk
-- [ ] 1.9 Owner confirms the editor's choices E1 to E9 (design.md, Open Questions); E7 is the migration order: stored matches upload before the server enables verification, and no event runs between enabling and the roll-out; E8 is that the venue server has to be reached over HTTPS; E9 is the owner's acceptance that a device cabled to an FDN can collect every player's key
+- [ ] 1.9 Owner confirms the editor's choices E1 to E10 (design.md, Open Questions); E7: no event runs between the server enabling verification and the roll-out; E8 is that the venue server has to be reached over HTTPS; E9 is the owner's acceptance that a device cabled to an FDN can collect every player's key; E10: matches stored by older firmware are read in place from their own namespace and relayed untagged, with no migration and no new frame type
 
 ## 2. Relay on the PDN (built by the open PRs)
 
@@ -49,10 +49,12 @@
 ## 6. Tag at match end
 
 - [x] 6.1 Add HMAC-SHA-256 over the portable SHA-256 in lib/core so native tests and the PDN build share it (#438)
-- [x] 6.2 When a match ends, compute the tag over the `112` record bytes under the held key and store it in the record's ring slot (`128` bytes); when no key is held, store no record (#443)
-- [x] 6.3 Treat a stored match slot that does not hold `128` bytes as not pending: never send it, and send the pending records after it as if it were absent (#443)
-- [x] 6.4 Send each match record with its stored tag unchanged; registration, a failed registration and a restart neither clear nor re-tag stored records (#443)
-- [x] 6.5 Tests: the fixed test vector in `record-authentication`, shared with the server team; no record is stored when no key is held; the stored tag is sent unchanged after a restart, by a PDN that is not registered, and after registering to another player; a `112`-byte slot is not sent and the record after it is; a crash record frame carries no tag (#443; the crash frame in #435)
+- [x] 6.2 When a match ends, compute the tag over the `112` record bytes under the held key and store it in the record's ring slot (`128` bytes) in the namespace `"match_ring"`; when no key is held, store no record (#443)
+- [x] 6.3 Keep matches stored by older firmware: read the namespace `"matches"` in place, never write or clear it (delete the `seq == 0` clear); send a `112`-byte legacy ring slot as kind `0x02` with a tag of `16` zero bytes and a `128`-byte one as written, advancing that namespace's own `"collectedSeq"`; skip and log once any other length; send each JSON `"match_<i>"` as kind `0x03` with record number `i`, erase it on its stored acknowledgement and `"count"` and `"test_key"` when none remain, and keep and log once a string that does not parse (#443)
+- [x] 6.4 Send each match record with its stored tag unchanged; registration, a failed registration and a restart neither clear nor re-tag stored records; legacy records are pending only while the current ring has none, legacy ring before JSON (#443)
+- [x] 6.5 Tests: the fixed test vector in `record-authentication`, shared with the server team; no record is stored when no key is held; the stored tag is sent unchanged after a restart, by a PDN that is not registered, and after registering to another player; a `112`-byte legacy slot is sent with a zero tag and its acknowledgement advances the legacy mark; a JSON match is sent as kind `0x03` with the wire layout and its key is erased only on acknowledgement; a JSON string that does not parse is kept; a new match is sent before any pending legacy record; booting with legacy data erases nothing; a crash record frame carries no tag (#443)
+- [x] 6.6 FDN: accept kind `0x03` into the match store; send no stored acknowledgement for a kind `0x03` frame while `32` kind `0x03` entries are held; tests for the cap, and that a current match is still accepted at the cap (#443)
+- [ ] 6.7 FDN: hold kind `0x03` entries, not uploaded, behind `SERVER-SEAM(legacy-match)`; once the server team gives a field or route for JSON-era matches (PINs, no player UUIDs), upload them through it and retire them on success
 
 ## 7. FDN uploads
 
@@ -81,7 +83,7 @@
 - [ ] 10.1 One firmware roll-out: the same build on every FDN and PDN, only after the server has built and enabled item 2, so that it returns keys and verifies tags
 - [x] 10.2 Remove Wi-Fi from the PDN build in a PR of this stack (no spec delta: the base specs already say a PDN uses no Wi-Fi) (#444)
 - [ ] 10.3 Before the roll-out, when the server team has agreed item 2's formats: move the provisional key field of the lookup response (5.1) to the agreed name and number, and fill the match upload seam (7.5)
-- [ ] 10.4 Before the server enables verification and before a PDN is flashed, upload that PDN's stored matches with the firmware it has; a match slot written by older firmware is never sent afterwards
+- [ ] 10.4 No upload before flashing is required; advise operators that a PDN uploaded with its old firmware before the server verifies gets its stored matches counted, while after flashing they arrive untagged and never count once verification is on
 - [ ] 10.5 At archive, edit the Purpose paragraphs of `crash-reporting`, `match-collection` and `fdn-apps`, which still describe cabled collection and cannot be changed by a delta
 - [ ] 10.6 Owner updates the threat model, which is kept outside this repository, with the entries under Risks in design.md
 - [x] 10.7 Every firmware PR description of this change states that the stack must not be flashed to event devices before the server verifies tags (#426, #427, #428, #435 to #444)
@@ -96,4 +98,4 @@
 - [ ] 11.4 On devices: a PDN Connected to an FDN in symbol match still hears beacons and delivers
 - [ ] 11.5 On devices, against a test server that returns a key: register, play a match, capture the match record frame, and check its tag equals the first 16 bytes of HMAC-SHA-256 under that key over the frame's `112` record bytes
 - [ ] 11.6 On devices, against a test server that returns no key: registration fails; the FDN shows `"UNABLE TO"` / `"ISSUE KEY"` and the PDN returns to PIN entry
-- [ ] 11.7 On devices: a PDN that holds a `112`-byte match slot left by the old firmware and then stores a new match does not send the old slot, and the new match record is delivered
+- [ ] 11.7 On devices: a PDN flashed from deployed firmware with stored JSON matches, and one holding a `112`-byte slot from a bench build, keep them after flashing; each new match is delivered first, then the legacy records, untagged; the FDN holds the kind `0x03` records
