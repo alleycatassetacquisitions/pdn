@@ -109,7 +109,9 @@ public:
      * True when the HTTP response whose success callback is running came over
      * HTTPS with the server's certificate checked. Ask from inside that callback.
      */
-    bool isHttpResponseServerVerified() { return httpClient->isResponseServerVerified(); }
+    bool isHttpResponseServerVerified() {
+        return httpClient != nullptr && httpClient->isResponseServerVerified();
+    }
 
     /**
      * Takes Wi-Fi for @p owner, a component about to queue HTTP requests of
