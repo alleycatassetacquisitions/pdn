@@ -60,7 +60,10 @@ public:
     /** True until every queued request has had its callback. */
     bool hasQueuedRequests() override { return !pendingRequests.empty(); }
 
-    /** Never: the simulated server is reached with no TLS, so nothing vouches for it. */
+    /**
+     * Never: the simulated server is reached with no TLS, so no pinned key is
+     * presented. Nor does any request fail with SERVER_NOT_TRUSTED.
+     */
     bool isResponseServerVerified() override { return false; }
 
     /** Takes ownership of @p request; a large payload is moved, not copied. */
