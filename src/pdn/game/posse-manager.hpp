@@ -13,6 +13,7 @@
 #include "device/drivers/serial-wrapper.hpp"
 #include "wireless/resender.hpp"
 #include "wireless/reliable-channel.hpp"
+#include "utils/uuid-bytes.hpp"
 
 enum class ChainGameEventType : uint8_t {
     COUNTDOWN = 0,
@@ -93,8 +94,12 @@ public:
      * join naming any challenger but this device.
      */
     void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChallengerMac);
-    /** Records a supporter press from originatorMac; chain membership is filtered when read. */
-    void onConfirmReceived(const uint8_t* originatorMac);
+    /**
+     * Records a press from originatorMac if supporterPlayerId is non-nil and not
+     * this device's player; chain membership and one boost per player are applied
+     * when read.
+     */
+    void onConfirmReceived(const uint8_t* originatorMac, const UUIDBytes& supporterPlayerId);
     void onChainStateChanged();
 
     unsigned long getBoostMs() const;
@@ -169,7 +174,7 @@ private:
 
     std::atomic<bool> confirmSent{false};
 
-    // Every press we have heard this round, member or not. Membership is applied
+    // Every eligible press heard this round, member or not. Membership is applied
     // when the count is read, not here, because a confirm can beat the kChainJoin
     // that puts its originator in the roster and the sender gets no signal it was
     // dropped. Deciding late means an early confirm starts counting the moment
@@ -183,6 +188,10 @@ private:
     MacSlots receivedConfirms{};
     std::atomic<size_t> receivedConfirmCount{0};
     size_t receivedConfirmWrite = 0;
+    // Player behind each receivedConfirms slot, same index. Deduplicated when
+    // read, not on arrival, so whichever PDN of a player is still a chain member
+    // at that moment carries the boost.
+    std::array<UUIDBytes, MAX_CHAIN_SUPPORTERS> receivedConfirmPlayerIds{};
 
     // Supporters that named this device as their challenger. Everything past the
     // direct supporter-jack peer lives here and nowhere else: the role cascade

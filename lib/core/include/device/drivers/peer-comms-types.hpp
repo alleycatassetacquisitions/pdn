@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "utils/uuid-bytes.hpp"
+
 //PktType determines which callback will handle the packet on the receiving end
 enum class PktType : uint8_t {
     kPlayerInfoBroadcast = 0,
@@ -86,11 +88,15 @@ static_assert(sizeof(DataPktHdr) == 1, "older builds parse firmware frames with 
 static_assert(static_cast<uint8_t>(PktType::kFirmwareUpdate) == 16,
               "event firmware listens for firmware frames on 16");
 
+// playerUuid: the sender's server player UUID, nil on the demo profile or before
+// registration. The sender gets no reply saying whether it counted.
 struct ChainConfirmPayload
 {
     uint8_t originatorMac[6];
+    UUIDBytes playerUuid;
     uint8_t seqId;
 } __attribute__((packed));
+static_assert(sizeof(ChainConfirmPayload) == 23, "ChainConfirmPayload wire size");
 
 // Sent by a supporter straight to the challenger whose MAC reached it through the
 // role-announce cascade. The cascade only ever travels downstream, so this is

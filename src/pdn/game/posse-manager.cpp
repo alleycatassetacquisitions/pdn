@@ -16,7 +16,7 @@ PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, Rem
     , chainConfirmChannel(wirelessManager, &resender, PktType::kChainConfirm, nullptr)
     , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr) {
     chainConfirmChannel.onReceive([this](const uint8_t*, const ChainConfirmPayload& p) {
-        onConfirmReceived(p.originatorMac);
+        onConfirmReceived(p.originatorMac, p.playerUuid);
     });
     chainJoinChannel.onReceive([this](const uint8_t* fromMac, const ChainJoinPayload& p) {
         onChainJoinReceived(fromMac, p.challengerMac);
@@ -242,6 +242,8 @@ void PosseManager::sendConfirm() {
 
     ChainConfirmPayload payload{};
     memcpy(payload.originatorMac, selfMac, 6);
+    // Read at send so the frame always carries the current player.
+    payload.playerUuid = player->getServerPlayerId();
     chainConfirmChannel.sendReliable(challenger, payload);
 }
 
@@ -256,11 +258,26 @@ void PosseManager::onChainGameEventReceived(uint8_t eventType) {
     resender.cancelAll(PktType::kChainConfirm);
 }
 
-void PosseManager::onConfirmReceived(const uint8_t* originatorMac) {
-    // Recorded unconditionally. Whether this originator is a chain member, and
-    // whether we are the challenger who gets to count it, are both read live in
+void PosseManager::onConfirmReceived(const uint8_t* originatorMac,
+                                     const UUIDBytes& supporterPlayerId) {
+    // Nil is tested first so a demo challenger's own nil UUID never matches a
+    // supporter's.
+    const bool supporterUnregistered = supporterPlayerId.isZero();
+    if (supporterUnregistered || supporterPlayerId == player->getServerPlayerId()) {
+        LOG_W(TAG, "confirm from %s not counted: %s", MacToString(originatorMac),
+              supporterUnregistered ? "supporter not registered" : "same player as challenger");
+        return;
+    }
+    // Whether this originator is a chain member, and whether we are the
+    // challenger who gets to count it, are both read live in
     // getConfirmedSupporterCount — neither is knowable for certain at the moment
     // a press arrives.
+    const size_t used = receivedConfirmCount.load();
+    // A reliable resend of a press already heard keeps the player it first carried.
+    if (containsMac(receivedConfirms, used, originatorMac)) return;
+    // The slot recordMac is about to fill, paired before it publishes the MAC.
+    const size_t slot = used < MAX_CHAIN_SUPPORTERS ? used : receivedConfirmWrite;
+    receivedConfirmPlayerIds[slot] = supporterPlayerId;
     recordMac(receivedConfirms, receivedConfirmCount, receivedConfirmWrite, originatorMac);
 }
 
@@ -346,14 +363,28 @@ size_t PosseManager::getConfirmedSupporterCount() const {
     if (!isChallenger()) return 0;
     std::vector<std::array<uint8_t, 6>> peers = getSupporterChainPeers();
     size_t count = receivedConfirmCount.load();
+    // One boost per supporting player, however many of their PDNs press.
+    std::array<UUIDBytes, MAX_CHAIN_SUPPORTERS> countedPlayerIds{};
     size_t confirmed = 0;
     for (size_t i = 0; i < count; i++) {
+        bool isMember = false;
         for (const std::array<uint8_t, 6>& peer : peers) {
             if (memcmp(peer.data(), receivedConfirms[i].data(), 6) == 0) {
-                confirmed++;
+                isMember = true;
                 break;
             }
         }
+        if (!isMember) continue;
+        bool playerAlreadyCounted = false;
+        for (size_t j = 0; j < confirmed; j++) {
+            if (countedPlayerIds[j] == receivedConfirmPlayerIds[i]) {
+                playerAlreadyCounted = true;
+                break;
+            }
+        }
+        if (playerAlreadyCounted) continue;
+        countedPlayerIds[confirmed] = receivedConfirmPlayerIds[i];
+        confirmed++;
     }
     return confirmed;
 }

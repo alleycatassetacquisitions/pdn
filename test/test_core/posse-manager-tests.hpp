@@ -128,6 +128,11 @@ public:
                                success, roleAnnounceSendStatusCtx);
     }
 
+    /** A press from @p supporterMac, its PDN on the MAC test identity a test build plays as. */
+    void deliverConfirm(PosseManager& posse, const uint8_t* supporterMac) {
+        posse.onConfirmReceived(supporterMac, Player::testPlayerIdFromMac(supporterMac));
+    }
+
     PeerCommsInterface::PacketCallback contextHandler = nullptr;
     void* contextCtx = nullptr;
     PeerCommsInterface::SendStatusCallback roleAnnounceSendStatus = nullptr;
@@ -209,11 +214,11 @@ inline void posseConfirmLifecycle(PosseManagerTests* suite) {
 
     EXPECT_EQ(posse.getBoostMs(), 0u);
 
-    posse.onConfirmReceived(suite->supporterMac);
+    suite->deliverConfirm(posse, suite->supporterMac);
     EXPECT_EQ(posse.getBoostMs(), 15u);
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 1u);
 
-    posse.onConfirmReceived(suite->supporterMac);
+    suite->deliverConfirm(posse, suite->supporterMac);
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 1u);
 
     posse.clearSupporterConfirms();
@@ -227,7 +232,7 @@ inline void posseOnChainStateChangedClearsOnDrain(PosseManagerTests* suite) {
     PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     ASSERT_TRUE(posse.isChallenger());
 
-    posse.onConfirmReceived(suite->supporterMac);
+    suite->deliverConfirm(posse, suite->supporterMac);
     ASSERT_EQ(posse.getBoostMs(), 15u);
 
     // First call: chain has peers (lastSupporterChainCount goes from 0 to N)
@@ -252,7 +257,7 @@ inline void posseConfirmFromUnknownOriginatorRejected(PosseManagerTests* suite) 
     ASSERT_TRUE(posse.isChallenger());
 
     uint8_t stranger[6] = {0xBA, 0xAD, 0xF0, 0x0D, 0x00, 0x00};
-    posse.onConfirmReceived(stranger);
+    suite->deliverConfirm(posse, stranger);
     EXPECT_EQ(posse.getBoostMs(), 0u);
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 0u);
 }
@@ -353,7 +358,7 @@ inline void posseConfirmBufferedUntilOriginatorJoinsChain(PosseManagerTests* sui
     ASSERT_TRUE(posse.isChallenger());
 
     uint8_t multiHopMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    posse.onConfirmReceived(multiHopMac);
+    suite->deliverConfirm(posse, multiHopMac);
     ASSERT_EQ(posse.getConfirmedSupporterCount(), 0u);
 
     // The join lands: multiHopMac sits somewhere behind the direct supporter-jack
@@ -380,18 +385,57 @@ inline void posseStrangerConfirmsCannotSilenceRealSupporter(PosseManagerTests* s
     for (int i = 0; i < 36; i++) {
         uint8_t stranger[6] = {
         0xEE, 0xEE, 0xEE, 0xEE, static_cast<uint8_t>(i), static_cast<uint8_t>(i)};
-        posse.onConfirmReceived(stranger);
+        suite->deliverConfirm(posse, stranger);
     }
     ASSERT_EQ(posse.getConfirmedSupporterCount(), 0u);
 
     // A genuine multi-hop supporter presses afterwards and joins the roster.
     uint8_t realMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    posse.onConfirmReceived(realMac);
+    suite->deliverConfirm(posse, realMac);
     posse.onChainJoinReceived(realMac, suite->localMac);
     posse.onChainStateChanged();
 
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 1u);
     EXPECT_EQ(posse.getBoostMs(), PosseManager::BOOST_PER_SUPPORTER_MS);
+}
+
+// More distinct players than the posse has slots earn no more than a full posse:
+// 270 ms, the bound both sides of a match hold a boost to. A resend of a press
+// already heard changes nothing.
+inline void posseBoostIsHeldToAFullPosse(PosseManagerTests* suite) {
+    suite->setupHunterChallenger();
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_TRUE(posse.isChallenger());
+
+    for (uint8_t i = 0; i < 20; i++) {
+        uint8_t supporter[6] = {0x5E, 0x5E, 0x5E, 0x5E, i, 0x01};
+        posse.onChainJoinReceived(supporter, suite->localMac);
+        suite->deliverConfirm(posse, supporter);
+    }
+    uint8_t lastSupporter[6] = {0x5E, 0x5E, 0x5E, 0x5E, 19, 0x01};
+    suite->deliverConfirm(posse, lastSupporter);
+    posse.onChainStateChanged();
+
+    EXPECT_EQ(posse.getBoostMs(), 270u);
+}
+
+// Once the posse is full a new press takes the oldest slot and its player goes
+// with it: two more PDNs of one player still buy one boost between them.
+inline void posseOverflowPressKeepsItsOwnPlayer(PosseManagerTests* suite) {
+    suite->setupHunterChallenger();
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_TRUE(posse.isChallenger());
+
+    const uint8_t sharedPlayerMac[6] = {0x5E, 0x5E, 0x5E, 0x5E, 0xFF, 0x02};
+    for (uint8_t i = 0; i < 20; i++) {
+        uint8_t supporter[6] = {0x5E, 0x5E, 0x5E, 0x5E, i, 0x01};
+        posse.onChainJoinReceived(supporter, suite->localMac);
+        posse.onConfirmReceived(supporter,
+                                Player::testPlayerIdFromMac(i < 18 ? supporter : sharedPlayerMac));
+    }
+    posse.onChainStateChanged();
+
+    EXPECT_EQ(posse.getConfirmedSupporterCount(), 17u);
 }
 
 // A join is a MAC claiming chain membership, so it has to name the challenger it
@@ -406,7 +450,7 @@ inline void posseChainJoinForAnotherChallengerIsIgnored(PosseManagerTests* suite
     uint8_t otherChallenger[6] = {0x99, 0x99, 0x99, 0x99, 0x99, 0x99};
     uint8_t foreignSupporter[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
     posse.onChainJoinReceived(foreignSupporter, otherChallenger);
-    posse.onConfirmReceived(foreignSupporter);
+    suite->deliverConfirm(posse, foreignSupporter);
 
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 0u);
     EXPECT_EQ(posse.getBoostMs(), 0u);
@@ -1216,7 +1260,7 @@ inline void posseThreeDeviceConfirm(PosseManagerTests* suite) {
 
     uint8_t distantMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
     a.onChainJoinReceived(distantMac, suite->localMac);
-    a.onConfirmReceived(distantMac);
+    suite->deliverConfirm(a, distantMac);
     EXPECT_EQ(a.getBoostMs(), 15u);
 }
 
