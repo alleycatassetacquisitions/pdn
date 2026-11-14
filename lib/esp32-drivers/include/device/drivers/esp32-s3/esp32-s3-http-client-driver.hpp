@@ -419,25 +419,20 @@ private:
         return ESP_OK;
     }
 
-    // Only the leaf's key decides: a match with the pin clears every flag, host
-    // name and dates included (the venue may lack DNS or a clock); any other
-    // key, or no pin at all, adds NOT_TRUSTED and fails the handshake. Flags
-    // above the leaf are cleared so no public CA's verdict counts.
+    // Only the leaf's key decides; ServerKeyPin::verifiedFlags holds the rule.
+    // A leaf matching the pin clears host-name and date flags too, since the
+    // venue may lack DNS or a clock.
     static int verifyServerCertificate(void* context, mbedtls_x509_crt* certificate, int depth,
                                        uint32_t* flags) {
         auto* client = static_cast<Esp32S3HttpClient*>(context);
-        if (depth > 0) {
-            *flags = 0;
-            return 0;
+        bool keyMatches = false;
+        if (depth == 0) {
+            keyMatches = client->serverKeyPin.matchesKey(
+            certificate->pk_raw.p, certificate->pk_raw.len, client->presentedKeyHash);
+            client->serverKeyCheck = keyMatches ? ServerKeyCheck::PINNED : ServerKeyCheck::REFUSED;
         }
-        if (client->serverKeyPin.matchesKey(certificate->pk_raw.p, certificate->pk_raw.len,
-                                            client->presentedKeyHash)) {
-            client->serverKeyCheck = ServerKeyCheck::PINNED;
-            *flags = 0;
-            return 0;
-        }
-        client->serverKeyCheck = ServerKeyCheck::REFUSED;
-        *flags |= MBEDTLS_X509_BADCERT_NOT_TRUSTED;
+        *flags =
+        ServerKeyPin::verifiedFlags(depth, keyMatches, *flags, MBEDTLS_X509_BADCERT_NOT_TRUSTED);
         return 0;
     }
 
