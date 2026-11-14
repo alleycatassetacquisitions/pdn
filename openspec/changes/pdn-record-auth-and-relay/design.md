@@ -401,7 +401,7 @@ Only E11 remains open. Every other item is answered by the owner or confirmed by
 - **The player's totals on the PDN.** Confirmed by the chief: a server item ranked last as a feature, not a security item (ranked server list, item 5); it does not hold up the roll-out gate.
 - **E10.** Answered by the owner: the current ring moves to its own namespace and the older namespace is read in place, never cleared or migrated; matches stored by older firmware are relayed with an all-zero tag as the untagged marker, JSON-era ones as kind `0x03`, with no upload before flashing. Rejected: a migration at boot, and a new frame type (Decisions, "Matches stored by older firmware").
 - **X-1. FDN storage.** Answered by the owner: a dedicated storage area in the unused 124 KB at the end of flash (`0x7E1000` to `0x800000`), keeping `64` match and `32` crash records (Decisions, "FDN record store"; Migration Plan, step 9).
-- **X-3. A radio attacker forging a standalone match result.** Three mitigations (Decisions, "Forged standalone match results"): the server's prize review rule, badge sanity checks with an `80 ms` raw floor, and standalone match frames signed under a per-match key the Hunter draws and sends over the serial jack. No Diffie-Hellman. The per-link key for all traffic is the long-term answer, not built.
+- **X-3. A radio attacker forging a standalone match result.** Three mitigations (Decisions, "Forged standalone match results"): the server's prize review rule, PDN sanity checks with an `80 ms` raw floor, and standalone match frames signed under a per-match key the Hunter draws and sends over the serial jack. No Diffie-Hellman. The per-link key for all traffic is the long-term answer, not built.
 
 **Confirmed by the chief**
 
