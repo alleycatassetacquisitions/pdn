@@ -874,7 +874,7 @@ public:
         device = cli::DeviceFactory::createDevice(0, true);
 
         // The CLI factory launches into the hub. These tests exercise the
-        // registration flow and reboot semantics, so swap back to the
+        // registration flow and reboot semantics, so restart into the
         // registration app at its waiting screen.
         device.reboot();
     }
@@ -911,29 +911,38 @@ void cliDeviceCabledProvisionTransitions(CliCommandTestSuite* suite) {
     ASSERT_EQ(state->getStateId(), PlayerFetchStateId::WELCOME);
 }
 
-// Test: Reboot resets device back to AwaitBand
-void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
-    // Advance past AwaitBand
+// Test: Reboot is a restart: the waiting screen, and a fresh player with nothing held
+void cliCommandRebootLandsOnTheWaitingScreenWithNothingHeld(CliCommandTestSuite* suite) {
     cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
         suite->device.pdn->loop();
     }
-    State* state = suite->device.getCurrentState();
-    ASSERT_NE(state, nullptr);
-    ASSERT_NE(state->getStateId(), PlayerFetchStateId::AWAIT_BAND);
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::WELCOME);
+    ASSERT_TRUE(suite->device.playerProvider->hasPlayer());
+    ASSERT_TRUE(suite->device.playerProvider->getRecordKey()->isHeld());
+    suite->device.player->incrementMatchesPlayed();
+    suite->device.player->incrementWins();
+    suite->device.player->incrementStreak();
+    suite->device.player->addReactionTime(250);
 
     suite->device.reboot();
-
-    // Should be back at AwaitBand within the registration app, holding nothing
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    state = suite->device.getCurrentState();
+    State* state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PlayerFetchStateId::AWAIT_BAND);
+    EXPECT_EQ(state->getStateId(), PlayerFetchStateId::AWAIT_BAND);
+    const Player* player = suite->device.player;
     EXPECT_FALSE(suite->device.playerProvider->hasPlayer());
+    EXPECT_TRUE(player->getServerPlayerId().isZero());
     EXPECT_FALSE(suite->device.playerProvider->getRecordKey()->isHeld());
+    // The waiting screen's clear keeps the session statistics; only a fresh player drops them.
+    EXPECT_EQ(player->getDisplayedMatchesPlayed(), 0u);
+    EXPECT_EQ(player->getWins(), 0);
+    EXPECT_EQ(player->getStreak(), 0);
+    EXPECT_EQ(player->getLastReactionTime(), 0u);
+    EXPECT_EQ(player->getDisplayedAverageReactionTime(), 0u);
 }
 
-// Test: Reboot from a later state returns to AwaitBand and can re-transition
+// Test: Reboot from a later state lands on the waiting screen and the device registers again
 void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     // Advance device further (past AwaitBand into WelcomeMessage or beyond)
     cliDeliverCabledProvision(suite->device);

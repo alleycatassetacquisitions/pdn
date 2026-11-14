@@ -81,6 +81,10 @@ TEST_F(MockHttpServerTestSuite, GetPlayerByBandReturnsData) {
     httpServerGetDevicePlayerByBandReturnsData(this);
 }
 
+TEST_F(MockHttpServerTestSuite, GetPlayerByBandCarriesTotals) {
+    httpServerGetDevicePlayerByBandCarriesTotals(this);
+}
+
 TEST_F(MockHttpServerTestSuite, UnknownBandReturns404) {
     httpServerGetDevicePlayerByBandReturns404(this);
 }
@@ -403,8 +407,8 @@ TEST_F(CliCommandTestSuite, CabledProvisionTransitions) {
     cliDeviceCabledProvisionTransitions(this);
 }
 
-TEST_F(CliCommandTestSuite, RebootResetsState) {
-    cliCommandRebootResetsState(this);
+TEST_F(CliCommandTestSuite, RebootLandsOnTheWaitingScreenWithNothingHeld) {
+    cliCommandRebootLandsOnTheWaitingScreenWithNothingHeld(this);
 }
 
 TEST_F(CliCommandTestSuite, RebootFromLaterState) {

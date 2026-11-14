@@ -317,6 +317,31 @@ inline void idleScreensShowServerTotalsPlusTheSession(IdleStateTests* suite) {
     }
 }
 
+// The demo path registers through team choice, with no server behind it; the
+// name screen still says whose PDN it is.
+inline void idleNameScreenShowsDemoForTheDemoProfile(IdleStateTests* suite) {
+    std::vector<std::string> drawnTexts;
+    recordIdleDrawnTexts(suite, &drawnTexts);
+    ON_CALL(*suite->device.mockDisplay, drawButton(_, _, _))
+    .WillByDefault(Return(suite->device.mockDisplay));
+    PlayerProvider playerProvider;
+    ChooseTeamState chooseTeam(&playerProvider);
+    chooseTeam.onStateMounted(&suite->device);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::CLICK);
+    ASSERT_TRUE(chooseTeam.transitionToHub());
+    chooseTeam.onStateDismounted(&suite->device);
+
+    GameContext demoContext = suite->ctx;
+    demoContext.player = playerProvider.getPlayer();
+    Idle demoIdle(demoContext);
+    drawnTexts.clear();
+    demoIdle.onStateMounted(&suite->device);
+    demoIdle.onStateLoop(&suite->device);
+    demoIdle.onStateDismounted(&suite->device);
+
+    EXPECT_THAT(drawnTexts, testing::ElementsAre("Player", "Demo"));
+}
+
 inline void waitingScreenFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     PlayerProvider playerProvider;
     AwaitBandState awaitBand(suite->device.wirelessManager, &playerProvider);

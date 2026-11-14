@@ -1446,6 +1446,34 @@ TEST_F(MatchManagerTestSuite, finishedMatchIsStoredWithTheTagOfItsRecordBytes) {
     }
 }
 
+// The handover rule: nothing but a restart takes a PDN off its registered player,
+// so whoever is holding it plays as that player. The record names that player
+// and carries a tag made under that player's key, rebuilt here from its bytes
+// rather than read back from the PDN.
+TEST_F(MatchManagerTestSuite, matchOnAPdnPassedOnWithoutARestartIsTheRegisteredPlayers) {
+    NativePrefsDriver& prefs = makeNativePrefs("handover-prefs");
+    rebuildMatchManager(&prefs);
+    setupMatchAsBounty("61111111-2222-4000-8000-333333333333");
+    finishMatchWithDrawTimes(180, 120);
+    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
+
+    MatchRecordContent slot{};
+    ASSERT_TRUE(readStoredSlot(1, slot));
+    Match stored{};
+    stored.deserialize(slot.recordBytes);
+    UUIDBytes registeredPlayerId{};
+    ASSERT_TRUE(UUIDBytes::parse("0b0b0b0b-0000-4000-8000-000000000001", registeredPlayerId));
+    EXPECT_EQ(stored.getBountyPlayerId(), registeredPlayerId);
+
+    RecordKey registeredKey;
+    registeredKey.set(makeTestRecordKey(TEST_RECORD_KEY_FIRST_BYTE).data());
+    MatchRecordContent expected{};
+    memcpy(expected.recordBytes, slot.recordBytes, MATCH_RECORD_SIZE);
+    ASSERT_TRUE(tagMatchRecord(&registeredKey, expected));
+    EXPECT_EQ(memcmp(slot.tag, expected.tag, RECORD_TAG_SIZE), 0)
+    << "the record is not tagged under the registered player's key";
+}
+
 // Two registered players and a shared winner: the missing key alone decides.
 TEST_F(MatchManagerTestSuite, matchThatEndsWithNoRecordKeyHeldIsNotStored) {
     NativePrefsDriver& prefs = makeNativePrefs("no-key-prefs");

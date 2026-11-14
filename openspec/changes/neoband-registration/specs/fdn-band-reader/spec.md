@@ -23,3 +23,11 @@ The FDN SHALL check its reader at boot and while a registration is pending. Whil
 #### Scenario: Reader that answers again
 - **WHEN** an absent reader answers while a registration is pending
 - **THEN** the FDN reports the reader present and accepts taps for the pending registration
+
+### Requirement: Band reader behind a driver interface
+
+The FDN SHALL reach its band reader only through a band reader driver interface in its driver framework, reporting either a latched UID or that the reader does not answer, so the registration logic does not depend on the reader model and native tests run against a fake reader.
+
+#### Scenario: Native tests use a fake reader
+- **WHEN** the FDN registration tests run natively with a fake band reader that reports a UID
+- **THEN** the FDN handles it as a tap, as from the hardware reader

@@ -130,12 +130,44 @@ struct DeviceInstance {
     }
 
     /**
-     * The `reboot` command: forget the UI's state history and remount
-     * provisioning at its waiting screen, as a restarted PDN shows it.
+     * Builds the game session and the apps over `playerProvider`, as boot does
+     * once the provider exists. Not mounted; the caller loads `apps`.
+     */
+    void buildSessionAndApps() {
+        gameSession =
+        new GameSession(player, playerProvider->getRecordKey(), pdn, symbolWirelessManager);
+        playerFetchApp = new PlayerFetchApp(pdn->getWirelessManager(),
+                                            pdn->getFirmwareUpdateManager(), playerProvider);
+        apps = makeGameplayApps(gameSession->getContext());
+        apps[StateId(PLAYER_FETCH_APP_ID)] = playerFetchApp;
+    }
+
+    /**
+     * The `reboot` command: a restart. The device gets a fresh player and player
+     * provider, with no statistics or record key, and boots into provisioning's
+     * waiting screen. The PDN, its drivers and the records in their storage stay,
+     * as flash does.
      */
     void reboot() {
         stateHistory.clear();
-        pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID), StateId(PlayerFetchStateId::AWAIT_BAND));
+        // Everything old goes before anything new is built: a channel built while
+        // the old one stands is refused its packet type, and the old session's
+        // destructor would clear the tick callback the new one installed. The
+        // running app is dismounted first, while everything it points at is alive.
+        pdn->unloadAppConfig();
+        // Apps before the session, which owns the managers their GameContext
+        // copies point at.
+        for (const std::pair<const StateId, StateMachine*>& entry : apps) {
+            delete entry.second;
+        }
+        apps.clear();
+        delete gameSession;
+        delete playerProvider;
+
+        playerProvider = new PlayerProvider();
+        player = playerProvider->getPlayer();
+        buildSessionAndApps();
+        pdn->loadAppConfig(apps, StateId(PLAYER_FETCH_APP_ID));
     }
 };
 
@@ -230,16 +262,7 @@ public:
             instance.pdn->getRemoteDeviceCoordinator());
 
         // Create the shared managers and the apps that read them
-        instance.gameSession =
-        new GameSession(instance.player, instance.playerProvider->getRecordKey(), instance.pdn,
-                        instance.symbolWirelessManager);
-
-        instance.playerFetchApp = new PlayerFetchApp(
-            instance.pdn->getWirelessManager(),
-            instance.pdn->getFirmwareUpdateManager(),
-            instance.playerProvider);
-        instance.apps = makeGameplayApps(instance.gameSession->getContext());
-        instance.apps[StateId(PLAYER_FETCH_APP_ID)] = instance.playerFetchApp;
+        instance.buildSessionAndApps();
         // Skip the entire registration flow: launch straight into the hub's first
         // state (AwakenSequence). The player is already configured with ID, role,
         // and allegiance from DeviceFactory.
