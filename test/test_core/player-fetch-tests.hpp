@@ -303,9 +303,15 @@ inline void awaitBandIgnoresUncabledOrMalformedProvision(PlayerFetchTestSuite* s
     awaitBand.onStateMounted(&suite->device);
 
     const uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
+    // Checked on the next tick, before the clock moves: a failure page that had
+    // already timed out would read the same as one never shown.
+    suite->deliverProvision(makeLookupFailedPacket(), strangerMac);
+    EXPECT_FALSE(suite->failurePageShowsAfterTick(awaitBand))
+    << "a failure from a sender not Connected on a jack showed the failure page";
+
+    // An attempt the profile started would time out onto the failure page on this tick.
     const PlayerProvisionPacket spoofed = makeProvisionPacket("Spoofed");
     suite->deliverProvision(spoofed, strangerMac);
-    suite->deliverProvision(makeLookupFailedPacket(), strangerMac);
     suite->fakeClock->advance(REGISTRATION_ATTEMPT_TIMEOUT_MS + 1);
     EXPECT_FALSE(suite->failurePageShowsAfterTick(awaitBand))
     << "a sender not Connected on a jack started an attempt";
