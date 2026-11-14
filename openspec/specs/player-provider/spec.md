@@ -1,4 +1,10 @@
-## ADDED Requirements
+# player-provider Specification
+
+## Purpose
+
+The session player provider owns the one `Player` that a PDN uses for its whole session. The provisioning app is given the provider and the gameplay apps are given the player it owns, so a registration profile applied during provisioning is the player that gameplay then uses. This capability covers that ownership, the query for whether a registration profile is present, and clearing the registration.
+
+## Requirements
 
 ### Requirement: Session player provider owns a single player instance
 The session player provider SHALL own exactly one gameplay player instance for the lifetime of the device session.
@@ -27,7 +33,7 @@ Clearing the session player provider SHALL drop the registration profile on the 
 - **AND** the player's registration profile is cleared
 
 ### Requirement: Provisioning app uses the session player provider
-The PDN provisioning app SHALL read and update registration fields (player UUID, display name, team, and affiliations) exclusively through the shared session player provider instance shared with gameplay apps.
+The PDN provisioning app SHALL read and update registration fields (player UUID, display name, team, and affiliations) exclusively through the session player provider, whose `Player` the gameplay apps also use.
 
 #### Scenario: Provisioning success path
 - **WHEN** a player profile is delivered from a Connected FDN

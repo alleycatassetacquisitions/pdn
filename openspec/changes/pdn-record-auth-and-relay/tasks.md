@@ -85,6 +85,7 @@
 - [ ] 10.5 At archive, edit the Purpose paragraphs of `crash-reporting`, `match-collection` and `fdn-apps`, which still describe cabled collection and cannot be changed by a delta
 - [ ] 10.6 Owner updates the threat model, which is kept outside this repository, with the entries under Risks in design.md
 - [ ] 10.7 Every firmware PR description of this change states that the stack must not be flashed to event devices before the server verifies tags
+- [ ] 10.8 The archived `device-player-lookup`, `quickdraw-match-upload` and `player-types` specs describe today's lookup and upload. Add deltas against them to this change, with the capabilities listed in proposal.md, as each part lands: with section 5, the record key returned beside the `Player` (`device-player-lookup` hands the caller only a `Player`, and a response with no usable key now fails the registration); with 10.3, the raw `112` record bytes, the `16`-byte tag and the sender's MAC address note added to the fields `quickdraw-match-upload` says each match is encoded with; and the clause in `player-types` that the server types change "without changing protobuf definitions", which the key field breaks
 
 ## 11. Verification
 
