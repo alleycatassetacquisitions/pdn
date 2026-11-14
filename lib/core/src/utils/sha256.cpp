@@ -1,5 +1,7 @@
 #include "utils/sha256.hpp"
 
+#include "utils/secure-wipe.hpp"
+
 #include <cstring>
 
 namespace {
@@ -80,6 +82,10 @@ void Sha256::finish(uint8_t (&digest)[SHA256_DIGEST_SIZE]) {
         digest[4 * i + 2] = static_cast<uint8_t>(state[i] >> 8);
         digest[4 * i + 3] = static_cast<uint8_t>(state[i]);
     }
+
+    // The state is the digest and the pending block the end of the message,
+    // either of which a caller may need kept secret.
+    secureWipe(this, sizeof(*this));
 }
 
 void Sha256::processBlock(const uint8_t* block) {
@@ -98,14 +104,16 @@ void Sha256::processBlock(const uint8_t* block) {
         schedule[i] = schedule[i - 16] + small0 + schedule[i - 7] + small1;
     }
 
-    uint32_t a = state[0];
-    uint32_t b = state[1];
-    uint32_t c = state[2];
-    uint32_t d = state[3];
-    uint32_t e = state[4];
-    uint32_t f = state[5];
-    uint32_t g = state[6];
-    uint32_t h = state[7];
+    uint32_t working[8];
+    std::memcpy(working, state, sizeof(working));
+    uint32_t& a = working[0];
+    uint32_t& b = working[1];
+    uint32_t& c = working[2];
+    uint32_t& d = working[3];
+    uint32_t& e = working[4];
+    uint32_t& f = working[5];
+    uint32_t& g = working[6];
+    uint32_t& h = working[7];
 
     for (size_t i = 0; i < 64; ++i) {
         const uint32_t big1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
@@ -124,12 +132,11 @@ void Sha256::processBlock(const uint8_t* block) {
         a = temp1 + temp2;
     }
 
-    state[0] += a;
-    state[1] += b;
-    state[2] += c;
-    state[3] += d;
-    state[4] += e;
-    state[5] += f;
-    state[6] += g;
-    state[7] += h;
+    for (size_t i = 0; i < 8; ++i) {
+        state[i] += working[i];
+    }
+
+    // Both are computed from the block, which a caller may need kept secret.
+    secureWipe(schedule, sizeof(schedule));
+    secureWipe(working, sizeof(working));
 }

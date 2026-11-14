@@ -39,6 +39,7 @@
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
 #include "sha256-tests.hpp"
+#include "hmac-sha256-tests.hpp"
 #include "fdn-record-store-tests.hpp"
 #include "fdn-record-uploader-tests.hpp"
 #include "fdn-beacon-tests.hpp"
@@ -1169,6 +1170,24 @@ TEST(Sha256, matchesDigestsAtThePaddingBoundaries) { sha256MatchesDigestsAtThePa
 TEST(Sha256, padsOverABufferThatWasFilledBefore) { sha256PadsOverABufferThatWasFilledBefore(); }
 
 TEST(Sha256, isTheSameHoweverTheMessageIsSplit) { sha256IsTheSameHoweverTheMessageIsSplit(); }
+
+TEST(HmacSha256, matchesTheRfc4231VectorsForShortKeys) {
+    hmacSha256MatchesTheRfc4231VectorsForShortKeys();
+}
+
+TEST(HmacSha256, matchesTheRfc4231VectorsForKeysLongerThanABlock) {
+    hmacSha256MatchesTheRfc4231VectorsForKeysLongerThanABlock();
+}
+
+TEST(HmacSha256, hashesTheKeyOnlyWhenItIsLongerThanABlock) {
+    hmacSha256HashesTheKeyOnlyWhenItIsLongerThanABlock();
+}
+
+TEST(HmacSha256, tagsAnEmptyMessage) { hmacSha256TagsAnEmptyMessage(); }
+
+TEST(HmacSha256, refusesAMissingKeyOrANullMessageThatHasALength) {
+    hmacSha256RefusesAMissingKeyOrANullMessageThatHasALength();
+}
 
 TEST(RecordCheck, ofACrashRecordIsFirstEightBytesOfSha256OverItsBytes) {
     recordCheckOfACrashRecordIsFirstEightBytesOfSha256OverItsBytes();
