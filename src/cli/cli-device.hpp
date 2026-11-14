@@ -48,8 +48,7 @@ namespace cli {
  */
 inline const char* getStateName(int stateId) {
     switch (stateId) {
-        case PlayerFetchStateId::PIN_ENTRY: return "PinEntry";
-        case PlayerFetchStateId::FETCH_USER: return "FetchUser";
+        case PlayerFetchStateId::AWAIT_BAND: return "AwaitBand";
         case PlayerFetchStateId::CHOOSE_TEAM: return "ChooseTeam";
         case PlayerFetchStateId::WELCOME: return "WelcomeMessage";
         case PlayerFetchStateId::FIRMWARE_UPDATE: return "FirmwareUpdate";
@@ -132,12 +131,11 @@ struct DeviceInstance {
 
     /**
      * The `reboot` command: forget the UI's state history and remount
-     * provisioning at its fetch state, with the device id as the PIN.
+     * provisioning at its waiting screen, as a restarted PDN shows it.
      */
     void reboot() {
         stateHistory.clear();
-        playerProvider->setRegistrationPin(deviceId.c_str());
-        pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID), StateId(PlayerFetchStateId::FETCH_USER));
+        pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID), StateId(PlayerFetchStateId::AWAIT_BAND));
     }
 };
 
@@ -225,7 +223,6 @@ public:
         instance.player->setUserID(idPtr);
         instance.player->setIsHunter(isHunter);
         instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
-        instance.playerProvider->setRegistrationPin(instance.deviceId.c_str());
 
         instance.symbolWirelessManager = new SymbolWirelessManager(
             instance.pdn->getWirelessManager(),

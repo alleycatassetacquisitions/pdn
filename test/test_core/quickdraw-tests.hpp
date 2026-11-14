@@ -317,48 +317,75 @@ inline void idleScreensShowServerTotalsPlusTheSession(IdleStateTests* suite) {
     }
 }
 
-inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+inline void waitingScreenFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    AwaitBandState awaitBand(suite->device.wirelessManager, &playerProvider);
+    awaitBand.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 1000);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS - 1))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_FALSE(awaitBand.transitionToFirmwareUpdate());
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_TRUE(awaitBand.transitionToFirmwareUpdate());
+    EXPECT_FALSE(awaitBand.transitionToChooseTeam()) << "the firmware hold is not the demo hold";
 
-    pinEntry.onStateDismounted(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    awaitBand.onStateDismounted(&suite->device);
+    EXPECT_FALSE(awaitBand.transitionToFirmwareUpdate());
 }
 
 // The button's pressed time counts from press-down, so a hold that began before the
 // mount, even one not yet a long press then, is longer than the screen has been up.
-inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+inline void waitingScreenFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    AwaitBandState awaitBand(suite->device.wirelessManager, &playerProvider);
+    awaitBand.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS - 500);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_FALSE(awaitBand.transitionToFirmwareUpdate());
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 2000);
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
-    pinEntry.onStateDismounted(&suite->device);
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_TRUE(awaitBand.transitionToFirmwareUpdate());
+    awaitBand.onStateDismounted(&suite->device);
 }
 
-// The pairing screen takes firmware updates for as long as it is up.
-inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+// A primary hold begun on this screen enters ChooseTeam.
+inline void waitingScreenDemoHoldEntersChooseTeam(IdleStateTests* suite) {
+    PlayerProvider playerProvider;
+    AwaitBandState awaitBand(suite->device.wirelessManager, &playerProvider);
+    awaitBand.onStateMounted(&suite->device);
+    suite->fakeClock->advance(PLAYER_FETCH_DEMO_HOLD_MS - 500);
+
+    EXPECT_CALL(*suite->device.mockPrimaryButton, longPressedMillis())
+    .WillOnce(Return(PLAYER_FETCH_DEMO_HOLD_MS))
+    .WillOnce(Return(PLAYER_FETCH_DEMO_HOLD_MS - 1))
+    .WillOnce(Return(PLAYER_FETCH_DEMO_HOLD_MS));
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_FALSE(awaitBand.transitionToChooseTeam()) << "a hold carried in from the last screen";
+    suite->fakeClock->advance(1000);
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_FALSE(awaitBand.transitionToChooseTeam());
+    awaitBand.onStateLoop(&suite->device);
+    EXPECT_TRUE(awaitBand.transitionToChooseTeam());
+    EXPECT_FALSE(awaitBand.transitionToFirmwareUpdate())
+    << "the demo hold is not the firmware hold";
+
+    awaitBand.onStateDismounted(&suite->device);
+    EXPECT_FALSE(awaitBand.transitionToChooseTeam());
+}
+
+// The waiting screen takes firmware updates for as long as it is up.
+inline void waitingScreenTakesUpdatesWhileUp(IdleStateTests* suite) {
+    // Constructing the waiting state claims its packet type, so that happens before
+    // the firmware handler is watched for.
+    PlayerProvider playerProvider;
+    AwaitBandState awaitBand(suite->device.wirelessManager, &playerProvider);
     PeerCommsInterface::PacketCallback onFrame;
     EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
         .WillOnce(SaveArg<1>(&onFrame));
@@ -373,27 +400,24 @@ inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
 
-    PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    awaitBand.onStateMounted(&suite->device);
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 1);
 
-    pinEntry.onStateDismounted(&suite->device);
+    awaitBand.onStateDismounted(&suite->device);
     EXPECT_EQ(store.abortCalls, 1) << "leaving the screen drops the receive";
     suite->device.firmwareUpdateManager = nullptr;
 }
 
-// The pairing screen leaves the radio to whoever switched it to WiFi.
-inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+// The waiting screen leaves the radio to whoever switched it to WiFi.
+inline void waitingScreenLeavesTheRadioAlone(IdleStateTests* suite) {
     suite->device.wirelessManager->queueHttpRequest(
     HttpRequest("/health_check", "GET", "", "", nullptr, nullptr));
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    AwaitBandState awaitBand(suite->device.wirelessManager, &playerProvider);
+    awaitBand.onStateMounted(&suite->device);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
-    pinEntry.onStateDismounted(&suite->device);
+    awaitBand.onStateDismounted(&suite->device);
 }
 
 inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {

@@ -69,8 +69,8 @@ public:
     /** Soon to be deprecated */
     void setUserID(char* newId);
 
-    /** Reseed libc `rand` from a decimal string (e.g. registration PIN) and re-roll the symbol. */
-    void applyRngSeedFromDecimalString(const char* decimalString);
+    /** Reseed libc `rand` from the registered server player id and re-roll the symbol. */
+    void applyRngSeedFromServerPlayerId();
 
     std::string getUserID() const;
 

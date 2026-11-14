@@ -8,7 +8,7 @@
 
 class FirmwareUpdateManager;
 
-/** Registration app: PIN entry, cabled-FDN lookup, welcome, and the demo role picker. */
+/** Registration app: waiting for a cabled FDN's band tap, welcome, and the demo role picker. */
 class PlayerFetchApp : public StateMachine {
 public:
     /** @p firmwareUpdateManager may be null to skip the hold-to-update state. */
@@ -19,7 +19,7 @@ public:
     void populateStateMap() override;
 
 private:
-    PdnProvisioningClient provisioningClient;
+    WirelessManager* wirelessManager = nullptr;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
     PlayerProvider* playerProvider = nullptr;
 };

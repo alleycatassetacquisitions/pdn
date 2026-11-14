@@ -4,9 +4,9 @@
 #include "state/state.hpp"
 #include "device/wireless-manager.hpp"
 #include "utils/simple-timer.hpp"
-#include "game/quickdraw-resources.hpp"
 #include "game/player-provider.hpp"
-#include "apps/player-fetch/pdn-provisioning-client.hpp"
+#include "game/player-types.hpp"
+#include "wireless/reliable-channel.hpp"
 
 #include <array>
 #include <optional>
@@ -14,103 +14,84 @@
 class FirmwareUpdateManager;
 
 namespace PlayerFetchStateId {
-constexpr int PIN_ENTRY = 0;
-constexpr int FETCH_USER = 1;
+constexpr int AWAIT_BAND = 0;
 constexpr int CHOOSE_TEAM = 2;
 constexpr int WELCOME = 4;
 constexpr int FIRMWARE_UPDATE = 31;
 }  // namespace PlayerFetchStateId
 
-constexpr const char DEMO_PIN[] = "0000";
 constexpr unsigned long PLAYER_FETCH_FIRMWARE_HOLD_MS = 5000;
-constexpr int USER_DATA_FETCH_TIMEOUT_MS = PROVISION_REPLY_WAIT_MS;
-constexpr int FETCH_FAILURE_PAGE_TIMEOUT_MS = 3000;
+constexpr unsigned long PLAYER_FETCH_DEMO_HOLD_MS = 5000;
+// Runs from the first piece (record key or profile) accepted; the wait for the tap has no limit.
+constexpr unsigned long REGISTRATION_ATTEMPT_TIMEOUT_MS = 10000;
+constexpr int REGISTRATION_FAILURE_PAGE_TIMEOUT_MS = 3000;
 constexpr int WELCOME_MESSAGE_TIMEOUT_MS = 5000;
 
-class PinEntryState : public TypedState<PDN> {
-public:
-    /** Pairing-code entry for PlayerFetch. */
-    explicit PinEntryState(PlayerProvider* playerProvider);
-
-    /** @copydoc TypedState::onStateMounted */
-    void onStateMounted(PDN* pdn) override;
-    /** @copydoc TypedState::onStateLoop */
-    void onStateLoop(PDN* pdn) override;
-    /** @copydoc TypedState::onStateDismounted */
-    void onStateDismounted(PDN* pdn) override;
-    /** @return true when a non-demo PIN was entered and the FDN lookup should be requested. */
-    bool transitionToFetchUser() const;
-    /** @return true when PIN @ref DEMO_PIN was entered. */
-    bool transitionToChooseTeam() const;
-    /** @return true when secondary-button OTA hold completed on pin entry. */
-    bool transitionToFirmwareUpdate() const;
-
-private:
-    bool transitionToFetchUserState = false;
-    bool transitionToChooseTeamState = false;
-    bool transitionToFirmwareUpdateState = false;
-    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
-    SimpleTimer sinceMount;
-    bool shouldRender = false;
-    PlayerProvider* playerProvider = nullptr;
-    int currentDigit = 0;
-    int currentDigitIndex = 0;
-    static constexpr int DIGIT_COUNT = 4;
-    int inputId[DIGIT_COUNT] = {0, 0, 0, 0};
-};
-
-/** The FDN a registration attempt sent its PIN to, and the jack it was Connected on. */
-struct RequestedFdn {
+/** The FDN a registration attempt is bound to, and the jack it is Connected on. */
+struct RegistrationFdn {
     std::array<uint8_t, 6> mac{};
     SerialIdentifier jack = SerialIdentifier::INPUT_JACK;
 };
 
-class FetchUserState : public TypedState<PDN> {
+class AwaitBandState : public TypedState<PDN> {
 public:
-    /** Asks the cabled FDN to look up the entered PIN, then waits for its record key (jack) and
-     * PlayerProvisionPacket (radio). */
-    FetchUserState(PdnProvisioningClient* provisioningClient, PlayerProvider* playerProvider);
+    /**
+     * Waiting screen of an unprovisioned PDN: asks to be cabled to an FDN, then for
+     * a band tap there, and takes the record key (jack) and profile (radio) that FDN
+     * pushes, showing a failure page for REGISTRATION_FAILURE_PAGE_TIMEOUT_MS when an
+     * attempt fails. Sends nothing to ask for them. Constructing claims the
+     * kPlayerProvision packet type on @p wirelessManager.
+     */
+    AwaitBandState(WirelessManager* wirelessManager, PlayerProvider* playerProvider);
 
-    /** @return true when the fetched profile was stored and welcome should mount. */
-    bool transitionToWelcome() const;
-    /** @return true when fetch failed and the asset-not-found page finished. */
-    bool transitionToPinEntry() const;
     /** @copydoc TypedState::onStateMounted */
     void onStateMounted(PDN* pdn) override;
     /** @copydoc TypedState::onStateLoop */
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
+    /** @return true when the delivered profile was applied and welcome should mount. */
+    bool transitionToWelcome() const;
+    /** @return true when the primary-button demo hold completed. */
+    bool transitionToChooseTeam() const;
+    /** @return true when the secondary-button firmware hold completed. */
+    bool transitionToFirmwareUpdate() const;
 
 private:
-    void requestProvisionFromCabledFdn();
     void onProvisionPacket(const uint8_t* fromMac, const PlayerProvisionPacket& pkt);
     void onApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload);
     void onJackChange(SerialIdentifier jack, bool connected);
+    bool isAttemptOpen() const;
+    bool findFdnJack(const uint8_t* fdnMac, SerialIdentifier& jack) const;
+    void beginAttempt(const uint8_t* fdnMac, SerialIdentifier jack);
     void completeRegistrationIfReady();
-    bool isAttemptLive() const;
-    void endAttemptWithoutProfile();
+    void endAttempt();
     void failAttempt();
-    void showLoadingGlyphs(PDN* pdn);
-    void showAssetNotFoundPage(PDN* pdn);
-    void beginFailurePage(PDN* pdn);
+    void renderFailurePage(PDN* pdn);
+    void dismissFailurePage(PDN* pdn);
+    bool isHoldComplete(unsigned long heldMs, unsigned long holdMs);
+    void renderWaitingScreen(PDN* pdn) const;
 
-    PdnProvisioningClient* provisioningClient = nullptr;
+    ReliableChannel<PlayerProvisionPacket> provisionChannel;
     PlayerProvider* playerProvider = nullptr;
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
-    std::optional<RequestedFdn> requestedFdn;
+    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
+    std::optional<RegistrationFdn> attemptFdn;
     std::optional<PlayerProvisionPacket> heldProfile;
-    SimpleTimer fetchTimer;
+    SimpleTimer attemptTimer;
+    SimpleTimer sinceMount;
     SimpleTimer failurePageTimer;
+    bool screenShowsTapBand = false;
+    bool failurePageIsShowing = false;
+    bool failurePageIsDirty = false;
     bool transitionToWelcomeState = false;
-    bool transitionToPinEntryState = false;
-    bool showingFailurePage = false;
-    bool failurePagePending = false;
+    bool transitionToChooseTeamState = false;
+    bool transitionToFirmwareUpdateState = false;
 };
 
 class ChooseTeamState : public TypedState<PDN> {
 public:
-    /** Demo Hunter/Bounty picker for @ref DEMO_PIN. */
+    /** Demo Hunter/Bounty picker, reached by the demo hold on the waiting screen. */
     explicit ChooseTeamState(PlayerProvider* playerProvider);
 
     /** @copydoc TypedState::onStateMounted */

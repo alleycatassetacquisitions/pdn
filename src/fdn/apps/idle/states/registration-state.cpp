@@ -4,6 +4,33 @@
 
 #define TAG "REGISTRATION"
 
+namespace {
+
+// The primary jack (Serial2) is JACK 1, the secondary JACK 2, as labelled on the FDN.
+const char* getJackLabel(SerialIdentifier jack) {
+    return jack == SerialIdentifier::INPUT_JACK_SECONDARY ? "JACK 2" : "JACK 1";
+}
+
+struct ScreenLines {
+    const char* top;
+    const char* bottom;
+};
+
+ScreenLines getResultLines(ProvisionLookupResult result, const char* playerName,
+                           SerialIdentifier jack) {
+    switch (result) {
+        case ProvisionLookupResult::PROFILE_DELIVERED: return {"WELCOME", playerName};
+        case ProvisionLookupResult::NO_PLAYER: return {"SEE DESK", getJackLabel(jack)};
+        case ProvisionLookupResult::SERVER_UNREACHABLE: return {"SERVER", "UNREACHABLE"};
+        case ProvisionLookupResult::SERVER_NOT_TRUSTED: return {"SERVER", "NOT TRUSTED"};
+        case ProvisionLookupResult::KEY_NOT_ISSUED: return {"UNABLE TO", "ISSUE KEY"};
+        case ProvisionLookupResult::LOOKUP_FAILED: break;
+    }
+    return {"UNABLE TO", "LOCATE ASSET"};
+}
+
+}  // namespace
+
 RegistrationState::RegistrationState(FdnProvisioningManager* fdnProvisioningManager,
                                      RemoteDeviceCoordinator* remoteDeviceCoordinator)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::REGISTRATION)
@@ -11,37 +38,36 @@ RegistrationState::RegistrationState(FdnProvisioningManager* fdnProvisioningMana
 
 RegistrationState::~RegistrationState() {
     fdnProvisioningManager->setOnLookupDone(nullptr);
-    fdnProvisioningManager->setLookupDuringPlayAllowed(false);
+    fdnProvisioningManager->setRegistrationScreenShown(false);
     fdnProvisioningManager = nullptr;
 }
 
 void RegistrationState::onStateMounted(FDN* fdn) {
-    LOG_I(TAG, "Mounted — unprovisioned PDN cabled");
-    fdnProvisioningManager->setLookupDuringPlayAllowed(true);
-    fdnProvisioningManager->setOnLookupDone([this](ProvisionLookupResult result, const char* name) {
-        if (result == ProvisionLookupResult::PROFILE_DELIVERED) {
-            screen = Screen::WELCOME;
-        } else if (result == ProvisionLookupResult::KEY_NOT_ISSUED) {
-            screen = Screen::KEY_NOT_ISSUED;
-        } else if (result == ProvisionLookupResult::SERVER_NOT_TRUSTED) {
-            screen = Screen::SERVER_NOT_TRUSTED;
-        } else {
-            screen = Screen::FAILED;
-        }
+    LOG_I(TAG, "Mounted — registration queued");
+    fdnProvisioningManager->setRegistrationScreenShown(true);
+    fdnProvisioningManager->setOnLookupDone(
+    [this](ProvisionLookupResult result, SerialIdentifier jack, const char* name) {
+        screen = Screen::RESULT;
+        lookupResult = result;
+        screenJack = jack;
         playerName = name != nullptr ? name : "";
-        resultTimer.setTimer(RESULT_DISPLAY_MS);
         displayIsDirty = true;
     });
+    showPendingRegistration();
     render(fdn);
+    displayIsDirty = false;
 }
 
 void RegistrationState::onStateLoop(FDN* fdn) {
-    // A second PDN's lookup can start while the first PDN's result is still up;
-    // moving to LOOKING_UP stops the result timer from dismounting on top of it.
-    if (screen != Screen::LOOKING_UP && fdnProvisioningManager->isLookupInFlight()) {
-        screen = Screen::LOOKING_UP;
-        resultTimer.invalidate();
-        displayIsDirty = true;
+    if (fdnProvisioningManager->isLookupInFlight()) {
+        if (screen != Screen::LOOKING_UP) {
+            screen = Screen::LOOKING_UP;
+            displayIsDirty = true;
+        }
+    } else {
+        // Nothing is pending while the manager holds a lookup's result, so the
+        // result stays up for its full time before the next prompt replaces it.
+        showPendingRegistration();
     }
     if (displayIsDirty) {
         render(fdn);
@@ -52,49 +78,52 @@ void RegistrationState::onStateLoop(FDN* fdn) {
 void RegistrationState::onStateDismounted(FDN* fdn) {
     (void)fdn;
     fdnProvisioningManager->setOnLookupDone(nullptr);
-    fdnProvisioningManager->setLookupDuringPlayAllowed(false);
+    fdnProvisioningManager->setRegistrationScreenShown(false);
     // On the unplug exit a lookup can still be in flight; ending it here returns
     // the radio to ESP-NOW instead of waiting out the deadline.
     fdnProvisioningManager->cancelLookup();
-    resultTimer.invalidate();
     displayIsDirty = false;
     screen = Screen::WAITING;
+    lookupResult = ProvisionLookupResult::LOOKUP_FAILED;
+    screenJack = SerialIdentifier::INPUT_JACK;
     playerName.clear();
 }
 
 bool RegistrationState::transitionToIdle() {
     if (!isConnected()) return true;
     if (fdnProvisioningManager->isLookupInFlight()) return false;
-    if (screen == Screen::WELCOME || screen == Screen::FAILED || screen == Screen::KEY_NOT_ISSUED ||
-        screen == Screen::SERVER_NOT_TRUSTED) {
-        return resultTimer.expired();
-    }
+    if (screen == Screen::RESULT && fdnProvisioningManager->isHoldingLookupResult()) return false;
     return !fdnProvisioningManager->hasUnprovisionedPdnCabled();
 }
 
+// The reader is checked on every loop while a registration is pending, so a
+// reader that comes back turns NO READER into TAP BAND without a remount.
+void RegistrationState::showPendingRegistration() {
+    if (!fdnProvisioningManager->hasPendingRegistration()) return;
+    const Screen pendingScreen =
+    fdnProvisioningManager->isBandReaderResponding() ? Screen::TAP_BAND : Screen::NO_READER;
+    const SerialIdentifier pendingJack = fdnProvisioningManager->getPendingJack();
+    if (screen == pendingScreen && screenJack == pendingJack) return;
+    screen = pendingScreen;
+    screenJack = pendingJack;
+    displayIsDirty = true;
+}
+
 void RegistrationState::render(FDN* fdn) {
-    const char* top = "REGISTER";
-    const char* bottom = "ENTER CODE";
-    if (screen == Screen::LOOKING_UP) {
-        top = "LOOKING";
-        bottom = "UP";
-    } else if (screen == Screen::WELCOME) {
-        top = "WELCOME";
-        bottom = playerName.c_str();
-    } else if (screen == Screen::FAILED) {
-        top = "UNABLE TO";
-        bottom = "LOCATE ASSET";
-    } else if (screen == Screen::KEY_NOT_ISSUED) {
-        top = "UNABLE TO";
-        bottom = "ISSUE KEY";
-    } else if (screen == Screen::SERVER_NOT_TRUSTED) {
-        top = "SERVER";
-        bottom = "NOT TRUSTED";
+    ScreenLines lines = {"TAP BAND", ""};
+    if (screen == Screen::TAP_BAND) {
+        lines.bottom = getJackLabel(screenJack);
+    } else if (screen == Screen::NO_READER) {
+        lines = {"NO READER", getJackLabel(screenJack)};
+    } else if (screen == Screen::LOOKING_UP) {
+        lines = {"LOOKING", "UP"};
+    } else if (screen == Screen::RESULT) {
+        lines = getResultLines(lookupResult, playerName.c_str(), screenJack);
     }
     fdn->getDisplay()
     ->invalidateScreen()
     ->setGlyphMode(FontMode::TEXT)
-    ->drawText(top, centeredTextX(top), 28)
-    ->drawText(bottom, centeredTextX(bottom), 44)
+    ->drawText(lines.top, centeredTextX(lines.top), 28)
+    ->drawText(lines.bottom, centeredTextX(lines.bottom), 44)
     ->render();
 }

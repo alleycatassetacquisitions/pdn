@@ -11,6 +11,7 @@
 #include "platform-clock.hpp"
 #include "storage-interface.hpp"
 #include "firmware-store-interface.hpp"
+#include "band-reader.hpp"
 
 enum class DriverType {
     SCREEN = 0,
@@ -24,6 +25,7 @@ enum class DriverType {
     LOGGER = 8,
     STORAGE = 9,
     FIRMWARE_STORE = 10,
+    BAND_READER = 11,
 };
 
 class DriverInterface {
@@ -120,4 +122,15 @@ public:
     ~FirmwareStoreDriverInterface() override = default;
     /** The FirmwareStoreInterface side, for Device::getPeripheral. */
     void* abstractSelf() override { return static_cast<FirmwareStoreInterface*>(this); }
+};
+
+class BandReaderDriverInterface : public DriverInterface, public BandReader {
+public:
+    /** Registers under `name`, as every driver does. */
+    explicit BandReaderDriverInterface(const std::string& name)
+        : DriverInterface(DriverType::BAND_READER, name) {}
+    /** Lets a derived reader clean up through this base pointer. */
+    ~BandReaderDriverInterface() override = default;
+    /** The BandReader side, for Device::getPeripheral. */
+    void* abstractSelf() override { return static_cast<BandReader*>(this); }
 };

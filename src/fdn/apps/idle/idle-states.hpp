@@ -82,35 +82,56 @@ private:
 // ---------------------------------------------------------------------------
 class RegistrationState : public FDNConnectState {
 public:
-    /** Status screen while an unprovisioned PDN is cabled: waiting, lookup, result. */
+    /**
+     * Status screen while a registration is queued: the tap prompt naming the
+     * pending jack, the lookup, and its result.
+     */
     RegistrationState(FdnProvisioningManager* fdnProvisioningManager,
                       RemoteDeviceCoordinator* remoteDeviceCoordinator);
     /** Clears the lookup listener and drops the manager pointer. */
     ~RegistrationState();
 
-    /** Shows the waiting screen and listens for the lookup result. */
+    /** Shows the pending registration, lets registrations be pending, and listens for results. */
     void onStateMounted(FDN* fdn) override;
-    /** Redraws when the lookup starts or finishes. */
+    /**
+     * Follows the pending jack, the reader and the lookup, and redraws on a
+     * change. A lookup's result stays up while the manager holds it.
+     */
     void onStateLoop(FDN* fdn) override;
-    /** Drops the lookup listener. */
+    /**
+     * Drops the lookup listener, ends pending registrations (the queue waits),
+     * and cancels a lookup still in flight.
+     */
     void onStateDismounted(FDN* fdn) override;
 
-    /** @return true when no jack is connected, once a result has been shown, or once no
-     * unprovisioned PDN is cabled. */
+    /**
+     * @return true when no jack is connected, or when no lookup runs, no result
+     * is on screen and no unprovisioned PDN is cabled.
+     */
     bool transitionToIdle();
 
 private:
-    enum class Screen { WAITING, LOOKING_UP, WELCOME, FAILED, KEY_NOT_ISSUED, SERVER_NOT_TRUSTED };
+    enum class Screen {
+        // Mounted before the first pending registration was seen.
+        WAITING,
+        TAP_BAND,
+        NO_READER,
+        LOOKING_UP,
+        // How the last lookup ended, drawn from lookupResult.
+        RESULT,
+    };
 
+    void showPendingRegistration();
     void render(FDN* fdn);
 
     FdnProvisioningManager* fdnProvisioningManager;
     Screen screen = Screen::WAITING;
+    // The jack the screen names: the pending one, or the one a result is for.
+    SerialIdentifier screenJack = SerialIdentifier::INPUT_JACK;
+    // Meaningful only on the RESULT screen.
+    ProvisionLookupResult lookupResult = ProvisionLookupResult::LOOKUP_FAILED;
     bool displayIsDirty = false;
     std::string playerName;
-    SimpleTimer resultTimer;
-
-    static constexpr int RESULT_DISPLAY_MS = 3000;
 };
 
 // ---------------------------------------------------------------------------

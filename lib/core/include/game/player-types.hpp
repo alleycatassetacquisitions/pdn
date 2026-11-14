@@ -41,23 +41,13 @@ struct PlayerTotals {
     bool isConsistent() const { return wins <= matchesPlayed; }
 };
 
-/** PDN-to-FDN over PktType::kPlayerProvisionRequest: look up this PIN for the sender. */
-struct PlayerProvisionRequestPacket {
-    uint8_t seqId;
-    char pin[5];
-} __attribute__((packed));
-
 enum class ProvisionStatus : uint8_t {
     PROFILE_DELIVERED = 0,
     LOOKUP_FAILED = 1,
 };
 
-// The FDN gives up on the server before the PDN gives up on the FDN, so a
-// request sent as the PDN starts waiting is answered before it stops.
+// How long a band lookup may wait for Wi-Fi and the server before the FDN gives up.
 constexpr unsigned long PROVISION_LOOKUP_TIMEOUT_MS = 8000;
-constexpr unsigned long PROVISION_REPLY_WAIT_MS = 10000;
-static_assert(PROVISION_LOOKUP_TIMEOUT_MS < PROVISION_REPLY_WAIT_MS,
-              "the PDN would stop waiting before the FDN could answer");
 
 struct WireAffiliation {
     uint8_t categoryId[UUIDBytes::SIZE];
@@ -67,14 +57,13 @@ struct WireAffiliation {
 } __attribute__((packed));
 
 /**
- * FDN-to-PDN registration over PktType::kPlayerProvision. pin echoes the request so
- * a late reply to an earlier PIN is not applied. The three totals are the player's
+ * FDN-to-PDN registration over PktType::kPlayerProvision, sent to the PDN on the
+ * jack whose registration the tap answered. The three totals are the player's
  * PlayerTotals, all zero when the lookup yielded none.
  */
 struct PlayerProvisionPacket {
     uint8_t seqId;
     uint8_t status;
-    char pin[5];
     uint8_t playerId[UUIDBytes::SIZE];
     char playerName[PlayerLimits::NAME_BUFFER_SIZE];
     uint8_t teamId[UUIDBytes::SIZE];
@@ -85,4 +74,4 @@ struct PlayerProvisionPacket {
     uint32_t totalWins;
     uint32_t totalAverageDrawTimeMs;
 } __attribute__((packed));
-static_assert(sizeof(PlayerProvisionPacket) == 596, "PlayerProvisionPacket wire size");
+static_assert(sizeof(PlayerProvisionPacket) == 591, "PlayerProvisionPacket wire size");

@@ -15,6 +15,7 @@
 #include "crash-codec-tests.hpp"
 #include "device/crash/crash-record.hpp"
 #include "device-mock.hpp"
+#include "fake-band-reader.hpp"
 #include "fdn-record-store-tests.hpp"
 #include "game/player-types.hpp"
 #include "quickdraw-match-codec-tests.hpp"
@@ -670,18 +671,26 @@ inline void fdnRestoresTheRadioWhenARequestCannotBeQueued(FdnRecordUploaderTests
     EXPECT_EQ(suite->storedCrashCount(), 1u);
 }
 
-// ---- Wi-Fi shared with a PIN lookup: one owner at a time ----
+// ---- Wi-Fi shared with a band lookup: one owner at a time ----
 
-/** Cables a PDN to @p rdc and hands the FDN its provision request, which starts a lookup. */
-inline void startPinLookup(FdnRecordUploaderTests* suite, FakeRemoteDeviceCoordinator& rdc) {
+/**
+ * Cables an unregistered PDN to @p rdc, lets @p fdnProvisioningManager queue it
+ * with the registration screen shown, and taps a band at @p reader, which starts
+ * a lookup.
+ */
+inline void startBandLookup(FdnRecordUploaderTests* suite, FakeRemoteDeviceCoordinator& rdc,
+                            FakeBandReader& reader,
+                            FdnProvisioningManager& fdnProvisioningManager) {
     rdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
     rdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::PDN);
     rdc.setPeerMac(SerialIdentifier::INPUT_JACK, suite->pdnMac);
-    PlayerProvisionRequestPacket request{};
-    strncpy(request.pin, "1234", sizeof(request.pin) - 1);
-    suite->fdnDevice.mockPeerComms->triggerPacketCallback(
-    suite->pdnMac, PktType::kPlayerProvisionRequest, reinterpret_cast<const uint8_t*>(&request),
-    sizeof(request));
+    PlayerProfile unregistered{};
+    unregistered.userId = 0xFFFF;
+    rdc.setPeerProfile(SerialIdentifier::INPUT_JACK, unregistered);
+    fdnProvisioningManager.setRegistrationScreenShown(true);
+    fdnProvisioningManager.sync();
+    reader.placeBand({0x04, 0xA2, 0x1B, 0x9C});
+    fdnProvisioningManager.sync();
 }
 
 // Leaving Wi-Fi fails every queued request, so a lookup must not start one
@@ -696,12 +705,13 @@ fdnLookupArrivingMidCycleStartsWhenTheCycleEndsAndItsReplyIsSent(FdnRecordUpload
         return 1;
     });
     FakeRemoteDeviceCoordinator rdc;
-    FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc);
+    FakeBandReader reader;
+    FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc, &reader);
     suite->ownCrashSource.newestNumber = 1;
     ASSERT_TRUE(suite->fdnRecordUploader->uploadAllRecords());
     ASSERT_EQ(suite->httpRequests.size(), 1u);
 
-    startPinLookup(suite, rdc);
+    startBandLookup(suite, rdc, reader, fdnProvisioningManager);
     fdnProvisioningManager.sync();
     EXPECT_TRUE(fdnProvisioningManager.isLookupInFlight());
     EXPECT_EQ(suite->httpRequests.size(), 1u) << "the lookup queued a request under the cycle";
@@ -727,8 +737,9 @@ fdnLookupArrivingMidCycleStartsWhenTheCycleEndsAndItsReplyIsSent(FdnRecordUpload
 inline void
 fdnCycleDoesNotStartWhileALookupIsInFlightAndStartsAtTheNextCheck(FdnRecordUploaderTests* suite) {
     FakeRemoteDeviceCoordinator rdc;
-    FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc);
-    startPinLookup(suite, rdc);
+    FakeBandReader reader;
+    FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc, &reader);
+    startBandLookup(suite, rdc, reader, fdnProvisioningManager);
     ASSERT_EQ(suite->httpRequests.size(), 1u);
     ASSERT_TRUE(fdnProvisioningManager.isLookupInFlight());
 
@@ -752,8 +763,9 @@ fdnCycleDoesNotStartWhileALookupIsInFlightAndStartsAtTheNextCheck(FdnRecordUploa
 
 inline void fdnLookupAloneLeavesWifiWhenItEnds(FdnRecordUploaderTests* suite) {
     FakeRemoteDeviceCoordinator rdc;
-    FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc);
-    startPinLookup(suite, rdc);
+    FakeBandReader reader;
+    FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc, &reader);
+    startBandLookup(suite, rdc, reader, fdnProvisioningManager);
     ASSERT_EQ(suite->httpRequests.size(), 1u);
     EXPECT_FALSE(suite->radioIsPeerToPeer());
 
@@ -761,7 +773,8 @@ inline void fdnLookupAloneLeavesWifiWhenItEnds(FdnRecordUploaderTests* suite) {
     EXPECT_TRUE(suite->radioIsPeerToPeer()) << "a cancelled lookup must give Wi-Fi up at once";
     EXPECT_FALSE(fdnProvisioningManager.isLookupInFlight());
 
-    startPinLookup(suite, rdc);
+    suite->fakeClock->advance(FdnProvisioningManager::LOOKUP_RESULT_HOLD_MS + 1);
+    startBandLookup(suite, rdc, reader, fdnProvisioningManager);
     ASSERT_EQ(suite->httpRequests.size(), 2u) << "the cancelled lookup kept Wi-Fi from the next";
     suite->answerHttpError(1, 404);
     EXPECT_TRUE(suite->radioIsPeerToPeer()) << "a finished lookup stayed on Wi-Fi";
@@ -771,11 +784,12 @@ inline void fdnLookupAloneLeavesWifiWhenItEnds(FdnRecordUploaderTests* suite) {
 // nothing of its to fail.
 inline void fdnUploadDeadlineLeavesAWaitingLookupToStart(FdnRecordUploaderTests* suite) {
     FakeRemoteDeviceCoordinator rdc;
-    FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc);
+    FakeBandReader reader;
+    FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc, &reader);
     suite->ownCrashSource.newestNumber = 1;
     ASSERT_TRUE(suite->fdnRecordUploader->uploadAllRecords());
     suite->fakeClock->advance(10000);
-    startPinLookup(suite, rdc);
+    startBandLookup(suite, rdc, reader, fdnProvisioningManager);
 
     suite->fakeClock->advance(5001);
     suite->fdnRecordUploader->sync();
@@ -792,14 +806,16 @@ inline void fdnUploadDeadlineLeavesAWaitingLookupToStart(FdnRecordUploaderTests*
 inline void fdnLookupThatNeverGetsWifiFailsAtItsOwnTimeLimit(FdnRecordUploaderTests* suite) {
     std::vector<std::string> results;
     FakeRemoteDeviceCoordinator rdc;
-    FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc);
+    FakeBandReader reader;
+    FdnProvisioningManager fdnProvisioningManager(suite->fdnDevice.wirelessManager, &rdc, &reader);
     fdnProvisioningManager.setOnLookupDone(
-    [&results](ProvisionLookupResult result, const char* name) {
-        results.push_back(result == ProvisionLookupResult::LOOKUP_FAILED ? "<failed>" : name);
+    [&results](ProvisionLookupResult result, SerialIdentifier, const char* name) {
+        results.push_back(result == ProvisionLookupResult::SERVER_UNREACHABLE ? "<unreachable>"
+                                                                              : name);
     });
     suite->ownCrashSource.newestNumber = 1;
     ASSERT_TRUE(suite->fdnRecordUploader->uploadAllRecords());
-    startPinLookup(suite, rdc);
+    startBandLookup(suite, rdc, reader, fdnProvisioningManager);
 
     suite->fakeClock->advance(PROVISION_LOOKUP_TIMEOUT_MS);
     fdnProvisioningManager.sync();
@@ -807,7 +823,7 @@ inline void fdnLookupThatNeverGetsWifiFailsAtItsOwnTimeLimit(FdnRecordUploaderTe
     suite->fakeClock->advance(1);
     fdnProvisioningManager.sync();
     EXPECT_FALSE(fdnProvisioningManager.isLookupInFlight());
-    EXPECT_EQ(results, (std::vector<std::string>{"<failed>"}));
+    EXPECT_EQ(results, (std::vector<std::string>{"<unreachable>"}));
     EXPECT_EQ(suite->httpRequests.size(), 1u);
     EXPECT_TRUE(suite->hasUnansweredRequest())
     << "the lookup's time limit failed the cycle's upload";

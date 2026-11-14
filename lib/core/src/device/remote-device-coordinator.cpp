@@ -221,13 +221,6 @@ const uint8_t* RemoteDeviceCoordinator::getConnectedPeerMac(DeviceType type) {
     return nullptr;
 }
 
-bool RemoteDeviceCoordinator::isConnectedPeer(DeviceType type, const uint8_t* mac) {
-    for (SerialIdentifier jack : HELLO_JACKS) {
-        if (isConnectedPeer(jack, type, mac)) return true;
-    }
-    return false;
-}
-
 bool RemoteDeviceCoordinator::isConnectedPeer(SerialIdentifier jack, DeviceType type,
                                               const uint8_t* mac) const {
     if (!mac) return false;

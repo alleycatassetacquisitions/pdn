@@ -33,35 +33,33 @@ public:
     // Prevent copying
     MockHttpServer(const MockHttpServer&) = delete;
     MockHttpServer& operator=(const MockHttpServer&) = delete;
-    
+
     /**
-     * Configure a player's data for mock responses.
-     * Call this when creating a device to set up its player data.
+     * Configure the player the by-band route answers for @p bandUid, the
+     * upper-case hex path segment of the lookup.
      */
-    void configurePlayer(const std::string& playerId, const MockPlayerConfig& config) {
-        playerConfigs_[playerId] = config;
+    void configurePlayer(const std::string& bandUid, const MockPlayerConfig& config) {
+        playerConfigs[bandUid] = config;
     }
-    
+
     /**
-     * Remove a player's configuration.
+     * Remove the player configured for @p bandUid.
      */
-    void removePlayer(const std::string& playerId) {
-        playerConfigs_.erase(playerId);
-    }
-    
+    void removePlayer(const std::string& bandUid) { playerConfigs.erase(bandUid); }
+
     /**
      * Process an HTTP request and return response.
-     * 
+     *
      * @param method HTTP method (GET, POST, PUT, DELETE)
-     * @param path Request path (e.g., "/device/players/by-pin/0010")
+     * @param path Request path (e.g., "/device/players/by-band/04A21B9C")
      * @param body Request body (for POST/PUT)
      * @param responseBody Output: response body
      * @return HTTP status code (200, 404, 500, etc.)
      */
     int handleRequest(const std::string& method, const std::string& path, const std::string& body,
                       std::string& responseBody) {
-        if (method == "GET" && path.find("/device/players/by-pin/") == 0) {
-            return handleGetDevicePlayerByPin(path, responseBody);
+        if (method == "GET" && path.find(DEVICE_PLAYER_BY_BAND_PREFIX) == 0) {
+            return handleGetDevicePlayerByBand(path, responseBody);
         }
         if (method == "POST" && path == "/device-logs") {
             return handlePostDeviceLogs(body, responseBody);
@@ -84,18 +82,15 @@ public:
 private:
     MockHttpServer() = default;
 
-    std::map<std::string, MockPlayerConfig> playerConfigs_;
+    static constexpr const char DEVICE_PLAYER_BY_BAND_PREFIX[] = "/device/players/by-band/";
+
+    std::map<std::string, MockPlayerConfig> playerConfigs;
     bool isOffline_ = false;
 
-    int handleGetDevicePlayerByPin(const std::string& path, std::string& responseBody) {
-        const std::string prefix = "/device/players/by-pin/";
-        if (path.find(prefix) != 0) {
-            responseBody = R"({"errors":["Invalid path"]})";
-            return 400;
-        }
-        const std::string pin = path.substr(prefix.length());
-        auto it = playerConfigs_.find(pin);
-        if (it == playerConfigs_.end()) {
+    int handleGetDevicePlayerByBand(const std::string& path, std::string& responseBody) {
+        const std::string bandUid = path.substr(sizeof(DEVICE_PLAYER_BY_BAND_PREFIX) - 1);
+        std::map<std::string, MockPlayerConfig>::const_iterator it = playerConfigs.find(bandUid);
+        if (it == playerConfigs.end()) {
             responseBody = R"({"errors":["Player not found"]})";
             return 404;
         }

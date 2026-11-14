@@ -171,12 +171,12 @@ void Player::setUserID(char* newId) {
     symbol.updateFromUserIdString(id);
 }
 
-void Player::applyRngSeedFromDecimalString(const char* decimalString) {
-    if (decimalString == nullptr || decimalString[0] == '\0') {
-        return;
+void Player::applyRngSeedFromServerPlayerId() {
+    // FNV-1a over the id bytes, so a player gets the same seed on any PDN.
+    uint32_t seed = 2166136261u;
+    for (uint8_t byte : serverPlayerId.bytes) {
+        seed = (seed ^ byte) * 16777619u;
     }
-    const unsigned int seed =
-        static_cast<unsigned int>(std::strtoul(decimalString, nullptr, 10));
     std::srand(seed);
     symbol.setRandomSymbol();
 }

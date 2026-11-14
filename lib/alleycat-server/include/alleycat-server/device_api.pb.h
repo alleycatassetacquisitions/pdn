@@ -29,10 +29,12 @@ typedef enum _alleycat_device_QuickdrawMatchErrorCode {
 } alleycat_device_QuickdrawMatchErrorCode;
 
 /* Struct definitions */
-/* Response for GET /device/players/by-pin/{pin}, application/protobuf.
- No request body. The path PIN is exactly four ASCII digits, including leading
- zeros, and is resolved in the active event. Invalid PIN format returns 400;
- no active event or no matching player returns 404. Errors are plain text.
+/* Response for GET /device/players/by-band/{uid} (the FDN's lookup) and
+ GET /device/players/by-pin/{pin}, application/protobuf. No request body. {uid}
+ is the band UID as upper-case hex, 8 or 14 characters; {pin} is exactly four
+ ASCII digits, including leading zeros. Both resolve in the active event. A
+ malformed UID or PIN returns 400; no active event or no player linked to the
+ band or PIN returns 404. Errors are plain text.
  Includes inactive registrations, without exposing their status. Email, PIN,
  event ID, creation time, and active status are not part of this response.
  Current PDN display profile: control characters become ?, then display strings

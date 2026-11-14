@@ -4,8 +4,8 @@
 
 // --- GPIO pin assignments ---
 // The primary is the small top button, the secondary the big bottom one. Nothing
-// else records which is which, and on the pairing screen it is the difference
-// between cycling a digit and committing it.
+// else records which is which, and on the waiting screen it is the difference
+// between the demo hold and the firmware hold.
 constexpr uint8_t primaryButtonPin   = 15; // SMALL TOP BUTTON
 constexpr uint8_t secondaryButtonPin = 16; // BIG BOTTOM BUTTON
 constexpr uint8_t motorPin           = 17;

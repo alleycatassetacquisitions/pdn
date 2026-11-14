@@ -25,31 +25,34 @@ public:  // Public for test function access
     cli::MockHttpServer* server;
 };
 
-static void configurePinPlayer(cli::MockHttpServer* server, const char* pin, const char* name) {
+static void configureBandPlayer(cli::MockHttpServer* server, const char* bandUid,
+                                const char* name) {
     cli::MockPlayerConfig config;
     config.name = name;
     UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", config.wirePlayerId);
-    server->configurePlayer(pin, config);
+    server->configurePlayer(bandUid, config);
 }
 
-// Test: Get device player by PIN returns protobuf body
-void httpServerGetDevicePlayerByPinReturnsData(MockHttpServerTestSuite* suite) {
-    configurePinPlayer(suite->server, "1234", "TestPlayer");
+// Test: Get device player by band returns protobuf body
+void httpServerGetDevicePlayerByBandReturnsData(MockHttpServerTestSuite* suite) {
+    configureBandPlayer(suite->server, "04A21B9C", "TestPlayer");
 
     std::string response;
-    int status = suite->server->handleRequest("GET", "/device/players/by-pin/1234", "", response);
+    int status =
+    suite->server->handleRequest("GET", "/device/players/by-band/04A21B9C", "", response);
 
     ASSERT_EQ(status, 200);
     ASSERT_FALSE(response.empty());
     ASSERT_NE(response.find("TestPlayer"), std::string::npos);
 
-    suite->server->removePlayer("1234");
+    suite->server->removePlayer("04A21B9C");
 }
 
-// Test: Unknown PIN returns 404
-void httpServerGetDevicePlayerByPinReturns404(MockHttpServerTestSuite* suite) {
+// Test: Unknown band returns 404
+void httpServerGetDevicePlayerByBandReturns404(MockHttpServerTestSuite* suite) {
     std::string response;
-    int status = suite->server->handleRequest("GET", "/device/players/by-pin/5678", "", response);
+    int status =
+    suite->server->handleRequest("GET", "/device/players/by-band/045E217A3B6C80", "", response);
 
     ASSERT_EQ(status, 404);
 }
@@ -88,7 +91,7 @@ public:
         successCallbackCalled = false;
         errorCallbackCalled = false;
         lastErrorCode = WirelessError::TIMEOUT;
-        configurePinPlayer(&cli::MockHttpServer::getInstance(), "0010", "CLI");
+        configureBandPlayer(&cli::MockHttpServer::getInstance(), "04A21B9C", "CLI");
     }
 
     void TearDown() override {
@@ -107,18 +110,15 @@ public:
 // Test: Client processes requests
 void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
     HttpRequest request(
-        "/device/players/by-pin/0010",
-        "GET",
-        "",
-        "",
-        [suite](const std::string& response) {
-            suite->successCallbackCalled = true;
-            suite->lastResponseBody = response;
-        },
-        [suite](const WirelessErrorInfo& error) {
-            suite->errorCallbackCalled = true;
-            suite->lastErrorCode = error.code;
-        });
+    "/device/players/by-band/04A21B9C", "GET", "", "",
+    [suite](const std::string& response) {
+        suite->successCallbackCalled = true;
+        suite->lastResponseBody = response;
+    },
+    [suite](const WirelessErrorInfo& error) {
+        suite->errorCallbackCalled = true;
+        suite->lastErrorCode = error.code;
+    });
 
     suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
@@ -133,9 +133,9 @@ void httpClientDisconnectFailsQueuedRequests(NativeHttpClientDriverTestSuite* su
     int successes = 0;
     for (int i = 0; i < 2; i++) {
         HttpRequest request(
-            "/device/players/by-pin/0010", "GET", "", "",
-            [&successes](const std::string&) { successes++; },
-            [&errors](const WirelessErrorInfo&) { errors++; });
+        "/device/players/by-band/04A21B9C", "GET", "", "",
+        [&successes](const std::string&) { successes++; },
+        [&errors](const WirelessErrorInfo&) { errors++; });
         suite->driver->queueRequest(std::move(request));
     }
 
@@ -153,17 +153,12 @@ void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
     cli::MockHttpServer::getInstance().setOffline(true);
 
     HttpRequest request(
-        "/device/players/by-pin/0010",
-        "GET",
-        "",
-        "",
-        [suite](const std::string& response) {
-            suite->successCallbackCalled = true;
-        },
-        [suite](const WirelessErrorInfo& error) {
-            suite->errorCallbackCalled = true;
-            suite->lastErrorCode = error.code;
-        });
+    "/device/players/by-band/04A21B9C", "GET", "", "",
+    [suite](const std::string& response) { suite->successCallbackCalled = true; },
+    [suite](const WirelessErrorInfo& error) {
+        suite->errorCallbackCalled = true;
+        suite->lastErrorCode = error.code;
+    });
 
     suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
@@ -177,12 +172,8 @@ void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
 // Test: Client tracks history
 void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
     HttpRequest request(
-        "/device/players/by-pin/0010",
-        "GET",
-        "",
-        "",
-        [](const std::string&) {},
-        [](const WirelessErrorInfo&) {});
+    "/device/players/by-band/04A21B9C", "GET", "", "", [](const std::string&) {},
+    [](const WirelessErrorInfo&) {});
 
     suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
@@ -236,17 +227,12 @@ void httpClientDisconnectedFails(NativeHttpClientDriverTestSuite* suite) {
     ASSERT_FALSE(suite->driver->isConnected());
 
     HttpRequest request(
-        "/device/players/by-pin/0010",
-        "GET",
-        "",
-        "",
-        [suite](const std::string& response) {
-            suite->successCallbackCalled = true;
-        },
-        [suite](const WirelessErrorInfo& error) {
-            suite->errorCallbackCalled = true;
-            suite->lastErrorCode = error.code;
-        });
+    "/device/players/by-band/04A21B9C", "GET", "", "",
+    [suite](const std::string& response) { suite->successCallbackCalled = true; },
+    [suite](const WirelessErrorInfo& error) {
+        suite->errorCallbackCalled = true;
+        suite->lastErrorCode = error.code;
+    });
 
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
@@ -262,10 +248,10 @@ void httpClientDisconnectedFails(NativeHttpClientDriverTestSuite* suite) {
 void httpClientRejectsOversizedResponse(NativeHttpClientDriverTestSuite* suite) {
     // The encoded body carries the whole name, so a name past the bound makes the body exceed it.
     const std::string longName(MAX_HTTP_RESPONSE_BYTES + 1, 'x');
-    configurePinPlayer(&cli::MockHttpServer::getInstance(), "0011", longName.c_str());
+    configureBandPlayer(&cli::MockHttpServer::getInstance(), "04A21B9D", longName.c_str());
 
     HttpRequest request(
-    "/device/players/by-pin/0011", "GET", "", "",
+    "/device/players/by-band/04A21B9D", "GET", "", "",
     [suite](const std::string&) { suite->successCallbackCalled = true; },
     [suite](const WirelessErrorInfo& error) {
         suite->errorCallbackCalled = true;
@@ -275,7 +261,7 @@ void httpClientRejectsOversizedResponse(NativeHttpClientDriverTestSuite* suite) 
     suite->driver->setHttpClientState(HttpClientState::CONNECTED);
     suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
-    cli::MockHttpServer::getInstance().removePlayer("0011");
+    cli::MockHttpServer::getInstance().removePlayer("04A21B9D");
 
     EXPECT_FALSE(suite->successCallbackCalled);
     EXPECT_TRUE(suite->errorCallbackCalled);

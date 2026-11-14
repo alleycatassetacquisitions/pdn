@@ -818,8 +818,8 @@ void cliCommandDisplayAlias(CliDisplayCommandTestSuite* suite) {
 // ============================================
 
 /**
- * Simulates a cabled FDN registering a PDN in FetchUserState: the record key on
- * the jack, then the PlayerProvisionPacket on the radio.
+ * Simulates a cabled FDN registering a PDN on its waiting screen: the record key
+ * on the jack, then the PlayerProvisionPacket on the radio.
  */
 inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
     const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x01};
@@ -842,9 +842,6 @@ inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
         device.pdn->loop();
     }
 
-    // The key counts only once the PIN has gone out, which takes a tick after the jack connects.
-    device.pdn->loop();
-
     ApplicationPayload recordKey{};
     recordKey.fill(0xA5);
     ApplicationFrame keyFrame{};
@@ -854,7 +851,6 @@ inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
 
     PlayerProvisionPacket prov{};
     prov.status = static_cast<uint8_t>(ProvisionStatus::PROFILE_DELIVERED);
-    strncpy(prov.pin, device.playerProvider->getRegistrationPin(), sizeof(prov.pin) - 1);
     UUIDBytes playerId{};
     UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", playerId);
     memcpy(prov.playerId, playerId.bytes, UUIDBytes::SIZE);
@@ -876,8 +872,8 @@ public:
         device = cli::DeviceFactory::createDevice(0, true);
 
         // The CLI factory launches into the hub. These tests exercise the
-        // registration flow (HTTP fetch transitions, reboot semantics), so swap
-        // back to the registration app at its fetch state.
+        // registration flow and reboot semantics, so swap back to the
+        // registration app at its waiting screen.
         device.reboot();
     }
 
@@ -894,12 +890,12 @@ public:
     NativeLoggerDriver* globalLogger_;
 };
 
-// Test: Cabled FDN provision transitions device from FetchUserData to WelcomeMessage
+// Test: Cabled FDN provision transitions device from AwaitBand to WelcomeMessage
 void cliDeviceCabledProvisionTransitions(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
     State* state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PlayerFetchStateId::FETCH_USER);
+    ASSERT_EQ(state->getStateId(), PlayerFetchStateId::AWAIT_BAND);
 
     cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
@@ -913,29 +909,31 @@ void cliDeviceCabledProvisionTransitions(CliCommandTestSuite* suite) {
     ASSERT_EQ(state->getStateId(), PlayerFetchStateId::WELCOME);
 }
 
-// Test: Reboot resets device back to FetchUserData
+// Test: Reboot resets device back to AwaitBand
 void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
-    // Advance past FetchUserData
+    // Advance past AwaitBand
     cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
         suite->device.pdn->loop();
     }
     State* state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
-    ASSERT_NE(state->getStateId(), PlayerFetchStateId::FETCH_USER);
+    ASSERT_NE(state->getStateId(), PlayerFetchStateId::AWAIT_BAND);
 
     suite->device.reboot();
 
-    // Should be back at FetchUserData within the registration app
+    // Should be back at AwaitBand within the registration app, holding nothing
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
     state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PlayerFetchStateId::FETCH_USER);
+    ASSERT_EQ(state->getStateId(), PlayerFetchStateId::AWAIT_BAND);
+    EXPECT_FALSE(suite->device.playerProvider->hasPlayer());
+    EXPECT_FALSE(suite->device.playerProvider->getRecordKey()->isHeld());
 }
 
-// Test: Reboot from a later state returns to FetchUserData and can re-transition
+// Test: Reboot from a later state returns to AwaitBand and can re-transition
 void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
-    // Advance device further (past FetchUserData into WelcomeMessage or beyond)
+    // Advance device further (past AwaitBand into WelcomeMessage or beyond)
     cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
         suite->device.pdn->loop();
@@ -946,7 +944,7 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     suite->device.reboot();
 
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::FETCH_USER);
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::AWAIT_BAND);
 
     cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
@@ -1037,7 +1035,7 @@ void cliSimulationRecordsHistoryForEveryDevice(CliSimulationTestSuite* suite) {
     ASSERT_EQ(suite->devices[1].stateHistory.size(), 1u);
 
     suite->devices[1].pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID),
-                                        StateId(PlayerFetchStateId::FETCH_USER));
+                                        StateId(PlayerFetchStateId::AWAIT_BAND));
     cli::advanceSimulation(suite->devices);
 
     cli::DeviceInstance& switched = suite->devices[1];
@@ -1177,7 +1175,7 @@ void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     // History should be cleared
     ASSERT_TRUE(suite->device.stateHistory.empty());
 
-    // Device should be at FetchUserData within the registration app
+    // Device should be at AwaitBand within the registration app
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::FETCH_USER);
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::AWAIT_BAND);
 }

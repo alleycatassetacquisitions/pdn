@@ -77,12 +77,12 @@ TEST_F(NativePeerBrokerTestSuite, DisabledPeerNoReceive) { peerBrokerDisabledPee
 // MOCK HTTP SERVER TESTS
 // ============================================
 
-TEST_F(MockHttpServerTestSuite, GetPlayerReturnsCorrectData) {
-    httpServerGetDevicePlayerByPinReturnsData(this);
+TEST_F(MockHttpServerTestSuite, GetPlayerByBandReturnsData) {
+    httpServerGetDevicePlayerByBandReturnsData(this);
 }
 
-TEST_F(MockHttpServerTestSuite, GetPlayerReturnsDefaults) {
-    httpServerGetDevicePlayerByPinReturns404(this);
+TEST_F(MockHttpServerTestSuite, UnknownBandReturns404) {
+    httpServerGetDevicePlayerByBandReturns404(this);
 }
 
 TEST_F(MockHttpServerTestSuite, UnknownEndpointReturns404) {

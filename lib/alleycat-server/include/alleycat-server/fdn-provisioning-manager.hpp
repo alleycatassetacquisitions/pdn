@@ -1,11 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <functional>
-#include <string>
 #include "alleycat-server/player-api.hpp"
 #include "alleycat-server/player-provision-codec.hpp"
+#include "device/drivers/band-reader.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/remote-device-coordinator.hpp"
@@ -17,78 +18,98 @@
 #include "utils/simple-timer.hpp"
 #include "wireless/reliable-channel.hpp"
 
-/** How a PIN lookup ended, for the FDN's registration screen. */
-enum class ProvisionLookupResult : uint8_t {
-    // The record key was written to the PDN's jack and the profile sent after it.
-    PROFILE_DELIVERED,
-    // The server gave no profile: no such player, an error, or no answer in time.
-    LOOKUP_FAILED,
-    // The server gave a profile, but the jack did not report the key written to
-    // a still-Connected PDN, or the lookup was cancelled first.
-    KEY_NOT_ISSUED,
-    // The server presented a key other than the one pinned in this FDN's
-    // firmware, or the firmware pins none, so nothing it sent was used. The PDN
-    // is told LOOKUP_FAILED.
-    SERVER_NOT_TRUSTED,
-};
-
 /**
- * FDN side of player provisioning: answers a cabled PDN's PIN request with the
- * player's record key on the jack and then the server's profile on the radio,
- * or with LOOKUP_FAILED. Request and reply ride reliable channels; the key
- * never does. A lookup owns Wi-Fi from its HTTP request to its answer; while
- * another component owns it the lookup waits, inside its time limit.
+ * FDN side of player provisioning. Each PDN Connected on a jack with no applied
+ * profile is queued for registration in arrival order. While the registration
+ * screen is shown and no lookup result is on it, the queue's head is pending,
+ * and a band tapped at the reader while it is pending is looked up for that PDN.
+ * The answer goes to the pending jack as the player's record key, then to the
+ * PDN's MAC as the server's profile on the radio, or as LOOKUP_FAILED. The
+ * profile rides a reliable channel; the key never touches the radio. A lookup
+ * owns Wi-Fi from its HTTP request to its answer; while another component owns
+ * it the lookup waits, inside its time limit.
  */
 class FdnProvisioningManager {
 public:
     /**
-     * Reports a finished lookup: how it ended and, on PROFILE_DELIVERED, the
-     * looked-up player's name (nullptr otherwise).
+     * Reports a finished lookup: how it ended, the jack it was for and, on
+     * PROFILE_DELIVERED, the looked-up player's name (nullptr otherwise).
      */
-    using OnLookupDone = std::function<void(ProvisionLookupResult result, const char* playerName)>;
+    using OnLookupDone = std::function<void(ProvisionLookupResult result, SerialIdentifier jack,
+                                            const char* playerName)>;
 
-    /** Constructs the FDN provisioning manager wired to wireless and RDC. */
-    FdnProvisioningManager(WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
+    /** How long a registration stays pending with no tap before going to the back of the queue. */
+    static constexpr unsigned long REGISTRATION_PENDING_MS = 30000;
+
+    /**
+     * How long taps are ignored after the pending registration passes to the
+     * other jack, so a player who read the prompt for one jack does not
+     * register the PDN on the other as the turn moves.
+     */
+    static constexpr unsigned long PENDING_JACK_CHANGE_TAP_IGNORE_MS = 2000;
+
+    /**
+     * How long a finished lookup's result stays on the registration screen.
+     * Nothing is pending meanwhile, so a tap neither lands on the PDN while it
+     * shows its own 3000 ms failure page, which refuses a key, nor binds the next
+     * jack's PDN before the screen names that jack.
+     */
+    static constexpr unsigned long LOOKUP_RESULT_HOLD_MS = 3000;
+
+    /**
+     * Constructs the FDN provisioning manager wired to wireless, RDC and the band
+     * reader driver. A null @p bandReader is a reader that never answers: nobody
+     * can register at this FDN.
+     */
+    FdnProvisioningManager(WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc,
+                           BandReader* bandReader)
         : wirelessManager(wirelessManager)
         , rdc(rdc)
-        , requestChannel(wirelessManager, PktType::kPlayerProvisionRequest)
+        , bandReader(bandReader)
         , replyChannel(wirelessManager, PktType::kPlayerProvision) {
-        requestChannel.onReceive(
-        [this](const uint8_t* fromMac, const PlayerProvisionRequestPacket& request) {
-            onProvisionRequest(fromMac, request);
-        });
         rdc->setOnApplicationFrameOutcome(
         [this](SerialIdentifier jack, ApplicationFrameOutcome outcome) {
             onKeyFrameOutcome(jack, outcome);
         },
         this);
+        if (!isBandReaderResponding()) {
+            LOG_E("FDN_PROVISION", "Band reader not responding: no PDN can register here");
+        }
     }
 
     /** Stops listening for jack outcomes; the coordinator outlives this manager. */
     ~FdnProvisioningManager() { rdc->setOnApplicationFrameOutcome(nullptr, this); }
 
     /**
-     * Serves a parked request once its PDN is Connected and no lookup is in
-     * flight, starts a lookup that was waiting for Wi-Fi once it is free, and
-     * past PROVISION_LOOKUP_TIMEOUT_MS cancels a lookup the server has not
-     * answered (see cancelLookup). Call every tick.
+     * Past PROVISION_LOOKUP_TIMEOUT_MS ends a lookup the server has not answered
+     * as SERVER_UNREACHABLE; starts a lookup that was waiting for Wi-Fi once it is
+     * free; ends the hold of a lookup result after LOOKUP_RESULT_HOLD_MS; queues
+     * PDNs that arrived and drops those that left; sends a registration pending
+     * for REGISTRATION_PENDING_MS to the back of the queue; and takes the band
+     * reader's tap. Call every tick.
      */
     void sync() {
         if (phase != LookupPhase::IDLE && lookupTimer.expired()) {
             LOG_W("FDN_PROVISION", "Player lookup timed out");
-            cancelLookup();
+            endLookup(ProvisionLookupResult::SERVER_UNREACHABLE);
         }
         if (phase == LookupPhase::AWAITING_WIFI) {
             requestLookup();
         }
-        if (!parkedTimer.isRunning()) return;
-        if (parkedTimer.expired()) {
-            parkedTimer.invalidate();
-        } else if (phase == LookupPhase::IDLE &&
-                   rdc->isConnectedPeer(DeviceType::PDN, parkedMac.data())) {
-            parkedTimer.invalidate();
-            provisionPdn(parkedMac.data(), parkedPin);
+        if (lookupResultIsHeld && lookupResultTimer.expired()) {
+            lookupResultIsHeld = false;
+            lookupResultTimer.invalidate();
         }
+        updateQueue();
+        if (hasPendingRegistration() && pendingTimer.expired()) {
+            LOG_I("FDN_PROVISION", "Registration pending with no tap; requeued at the back");
+            sendPendingToBack();
+        }
+        if (hasPendingRegistration() && !pendingTimer.isRunning()) {
+            pendingTimer.setTimer(REGISTRATION_PENDING_MS);
+        }
+        followPendingJack();
+        takeBandTap();
     }
 
     /**
@@ -108,25 +129,51 @@ public:
     }
 
     /**
-     * @return true while a PIN lookup is waiting for Wi-Fi, on the server, or
+     * @return true while a band lookup is waiting for Wi-Fi, on the server, or
      * on the jack to report the record key written.
      */
     bool isLookupInFlight() const { return phase != LookupPhase::IDLE; }
+
+    /**
+     * @return true when a registration waits for a tap: the registration screen
+     * is shown, one is queued, no lookup runs and no lookup result is held.
+     */
+    bool hasPendingRegistration() const {
+        return registrationScreenIsShown && phase == LookupPhase::IDLE && !lookupResultIsHeld &&
+               queueLength > 0;
+    }
+
+    /** @return true for LOOKUP_RESULT_HOLD_MS after a lookup ends, however it ended. */
+    bool isHoldingLookupResult() const { return lookupResultIsHeld; }
+
+    /** @return the pending registration's jack; meaningful only while hasPendingRegistration(). */
+    SerialIdentifier getPendingJack() const { return queue[0].jack; }
+
+    /** @return true while the band reader answers; false with no reader at all. */
+    bool isBandReaderResponding() const {
+        return bandReader != nullptr && bandReader->isResponding();
+    }
 
     /** Sets the lookup-finished listener; nullptr clears it. */
     void setOnLookupDone(OnLookupDone listener) { onLookupDone = std::move(listener); }
 
     /**
-     * While not allowed, a request is dropped if a registered PDN is cabled, so a
-     * lookup's Wi-Fi excursion never cuts into that PDN's symbol-match game.
+     * Registration is pending only while the registration screen is shown. Off
+     * it, during symbol match, a queued PDN waits with no timer running and taps
+     * are ignored, so a lookup's Wi-Fi excursion never cuts into a game.
      */
-    void setLookupDuringPlayAllowed(bool allowed) { lookupDuringPlayAllowed = allowed; }
+    void setRegistrationScreenShown(bool shown) {
+        registrationScreenIsShown = shown;
+        if (!shown) {
+            pendingTimer.invalidate();
+        }
+    }
 
     /** @return true when a PDN with no applied profile is Connected on an FDN jack. */
-    bool hasUnprovisionedPdnCabled() { return hasCabledPdn(false); }
+    bool hasUnprovisionedPdnCabled() const { return hasCabledPdn(false); }
 
     /** @return true when a PDN with an applied profile, demo included, is Connected. */
-    bool hasRegisteredPdnCabled() { return hasCabledPdn(true); }
+    bool hasRegisteredPdnCabled() const { return hasCabledPdn(true); }
 
 private:
     // Where the one lookup this manager runs at a time stands.
@@ -136,41 +183,138 @@ private:
         AWAITING_WIFI,
         // This lookup owns Wi-Fi and its HTTP request is queued.
         AWAITING_SERVER,
-        // Wi-Fi is given back; keyJack has the key frame and has not reported on it.
+        // Wi-Fi is given back; lookupJack has the key frame and has not reported on it.
         AWAITING_JACK,
     };
 
-    // How long a request that cannot be served yet is kept. The PDN can read
-    // its jack Connected, and send, a tick before this side's jack commits; or
-    // the request lands while another PDN's key is on its way to the jack. The
-    // radio acks the request, so the PDN never sends it again. One request is
-    // parked at a time: a later one takes its place, and the PDN it displaces
-    // gets no answer and fails at the end of its own wait for a reply.
-    static constexpr unsigned long PARK_REQUEST_MS = 1000;
+    // A PDN waiting for its registration, by the jack it is on and its MAC
+    // there, so a different PDN plugged into the same jack is a new arrival.
+    struct QueuedRegistration {
+        SerialIdentifier jack = SerialIdentifier::INPUT_JACK;
+        std::array<uint8_t, 6> pdnMac{};
+    };
 
-    bool hasCabledPdn(bool registered) {
-        for (SerialIdentifier jack :
-             {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
-            if (rdc->getJackStatus(jack) != JackStatus::CONNECTED ||
-                rdc->getPeerDeviceType(jack) != DeviceType::PDN) {
-                continue;
-            }
-            size_t length = 0;
-            const uint8_t* bytes = rdc->getPeerProfile(jack, length);
-            if (bytes == nullptr || length < sizeof(PlayerProfile)) continue;
-            PlayerProfile profile{};
-            memcpy(&profile, bytes, sizeof(profile));
-            // A demo player has no server id either, but is done registering.
-            if ((profile.registered != 0) == registered) return true;
+    static constexpr std::array<SerialIdentifier, 2> REGISTRATION_JACKS = {
+    SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY};
+
+    // The MAC of the PDN Connected on `jack` whose profile reads `registered`;
+    // nullptr when the jack holds no such PDN.
+    const uint8_t* getCabledPdnMac(SerialIdentifier jack, bool registered) const {
+        if (rdc->getJackStatus(jack) != JackStatus::CONNECTED ||
+            rdc->getPeerDeviceType(jack) != DeviceType::PDN) {
+            return nullptr;
+        }
+        size_t length = 0;
+        const uint8_t* bytes = rdc->getPeerProfile(jack, length);
+        if (bytes == nullptr || length < sizeof(PlayerProfile)) return nullptr;
+        PlayerProfile profile{};
+        memcpy(&profile, bytes, sizeof(profile));
+        // A demo player has no server id either, but is done registering.
+        if ((profile.registered != 0) != registered) return nullptr;
+        return rdc->getPeerMac(jack);
+    }
+
+    bool hasCabledPdn(bool registered) const {
+        for (SerialIdentifier jack : REGISTRATION_JACKS) {
+            if (getCabledPdnMac(jack, registered) != nullptr) return true;
         }
         return false;
     }
 
-    void provisionPdn(const uint8_t* pdnMac, const std::string& pin) {
-        if (phase != LookupPhase::IDLE) return;
+    bool isQueued(SerialIdentifier jack) const {
+        for (size_t i = 0; i < queueLength; ++i) {
+            if (queue[i].jack == jack) return true;
+        }
+        return false;
+    }
 
-        memcpy(lookupMac.data(), pdnMac, lookupMac.size());
-        lookupPin = pin;
+    // Drops registrations whose PDN left its jack or registered, then queues newly
+    // arrived unprovisioned PDNs at the back. A PDN whose registration just ended
+    // is in neither the queue nor the lookup, so if still unprovisioned it rejoins
+    // at the back here.
+    void updateQueue() {
+        const bool hadPending = hasPendingRegistration();
+        const QueuedRegistration previousHead = queue[0];
+        size_t kept = 0;
+        for (size_t i = 0; i < queueLength; ++i) {
+            const uint8_t* mac = getCabledPdnMac(queue[i].jack, false);
+            if (mac != nullptr && memcmp(mac, queue[i].pdnMac.data(), 6) == 0) {
+                queue[kept++] = queue[i];
+            }
+        }
+        queueLength = kept;
+
+        for (SerialIdentifier jack : REGISTRATION_JACKS) {
+            const uint8_t* mac = getCabledPdnMac(jack, false);
+            if (mac == nullptr || isQueued(jack)) continue;
+            if (phase != LookupPhase::IDLE && jack == lookupJack &&
+                memcmp(mac, lookupMac.data(), lookupMac.size()) == 0) {
+                continue;
+            }
+            queue[queueLength].jack = jack;
+            memcpy(queue[queueLength].pdnMac.data(), mac, 6);
+            queueLength++;
+        }
+
+        const bool headChanged = queueLength == 0 || previousHead.jack != queue[0].jack ||
+                                 memcmp(previousHead.pdnMac.data(), queue[0].pdnMac.data(), 6) != 0;
+        if (hadPending && headChanged) {
+            pendingTimer.invalidate();
+        }
+    }
+
+    void sendPendingToBack() {
+        std::rotate(queue.begin(), queue.begin() + 1, queue.begin() + queueLength);
+        pendingTimer.invalidate();
+    }
+
+    // Starts the tap ignore window when the pending registration moves to the
+    // other jack: as the queue rotates or a lookup ends with the other jack next.
+    void followPendingJack() {
+        if (phase == LookupPhase::IDLE && queueLength == 0) {
+            hasLastPendingJack = false;
+            return;
+        }
+        if (!hasPendingRegistration()) return;
+        const SerialIdentifier pendingJack = queue[0].jack;
+        if (hasLastPendingJack && pendingJack != lastPendingJack) {
+            pendingJackChangeTimer.setTimer(PENDING_JACK_CHANGE_TAP_IGNORE_MS);
+        }
+        lastPendingJack = pendingJack;
+        hasLastPendingJack = true;
+    }
+
+    bool isInPendingJackChangeWindow() {
+        return pendingJackChangeTimer.isRunning() && !pendingJackChangeTimer.expired();
+    }
+
+    void takeBandTap() {
+        if (bandReader == nullptr) return;
+        BandUid uid;
+        if (!bandReader->takeTap(uid)) return;
+        if (!hasPendingRegistration()) {
+            LOG_I("FDN_PROVISION", "Band tap ignored: no registration pending");
+        } else if (!uid.hasLookupLength()) {
+            LOG_W("FDN_PROVISION", "Band tap ignored: a UID of %u bytes",
+                  static_cast<unsigned>(uid.length));
+        } else if (isInPendingJackChangeWindow()) {
+            LOG_W("FDN_PROVISION", "Band tap ignored: the pending jack just changed");
+        } else {
+            startLookup(uid);
+        }
+        secureWipe(uid.bytes.data(), uid.bytes.size());
+    }
+
+    // Binds the tap to the PDN on the pending jack as of now: updateQueue() ran
+    // this tick, so the head's PDN is still the one Connected there.
+    void startLookup(const BandUid& uid) {
+        lookupJack = queue[0].jack;
+        lookupMac = queue[0].pdnMac;
+        std::copy(queue.begin() + 1, queue.begin() + queueLength, queue.begin());
+        queueLength--;
+        pendingTimer.invalidate();
+
+        lookupUid = uid;
         phase = LookupPhase::AWAITING_WIFI;
         // Covers the wait for Wi-Fi as well as the request.
         lookupTimer.setTimer(PROVISION_LOOKUP_TIMEOUT_MS);
@@ -184,8 +328,9 @@ private:
         phase = LookupPhase::AWAITING_SERVER;
         decodedPlayer = Player{};
 
-        PlayerApi::getDevicePlayerByPin(
-        wirelessManager, lookupPin, &decodedPlayer, &recordKey,
+        // The UID is held for its lookup and no longer; the request carries it from here.
+        PlayerApi::getDevicePlayerByBand(
+        wirelessManager, lookupUid, &decodedPlayer, &recordKey,
         [this](Player&) {
             if (phase != LookupPhase::AWAITING_SERVER) {
                 // The answer of a lookup that has ended; its key was decoded all the same.
@@ -197,14 +342,13 @@ private:
         [this](const WirelessErrorInfo& error) {
             // Giving Wi-Fi up fails the request of a lookup that has already ended.
             if (phase != LookupPhase::AWAITING_SERVER) return;
-            endLookup(error.code == WirelessError::SERVER_NOT_TRUSTED
-                      ? ProvisionLookupResult::SERVER_NOT_TRUSTED
-                      : ProvisionLookupResult::LOOKUP_FAILED);
+            endLookup(PlayerApi::classifyLookupError(error));
         });
+        secureWipe(lookupUid.bytes.data(), lookupUid.bytes.size());
     }
 
-    // The server answered with a profile. Its record key goes to the PDN's jack
-    // first; the profile waits for the jack to report the key frame written.
+    // The server answered with a profile. Its record key goes to the pending
+    // jack first; the profile waits for the jack to report the key frame written.
     void handOffRecordKey() {
         // The jack needs no Wi-Fi, and whatever reply ends this lookup can only
         // be sent with the radio back on peer-to-peer.
@@ -216,7 +360,7 @@ private:
             endLookup(ProvisionLookupResult::KEY_NOT_ISSUED);
             return;
         }
-        if (!findPdnJack(keyJack)) {
+        if (!rdc->isConnectedPeer(lookupJack, DeviceType::PDN, lookupMac.data())) {
             LOG_E("FDN_PROVISION", "PDN left before its record key could be written");
             endLookup(ProvisionLookupResult::KEY_NOT_ISSUED);
             return;
@@ -228,7 +372,7 @@ private:
         // The coordinator keeps its own copy of an accepted frame and clears it
         // as the frame is written or dropped, so neither copy here outlives the call.
         recordKey.clear();
-        const bool accepted = rdc->sendApplicationFrame(keyJack, keyFrame);
+        const bool accepted = rdc->sendApplicationFrame(lookupJack, keyFrame);
         secureWipe(keyFrame.data(), keyFrame.size());
         if (!accepted) {
             LOG_E("FDN_PROVISION", "Jack refused the record key frame");
@@ -238,7 +382,7 @@ private:
 
     void onKeyFrameOutcome(SerialIdentifier jack, ApplicationFrameOutcome outcome) {
         // A frame whose lookup was cancelled still gets its outcome; nothing waits for it.
-        if (phase != LookupPhase::AWAITING_JACK || jack != keyJack) return;
+        if (phase != LookupPhase::AWAITING_JACK || jack != lookupJack) return;
         if (outcome != ApplicationFrameOutcome::WRITTEN) {
             LOG_E("FDN_PROVISION", "Record key frame dropped: the PDN left its jack");
             endLookup(ProvisionLookupResult::KEY_NOT_ISSUED);
@@ -246,7 +390,7 @@ private:
         }
         // A frame the link went down on mid-write is reported written, to a PDN
         // that is gone.
-        if (!rdc->isConnectedPeer(keyJack, DeviceType::PDN, lookupMac.data())) {
+        if (!rdc->isConnectedPeer(lookupJack, DeviceType::PDN, lookupMac.data())) {
             LOG_E("FDN_PROVISION", "PDN left as its record key was written");
             endLookup(ProvisionLookupResult::KEY_NOT_ISSUED);
             return;
@@ -258,16 +402,20 @@ private:
         const bool ownedWifi = phase == LookupPhase::AWAITING_SERVER;
         phase = LookupPhase::IDLE;
         lookupTimer.invalidate();
+        lookupResultTimer.setTimer(LOOKUP_RESULT_HOLD_MS);
+        lookupResultIsHeld = true;
         recordKey.clear();
+        secureWipe(lookupUid.bytes.data(), lookupUid.bytes.size());
         // Before the reply: it can only be sent with the radio back on peer-to-peer.
         if (ownedWifi) {
             wirelessManager->releaseWifi(this);
         }
         const bool delivered = result == ProvisionLookupResult::PROFILE_DELIVERED;
         if (onLookupDone) {
-            onLookupDone(result, delivered ? decodedPlayer.getServerPlayerName() : nullptr);
+            onLookupDone(result, lookupJack,
+                         delivered ? decodedPlayer.getServerPlayerName() : nullptr);
         }
-        if (!rdc->isConnectedPeer(DeviceType::PDN, lookupMac.data())) {
+        if (!rdc->isConnectedPeer(lookupJack, DeviceType::PDN, lookupMac.data())) {
             return;
         }
         PlayerProvisionPacket pkt{};
@@ -276,68 +424,29 @@ private:
         } else {
             pkt.status = static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED);
         }
-        strncpy(pkt.pin, lookupPin.c_str(), sizeof(pkt.pin) - 1);
         replyChannel.sendReliable(lookupMac.data(), pkt);
-    }
-
-    // The FDN jack the lookup's PDN is Connected on, written to `jack`; false,
-    // leaving `jack` alone, when it is on neither.
-    bool findPdnJack(SerialIdentifier& jack) {
-        for (SerialIdentifier candidate :
-             {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
-            if (rdc->isConnectedPeer(candidate, DeviceType::PDN, lookupMac.data())) {
-                jack = candidate;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    void onProvisionRequest(const uint8_t* fromMac, const PlayerProvisionRequestPacket& request) {
-        if (!lookupDuringPlayAllowed && hasRegisteredPdnCabled()) {
-            LOG_W("FDN_PROVISION", "Dropping provision request during a registered PDN's game");
-            return;
-        }
-        // The PIN becomes a URL path segment, so only four ASCII digits leave the FDN.
-        for (size_t i = 0; i < 4; ++i) {
-            if (request.pin[i] < '0' || request.pin[i] > '9') {
-                LOG_W("FDN_PROVISION", "Dropping provision request with a malformed PIN");
-                return;
-            }
-        }
-        const std::string pin(request.pin, 4);
-        if (phase != LookupPhase::IDLE) {
-            // The lookup in flight is already this PDN's answer.
-            if (memcmp(fromMac, lookupMac.data(), lookupMac.size()) == 0) return;
-            parkRequest(fromMac, pin);
-            return;
-        }
-        if (!rdc->isConnectedPeer(DeviceType::PDN, fromMac)) {
-            parkRequest(fromMac, pin);
-            return;
-        }
-        provisionPdn(fromMac, pin);
-    }
-
-    void parkRequest(const uint8_t* fromMac, const std::string& pin) {
-        memcpy(parkedMac.data(), fromMac, parkedMac.size());
-        parkedPin = pin;
-        parkedTimer.setTimer(PARK_REQUEST_MS);
     }
 
     WirelessManager* wirelessManager = nullptr;
     RemoteDeviceCoordinator* rdc = nullptr;
-    ReliableChannel<PlayerProvisionRequestPacket> requestChannel;
+    BandReader* bandReader = nullptr;
     ReliableChannel<PlayerProvisionPacket> replyChannel;
     LookupPhase phase = LookupPhase::IDLE;
-    bool lookupDuringPlayAllowed = false;
-    SerialIdentifier keyJack = SerialIdentifier::INPUT_JACK;
+    bool registrationScreenIsShown = false;
+    std::array<QueuedRegistration, REGISTRATION_JACKS.size()> queue{};
+    size_t queueLength = 0;
+    SimpleTimer pendingTimer;
+    // The jack last seen pending, while any registration is queued or looked up.
+    SerialIdentifier lastPendingJack = SerialIdentifier::INPUT_JACK;
+    bool hasLastPendingJack = false;
+    SimpleTimer pendingJackChangeTimer;
     SimpleTimer lookupTimer;
-    SimpleTimer parkedTimer;
-    std::array<uint8_t, 6> parkedMac{};
-    std::string parkedPin;
+    SimpleTimer lookupResultTimer;
+    bool lookupResultIsHeld = false;
+    SerialIdentifier lookupJack = SerialIdentifier::INPUT_JACK;
     std::array<uint8_t, 6> lookupMac{};
-    std::string lookupPin;
+    // Held from the tap until the lookup's request is queued.
+    BandUid lookupUid;
     Player decodedPlayer{};
     // Held only between the response's decode and the hand-off to the jack.
     RecordKey recordKey;

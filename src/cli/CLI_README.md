@@ -81,7 +81,7 @@ disconnect 0       # Disconnect device 0's cable
 
 The simulator includes a mock HTTP server that handles:
 
-- `GET /device/players/by-pin/{pin}` - Returns protobuf player data
+- `GET /device/players/by-band/{uid}` - Returns protobuf player data for a band UID (upper-case hex)
 
 Use `http offline` to simulate network failures.
 

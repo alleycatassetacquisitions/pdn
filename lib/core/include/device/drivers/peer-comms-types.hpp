@@ -28,8 +28,8 @@ enum class PktType : uint8_t {
     kFirmwareUpdate = 22,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kPlayerProvision = 25,
-    // NOLINTNEXTLINE(readability-identifier-naming)
-    kPlayerProvisionRequest = 26,
+    // 26 was the retired PIN registration request; it stays unused so a packet
+    // from an older PDN is dropped rather than read as something else.
     // NOLINTNEXTLINE(readability-identifier-naming)
     kReliableAck = 27,
     // NOLINTNEXTLINE(readability-identifier-naming)

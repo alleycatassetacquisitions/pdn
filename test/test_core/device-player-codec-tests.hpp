@@ -3,12 +3,14 @@
 #include <gtest/gtest.h>
 #include <cstring>
 #include <functional>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
 #include "alleycat-protobuf-test-helpers.hpp"
 #include "alleycat-server/device-player-codec.hpp"
 #include "alleycat-server/player-api.hpp"
+#include "device/drivers/band-reader.hpp"
 #include "game/player.hpp"
 #include "game/player-types.hpp"
 #include "game/record-key.hpp"
@@ -295,20 +297,52 @@ inline void devicePlayerRejectsGarbageBody() {
     EXPECT_FALSE(decodeTestProfile("not a protobuf", player));
 }
 
+/** A band UID of the bytes in @p bytes. */
+inline BandUid makeTestBandUid(std::initializer_list<uint8_t> bytes) {
+    BandUid uid;
+    for (uint8_t byte : bytes) {
+        uid.bytes[uid.length++] = byte;
+    }
+    return uid;
+}
+
 inline void playerApiQueuesDevicePlayerLookup(AlleycatApiTestSuite* suite) {
     Player player;
     RecordKey recordKey;
-    PlayerApi::getDevicePlayerByPin(
-    suite->wirelessManager, "0007", &player, &recordKey, [](Player&) {},
-    [](const WirelessErrorInfo&) {});
+    PlayerApi::getDevicePlayerByBand(
+    suite->wirelessManager, makeTestBandUid({0x04, 0xA2, 0x1B, 0x9C}), &player, &recordKey,
+    [](Player&) {}, [](const WirelessErrorInfo&) {});
 
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
     EXPECT_EQ(suite->queuedRequests[0].method, "GET");
-    EXPECT_EQ(suite->queuedRequests[0].path, "/device/players/by-pin/0007");
+    EXPECT_EQ(suite->queuedRequests[0].path, "/device/players/by-band/04A21B9C");
     EXPECT_TRUE(suite->queuedRequests[0].payload.empty());
     ASSERT_EQ(suite->queuedRequests[0].requestHeaders.size(), 1u);
     EXPECT_EQ(suite->queuedRequests[0].requestHeaders[0].first, "Accept");
     EXPECT_EQ(suite->queuedRequests[0].requestHeaders[0].second, "application/protobuf");
+
+    PlayerApi::getDevicePlayerByBand(
+    suite->wirelessManager, makeTestBandUid({0x04, 0x5E, 0x21, 0x7A, 0x3B, 0x6C, 0x80}), &player,
+    &recordKey, [](Player&) {}, [](const WirelessErrorInfo&) {});
+    ASSERT_EQ(suite->queuedRequests.size(), 2u);
+    EXPECT_EQ(suite->queuedRequests[1].path, "/device/players/by-band/045E217A3B6C80");
+}
+
+// The UID becomes a path segment, so a UID of any other size never reaches the server.
+inline void playerApiQueuesNoLookupForUidOfAnotherLength(AlleycatApiTestSuite* suite) {
+    Player player;
+    RecordKey recordKey;
+    int errors = 0;
+    for (const BandUid& uid :
+         {BandUid{}, makeTestBandUid({0x04, 0xA2, 0x1B}),
+          makeTestBandUid({0x04, 0xA2, 0x1B, 0x9C, 0x01}),
+          makeTestBandUid({0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A})}) {
+        PlayerApi::getDevicePlayerByBand(
+        suite->wirelessManager, uid, &player, &recordKey, [](Player&) {},
+        [&errors](const WirelessErrorInfo&) { errors++; });
+    }
+    EXPECT_TRUE(suite->queuedRequests.empty());
+    EXPECT_EQ(errors, 4) << "the caller was left waiting for a lookup that never went out";
 }
 
 inline void devicePlayerDecodesRecordKeyBesideProfile() {
@@ -444,8 +478,9 @@ inline void playerApiTakesRecordKeyOnlyFromVerifiedResponse(AlleycatApiTestSuite
     };
 
     ON_CALL(suite->httpClient, isResponseServerVerified()).WillByDefault(testing::Return(false));
-    PlayerApi::getDevicePlayerByPin(suite->wirelessManager, "0007", &player, &recordKey, onSuccess,
-                                    onError);
+    const BandUid uid = makeTestBandUid({0x04, 0xA2, 0x1B, 0x9C});
+    PlayerApi::getDevicePlayerByBand(suite->wirelessManager, uid, &player, &recordKey, onSuccess,
+                                     onError);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
     suite->queuedRequests[0].onSuccess(body);
     EXPECT_EQ(answered, 1);
@@ -453,8 +488,8 @@ inline void playerApiTakesRecordKeyOnlyFromVerifiedResponse(AlleycatApiTestSuite
     EXPECT_FALSE(recordKey.isHeld()) << "a key from an unverified server was accepted";
 
     ON_CALL(suite->httpClient, isResponseServerVerified()).WillByDefault(testing::Return(true));
-    PlayerApi::getDevicePlayerByPin(suite->wirelessManager, "0007", &player, &recordKey, onSuccess,
-                                    onError);
+    PlayerApi::getDevicePlayerByBand(suite->wirelessManager, uid, &player, &recordKey, onSuccess,
+                                     onError);
     ASSERT_EQ(suite->queuedRequests.size(), 2u);
     suite->queuedRequests[1].onSuccess(body);
     EXPECT_EQ(answered, 2);

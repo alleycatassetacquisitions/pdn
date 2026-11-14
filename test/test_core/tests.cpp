@@ -1123,6 +1123,10 @@ TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
     playerApiQueuesDevicePlayerLookup(this);
 }
 
+TEST_F(AlleycatApiTestSuite, playerApiQueuesNoLookupForUidOfAnotherLength) {
+    playerApiQueuesNoLookupForUidOfAnotherLength(this);
+}
+
 TEST_F(AlleycatApiTestSuite, playerApiTakesRecordKeyOnlyFromVerifiedResponse) {
     playerApiTakesRecordKeyOnlyFromVerifiedResponse(this);
 }
@@ -1157,24 +1161,22 @@ TEST(PlayerRegistrationShim, formatsServerIdAsUserId) { playerLegacyShimFormatsS
 // PLAYER FETCH APP TESTS
 // ============================================
 
-TEST_F(PlayerFetchTestSuite, pinEntryRoutesNonDemoPinToFetch) {
-    pinEntryRoutesNonDemoPinToFetch(this);
+TEST_F(PlayerFetchTestSuite, awaitBandAsksForCableThenTap) { awaitBandAsksForCableThenTap(this); }
+
+TEST_F(PlayerFetchTestSuite, awaitBandAsksForCableUntilAnFdnIsConnected) {
+    awaitBandAsksForCableUntilAnFdnIsConnected(this);
 }
 
-TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
-    pinEntryRoutesDemoPinToChooseTeam(this);
+TEST_F(PlayerFetchTestSuite, awaitBandSendsNothingWhileWaiting) {
+    awaitBandSendsNothingWhileWaiting(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserRequestsLookupFromCabledFdn) {
-    fetchUserRequestsLookupFromCabledFdn(this);
+TEST_F(PlayerFetchTestSuite, awaitBandWaitsForTheTapWithoutLimit) {
+    awaitBandWaitsForTheTapWithoutLimit(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserRequestsOnceFdnIsCabled) {
-    fetchUserRequestsOnceFdnIsCabled(this);
-}
-
-TEST_F(PlayerFetchTestSuite, fetchUserStoresProvisionedPlayerOnSuccess) {
-    fetchUserStoresProvisionedPlayerOnSuccess(this);
+TEST_F(PlayerFetchTestSuite, awaitBandStoresPlayerRegisteredThroughFdn) {
+    awaitBandStoresPlayerRegisteredThroughFdn(this);
 }
 
 TEST_F(PlayerFetchTestSuite, registrationTakesServerTotalsAsBaseline) {
@@ -1187,21 +1189,13 @@ TEST_F(PlayerFetchTestSuite, registrationWithoutServerTotalsHasZeroBaseline) {
 
 TEST(PlayerProvisionCodec, carriesTotals) { provisionPacketCarriesTotals(); }
 
-TEST_F(PlayerFetchTestSuite, fetchUserIgnoresUncabledOrMalformedProvision) {
-    fetchUserIgnoresUncabledOrMalformedProvision(this);
+TEST_F(PlayerFetchTestSuite, awaitBandIgnoresUncabledOrMalformedProvision) {
+    awaitBandIgnoresUncabledOrMalformedProvision(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
-    fetchUserFailureReturnsToPinAfterPageTimeout(this);
+TEST_F(PlayerFetchTestSuite, awaitBandFailurePageReturnsToWaiting) {
+    awaitBandFailurePageReturnsToWaiting(this);
 }
-
-TEST_F(PlayerFetchTestSuite, fetchUserTimesOutWithoutFdn) { fetchUserTimesOutWithoutFdn(this); }
-
-TEST_F(PlayerFetchTestSuite, fetchUserResendsAbandonedRequestWithinOneReplyWindow) {
-    fetchUserResendsAbandonedRequestWithinOneReplyWindow(this);
-}
-
-TEST_F(PlayerFetchTestSuite, fdnLookupDeadlineLeavesWifi) { fdnLookupDeadlineLeavesWifi(this); }
 
 TEST_F(PlayerFetchTestSuite, chooseTeamConfirmEntersHub) { chooseTeamConfirmEntersHub(this); }
 
@@ -1209,78 +1203,130 @@ TEST_F(PlayerFetchTestSuite, reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged
     reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserRegistersOnKeyThenProfile) {
-    fetchUserRegistersOnKeyThenProfile(this);
+TEST_F(PlayerFetchTestSuite, awaitBandRegistersOnKeyThenProfile) {
+    awaitBandRegistersOnKeyThenProfile(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserRegistersOnProfileThenKey) {
-    fetchUserRegistersOnProfileThenKey(this);
+TEST_F(PlayerFetchTestSuite, awaitBandRegistersOnProfileThenKey) {
+    awaitBandRegistersOnProfileThenKey(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserProfileWithoutKeyFailsAtTimeLimit) {
-    fetchUserProfileWithoutKeyFailsAtTimeLimit(this);
+TEST_F(PlayerFetchTestSuite, awaitBandProfileWithoutKeyFailsAtTimeLimit) {
+    awaitBandProfileWithoutKeyFailsAtTimeLimit(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserKeyWithoutProfileIsClearedAtTimeLimit) {
-    fetchUserKeyWithoutProfileIsClearedAtTimeLimit(this);
+TEST_F(PlayerFetchTestSuite, awaitBandKeyWithoutProfileIsClearedAtTimeLimit) {
+    awaitBandKeyWithoutProfileIsClearedAtTimeLimit(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserLookupFailureDropsKeyAndHeldProfile) {
-    fetchUserLookupFailureDropsKeyAndHeldProfile(this);
+TEST_F(PlayerFetchTestSuite, awaitBandLookupFailureFailsAttempt) {
+    awaitBandLookupFailureFailsAttempt(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserAcceptsKeyOnlyFromTheFdnItAsked) {
-    fetchUserAcceptsKeyOnlyFromTheFdnItAsked(this);
+TEST_F(PlayerFetchTestSuite, awaitBandAcceptsKeyOnlyFromAJackWithConnectedFdn) {
+    awaitBandAcceptsKeyOnlyFromAJackWithConnectedFdn(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserLaterKeyReplacesHeldKey) {
-    fetchUserLaterKeyReplacesHeldKey(this);
+TEST_F(PlayerFetchTestSuite, awaitBandTakesBothPiecesFromOneFdn) {
+    awaitBandTakesBothPiecesFromOneFdn(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserJackLossAfterKeyFailsAttempt) {
-    fetchUserJackLossAfterKeyFailsAttempt(this);
+TEST_F(PlayerFetchTestSuite, awaitBandLaterKeyReplacesHeldKey) {
+    awaitBandLaterKeyReplacesHeldKey(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserJackLossWithProfileHeldFailsAttempt) {
-    fetchUserJackLossWithProfileHeldFailsAttempt(this);
+TEST_F(PlayerFetchTestSuite, awaitBandJackLossAfterKeyFailsAttempt) {
+    awaitBandJackLossAfterKeyFailsAttempt(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserSendsNoPinAfterRegistering) {
-    fetchUserSendsNoPinAfterRegistering(this);
+TEST_F(PlayerFetchTestSuite, awaitBandJackLossWithProfileHeldFailsAttempt) {
+    awaitBandJackLossWithProfileHeldFailsAttempt(this);
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserLeavingAttemptDropsKeyAndProfile) {
-    fetchUserLeavingAttemptDropsKeyAndProfile(this);
+TEST_F(PlayerFetchTestSuite, awaitBandLeavingAttemptDropsKeyAndProfile) {
+    awaitBandLeavingAttemptDropsKeyAndProfile(this);
 }
 
-TEST_F(PlayerFetchTestSuite, pinEntryHoldsNoRecordKey) { pinEntryHoldsNoRecordKey(this); }
+TEST_F(PlayerFetchTestSuite, awaitBandMountClearsTheSession) {
+    awaitBandMountClearsTheSession(this);
+}
+
+TEST_F(PlayerFetchTestSuite, registrationSeedsRandomFromPlayerId) {
+    registrationSeedsRandomFromPlayerId(this);
+}
 
 TEST_F(PlayerFetchTestSuite, registrationWritesNoRecordKeyToStorage) {
     registrationWritesNoRecordKeyToStorage(this);
 }
 
-TEST_F(FdnProvisioningTests, dropsMalformedOrUncabledProvisionRequest) {
-    fdnDropsMalformedOrUncabledProvisionRequest(this);
+TEST_F(FdnProvisioningTests, queuesRegistrationsInArrivalOrder) {
+    fdnQueuesRegistrationsInArrivalOrder(this);
 }
 
-TEST_F(FdnProvisioningTests, servesRequestThatBeatItsJackToConnected) {
-    fdnServesRequestThatBeatItsJackToConnected(this);
+TEST_F(FdnProvisioningTests, sendsUntappedRegistrationToTheBackOfTheQueue) {
+    fdnSendsUntappedRegistrationToTheBackOfTheQueue(this);
 }
 
-TEST_F(FdnProvisioningTests, forgetsParkedRequestAfterItsWindow) {
-    fdnForgetsParkedRequestAfterItsWindow(this);
+TEST_F(FdnProvisioningTests, dropsUnpluggedPdnFromTheQueue) {
+    fdnDropsUnpluggedPdnFromTheQueue(this);
 }
 
-TEST_F(FdnProvisioningTests, cancelledLookupLeavesWifiAtOnce) {
-    fdnCancelledLookupLeavesWifiAtOnce(this);
+TEST_F(FdnProvisioningTests, requeuesADeliveredPdnUntilItShowsAnAppliedProfile) {
+    fdnRequeuesADeliveredPdnUntilItShowsAnAppliedProfile(this);
 }
 
 TEST_F(FdnProvisioningTests, seesUnprovisionedPdnUntilItRegisters) {
     fdnSeesUnprovisionedPdnUntilItRegisters(this);
 }
 
-TEST_F(FdnProvisioningTests, dropsLookupsWhileRegisteredPdnPlays) {
-    fdnDropsLookupsWhileRegisteredPdnPlays(this);
+TEST_F(FdnProvisioningTests, ignoresTapWithNothingPending) {
+    fdnIgnoresTapWithNothingPending(this);
+}
+
+TEST_F(FdnProvisioningTests, ignoresTapDuringALookup) { fdnIgnoresTapDuringALookup(this); }
+
+TEST_F(FdnProvisioningTests, bindsTapToThePdnOnThePendingJackAtTapTime) {
+    fdnBindsTapToThePdnOnThePendingJackAtTapTime(this);
+}
+
+TEST_F(FdnProvisioningTests, writesNoKeyWhenThePendingJacksPdnIsSwappedDuringTheLookup) {
+    fdnWritesNoKeyWhenThePendingJacksPdnIsSwappedDuringTheLookup(this);
+}
+
+TEST_F(FdnProvisioningTests, writesKeyOnlyToThePendingJack) {
+    fdnWritesKeyOnlyToThePendingJack(this);
+}
+
+TEST_F(FdnProvisioningTests, looksUpOnlyFourAndSevenByteUids) {
+    fdnLooksUpOnlyFourAndSevenByteUids(this);
+}
+
+TEST_F(FdnProvisioningTests, holdsTheQueueWhileTheRegistrationScreenIsNotShown) {
+    fdnHoldsTheQueueWhileTheRegistrationScreenIsNotShown(this);
+}
+
+TEST_F(FdnProvisioningTests, ignoresTapJustAfterThePendingJackChanges) {
+    fdnIgnoresTapJustAfterThePendingJackChanges(this);
+}
+
+TEST_F(FdnProvisioningTests, ignoresTapWhileALookupResultIsHeld) {
+    fdnIgnoresTapWhileALookupResultIsHeld(this);
+}
+
+TEST_F(FdnProvisioningTests, ignoresTheRetiredRequestType) {
+    fdnIgnoresTheRetiredRequestType(this);
+}
+
+TEST_F(FdnProvisioningTests, withoutAReaderStillCyclesTheQueue) {
+    fdnWithoutAReaderStillCyclesTheQueue(this);
+}
+
+TEST_F(FdnProvisioningTests, acceptsTapsOnceTheReaderAnswersAgain) {
+    fdnAcceptsTapsOnceTheReaderAnswersAgain(this);
+}
+
+TEST_F(FdnProvisioningTests, cancelledLookupLeavesWifiAtOnce) {
+    fdnCancelledLookupLeavesWifiAtOnce(this);
 }
 
 TEST_F(FdnProvisioningTests, reportsLookupResultAndResendsUnconfirmedReply) {
@@ -1289,6 +1335,14 @@ TEST_F(FdnProvisioningTests, reportsLookupResultAndResendsUnconfirmedReply) {
 
 TEST_F(FdnProvisioningTests, writesKeyToJackThenSendsProfile) {
     fdnWritesKeyToJackThenSendsProfile(this);
+}
+
+TEST_F(FdnProvisioningTests, reportsEachLookupFailureByItsCause) {
+    fdnReportsEachLookupFailureByItsCause(this);
+}
+
+TEST_F(FdnProvisioningTests, requeuesAFailedRegistrationAtTheBack) {
+    fdnRequeuesAFailedRegistrationAtTheBack(this);
 }
 
 TEST_F(FdnProvisioningTests, lookupWithoutUsableKeyFailsRegistration) {
@@ -1313,18 +1367,6 @@ TEST_F(FdnProvisioningTests, lookupCancelledDuringKeyHandOffSendsNoProfile) {
 
 TEST_F(FdnProvisioningTests, answerToCancelledLookupWritesNoKey) {
     fdnAnswerToCancelledLookupWritesNoKey(this);
-}
-
-TEST_F(FdnProvisioningTests, writesKeyOnlyToTheJackOfThePdnThatAsked) {
-    fdnWritesKeyOnlyToTheJackOfThePdnThatAsked(this);
-}
-
-TEST_F(FdnProvisioningTests, servesRequestThatArrivedDuringAnotherPdnsKeyHandOff) {
-    fdnServesRequestThatArrivedDuringAnotherPdnsKeyHandOff(this);
-}
-
-TEST_F(FdnProvisioningTests, untrustedServerFailsRegistrationWithoutAKey) {
-    fdnUntrustedServerFailsRegistrationWithoutAKey(this);
 }
 
 // ============================================
@@ -1929,25 +1971,25 @@ TEST_F(IdleStateTests, screensShowServerTotalsPlusTheSession) {
     idleScreensShowServerTotalsPlusTheSession(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
-    pairingCodeFirmwareHoldStartsAnUpdate(this);
+TEST_F(IdleStateTests, waitingScreenFirmwareHoldStartsAnUpdate) {
+    waitingScreenFirmwareHoldStartsAnUpdate(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeLeavesTheRadioAlone) {
-    pairingCodeLeavesTheRadioAlone(this);
-}
+TEST_F(IdleStateTests, waitingScreenLeavesTheRadioAlone) { waitingScreenLeavesTheRadioAlone(this); }
 
 TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) {
     aSeedRunTakesTheRadioForEspNow(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeFirmwareHoldCarriedInDoesNotFire) {
-    pairingCodeFirmwareHoldCarriedInDoesNotFire(this);
+TEST_F(IdleStateTests, waitingScreenFirmwareHoldCarriedInDoesNotFire) {
+    waitingScreenFirmwareHoldCarriedInDoesNotFire(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) {
-    pairingCodeTakesUpdatesWhileUp(this);
+TEST_F(IdleStateTests, waitingScreenDemoHoldEntersChooseTeam) {
+    waitingScreenDemoHoldEntersChooseTeam(this);
 }
+
+TEST_F(IdleStateTests, waitingScreenTakesUpdatesWhileUp) { waitingScreenTakesUpdatesWhileUp(this); }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);

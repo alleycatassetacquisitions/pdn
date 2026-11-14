@@ -152,8 +152,13 @@ static void setup() {
     symbolWirelessManager =
     new SymbolWirelessManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
     fdnRecordStore = new FdnRecordStore(fdn->getWirelessManager(), fdn->getStorage());
+    // fdnConfig has no BAND_READER_DRIVER_NAME entry until the reader part and its
+    // pins are confirmed, so this finds none. Without one this FDN shows NO READER
+    // for every pending registration and registers nobody, staff cards included:
+    // staff take the player to another FDN.
     fdnProvisioningManager =
-    new FdnProvisioningManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
+    new FdnProvisioningManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator(),
+                               fdn->getPeripheral<BandReader>(BAND_READER_DRIVER_NAME));
     // The beacon and the uploader are pumped here rather than from a state: only
     // the mounted app's state loops, and the beacon has to run in every one of
     // them, as does the uploader's hand-back of the radio after the boot upload.

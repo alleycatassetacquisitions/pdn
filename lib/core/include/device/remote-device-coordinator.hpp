@@ -102,9 +102,6 @@ public:
     /** MAC of the peer on the first CONNECTED jack whose peer is a `type`, or nullptr. */
     const uint8_t* getConnectedPeerMac(DeviceType type);
 
-    /** True iff `mac` is the peer on a CONNECTED jack whose peer is a `type`. */
-    bool isConnectedPeer(DeviceType type, const uint8_t* mac);
-
     /** True iff `jack` is CONNECTED and its peer is a `type` whose MAC is `mac`. */
     bool isConnectedPeer(SerialIdentifier jack, DeviceType type, const uint8_t* mac) const;
 
