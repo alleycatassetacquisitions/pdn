@@ -264,7 +264,18 @@ Everything in this section is a proposal to the server team. Each rule names the
 - **The sender's MAC address (item 2)** is kept with the copy as a troubleshooting note and nothing else. It is self-asserted over the radio. It takes no part in verification, in deciding whose copy a record is, in standing, or in blocking.
 - **Same-player matches.** The server already refuses a match whose two players are the same player (Context), so nothing is asked. Firmware gains the matching refusal (`quickdraw-match`, "Same-player match refusal").
 - **Scoring period (item 1).** The first verified copy's occurred-at decides the scoring period, as today. The server should also flag a match whose two copies fall in different scoring periods.
+- **Prizes (item 1, owner's X-3 ruling).** Unconfirmed and contradicted matches do not count toward prizes until a person reviews them. The live score still counts a match on its first verified copy. Prize standings count confirmed matches plus reviewed ones; the live standings and the prize standings can therefore differ, and only the prize standings award prizes.
 - **Crash records** need no change. They are stored as device logs under the originating PDN's MAC address and are unverified, as every device log is. Proposal to the server team: keep crash records out of anything that counts or alerts per PDN.
+
+### Forged standalone match results over the radio (owner's X-3 ruling)
+
+The trace (at #457 `94297df2`) confirmed it: a radio attacker spoofing the opponent's MAC can send a `DRAW_RESULT` of raw `0 ms` with a `270 ms` boost under the next sequence number read off `SEND_MATCH_ID`. The receiver accepts it, the honest result is then dropped as a duplicate, and the forged loss is stored and tagged under the victim's own key. Three mitigations:
+
+- **Server prize rule.** Server, "Prizes" above.
+- **Sanity checks (standalone only).** A result or never-pressed report is refused before the local draw window opens, or with a raw time below `80 ms`. Why 80: the start is stamped before the stimulus, so measured times only overstate; the athletics false-start line is `100 ms` for an auditory start, and visual and haptic reactions are slower. 80 refuses only guesses timed to the fixed countdown. Boost and pity rules are unchanged. Shootout is exempt: its starts are fan-out retries and its matches are not stored.
+- **Signed frames.** The Hunter draws a 16-byte key from the hardware RNG and sends it with the binary match ID as serial application frame opcode `0x03` (the record key stays the only payload of its frame; a type byte inside the payload was rejected because it breaks registration between mixed builds). `MatchPacket` gains a `uint32_t` counter and a 16-byte tag (83 to 103 bytes), the first 16 bytes of HMAC-SHA-256 over the packet type and the packet with sequence number and tag zeroed. A filter in `ReliableChannel` checks tag, per-direction counter and role before duplicate detection, so a forgery cannot take the honest frame's sequence number. `MATCH_ROLE_MISMATCH` stays unsigned (only a denial of service). A cable drop past `500 ms` abandons the match and wipes the key.
+- **Diffie-Hellman considered and rejected.** The cable is already private against a radio attacker; DH would add protection only against a passive tap on the serial line.
+- **Not covered:** shootout frames, roster, posse and join traffic, the record relay (a fake FDN still retires records), jamming and modified firmware. A per-link key exchanged in the serial HELLO and checked for all traffic is the long-term answer and is not built.
 
 ### Ranked server list (proposal to the server team)
 
@@ -308,6 +319,7 @@ The record trailer and the "unverified crash record" and "quarantine" server rul
 Where the design does not hold on its own:
 
 - **A fabricated match cannot be contradicted.** A player can tag a wholly invented match, with a new match ID and any opponent's player UUID, under their own key. It verifies and counts at once. The opponent holds no record with that ID, so no copy can ever contradict it. It shows only as unconfirmed, the same standing as an honest match whose loser withheld their copy or whose opponent's PDN never stored it. → Reviewing unconfirmed matches before prizes are awarded is the only check.
+- **A radio attacker can forge a standalone match result (X-3).** Until the signed match frames land, spoofing the opponent's MAC yields a forged loss stored and tagged under the victim's key, and the sanity checks only narrow it (a forged raw `80 ms` with a `270 ms` boost still gives `-190 ms`). Shootout, roster, posse and join traffic stay unsigned. → Signed frames, the server's prize review, and long-term a per-link key, not built.
 - **Only the roll-out gate keeps unverified radio submissions away from the server.** With this firmware an FDN takes match records from any PDN with no cable, and player UUIDs cross the radio in the clear. Against a server that does not verify tags, any radio in range of an FDN could submit a match record for any two players, and today's server would score the first upload and drop the real one with `204`. That is not a planned state: this firmware is not flashed to event devices until the server verifies (Migration Plan). The gate is a procedure and nothing in the firmware enforces it. Flashing early, or the server ceasing to verify, opens the exposure.
 - **This firmware cannot register a PDN against a server that returns no key, including today's server (editor's choice E6).** Registration on real devices cannot be exercised until a server or a test server returns keys.
 - **An FDN whose server address and certificate do not meet E8 can register nobody with this firmware (editor's choice E8).** The FDN takes a key only from a lookup over HTTPS (Decisions, "Registration", step 4). A plain `http://` address, an address with no scheme, a redirect, or a certificate carrying any key but the pinned one each leave every registration at that FDN failing (Open Questions, E8).
@@ -369,7 +381,7 @@ The owner has since ruled on the "neoband": players register by tapping it at an
 
 ## Open Questions
 
-Only X-3 remains open. Every other item is answered by the owner or confirmed by the chief.
+Only E11 remains open. Every other item is answered by the owner or confirmed by the chief.
 
 **Answered by the owner**
 
@@ -389,6 +401,7 @@ Only X-3 remains open. Every other item is answered by the owner or confirmed by
 - **The player's totals on the PDN.** Confirmed by the chief: a server item ranked last as a feature, not a security item (ranked server list, item 5); it does not hold up the roll-out gate.
 - **E10.** Answered by the owner: the current ring moves to its own namespace and the older namespace is read in place, never cleared or migrated; matches stored by older firmware are relayed with an all-zero tag as the untagged marker, JSON-era ones as kind `0x03`, with no upload before flashing. Rejected: a migration at boot, and a new frame type (Decisions, "Matches stored by older firmware").
 - **X-1. FDN storage.** Answered by the owner: a dedicated storage area in the unused 124 KB at the end of flash (`0x7E1000` to `0x800000`), keeping `64` match and `32` crash records (Decisions, "FDN record store"; Migration Plan, step 9).
+- **X-3. A radio attacker forging a standalone match result.** Three mitigations (Decisions, "Forged standalone match results"): the server's prize review rule, badge sanity checks with an `80 ms` raw floor, and standalone match frames signed under a per-match key the Hunter draws and sends over the serial jack. No Diffie-Hellman. The per-link key for all traffic is the long-term answer, not built.
 
 **Confirmed by the chief**
 
@@ -404,4 +417,4 @@ Only X-3 remains open. Every other item is answered by the owner or confirmed by
 
 **Open**
 
-- **X-3. Risk 1 with victim-tagged forgeries** (`docs/THREAT_MODEL.md:139`). Left open by the owner; nothing changes for it yet.
+- **E11, to confirm.** The `80 ms` floor and the press rule that goes with it. Without it a press in the window's first `80 ms` wins on the presser's PDN but is refused by the opponent's, so the two disagree. Proposal: such a press counts as an early press (`+75 ms`) and the window stays open. Also to confirm on hardware: standalone countdown skew is well under `80 ms` (`TIMING` logs) (tasks.md 13.6).

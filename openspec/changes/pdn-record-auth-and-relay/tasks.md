@@ -8,7 +8,7 @@
 - [x] 1.6 Owner answered Open Question 5: registration fails when no key arrives, so a PDN with no key is not registered and no match record without a key exists
 - [ ] 1.7 Send the ranked server list (design.md) to the server team as a proposal, with the match record byte layout, the key and tag formulas and the test vector
 - [x] 1.8 Owner ruled after the answers above: the key is derived from the server secret and the player alone; the lookup request is unchanged; the sender's MAC address on a match upload is a troubleshooting note only; blocking is by player only; one person registering two PDNs as two different players is an accepted risk
-- [x] 1.9 Editor's choices closed (design.md, Open Questions): E1, E2, E3, E5, E6, E7 and E8 confirmed by the chief (E8: host names and validity dates not checked, redirects refused, one pinned server key); E4 replaced by E10, answered by the owner; X-2 confirmed by the chief: no fourth relay trigger; X-3 stays open
+- [x] 1.9 Editor's choices closed (design.md, Open Questions): E1, E2, E3, E5, E6, E7 and E8 confirmed by the chief (E8: host names and validity dates not checked, redirects refused, one pinned server key); E4 replaced by E10, answered by the owner; X-2 confirmed by the chief: no fourth relay trigger; X-3 answered by the owner (section 13); E11 open (task 13.6)
 
 ## 2. Relay on the PDN (built by the open PRs)
 
@@ -107,3 +107,12 @@
 - [ ] 12.2 Move the FDN record store into that partition, keeping `64` match records, `32` relayed crash records and the `32`-entry legacy ring inside the `64`-match budget; tests that the limits hold
 - [ ] 12.3 Check whether the OTA path can, or must, refuse an image built for a different partition table, and record the answer in design.md, Migration Plan, step 9
 - [ ] 12.4 Reflash every FDN over USB with the new partition table before the roll-out; OTA cannot change it
+
+## 13. X-3: forged standalone match results (owner's ruling; firmware on top of #457)
+
+- [ ] 13.1 (a) Sanity checks: in `MatchManager`, for standalone matches only, refuse a `DRAW_RESULT` or `NEVER_PRESSED` before the local draw window opens (flag set with the local start time) or with a raw time below `MIN_DRAW_TIME_MS = 80`, before any write; `LOG_W`, no state change, nothing sent; shootout keeps the `>= 0` check
+- [ ] 13.2 (a) Tests: refused before the window, refused at `79 ms`, accepted at `80 ms`, never-pressed refused before the window, shootout result at `10 ms` still accepted; the boost scenario uses raws of `90` and `100 ms`
+- [ ] 13.3 (b) Match key: `utils/hardware-random.hpp` (`esp_fill_random` on the device); serial application frame kind `0x03` (`MATCH_KEY`) beside the record key's `0x02`, threaded through the parser, hand-off and coordinator; payload is the binary match ID plus the 16-byte key; `AwaitBandState` ignores other kinds
+- [ ] 13.4 (b) Frame signing: `MatchPacket` gains a `uint32_t` counter and a 16-byte tag (`static_assert` 103 bytes); the Hunter sends the key before `SEND_MATCH_ID` and clears the match if the jack refuses it; the Bounty pairs the key from its opponent jack's Connected PDN with the initiation; an admit filter in `ReliableChannel` checks tag, counter and role before duplicate detection; the key and counters are wiped on every match clear; `MATCH_ROLE_MISMATCH` and shootout frames stay unsigned
+- [ ] 13.5 (b) Tests: a forged result without the key is dropped and the honest result with the same sequence number is still accepted; replayed and reflected frames are dropped; a key from a non-opponent jack is ignored; a refused key frame starts no match; the key is wiped on finalize and abandon; parser and fuzz tests for kind `0x03`; registration still works with the record key frame
+- [ ] 13.6 Owner confirms E11 (the `80 ms` floor and the early-press rule for a press in the window's first `80 ms`); confirm standalone countdown skew on hardware with the `TIMING` logs
