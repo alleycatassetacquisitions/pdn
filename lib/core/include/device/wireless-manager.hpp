@@ -107,7 +107,8 @@ public:
 
     /**
      * True when the HTTP response whose success callback is running came over
-     * HTTPS with the server's certificate checked. Ask from inside that callback.
+     * HTTPS from a server that presented the pinned key. Ask from inside that
+     * callback.
      */
     bool isHttpResponseServerVerified() {
         return httpClient != nullptr && httpClient->isResponseServerVerified();
