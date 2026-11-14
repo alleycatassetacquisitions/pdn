@@ -1077,6 +1077,10 @@ TEST(PlayerProvider, overwriteReplacesProfile) { playerProviderOverwriteReplaces
 
 TEST(PlayerProvider, clearDropsProfile) { playerProviderClearDropsProfile(); }
 
+TEST(PlayerProvider, clearDropsAndOverwritesRecordKey) {
+    playerProviderClearDropsAndOverwritesRecordKey();
+}
+
 TEST(PlayerRegistrationShim, mapsHelixAffiliation) { playerLegacyShimMapsHelixAffiliation(); }
 
 TEST(PlayerRegistrationShim, mapsHunterTeamName) { playerLegacyShimMapsHunterTeamName(); }
@@ -1127,6 +1131,56 @@ TEST_F(PlayerFetchTestSuite, chooseTeamConfirmEntersHub) { chooseTeamConfirmEnte
 
 TEST_F(PlayerFetchTestSuite, reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged) {
     reprovisionNotifiesRoleChangedEvenWhenRoleUnchanged(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserRegistersOnKeyThenProfile) {
+    fetchUserRegistersOnKeyThenProfile(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserRegistersOnProfileThenKey) {
+    fetchUserRegistersOnProfileThenKey(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserProfileWithoutKeyFailsAtTimeLimit) {
+    fetchUserProfileWithoutKeyFailsAtTimeLimit(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserKeyWithoutProfileIsClearedAtTimeLimit) {
+    fetchUserKeyWithoutProfileIsClearedAtTimeLimit(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserLookupFailureDropsKeyAndHeldProfile) {
+    fetchUserLookupFailureDropsKeyAndHeldProfile(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserAcceptsKeyOnlyFromTheFdnItAsked) {
+    fetchUserAcceptsKeyOnlyFromTheFdnItAsked(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserLaterKeyReplacesHeldKey) {
+    fetchUserLaterKeyReplacesHeldKey(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserJackLossAfterKeyFailsAttempt) {
+    fetchUserJackLossAfterKeyFailsAttempt(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserJackLossWithProfileHeldFailsAttempt) {
+    fetchUserJackLossWithProfileHeldFailsAttempt(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserSendsNoPinAfterRegistering) {
+    fetchUserSendsNoPinAfterRegistering(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserLeavingAttemptDropsKeyAndProfile) {
+    fetchUserLeavingAttemptDropsKeyAndProfile(this);
+}
+
+TEST_F(PlayerFetchTestSuite, pinEntryHoldsNoRecordKey) { pinEntryHoldsNoRecordKey(this); }
+
+TEST_F(PlayerFetchTestSuite, registrationWritesNoRecordKeyToStorage) {
+    registrationWritesNoRecordKeyToStorage(this);
 }
 
 TEST_F(FdnProvisioningTests, dropsMalformedOrUncabledProvisionRequest) {

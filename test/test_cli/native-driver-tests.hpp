@@ -817,7 +817,10 @@ void cliCommandDisplayAlias(CliDisplayCommandTestSuite* suite) {
 // CLI COMMAND / REBOOT TEST SUITE
 // ============================================
 
-/** Simulates a cabled FDN delivering a PlayerProvisionPacket to a PDN in FetchUserState. */
+/**
+ * Simulates a cabled FDN registering a PDN in FetchUserState: the record key on
+ * the jack, then the PlayerProvisionPacket on the radio.
+ */
 inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
     const uint8_t fdnMac[6] = {0xFD, 0x00, 0x00, 0x00, 0x00, 0x01};
     HelloPayload hello{};
@@ -838,6 +841,16 @@ inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
         device.peerCommsDriver->exec();
         device.pdn->loop();
     }
+
+    // The key counts only once the PIN has gone out, which takes a tick after the jack connects.
+    device.pdn->loop();
+
+    ApplicationPayload recordKey{};
+    recordKey.fill(0xA5);
+    ApplicationFrame keyFrame{};
+    encodeApplicationFrame(recordKey, keyFrame);
+    device.serialInDriver->injectBytes(std::vector<uint8_t>(keyFrame.begin(), keyFrame.end()));
+    device.serialInDriver->exec();
 
     PlayerProvisionPacket prov{};
     prov.status = static_cast<uint8_t>(ProvisionStatus::PROFILE_DELIVERED);

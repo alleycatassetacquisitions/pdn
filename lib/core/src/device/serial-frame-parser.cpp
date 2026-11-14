@@ -1,6 +1,7 @@
 #include "device/serial-frame-parser.hpp"
 
 #include "utils/simple-timer.hpp"
+#include "utils/secure-wipe.hpp"
 #include "wireless/crc16.hpp"
 
 #include <cstring>
@@ -51,6 +52,8 @@ bool SerialFrameParser::isKnownOpcode(uint8_t opcode, size_t& payloadLen) {
 void SerialFrameParser::resetParser() {
     parser.state = ParseState::SCAN_FOR_SYNC;
     parser.opcode = 0;
+    // An application payload can be a secret, and clear() leaves the bytes in place.
+    secureWipe(parser.payloadBuf.data(), parser.payloadBuf.size());
     parser.payloadBuf.clear();
     parser.expectedPayloadLen = 0;
     parser.crcBytes[0] = 0;
@@ -89,13 +92,17 @@ void SerialFrameParser::resyncFromConsumedBytes() {
     // bytes after the (already disproven) preamble and opcode lets an embedded
     // 0xAA 0x55 restart framing at the real frame start; a trailing lone 0xAA
     // ends in GOT_AA and pairs with whatever byte arrives next.
-    std::vector<uint8_t> replay = parser.payloadBuf;
+    // Sized before it is filled, so the wipe below reaches every copy it made.
+    std::vector<uint8_t> replay;
+    replay.reserve(parser.payloadBuf.size() + parser.crcBytesRead);
+    replay.insert(replay.end(), parser.payloadBuf.begin(), parser.payloadBuf.end());
     replay.insert(replay.end(), parser.crcBytes, parser.crcBytes + parser.crcBytesRead);
     resetParser();
     // Re-entry depth is at most two; the outer replay may complete further frames.
     for (uint8_t b : replay) {
         consumeByte(b);
     }
+    secureWipe(replay.data(), replay.size());
 }
 
 void SerialFrameParser::consumeByte(uint8_t b) {
@@ -122,7 +129,10 @@ void SerialFrameParser::consumeByte(uint8_t b) {
                 break;
             }
             parser.opcode = b;
+            // Sized up front: growing byte by byte would leave copies of the
+            // payload's start in freed heap blocks that no wipe can reach.
             parser.payloadBuf.clear();
+            parser.payloadBuf.reserve(parser.expectedPayloadLen);
             parser.state = ParseState::READING_PAYLOAD;
             break;
         case ParseState::READING_PAYLOAD:
@@ -170,6 +180,7 @@ void SerialFrameParser::dispatchFrame() {
                 ApplicationPayload payload;
                 std::memcpy(payload.data(), parser.payloadBuf.data(), payload.size());
                 applicationFrameHandler(payload);
+                secureWipe(payload.data(), payload.size());
             }
             break;
     }

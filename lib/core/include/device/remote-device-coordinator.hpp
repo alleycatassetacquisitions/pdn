@@ -105,6 +105,9 @@ public:
     /** True iff `mac` is the peer on a CONNECTED jack whose peer is a `type`. */
     bool isConnectedPeer(DeviceType type, const uint8_t* mac);
 
+    /** True iff `jack` is CONNECTED and its peer is a `type` whose MAC is `mac`. */
+    bool isConnectedPeer(SerialIdentifier jack, DeviceType type, const uint8_t* mac) const;
+
     // ---- Chain-level surface ----
 
     /** This device's chain role, derived from its PDN-to-PDN jack links plus the ring latch. */
@@ -363,6 +366,11 @@ protected:
 
     /** Tells every ring-membership observer that isInRing() is now inRing. */
     void fireRingMembershipChange(bool inRing) { ringMembershipChangeCallbacks.fire(inRing); }
+
+    /** Hands one application frame to every consumer as arrived on `jack`. */
+    void fireApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload) {
+        applicationFrameCallbacks.fire(jack, payload);
+    }
 
 private:
     static constexpr size_t NUM_JACKS = 3;

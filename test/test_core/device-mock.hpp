@@ -383,6 +383,11 @@ public:
         return false;
     }
 
+    /** Hands `payload` to the application-frame consumers as a frame that arrived on `jack`. */
+    void deliverApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload) {
+        fireApplicationFrame(jack, payload);
+    }
+
 private:
     std::array<uint8_t, 6> ringHeadMac{};
     JackStatus outputStatus = JackStatus::DISCONNECTED;

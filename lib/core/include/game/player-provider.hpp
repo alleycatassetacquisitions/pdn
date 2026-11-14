@@ -1,8 +1,10 @@
 #pragma once
 
 #include "game/player.hpp"
+#include "game/record-key.hpp"
 
-/** Owns the session `Player` and registration PIN for fetch / gameplay handoff. */
+/** Owns the session `Player`, its record key and the registration PIN for fetch / gameplay handoff.
+ */
 class PlayerProvider {
 public:
     static constexpr size_t REGISTRATION_PIN_BUFFER_SIZE = 5;
@@ -16,8 +18,12 @@ public:
     /** @return true when the owned player has a registration profile. */
     bool hasPlayer() const;
 
-    /** Clears registration profile on the owned player and drops the registration PIN. */
+    /** Clears the owned player's registration profile, the registration PIN and the record key. */
     void clear();
+
+    /** @return the session's record key holder (never null); held only once a registration
+     * delivered one. */
+    RecordKey* getRecordKey();
 
     /** Stores the four-digit pairing PIN entered before fetch. */
     void setRegistrationPin(const char* pin);
@@ -30,5 +36,6 @@ public:
 
 private:
     Player player;
+    RecordKey recordKey;
     char registrationPin[REGISTRATION_PIN_BUFFER_SIZE] = {};
 };
