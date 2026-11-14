@@ -24,7 +24,7 @@ The FDN SHALL propagate its clock to every Connected PDN and SHALL collect recor
 - The FDN SHALL collect match records (`match-collection`) and crash records (`crash-reporting`) from any PDN as `record-relay` specifies. Collecting a record SHALL NOT depend on the sending PDN being Connected on a serial jack.
 
 #### Scenario: Connected PDN receives UTC time and transfers pending match and crash records
-- **WHEN** a provisioned PDN holding a record key, with uncollected match and crash records, connects to an FDN whose UTC clock is synchronized
+- **WHEN** a provisioned PDN with uncollected match and crash records connects to an FDN whose UTC clock is synchronized
 - **THEN** the FDN propagates its UTC epoch milliseconds to the PDN and collects the PDN's pending match and crash records (`record-relay`)
 
 #### Scenario: Clock is not propagated to a PDN that is not Connected

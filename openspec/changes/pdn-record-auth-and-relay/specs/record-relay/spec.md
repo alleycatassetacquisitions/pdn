@@ -2,15 +2,15 @@
 
 ### Requirement: Record frame
 
-A PDN SHALL send each crash record or match record in a record frame carrying, in order: the record kind (`record-authentication`), a 4-byte record number, the record bytes, and the record trailer (`record-authentication`). A record frame SHALL be sent as one peer-to-peer frame.
+A PDN SHALL send each crash record or match record in a record frame carrying, in order: the record kind (`1` byte: `0x01` crash record, `0x02` match record), a 4-byte record number, the record bytes (`42` for a crash record, `112` for a match record) and, for a match record only, its `16`-byte record tag (`record-authentication`). A record frame SHALL be sent as one peer-to-peer frame.
 
 #### Scenario: Crash record frame
 - **WHEN** a PDN sends crash record 7
-- **THEN** the frame carries the crash record kind, record number `7`, the crash record bytes and the record trailer, in that order, in a single peer-to-peer frame
+- **THEN** the frame carries the crash record kind, record number `7` and the `42` crash record bytes, in that order and with nothing after them, in a single peer-to-peer frame
 
 #### Scenario: Match record frame
 - **WHEN** a PDN sends the match record with sequence number 12
-- **THEN** the frame carries the match record kind, record number `12`, the match record bytes and the record trailer, in that order, in a single peer-to-peer frame
+- **THEN** the frame carries the match record kind, record number `12`, the `112` match record bytes and the `16`-byte record tag stored with that record, in that order, in a single peer-to-peer frame
 
 ### Requirement: Relay target without a cable
 
@@ -66,14 +66,14 @@ A PDN SHALL send record frames by reliable unicast (`wireless-transport`) and SH
 
 ### Requirement: Stored acknowledgement
 
-An FDN's stored acknowledgement SHALL carry the record kind, the record number and a record check: the first `8` bytes of SHA-256 over the record bytes and record trailer as the FDN stored them. A PDN SHALL treat a stored acknowledgement as answering a record only when its kind, number and record check all match the record frame as the PDN last sent it.
+An FDN's stored acknowledgement SHALL carry the record kind, the record number and a record check: the first `8` bytes of SHA-256 over the record bytes and, for a match record, the record tag that follows them, as the FDN stored them. A PDN SHALL treat a stored acknowledgement as answering a record only when its kind, number and record check all match the record frame as the PDN last sent it.
 
-#### Scenario: An acknowledgement for a frame sent under an earlier key does not count
-- **WHEN** a PDN sends crash record 3 under key ID 1, accepts a record key with key ID 2, sends crash record 3 again to the same FDN, and that FDN's stored acknowledgement for the first frame then arrives
-- **THEN** its record check does not match the frame the PDN last sent, and the record stays pending until the stored acknowledgement for the second frame arrives
+#### Scenario: An acknowledgement for the same match record bytes under a different tag does not count
+- **WHEN** a PDN that sent match record 3 receives a stored acknowledgement for match record 3 whose record check was computed over the same record bytes and a different record tag
+- **THEN** its record check does not match the frame the PDN sent, and the record stays pending
 
 #### Scenario: An acknowledgement for different bytes under the same number does not count
-- **WHEN** a PDN that sent crash record 3 receives a stored acknowledgement for crash record 3 whose record check does not match the bytes and trailer it sent
+- **WHEN** a PDN that sent crash record 3 receives a stored acknowledgement for crash record 3 whose record check does not match the record bytes it sent
 - **THEN** the PDN does not treat its record as acknowledged and the record stays pending
 
 ### Requirement: Mark advances only on the stored acknowledgement
@@ -98,11 +98,11 @@ A PDN SHALL advance its mark for a record it has sent, and send the next, only w
 
 ### Requirement: FDN record acceptance without a cable
 
-While its peer-to-peer radio is enabled an FDN SHALL accept a record frame from any PDN, Connected on a jack or not. It SHALL store the record kind, record number, record bytes, record trailer and the sender's 6-byte MAC address (the frame's radio source address) unchanged in bounded non-volatile storage, and SHALL send the stored acknowledgement for that record only after storing.
+While its peer-to-peer radio is enabled an FDN SHALL accept a record frame from any PDN, Connected on a jack or not. It SHALL store the record kind, record number, record bytes, the record tag of a match record, and the sender's 6-byte MAC address (the frame's radio source address) unchanged in bounded non-volatile storage, and SHALL send the stored acknowledgement for that record only after storing.
 
 #### Scenario: A record from a PDN that is not plugged in is stored and acknowledged
 - **WHEN** an FDN with room for crash records receives a crash record frame from a PDN that is not Connected on any of its jacks
-- **THEN** the FDN stores the record with the sender's MAC address and record trailer and then sends the stored acknowledgement
+- **THEN** the FDN stores the record with the sender's MAC address and then sends the stored acknowledgement
 
 #### Scenario: Acknowledgement follows storage
 - **WHEN** an FDN loses power after receiving a record frame and before the record is in non-volatile storage
@@ -122,7 +122,7 @@ An FDN SHALL drop, without storing or acknowledging, a record frame whose record
 
 ### Requirement: FDN duplicates and full storage
 
-An FDN SHALL treat a record frame as a duplicate only when it holds a record with the same sender, kind, number, record bytes and record trailer, and SHALL acknowledge a duplicate without storing it again. A frame that matches a held record's sender, kind and number but differs in bytes or trailer SHALL be stored as a separate record. When its storage for that record kind is full the FDN SHALL send no stored acknowledgement for a frame it would have to store.
+An FDN SHALL treat a record frame as a duplicate only when it holds a record with the same sender, kind, number, record bytes and, for a match record, record tag, and SHALL acknowledge a duplicate without storing it again. A frame that matches a held record's sender, kind and number but differs in bytes or tag SHALL be stored as a separate record. When its storage for that record kind is full the FDN SHALL send no stored acknowledgement for a frame it would have to store.
 
 #### Scenario: A resent record is acknowledged once more and stored once
 - **WHEN** an FDN that holds a record receives the identical record frame from the same PDN again
@@ -138,12 +138,12 @@ An FDN SHALL treat a record frame as a duplicate only when it holds a record wit
 
 ### Requirement: FDN relays without verifying
 
-An FDN SHALL NOT verify record tags and SHALL NOT hold a record key except in volatile memory while delivering one during registration (`player-provisioning`). When it uploads a relayed record the FDN SHALL send the sender's MAC address, record kind, record bytes, key ID and record tag exactly as received.
+An FDN SHALL NOT verify record tags and SHALL NOT hold a record key except in volatile memory while delivering one during registration (`player-provisioning`). When it uploads a relayed match record the FDN SHALL send the sender's MAC address, the record bytes and the record tag exactly as received. When it uploads a relayed crash record the FDN SHALL name the sender's MAC address as the originating device (`crash-reporting`).
 
 #### Scenario: A record with a wrong tag is still relayed
 - **WHEN** an FDN receives a well-formed match record frame whose record tag does not match its contents
 - **THEN** the FDN stores, acknowledges and uploads it unchanged, leaving the decision to the server
 
-#### Scenario: A record with key ID 0 is still relayed
-- **WHEN** an FDN receives a crash record frame whose record trailer carries key ID `0` and `16` zero bytes
-- **THEN** the FDN stores, acknowledges and uploads it with key ID `0`
+#### Scenario: A match record with the all-zero tag is still relayed
+- **WHEN** an FDN receives a match record frame whose record tag is `16` zero bytes
+- **THEN** the FDN stores, acknowledges and uploads it with the all-zero record tag
