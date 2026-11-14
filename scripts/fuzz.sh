@@ -98,6 +98,10 @@ generate_seeds_and_dict() {
     printf '\xaa\x55\x00\x11\x22\x33\x44\x55\x66\x01\xde\xad\xbe\xef\x00\x01\x01\xdc\x48' \
         > "$SEEDS_DIR/serial/valid_hello.bin"
 
+    # Valid application frame seed: 0xAA 0x55 + OP_APPLICATION(0x02) + 32-byte payload + CRC16(0xD966)
+    printf '\xaa\x55\x02\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\xd9\x66' \
+        > "$SEEDS_DIR/serial/valid_application.bin"
+
     printf '12345678-abcd-ef01-2345-6789abcdef01' > "$SEEDS_DIR/match/valid_match_id.txt"
 
     printf '\x03\x02\x00\x07\x01\x05\x02\x00\x09\x02\x08' \
@@ -107,6 +111,7 @@ generate_seeds_and_dict() {
 kw_shootout="SHT-"
 kw_preamble="\xaa\x55"
 kw_hello="\xaa\x55\x00"
+kw_application="\xaa\x55\x02"
 EOF
 
     # Instrument only project sources and harnesses, skipping the STL.

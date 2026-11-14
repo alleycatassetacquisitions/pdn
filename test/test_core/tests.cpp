@@ -17,6 +17,8 @@
 #include "quickdraw-state-graph-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
 #include "rdc-hello-tests.hpp"
+#include "rdc-application-frame-tests.hpp"
+#include "application-frame-hand-off-tests.hpp"
 #include "connect-state-callback-tests.hpp"
 #include "callback-list-tests.hpp"
 #include "posse-manager-tests.hpp"
@@ -2301,6 +2303,85 @@ TEST_F(RDCHelloTests, ringMembershipEventReportsARelayedFlagClearing) {
     rdcRingMembershipEventReportsARelayedFlagClearing(this);
 }
 TEST(RDCHelloStandalone, fdnNeverAdoptsItsPdnsChainHead) { rdcFdnNeverAdoptsItsPdnsChainHead(); }
+
+// ============================================
+// RDC APPLICATION FRAME
+// ============================================
+
+TEST_F(RdcApplicationFrameTests, reachesThePeerOnThatJackOnly) {
+    rdcApplicationFrameReachesThePeerOnThatJackOnly(this);
+}
+TEST_F(RdcApplicationFrameTests, travelsEitherWayAndEachJackQueuesItsOwn) {
+    rdcApplicationFrameTravelsEitherWayAndEachJackQueuesItsOwn(this);
+}
+TEST_F(RdcApplicationFrameTests, neverInterleavesWithHello) {
+    rdcApplicationFrameNeverInterleavesWithHello(this);
+}
+TEST_F(RdcApplicationFrameTests, queuedMidHelloFollowsThatHello) {
+    rdcApplicationFrameQueuedMidHelloFollowsThatHello(this);
+}
+TEST_F(RdcApplicationFrameTests, mainLoopDuringAWriteLeavesTheFrameIntact) {
+    rdcMainLoopDuringAWriteLeavesTheFrameIntact(this);
+}
+TEST_F(RdcApplicationFrameTests, frameBegunBeforeADisconnectIsFinishedAndReportedWrittenOnce) {
+    rdcFrameBegunBeforeADisconnectIsFinishedAndReportedWrittenOnce(this);
+}
+TEST_F(RdcApplicationFrameTests, secondFrameIsRefusedUntilTheFirstIsReported) {
+    rdcSecondApplicationFrameIsRefusedUntilTheFirstIsReported(this);
+}
+TEST_F(RdcApplicationFrameTests, waitingAtDisconnectIsDropped) {
+    rdcApplicationFrameWaitingAtDisconnectIsDropped(this);
+}
+TEST_F(RdcApplicationFrameTests, sentFromTheDisconnectObserverIsDropped) {
+    rdcApplicationFrameSentFromTheDisconnectObserverIsDropped(this);
+}
+TEST_F(RdcApplicationFrameTests, reportedFrameIsNotReportedAgainAtDisconnect) {
+    rdcReportedApplicationFrameIsNotReportedAgainAtDisconnect(this);
+}
+TEST_F(RdcApplicationFrameTests, writtenFrameIsReportedBeforeAPeerSwapOpensANewLink) {
+    rdcWrittenFrameIsReportedBeforeAPeerSwapOpensANewLink(this);
+}
+TEST_F(RdcApplicationFrameTests, isRefusedWithoutAConnectedPeer) {
+    rdcApplicationFrameIsRefusedWithoutAConnectedPeer(this);
+}
+TEST_F(RdcApplicationFrameTests, linkStaysConnectedAcrossApplicationFrames) {
+    rdcLinkStaysConnectedAcrossApplicationFrames(this);
+}
+TEST_F(RdcApplicationFrameTests, observersAreKeptPerOwner) {
+    rdcApplicationFrameObserversAreKeptPerOwner(this);
+}
+TEST_F(RdcApplicationFrameTests, destructionClearsAWaitingFrameAndReportsNothing) {
+    rdcDestructionClearsAWaitingFrameAndReportsNothing(this);
+}
+TEST_F(RdcApplicationFrameTests, isHandedUpWhateverTheLinkState) {
+    rdcApplicationFrameIsHandedUpWhateverTheLinkState(this);
+}
+
+// ============================================
+// APPLICATION FRAME HAND-OFF
+// ============================================
+
+TEST(ApplicationFrameHandOffTests, givesTheWriterTheOfferedFrameOnce) {
+    applicationFrameHandOffGivesTheWriterTheOfferedFrameOnce();
+}
+TEST(ApplicationFrameHandOffTests, holdsOneFrameAtATime) {
+    applicationFrameHandOffHoldsOneFrameAtATime();
+}
+TEST(ApplicationFrameHandOffTests, dropTakesBackAFrameTheWriterHasNotTaken) {
+    applicationFrameHandOffDropTakesBackAFrameTheWriterHasNotTaken();
+}
+TEST(ApplicationFrameHandOffTests, dropAfterTheWriterTookTheFrameSettlesItWritten) {
+    applicationFrameHandOffDropAfterTheWriterTookTheFrameSettlesItWritten();
+}
+TEST(ApplicationFrameHandOffTests, dropAfterFinishSettlesItWrittenOnce) {
+    applicationFrameHandOffDropAfterFinishSettlesItWrittenOnce();
+}
+TEST(ApplicationFrameHandOffTests, emptySlotSettlesNothing) {
+    applicationFrameHandOffEmptySlotSettlesNothing();
+}
+TEST(ApplicationFrameHandOffTests, keepsEveryFrameWholeAcrossTwoThreads) {
+    applicationFrameHandOffKeepsEveryFrameWholeAcrossTwoThreads();
+}
 
 // ============================================
 // POSSE MANAGER TESTS

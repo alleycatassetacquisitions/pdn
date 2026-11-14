@@ -6,19 +6,23 @@
 #include <cstring>
 #include <utility>
 
-std::array<uint8_t, HELLO_FRAME_LEN> encodeHelloFrame(const HelloPayload& hello) {
-    const uint8_t opcode = OP_HELLO;
-    const uint8_t* payload = reinterpret_cast<const uint8_t*>(&hello);
+// Lays one frame into `out`, which holds `length` + 5 bytes: preamble, opcode,
+// payload, then the CRC-16 over opcode + payload, high byte first.
+static void encodeFrame(uint8_t opcode, const uint8_t* payload, size_t length, uint8_t* out) {
     uint16_t crc = crc16(&opcode, 1);
-    crc = crc16Update(crc, payload, sizeof(hello));
+    crc = crc16Update(crc, payload, length);
 
+    out[0] = FRAME_PREAMBLE_0;
+    out[1] = FRAME_PREAMBLE_1;
+    out[2] = opcode;
+    std::memcpy(&out[3], payload, length);
+    out[3 + length] = static_cast<uint8_t>(crc >> 8);
+    out[3 + length + 1] = static_cast<uint8_t>(crc & 0xFF);
+}
+
+std::array<uint8_t, HELLO_FRAME_LEN> encodeHelloFrame(const HelloPayload& hello) {
     std::array<uint8_t, HELLO_FRAME_LEN> frame{};
-    frame[0] = FRAME_PREAMBLE_0;
-    frame[1] = FRAME_PREAMBLE_1;
-    frame[2] = opcode;
-    std::memcpy(&frame[3], payload, sizeof(hello));
-    frame[3 + sizeof(hello)] = static_cast<uint8_t>(crc >> 8);
-    frame[3 + sizeof(hello) + 1] = static_cast<uint8_t>(crc & 0xFF);
+    encodeFrame(OP_HELLO, reinterpret_cast<const uint8_t*>(&hello), sizeof(hello), frame.data());
     return frame;
 }
 
@@ -27,15 +31,20 @@ std::vector<uint8_t> encodeFramed(const HelloPayload& hello) {
     return std::vector<uint8_t>(frame.begin(), frame.end());
 }
 
+void encodeApplicationFrame(const ApplicationPayload& payload, ApplicationFrame& frame) {
+    encodeFrame(OP_APPLICATION, payload.data(), payload.size(), frame.data());
+}
+
 unsigned long SerialFrameParser::nowMs() {
     PlatformClock* clk = SimpleTimer::getPlatformClock();
     return clk != nullptr ? clk->milliseconds() : 0;
 }
 
-size_t SerialFrameParser::opcodePayloadLen(uint8_t opcode) {
+bool SerialFrameParser::isKnownOpcode(uint8_t opcode, size_t& payloadLen) {
     switch (opcode) {
-        case OP_HELLO: return HELLO_PAYLOAD_LEN;
-        default:       return 0;
+        case OP_HELLO: payloadLen = HELLO_PAYLOAD_LEN; return true;
+        case OP_APPLICATION: payloadLen = APPLICATION_PAYLOAD_LEN; return true;
+        default: return false;
     }
 }
 
@@ -83,8 +92,7 @@ void SerialFrameParser::resyncFromConsumedBytes() {
     std::vector<uint8_t> replay = parser.payloadBuf;
     replay.insert(replay.end(), parser.crcBytes, parser.crcBytes + parser.crcBytesRead);
     resetParser();
-    // Re-entry depth is one: dropping the preamble and opcode leaves the replay
-    // shorter than a whole frame, so it cannot reach another CRC comparison.
+    // Re-entry depth is at most two; the outer replay may complete further frames.
     for (uint8_t b : replay) {
         consumeByte(b);
     }
@@ -109,19 +117,13 @@ void SerialFrameParser::consumeByte(uint8_t b) {
             }
             break;
         case ParseState::READING_OPCODE:
-            if (b != OP_HELLO) {  // HELLO is the sole serial opcode
+            if (!isKnownOpcode(b, parser.expectedPayloadLen)) {
                 resetParser();
                 break;
             }
             parser.opcode = b;
-            parser.expectedPayloadLen = opcodePayloadLen(b);
             parser.payloadBuf.clear();
-            if (parser.expectedPayloadLen == 0) {
-                parser.state = ParseState::READING_CRC;
-                parser.crcBytesRead = 0;
-            } else {
-                parser.state = ParseState::READING_PAYLOAD;
-            }
+            parser.state = ParseState::READING_PAYLOAD;
             break;
         case ParseState::READING_PAYLOAD:
             parser.payloadBuf.push_back(b);
@@ -134,8 +136,8 @@ void SerialFrameParser::consumeByte(uint8_t b) {
             parser.crcBytes[parser.crcBytesRead++] = b;
             if (parser.crcBytesRead == 2) {
                 const uint16_t got = (static_cast<uint16_t>(parser.crcBytes[0]) << 8) | static_cast<uint16_t>(parser.crcBytes[1]);
-                // CRC covers opcode + payload; fold the two spans into a
-                // running CRC to avoid a per-frame copy on the UART event task.
+                // CRC covers opcode + payload; folded as a running CRC to avoid
+                // a per-frame copy.
                 uint16_t expected = crc16(&parser.opcode, 1);
                 expected = crc16Update(expected, parser.payloadBuf.data(),
                                        parser.payloadBuf.size());
@@ -143,14 +145,31 @@ void SerialFrameParser::consumeByte(uint8_t b) {
                     resyncFromConsumedBytes();
                     break;
                 }
-                if (helloFrameHandler && parser.payloadBuf.size() == sizeof(HelloPayload)) {
-                    // The packed struct mirrors the wire byte-for-byte, so
-                    // the validated payload copies straight in.
-                    HelloPayload hello;
-                    std::memcpy(&hello, parser.payloadBuf.data(), sizeof(hello));
-                    helloFrameHandler(hello);
-                }
+                dispatchFrame();
                 resetParser();
+            }
+            break;
+    }
+}
+
+void SerialFrameParser::dispatchFrame() {
+    // The payload is as long as isKnownOpcode() gave for this opcode, and each
+    // destination below is that size by its type.
+    switch (parser.opcode) {
+        case OP_HELLO:
+            if (helloFrameHandler) {
+                // The packed struct mirrors the wire byte-for-byte, so
+                // the validated payload copies straight in.
+                HelloPayload hello;
+                std::memcpy(&hello, parser.payloadBuf.data(), sizeof(hello));
+                helloFrameHandler(hello);
+            }
+            break;
+        case OP_APPLICATION:
+            if (applicationFrameHandler) {
+                ApplicationPayload payload;
+                std::memcpy(payload.data(), parser.payloadBuf.data(), payload.size());
+                applicationFrameHandler(payload);
             }
             break;
     }

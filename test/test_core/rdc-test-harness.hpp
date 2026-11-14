@@ -11,6 +11,8 @@
 #include "protocol-constants.hpp"
 
 #include <cstring>
+#include <functional>
+#include <utility>
 #include <vector>
 
 // Radio mock defaults: sends succeed, the radio reads ENABLED, the device reports `mac` as its own.
@@ -60,6 +62,92 @@ inline std::vector<uint8_t> announceBytes(const uint8_t* upstream, uint8_t seqId
     std::vector<uint8_t> bytes(sizeof(payload));
     memcpy(bytes.data(), &payload, sizeof(payload));
     return bytes;
+}
+
+// One direction of a cable: drains `from`'s emitted bytes into `to`'s RX and
+// runs the real exec() pump.
+inline void pumpCable(NativeSerialDriver& from, NativeSerialDriver& to) {
+    const std::string bytes = from.getOutput();
+    from.clearOutput();
+    if (bytes.empty()) return;
+    to.injectBytes(std::vector<uint8_t>(bytes.begin(), bytes.end()));
+    to.exec();
+}
+
+// A native jack that records every transmitted byte and runs a hook after each,
+// standing in for the main loop running mid-frame on the ESP32.
+class TappedSerialDriver : public NativeSerialDriver {
+public:
+    /** Names the jack as NativeSerialDriver does. */
+    explicit TappedSerialDriver(const std::string& name)
+        : NativeSerialDriver(name) {}
+
+    /** Transmits the byte, records it, then runs the hook with the count so far. */
+    void print(char msg) override {
+        NativeSerialDriver::print(msg);
+        wire.push_back(static_cast<uint8_t>(msg));
+        if (afterByte) afterByte(wire.size());
+    }
+
+    std::vector<uint8_t> wire;
+    std::function<void(size_t)> afterByte;
+};
+
+// One device on a real RDC with its own jacks, for tests that cable live RDCs
+// to each other. The emit task is externalized so the test is the HELLO writer.
+struct CabledRdcNode {
+    /** Wires the node's RDC to its own jacks under the given MAC. */
+    explicit CabledRdcNode(const uint8_t nodeMac[6]) {
+        memcpy(mac, nodeMac, 6);
+        wireRadioDefaults(device, mac);
+        device.serialManager->setOutputJack(&out);
+        device.serialManager->setInputJack(&in);
+        rdc.setExternalConnectivityTask(true);
+        rdc.initialize(device.wirelessManager, device.serialManager, &device);
+        rdc.setOnRingClosed([this]() { ringClosedCount++; }, this);
+    }
+
+    MockDevice device;
+    TappedSerialDriver out{"cabled-out"};
+    TappedSerialDriver in{"cabled-in"};
+    RemoteDeviceCoordinator rdc;
+    uint8_t mac[6] = {};
+    int ringClosedCount = 0;
+};
+
+// Carries what each jack has written across a set of plugged cables, each
+// written (upper, lower) meaning upper's OUTPUT into lower's INPUT, then lets
+// every node's links catch up. Unpumped jack output is dropped — an unplugged
+// jack transmits into open air. These nodes share no radio, so the ESP-NOW
+// context exchange is stood in for the moment a jack starts one.
+inline void deliverCabled(const std::vector<CabledRdcNode*>& nodes,
+                          const std::vector<std::pair<size_t, size_t>>& cables) {
+    for (const std::pair<size_t, size_t>& cable : cables) {
+        pumpCable(nodes[cable.first]->out, nodes[cable.second]->in);
+        pumpCable(nodes[cable.second]->in, nodes[cable.first]->out);
+    }
+    for (CabledRdcNode* n : nodes) {
+        n->out.clearOutput();
+        n->in.clearOutput();
+    }
+    for (CabledRdcNode* n : nodes) {
+        n->rdc.sync(&n->device);
+        for (SerialIdentifier jack :
+             {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
+            if (n->rdc.getJackStatus(jack) == JackStatus::CONNECTING) {
+                n->rdc.onContextExchangeComplete(jack);
+            }
+        }
+        n->rdc.sync(&n->device);
+    }
+}
+
+// One HELLO cycle: every node's writer runs once, then deliverCabled().
+inline void pumpCabledCycle(const std::vector<CabledRdcNode*>& nodes,
+                            const std::vector<std::pair<size_t, size_t>>& cables) {
+    for (CabledRdcNode* n : nodes)
+        n->rdc.emitHello();
+    deliverCabled(nodes, cables);
 }
 
 // One device on a real RemoteDeviceCoordinator, its emit task externalized so the

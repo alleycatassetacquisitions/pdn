@@ -27,16 +27,6 @@ using ::testing::Return;
 // into the SerialFrameParser. Single-threaded via setExternalConnectivityTask —
 // the test calls emitHello()/sync() itself instead of the FreeRTOS task.
 
-// One direction of a cable: drains `from`'s emitted bytes into `to`'s RX and
-// runs the real exec() pump.
-inline void pumpCable(NativeSerialDriver& from, NativeSerialDriver& to) {
-    const std::string bytes = from.getOutput();
-    from.clearOutput();
-    if (bytes.empty()) return;
-    to.injectBytes(std::vector<uint8_t>(bytes.begin(), bytes.end()));
-    to.exec();
-}
-
 class RDCHelloTests : public RdcTestHarness {
 public:
     /**
@@ -1080,27 +1070,6 @@ inline void rdcChainRingYieldsToHigherHeadAfterEvidenceTimeout(RDCHelloTests* su
     EXPECT_EQ(0, memcmp(emitted.headMac, higherHead, 6));
 }
 
-// One node bundling an RDC, its device and jacks, for the two-live-RDC ring test.
-struct ChainRingNode {
-    /** Wires the node's RDC to its own jacks under the given MAC. */
-    explicit ChainRingNode(const uint8_t m[6]) {
-        memcpy(mac, m, 6);
-        wireRadioDefaults(device, mac);
-        device.serialManager->setOutputJack(&out);
-        device.serialManager->setInputJack(&in);
-        rdc.setExternalConnectivityTask(true);
-        rdc.initialize(device.wirelessManager, device.serialManager, &device);
-        rdc.setOnRingClosed([this]() { ringClosedCount++; }, this);
-    }
-
-    MockDevice device;
-    NativeSerialDriver out{"ring-out"};
-    NativeSerialDriver in{"ring-in"};
-    RemoteDeviceCoordinator rdc;
-    uint8_t mac[6] = {};
-    int ringClosedCount = 0;
-};
-
 // Two live RDCs cross-wired into a 2-device ring (A.out<->B.in, B.out<->A.in). A's
 // head MAC propagates to B by inheritance, returns on A's INPUT jack, and latches
 // the ring on A with no coordination message and no MAC election.
@@ -1111,8 +1080,8 @@ inline void rdcChainTwoNodeRingCloses() {
 
     const uint8_t macA[6] = {0xAA, 0x00, 0x00, 0x00, 0x00, 0x02};
     const uint8_t macB[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x03};
-    ChainRingNode A(macA);
-    ChainRingNode B(macB);
+    CabledRdcNode A(macA);
+    CabledRdcNode B(macB);
 
     // Cable 1: A.out -> B.in. B inherits A as its head.
     A.rdc.emitHello();
@@ -1155,8 +1124,8 @@ inline void rdcChainDualLatchSettlesByLowerMac() {
 
     const uint8_t macA[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x02};  // lower: keeps latch
     const uint8_t macB[6] = {0xAA, 0x00, 0x00, 0x00, 0x00, 0x03};
-    ChainRingNode A(macA);
-    ChainRingNode B(macB);
+    CabledRdcNode A(macA);
+    CabledRdcNode B(macB);
 
     // Bring both OUTPUT jacks to Connected: each hears the other's HELLO on the
     // return leg of its own out-cable.
@@ -1217,33 +1186,6 @@ inline void rdcChainDualLatchSettlesByLowerMac() {
     SimpleTimer::setPlatformClock(nullptr);
 }
 
-// One HELLO cycle over a set of plugged cables, each written (upper, lower)
-// meaning upper's OUTPUT into lower's INPUT. Unpumped jack output is dropped —
-// an unplugged jack transmits into open air. These nodes share no radio, so the
-// ESP-NOW context exchange is stood in for the moment a jack starts one.
-inline void pumpChainCycle(const std::vector<ChainRingNode*>& nodes,
-                           const std::vector<std::pair<size_t, size_t>>& cables) {
-    for (ChainRingNode* n : nodes)
-        n->rdc.emitHello();
-    for (const std::pair<size_t, size_t>& cable : cables) {
-        pumpCable(nodes[cable.first]->out, nodes[cable.second]->in);
-        pumpCable(nodes[cable.second]->in, nodes[cable.first]->out);
-    }
-    for (ChainRingNode* n : nodes) {
-        n->out.clearOutput();
-        n->in.clearOutput();
-    }
-    for (ChainRingNode* n : nodes) {
-        n->rdc.sync(&n->device);
-        for (SerialIdentifier jack : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
-            if (n->rdc.getJackStatus(jack) == JackStatus::CONNECTING) {
-                n->rdc.onContextExchangeComplete(jack);
-            }
-        }
-        n->rdc.sync(&n->device);
-    }
-}
-
 // Ring closure is visible at exactly one device — the one whose own MAC comes
 // back around — yet every member has to know it sits on a ring or the game layer
 // keeps running 1v1 matches inside the shootout's topology. Three devices, because
@@ -1257,15 +1199,15 @@ inline void rdcRingMembershipReachesEveryMember() {
     const uint8_t macA[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x0A};
     const uint8_t macB[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x0B};
     const uint8_t macC[6] = {0x03, 0x00, 0x00, 0x00, 0x00, 0x0C};
-    ChainRingNode a(macA);
-    ChainRingNode b(macB);
-    ChainRingNode c(macC);
-    const std::vector<ChainRingNode*> nodes = {&a, &b, &c};
+    CabledRdcNode a(macA);
+    CabledRdcNode b(macB);
+    CabledRdcNode c(macC);
+    const std::vector<CabledRdcNode*> nodes = {&a, &b, &c};
 
     std::vector<std::pair<size_t, size_t>> cables;
     auto run = [&](int rounds) {
         for (int i = 0; i < rounds; ++i) {
-            pumpChainCycle(nodes, cables);
+            pumpCabledCycle(nodes, cables);
             clock.advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
         }
     };
@@ -1337,8 +1279,8 @@ inline void rdcHelloOneWayCableTimesOutInsteadOfGhostChild() {
 
     const uint8_t macA[6] = {0xAA, 0x00, 0x00, 0x00, 0x00, 0x02};
     const uint8_t macB[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x03};
-    ChainRingNode A(macA);
-    ChainRingNode B(macB);
+    CabledRdcNode A(macA);
+    CabledRdcNode B(macB);
 
     // The one live conductor, B.out -> A.in: A hears an upstream peer and opens a
     // link, but stays STANDALONE — CHILD demands a CONNECTED input.
