@@ -2835,6 +2835,8 @@ TEST_F(PosseManagerTests, strangerConfirmsCannotSilenceRealSupporter) {
     posseStrangerConfirmsCannotSilenceRealSupporter(this);
 }
 
+TEST_F(PosseManagerTests, boostIsHeldToAFullPosse) { posseBoostIsHeldToAFullPosse(this); }
+
 TEST_F(PosseManagerTests, chainJoinForAnotherChallengerIsIgnored) {
     posseChainJoinForAnotherChallengerIsIgnored(this);
 }
@@ -2990,6 +2992,10 @@ TEST_F(PosseMultiDeviceFixture, twoSupportersOfOnePlayerGrantOneBoost) {
 
 TEST_F(PosseMultiDeviceFixture, twoSupportersOfTwoPlayersBothCount) {
     posseMultiDeviceTwoSupportersOfTwoPlayersBothCount(this);
+}
+
+TEST_F(PosseMultiDeviceFixture, supporterThatDoesNotCountIsSentTheResult) {
+    posseMultiDeviceSupporterThatDoesNotCountIsSentTheResult(this);
 }
 
 TEST_F(PosseMultiDeviceFixture, gameEventReachesDistantSupporter) {
