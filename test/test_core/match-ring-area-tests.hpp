@@ -384,3 +384,18 @@ TEST_F(MatchManagerTestSuite, fullRingEraseCutShortStoresAtMostOneRecordAgain) {
     EXPECT_TRUE(ringSlotHolds(area, 32, numberedRingRecord(32)));
     EXPECT_TRUE(ringIsGone(prefs));
 }
+
+// Only the slot the next record goes to is in doubt: the second oldest record
+// of a full area still counts as held.
+TEST_F(MatchManagerTestSuite, fullRingMoveStillCountsTheSecondOldestRecordAsHeld) {
+    NativePrefsDriver& prefs = makeNativePrefs("second-oldest-prefs");
+    writeRing(prefs, 1, 32, 1);
+    NativePrefsDriver& area = makeRingArea(this);
+    writeRing(area, 1, 32, 0);
+
+    rebuildMatchManager(&prefs, &area);
+
+    EXPECT_EQ(area.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0), 32u)
+    << "a record already held was stored again";
+    EXPECT_TRUE(ringIsGone(prefs));
+}

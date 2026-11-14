@@ -565,12 +565,9 @@ void MatchManager::moveRingRecordsFrom(StorageInterface* oldLocation) {
 
 bool MatchManager::ringHoldsRecord(const MatchRecordContent& content, bool skipNextSlot) {
     const uint32_t newest = getMatchSequenceNumber();
-    for (uint32_t number = firstPendingRecordNumber(0, newest, MATCH_RING_CAPACITY);
+    const uint32_t window = skipNextSlot ? MATCH_RING_CAPACITY - 1 : MATCH_RING_CAPACITY;
+    for (uint32_t number = firstPendingRecordNumber(0, newest, window);
          number != 0 && number <= newest; number++) {
-        // Once the ring is full, the next record goes to the oldest number's slot.
-        if (skipNextSlot && number + MATCH_RING_CAPACITY == newest + 1) {
-            continue;
-        }
         MatchRecordContent held{};
         if (readRingSlot(ringStorage, MATCH_RING_PREFS_NAMESPACE, number, held) &&
             memcmp(&held, &content, sizeof(held)) == 0) {
