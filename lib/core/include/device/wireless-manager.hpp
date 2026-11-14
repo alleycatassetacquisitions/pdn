@@ -125,6 +125,36 @@ public:
     /** True while a queued HTTP request has not had its callback. */
     bool hasQueuedHttpRequests() { return httpClient->hasQueuedRequests(); }
 
+    /**
+     * Takes Wi-Fi for @p owner, a component about to queue HTTP requests of
+     * its own. One component owns Wi-Fi at a time: leaving it fails every
+     * queued request, so two users of it would end each other's.
+     * @return false when Wi-Fi is already owned, by anyone; nothing changes then.
+     */
+    bool acquireWifi(const void* owner) {
+        if (wifiOwner != nullptr) {
+            return false;
+        }
+        wifiOwner = owner;
+        return true;
+    }
+
+    /**
+     * Gives Wi-Fi up and returns the radio to peer-to-peer, which fails
+     * whatever @p owner still has queued through its onError. A caller that
+     * does not own Wi-Fi changes nothing.
+     */
+    void releaseWifi(const void* owner) {
+        if (wifiOwner != owner) {
+            LOG_E(WM_TAG, "Wi-Fi released by a component that does not own it");
+            return;
+        }
+        // Given up before the switch: the failures the switch delivers to the
+        // owner's requests then find Wi-Fi already free.
+        wifiOwner = nullptr;
+        enablePeerCommsMode();
+    }
+
     /** Queues an HTTP request, automatically switching to WiFi mode if needed. */
     bool queueHttpRequest(HttpRequest&& request) {
         if (currentMode != WirelessMode::WIFI) {
@@ -188,6 +218,7 @@ private:
     PeerCommsInterface* peerComms;
     HttpClientInterface* httpClient;
     WirelessMode currentMode;
+    const void* wifiOwner = nullptr;
     // Last: its constructor registers the kReliableAck handler through peerComms.
     ReliableTransport reliableTransport{this};
 };

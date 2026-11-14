@@ -1372,7 +1372,7 @@ inline void crashPacketCarriesTheRecordInItsFixedLayout() {
     EXPECT_EQ(static_cast<uint32_t>(noCause.programCounter), 0x42001234u);
     EXPECT_STREQ(noCause.taskName, "loopTask");
 
-    // No details at all: an empty task name says so.
+    // No details at all: the three detail fields being zero together says so.
     record.coreDumpDetails.reset();
     const CrashPacket noDetails = toCrashPacket(record);
     EXPECT_EQ(noDetails.taskName[0], '\0');
@@ -1380,4 +1380,64 @@ inline void crashPacketCarriesTheRecordInItsFixedLayout() {
     EXPECT_EQ(static_cast<uint32_t>(noDetails.exceptionCause), 0u);
     EXPECT_EQ(static_cast<uint32_t>(noDetails.crashNumber), 7u);
     EXPECT_STREQ(noDetails.commitHash, "abcdef12");
+}
+
+inline void crashPacketReadsBackAsTheRecordItCarries() {
+    CrashRecord record{};
+    record.crashNumber = 7;
+    record.timestamp = 12500;
+    record.resetReason = 4;
+    strncpy(record.commitHash, "abcdef12", COMMIT_HASH_LENGTH - 1);
+    CoreDumpDetails& details = record.coreDumpDetails.emplace();
+    details.programCounter = 0x42001234;
+    details.exceptionCause = 0;
+    strncpy(details.taskName, "loopTask", TASK_NAME_LENGTH - 1);
+
+    // Cause 0 is a real cause and must not read back as no cause.
+    const CrashRecord full = fromCrashPacket(toCrashPacket(record));
+    EXPECT_EQ(full.crashNumber, 7u);
+    EXPECT_EQ(full.timestamp, 12500u);
+    EXPECT_EQ(full.resetReason, 4);
+    EXPECT_STREQ(full.commitHash, "abcdef12");
+    ASSERT_TRUE(full.coreDumpDetails.has_value());
+    EXPECT_EQ(full.coreDumpDetails->programCounter, 0x42001234u);
+    ASSERT_TRUE(full.coreDumpDetails->exceptionCause.has_value());
+    EXPECT_EQ(*full.coreDumpDetails->exceptionCause, 0u);
+    EXPECT_STREQ(full.coreDumpDetails->taskName, "loopTask");
+
+    // Details without a cause, as after a task watchdog reset.
+    record.coreDumpDetails->exceptionCause.reset();
+    const CrashRecord noCause = fromCrashPacket(toCrashPacket(record));
+    ASSERT_TRUE(noCause.coreDumpDetails.has_value());
+    EXPECT_FALSE(noCause.coreDumpDetails->exceptionCause.has_value());
+    EXPECT_EQ(noCause.coreDumpDetails->programCounter, 0x42001234u);
+
+    // Details that name no task are still details.
+    record.coreDumpDetails->taskName[0] = '\0';
+    const CrashRecord noTaskName = fromCrashPacket(toCrashPacket(record));
+    ASSERT_TRUE(noTaskName.coreDumpDetails.has_value())
+    << "an empty task name dropped the program counter and the exception cause";
+    EXPECT_EQ(noTaskName.coreDumpDetails->programCounter, 0x42001234u);
+    EXPECT_FALSE(noTaskName.coreDumpDetails->exceptionCause.has_value());
+    record.coreDumpDetails->exceptionCause = 0;
+    const CrashRecord noTaskNameCauseZero = fromCrashPacket(toCrashPacket(record));
+    ASSERT_TRUE(noTaskNameCauseZero.coreDumpDetails.has_value());
+    EXPECT_EQ(noTaskNameCauseZero.coreDumpDetails->programCounter, 0x42001234u);
+    ASSERT_TRUE(noTaskNameCauseZero.coreDumpDetails->exceptionCause.has_value());
+    EXPECT_EQ(*noTaskNameCauseZero.coreDumpDetails->exceptionCause, 0u);
+
+    // No details at all.
+    record.coreDumpDetails.reset();
+    const CrashRecord noDetails = fromCrashPacket(toCrashPacket(record));
+    EXPECT_FALSE(noDetails.coreDumpDetails.has_value());
+    EXPECT_EQ(noDetails.crashNumber, 7u);
+
+    // A packet off the radio may carry strings with no terminator.
+    CrashPacket unterminated{};
+    memset(unterminated.taskName, 'T', sizeof(unterminated.taskName));
+    memset(unterminated.commitHash, 'c', sizeof(unterminated.commitHash));
+    const CrashRecord cut = fromCrashPacket(unterminated);
+    ASSERT_TRUE(cut.coreDumpDetails.has_value());
+    EXPECT_STREQ(cut.coreDumpDetails->taskName, "TTTTTTTTTTTTTTT");
+    EXPECT_STREQ(cut.commitHash, "cccccccc");
 }

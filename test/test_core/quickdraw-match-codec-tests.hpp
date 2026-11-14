@@ -6,28 +6,32 @@
 #include <vector>
 
 #include "alleycat-protobuf-test-helpers.hpp"
+#include "alleycat-server/fdn-stored-entry.hpp"
 #include "alleycat-server/matches-api.hpp"
 #include "alleycat-server/quickdraw-match-codec.hpp"
+#include "game/match.hpp"
 #include "id-generator.hpp"
 #include "uuid-bytes-tests.hpp"
 
-inline QuickdrawMatchRecord makeMatchRecord(size_t index) {
-    QuickdrawMatchRecord record;
+inline Match makeTestMatch(size_t index) {
     char matchId[UUIDBytes::TEXT_BUFFER_SIZE];
     snprintf(matchId, sizeof(matchId), "00000000-0000-4000-8000-%012zu", index);
-    record.matchId = makeTestUuid(matchId);
-    record.playerAId = makeTestUuid("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    record.playerBId = makeTestUuid("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
-    record.winnerPlayerId = record.playerAId;
-    record.playerADrawTimeMs = 210;
-    record.playerBDrawTimeMs = 340;
-    record.occurredAtUnixMs = 1792359000000;
-    return record;
+    Match match(matchId);
+    match.setHunterPlayerId(makeTestUuid("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"));
+    match.setBountyPlayerId(makeTestUuid("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"));
+    match.setWinnerPlayerId(match.getHunterPlayerId());
+    match.setHunterDrawTime(210);
+    match.setBountyDrawTime(340);
+    match.setOccurredAtUnixMs(1792359000000);
+    return match;
 }
 
-inline QuickdrawMatchCodec::MatchSource makeMatchSource(const std::vector<QuickdrawMatchRecord>& records) {
-    return [&records](size_t index, QuickdrawMatchRecord& record) {
-        record = records[index];
+/** Hands out each of @p matches as the stored entry of a match record a PDN relayed. */
+inline QuickdrawMatchCodec::MatchSource makeMatchSource(const std::vector<Match>& matches) {
+    return [&matches](size_t index, FdnStoredMatchEntry& entry) {
+        entry.kind = static_cast<uint8_t>(RecordKind::MATCH);
+        entry.recordNumber = static_cast<uint32_t>(index + 1);
+        matches[index].serialize(entry.content.recordBytes);
         return true;
     };
 }
@@ -92,10 +96,10 @@ inline QuickdrawMatchCodec::RejectionSink collectRejections(std::vector<Quickdra
 // ---- Request encoding ----
 
 inline void matchCodecRoundTripsAllFields() {
-    std::vector<QuickdrawMatchRecord> records = {makeMatchRecord(0), makeMatchRecord(1)};
-    records[1].playerATeamId = makeTestUuid("1111AAAA-1111-4111-8111-111111111111");
-    records[1].playerBTeamId = makeTestUuid("22222222-2222-4222-8222-222222222222");
-    records[1].winnerPlayerId = records[1].playerBId;
+    std::vector<Match> records = {makeTestMatch(0), makeTestMatch(1)};
+    records[1].setHunterTeamId(makeTestUuid("1111AAAA-1111-4111-8111-111111111111"));
+    records[1].setBountyTeamId(makeTestUuid("22222222-2222-4222-8222-222222222222"));
+    records[1].setWinnerPlayerId(records[1].getBountyPlayerId());
 
     std::string payload;
     ASSERT_TRUE(QuickdrawMatchCodec::encodeRequest(records.size(), makeMatchSource(records), payload));
@@ -122,8 +126,8 @@ inline void matchCodecRoundTripsAllFields() {
 }
 
 inline void matchCodecKeepsZeroDrawTimePresent() {
-    std::vector<QuickdrawMatchRecord> records = {makeMatchRecord(0)};
-    records[0].playerADrawTimeMs = 0;
+    std::vector<Match> records = {makeTestMatch(0)};
+    records[0].setHunterDrawTime(0);
 
     std::string payload;
     ASSERT_TRUE(QuickdrawMatchCodec::encodeRequest(records.size(), makeMatchSource(records), payload));
@@ -135,7 +139,7 @@ inline void matchCodecKeepsZeroDrawTimePresent() {
 }
 
 inline void matchCodecOmitsUnassignedTeams() {
-    std::vector<QuickdrawMatchRecord> records = {makeMatchRecord(0)};
+    std::vector<Match> records = {makeTestMatch(0)};
 
     std::string payload;
     ASSERT_TRUE(QuickdrawMatchCodec::encodeRequest(records.size(), makeMatchSource(records), payload));
@@ -148,8 +152,8 @@ inline void matchCodecOmitsUnassignedTeams() {
 
 inline void matchCodecFailsWhenSourceFails() {
     std::string payload;
-    QuickdrawMatchCodec::MatchSource failingSource = [](size_t index, QuickdrawMatchRecord& record) {
-        record = makeMatchRecord(index);
+    QuickdrawMatchCodec::MatchSource failingSource = [](size_t index, FdnStoredMatchEntry& entry) {
+        makeTestMatch(index).serialize(entry.content.recordBytes);
         return index == 0;
     };
 
@@ -266,7 +270,7 @@ inline void matchCodecRejectsGarbageBody() {
 // ---- Upload API ----
 
 inline void matchesApiRejectsOutOfRangeCounts(AlleycatApiTestSuite* suite) {
-    std::vector<QuickdrawMatchRecord> records = {makeMatchRecord(0)};
+    std::vector<Match> records = {makeTestMatch(0)};
     for (size_t matchCount : {static_cast<size_t>(0), QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH + 1}) {
         bool errorReported = false;
         WirelessError errorCode = WirelessError::TIMEOUT;
@@ -288,7 +292,7 @@ inline void matchesApiRejectsOutOfRangeCounts(AlleycatApiTestSuite* suite) {
 }
 
 inline void matchesApiQueuesProtobufPost(AlleycatApiTestSuite* suite) {
-    std::vector<QuickdrawMatchRecord> records = {makeMatchRecord(0)};
+    std::vector<Match> records = {makeTestMatch(0)};
     MatchesApi::uploadQuickdrawMatches(
         suite->wirelessManager,
         records.size(),

@@ -1,5 +1,6 @@
 #include "alleycat-server/quickdraw-match-codec.hpp"
 #include "alleycat-server/device_api.pb.h"
+#include "game/match.hpp"
 #include "id-generator.hpp"
 #include <pb_decode.h>
 #include <pb_encode.h>
@@ -19,40 +20,47 @@ bool appendToPayload(pb_ostream_t* stream, const pb_byte_t* buffer, size_t count
     return true;
 }
 
-alleycat_device_QuickdrawMatch toMessage(const QuickdrawMatchRecord& record) {
-    alleycat_device_QuickdrawMatch message = alleycat_device_QuickdrawMatch_init_zero;
-    record.matchId.format(message.id);
-    record.playerAId.format(message.player_a_id);
-    record.playerBId.format(message.player_b_id);
-    record.winnerPlayerId.format(message.winner_player_id);
+alleycat_device_QuickdrawMatch toMessage(const FdnStoredMatchEntry& entry) {
+    Match match;
+    match.deserialize(entry.content.recordBytes);
 
-    if (!record.playerATeamId.isZero()) {
-        record.playerATeamId.format(message.player_a_team_id);
+    alleycat_device_QuickdrawMatch message = alleycat_device_QuickdrawMatch_init_zero;
+    match.getMatchUuid().format(message.id);
+    match.getHunterPlayerId().format(message.player_a_id);
+    match.getBountyPlayerId().format(message.player_b_id);
+    match.getWinnerPlayerId().format(message.winner_player_id);
+
+    if (!match.getHunterTeamId().isZero()) {
+        match.getHunterTeamId().format(message.player_a_team_id);
         message.has_player_a_team_id = true;
     }
-    if (!record.playerBTeamId.isZero()) {
-        record.playerBTeamId.format(message.player_b_team_id);
+    if (!match.getBountyTeamId().isZero()) {
+        match.getBountyTeamId().format(message.player_b_team_id);
         message.has_player_b_team_id = true;
     }
 
     // Zero is a valid measurement, but the server rejects an absent one.
     message.has_player_a_draw_time_ms = true;
-    message.player_a_draw_time_ms = record.playerADrawTimeMs;
+    message.player_a_draw_time_ms = match.getHunterDrawTime();
     message.has_player_b_draw_time_ms = true;
-    message.player_b_draw_time_ms = record.playerBDrawTimeMs;
+    message.player_b_draw_time_ms = match.getBountyDrawTime();
     message.has_occurred_at_unix_ms = true;
-    message.occurred_at_unix_ms = record.occurredAtUnixMs;
+    message.occurred_at_unix_ms = match.getOccurredAtUnixMs();
+    // SERVER-SEAM(pdn-record-auth-and-relay): once the server team agrees the
+    // fields, write entry.content.recordBytes (112 raw bytes), entry.content.tag
+    // (16 bytes) and entry.senderMac (unprotected troubleshooting note, never
+    // used to verify or attribute) into message here.
     return message;
 }
 
 bool encodeMatches(pb_ostream_t* stream, const pb_field_t* field, void* const* arg) {
     const MatchBatch* batch = static_cast<const MatchBatch*>(*arg);
     for (size_t index = 0; index < batch->matchCount; index++) {
-        QuickdrawMatchRecord record;
-        if (!(*batch->source)(index, record)) {
+        FdnStoredMatchEntry entry{};
+        if (!(*batch->source)(index, entry)) {
             return false;
         }
-        const alleycat_device_QuickdrawMatch message = toMessage(record);
+        const alleycat_device_QuickdrawMatch message = toMessage(entry);
         if (!pb_encode_tag_for_field(stream, field) ||
             !pb_encode_submessage(stream, alleycat_device_QuickdrawMatch_fields, &message)) {
             return false;

@@ -30,6 +30,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "apps/symbol-match/symbol-match.hpp"
 #include "apps/fdn-app-ids.hpp"
 #include "alleycat-server/fdn-record-store.hpp"
+#include "alleycat-server/fdn-record-uploader.hpp"
 #include "alleycat-server/fdn-provisioning-manager.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
@@ -71,6 +72,7 @@ Player fdnPlayer = FDN_PLAYER;
 RemotePlayerManager* remotePlayerManager = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
 FdnRecordStore* fdnRecordStore = nullptr;
+FdnRecordUploader* fdnRecordUploader = nullptr;
 FdnProvisioningManager* fdnProvisioningManager = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
@@ -148,24 +150,31 @@ static void setup() {
     fdnRecordStore = new FdnRecordStore(fdn->getWirelessManager(), fdn->getStorage());
     fdnProvisioningManager =
     new FdnProvisioningManager(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
-    // The beacon is pumped here rather than from a state: only the mounted app's
-    // state loops, and the beacon has to run in every one of them.
+    // The beacon and the uploader are pumped here rather than from a state: only
+    // the mounted app's state loops, and the beacon has to run in every one of
+    // them, as does the uploader's hand-back of the radio after the boot upload.
     fdn->setTickCallback([]() {
         fdnProvisioningManager->sync();
+        fdnRecordUploader->sync();
         remotePlayerManager->update();
     });
 
     setupEspNow(peerCommsDriver);
 
-    crashLogger = new CrashLogger(storageDriver, fdn->getWirelessManager());
+    crashLogger = new CrashLogger(storageDriver);
     crashLogger->capture(crashedBootUptimeMs);
-    crashLogger->transmitPending();
-    // After transmitPending(): a crash upload that takes the radio would drop the first beacon.
+    fdnRecordUploader =
+    new FdnRecordUploader(fdn->getWirelessManager(), crashLogger, fdnRecordStore);
+    // The boot upload is the same cycle as the idle app's periodic uplink;
+    // whatever it fails to send waits for that.
+    fdnRecordUploader->uploadAllRecords();
+    // After the boot upload: an upload that takes the radio would drop the first beacon.
     remotePlayerManager->startBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
 
     // Apps
     RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
-    auto* idleApp = new IdleApp(remotePlayerManager, rdc, fdnRecordStore, fdnProvisioningManager);
+    auto* idleApp =
+    new IdleApp(remotePlayerManager, rdc, fdnRecordUploader, fdnProvisioningManager);
     auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager, fdnProvisioningManager);
 
     // Splash screen
@@ -186,7 +195,6 @@ void loop() {
     if (crashLogger != nullptr) {
         CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
-        crashLogger->restoreEspNowAfterUploads();
     }
     fdn->loop();
 }

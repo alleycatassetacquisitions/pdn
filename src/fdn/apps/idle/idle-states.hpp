@@ -6,11 +6,11 @@
 #include "device/fdn.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "alleycat-server/fdn-provisioning-manager.hpp"
-#include "alleycat-server/fdn-record-store.hpp"
+#include "alleycat-server/fdn-record-uploader.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "utils/simple-timer.hpp"
 
-/** How often idle checks the record store for match records to upload. */
+/** How often idle checks for match records and crash records to upload. */
 constexpr unsigned long UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 enum IdleStateId {
@@ -25,21 +25,24 @@ enum IdleStateId {
 // ---------------------------------------------------------------------------
 class IdleState : public FDNConnectState {
 public:
-    /** FDN home screen; also schedules match record uploads. */
+    /** FDN home screen; also schedules the periodic uplink. */
     IdleState(RemotePlayerManager* remotePlayerManager,
-              RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnRecordStore* fdnRecordStore);
+              RemoteDeviceCoordinator* remoteDeviceCoordinator,
+              FdnRecordUploader* fdnRecordUploader);
 
     void onStateMounted(FDN* fdn) override;
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToPlayerDetected();
-    /** @return true if match records are stored when the upload interval expires; that call
-     * restarts it. */
+    /**
+     * @return true if a record is waiting to upload when the upload interval
+     * expires; that call restarts it.
+     */
     bool transitionToUploadPending();
 
 private:
     RemotePlayerManager* remotePlayerManager;
-    FdnRecordStore* fdnRecordStore;
+    FdnRecordUploader* fdnRecordUploader;
     SimpleTimer uploadTimer;
 };
 
@@ -115,29 +118,27 @@ private:
 // ---------------------------------------------------------------------------
 class UploadPendingState : public TypedState<FDN> {
 public:
-    /** Uploads the stored match records over Wi-Fi. */
-    explicit UploadPendingState(FdnRecordStore* fdnRecordStore);
+    /** Shows the periodic uplink while the uploader runs it. */
+    explicit UploadPendingState(FdnRecordUploader* fdnRecordUploader);
 
-    /** Queues one upload batch and shows the loading screen. */
+    /** Shows the loading screen and starts an upload cycle for everything waiting. */
     void onStateMounted(FDN* fdn) override;
-    /** Shows the failure screen on an error or the fallback timeout. */
+    /** Watches for the cycle's end and shows the failure screen if an upload in it failed. */
     void onStateLoop(FDN* fdn) override;
-    /** Returns the radio to ESP-NOW if the upload still holds it, and resets the upload phase. */
+    /** Resets the upload phase; the uploader's sync() hands the radio back. */
     void onStateDismounted(FDN* fdn) override;
 
     /** @return true when no upload was attempted, it succeeded, or the failure screen ended. */
     bool transitionToIdle();
 
 private:
-    FdnRecordStore* fdnRecordStore;
+    FdnRecordUploader* fdnRecordUploader;
 
     SimpleTimer glyphTimer;
-    SimpleTimer fallbackTimer;
     SimpleTimer failureTimer;
-    enum class Phase : uint8_t { NOT_STARTED, UPLOADING, UPLOADED, FAILED, SHOWING_FAILURE };
+    enum class Phase : uint8_t { NOT_STARTED, UPLOADING, UPLOADED, SHOWING_FAILURE };
     Phase phase = Phase::NOT_STARTED;
     bool contentReady = false;
 
-    static constexpr int FALLBACK_TIMEOUT_MS = 15000;
     static constexpr int FAILURE_DISPLAY_MS = 2000;
 };

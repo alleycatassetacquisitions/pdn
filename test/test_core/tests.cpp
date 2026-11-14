@@ -40,6 +40,7 @@
 #include "uuid-bytes-tests.hpp"
 #include "sha256-tests.hpp"
 #include "fdn-record-store-tests.hpp"
+#include "fdn-record-uploader-tests.hpp"
 #include "fdn-beacon-tests.hpp"
 #include "record-relay-tests.hpp"
 #include "match-relay-tests.hpp"
@@ -1021,6 +1022,16 @@ TEST_F(CrashCodecTestSuite, returnsZeroWhenBufferTooSmall) {
     crashCodecReturnZeroWhenBufferTooSmall(this);
 }
 
+TEST_F(CrashCodecTestSuite, keepsTheDetailsOfARecordWithAnEmptyTaskName) {
+    crashCodecKeepsTheDetailsOfARecordWithAnEmptyTaskName(this);
+}
+
+TEST_F(CrashCodecTestSuite, cutsAnUnterminatedString) { crashCodecCutsAnUnterminatedString(this); }
+
+TEST_F(CrashCodecTestSuite, replacesBytesThatAreNotPrintableAscii) {
+    crashCodecReplacesBytesThatAreNotPrintableAscii(this);
+}
+
 // ============================================
 // DEVICE PLAYER (PROTOBUF) TESTS
 // ============================================
@@ -1187,12 +1198,12 @@ TEST_F(FdnRecordStoreTests, leavesNoOrphanWhenTheRecordIsWrittenButNotCommitted)
     fdnLeavesNoOrphanWhenTheRecordIsWrittenButNotCommitted(this);
 }
 
-TEST_F(FdnRecordStoreTests, erasesAnUploadedBatchEvenWhenTheHeadCannotAdvance) {
-    fdnErasesAnUploadedBatchEvenWhenTheHeadCannotAdvance(this);
+TEST_F(FdnRecordStoreTests, erasesARetiredBatchEvenWhenTheHeadCannotAdvance) {
+    fdnErasesARetiredBatchEvenWhenTheHeadCannotAdvance(this);
 }
 
-TEST_F(FdnRecordStoreTests, matchUploadThatFreesSlotsRestoresCrashIntake) {
-    fdnMatchUploadThatFreesSlotsRestoresCrashIntake(this);
+TEST_F(FdnRecordStoreTests, retiredMatchBatchThatFreesSlotsRestoresCrashIntake) {
+    fdnRetiredMatchBatchThatFreesSlotsRestoresCrashIntake(this);
 }
 
 TEST_F(FdnRecordStoreTests, treatsAResendAsNewWhenTheStoredBytesNoLongerMatch) {
@@ -1243,8 +1254,138 @@ TEST_F(FdnRecordStoreTests, dropsAnUnreadableHeadInsteadOfFailingEveryBatch) {
     fdnDropsAnUnreadableHeadInsteadOfFailingEveryBatch(this);
 }
 
-TEST_F(FdnRecordStoreTests, uploadStopsShortOfAnUnreadableRecord) {
-    fdnUploadStopsShortOfAnUnreadableRecord(this);
+TEST_F(FdnRecordStoreTests, matchBatchStopsShortOfAnUnreadableRecord) {
+    fdnMatchBatchStopsShortOfAnUnreadableRecord(this);
+}
+
+TEST_F(FdnRecordStoreTests, handsOutCrashRecordsOldestFirstAsTheyWereStored) {
+    fdnHandsOutCrashRecordsOldestFirstAsTheyWereStored(this);
+}
+
+TEST_F(FdnRecordStoreTests, retiringOneCrashRecordFreesItsSlotAndClearsTheRefusal) {
+    fdnRetiringOneCrashRecordFreesItsSlotAndClearsTheRefusal(this);
+}
+
+TEST_F(FdnRecordStoreTests, fullCrashStorageTakesOneMoreAfterOneIsRetired) {
+    fdnWithFullCrashStorageTakesOneMoreAfterOneIsRetired(this);
+}
+
+TEST_F(FdnRecordStoreTests, erasesARetiredCrashRecordEvenWhenTheHeadCannotAdvance) {
+    fdnErasesARetiredCrashRecordEvenWhenTheHeadCannotAdvance(this);
+}
+
+// ============================================
+// FDN RECORD UPLOADER TESTS
+// ============================================
+
+TEST_F(FdnRecordUploaderTests, uploadsARelayedCrashRecordUnderTheOriginatingPdnsMac) {
+    fdnUploadsARelayedCrashRecordUnderTheOriginatingPdnsMac(this);
+}
+
+TEST_F(FdnRecordUploaderTests, retiresARelayedCrashRecordWhoseBodyWasRefusedAndUploadsTheNext) {
+    fdnRetiresARelayedCrashRecordWhoseBodyWasRefusedAndUploadsTheNext(this);
+}
+
+TEST_F(FdnRecordUploaderTests, leavesRelayedCrashRecordsQueuedOn503) {
+    fdnLeavesRelayedCrashRecordsQueuedOn503(this);
+}
+
+TEST_F(FdnRecordUploaderTests, keepsARelayedCrashRecordOnEveryOtherFailure) {
+    fdnKeepsARelayedCrashRecordOnEveryOtherFailure(this);
+}
+
+TEST_F(FdnRecordUploaderTests, uploadSkipsAnUnreadableRelayedCrashRecord) {
+    fdnUploadSkipsAnUnreadableRelayedCrashRecord(this);
+}
+
+TEST_F(FdnRecordUploaderTests, uplinkStartsWithOnlyCrashRecordsStaged) {
+    fdnUplinkStartsWithOnlyCrashRecordsStaged(this);
+}
+
+TEST_F(FdnRecordUploaderTests, uplinkStartsWithOnlyAnOwnCrashRecordPending) {
+    fdnUplinkStartsWithOnlyAnOwnCrashRecordPending(this);
+}
+
+TEST_F(FdnRecordUploaderTests, uplinkStartsWithOnlyMatchRecordsStaged) {
+    fdnUplinkStartsWithOnlyMatchRecordsStaged(this);
+}
+
+TEST_F(FdnRecordUploaderTests, uplinkDoesNotStartWithNothingStaged) {
+    fdnUplinkDoesNotStartWithNothingStaged(this);
+}
+
+TEST_F(FdnRecordUploaderTests, runsOneUploadCycleAtATime) { fdnRunsOneUploadCycleAtATime(this); }
+
+TEST_F(FdnRecordUploaderTests, uploadsItsOwnCrashRecordsInOrderAndAdvancesTheMark) {
+    fdnUploadsItsOwnCrashRecordsInOrderAndAdvancesTheMark(this);
+}
+
+TEST_F(FdnRecordUploaderTests, uploadsRelayedCrashRecordsOnTheUplinkAfterTheBootUpload) {
+    fdnUploadsRelayedCrashRecordsOnTheUplinkAfterTheBootUpload(this);
+}
+
+TEST_F(FdnRecordUploaderTests, bootUploadSendsTheRelayedRecordsHeldAcrossAReboot) {
+    fdnBootUploadSendsTheRelayedRecordsHeldAcrossAReboot(this);
+}
+
+TEST_F(FdnRecordUploaderTests, ownCrashRecordThatFailedGoesUpOnTheNextCycle) {
+    fdnOwnCrashRecordThatFailedGoesUpOnTheNextCycle(this);
+}
+
+TEST_F(FdnRecordUploaderTests, ownCrashFailureKeepsTheRecordAndStillUploadsTheRelayedOnes) {
+    fdnOwnCrashFailureKeepsTheRecordAndStillUploadsTheRelayedOnes(this);
+}
+
+TEST_F(FdnRecordUploaderTests, doesNotRepeatAnOwnCrashRecordWhoseMarkCannotMove) {
+    fdnDoesNotRepeatAnOwnCrashRecordWhoseMarkCannotMove(this);
+}
+
+TEST_F(FdnRecordUploaderTests, restoresTheRadioAfterAFailedUpload) {
+    fdnRestoresTheRadioAfterAFailedUpload(this);
+}
+
+TEST_F(FdnRecordUploaderTests, restoresTheRadioWhenTheUploadTimesOut) {
+    fdnRestoresTheRadioWhenTheUploadTimesOut(this);
+}
+
+TEST_F(FdnRecordUploaderTests, restoresTheRadioWhenARequestCannotBeQueued) {
+    fdnRestoresTheRadioWhenARequestCannotBeQueued(this);
+}
+
+TEST_F(FdnRecordUploaderTests, lookupArrivingMidCycleStartsWhenTheCycleEndsAndItsReplyIsSent) {
+    fdnLookupArrivingMidCycleStartsWhenTheCycleEndsAndItsReplyIsSent(this);
+}
+
+TEST_F(FdnRecordUploaderTests, cycleDoesNotStartWhileALookupIsInFlightAndStartsAtTheNextCheck) {
+    fdnCycleDoesNotStartWhileALookupIsInFlightAndStartsAtTheNextCheck(this);
+}
+
+TEST_F(FdnRecordUploaderTests, lookupAloneLeavesWifiWhenItEnds) {
+    fdnLookupAloneLeavesWifiWhenItEnds(this);
+}
+
+TEST_F(FdnRecordUploaderTests, uploadDeadlineLeavesAWaitingLookupToStart) {
+    fdnUploadDeadlineLeavesAWaitingLookupToStart(this);
+}
+
+TEST_F(FdnRecordUploaderTests, lookupThatNeverGetsWifiFailsAtItsOwnTimeLimit) {
+    fdnLookupThatNeverGetsWifiFailsAtItsOwnTimeLimit(this);
+}
+
+TEST_F(FdnRecordUploaderTests, uploadsEveryKindInOneCycleInOrder) {
+    fdnUploadsEveryKindInOneCycleInOrder(this);
+}
+
+TEST_F(FdnRecordUploaderTests, matchBatchFailureDoesNotStopTheCrashUploads) {
+    fdnMatchBatchFailureDoesNotStopTheCrashUploads(this);
+}
+
+TEST_F(FdnRecordUploaderTests, uploadsTheMatchesItsStoredRecordsCarry) {
+    fdnUploadsTheMatchesItsStoredRecordsCarry(this);
+}
+
+TEST_F(FdnRecordUploaderTests, matchBatchSkipsAnUnreadableHead) {
+    fdnMatchBatchSkipsAnUnreadableHead(this);
 }
 
 // ============================================
@@ -1448,6 +1589,8 @@ TEST(RecordPendingRange, searchEndsAtTheLargestRecordNumber) {
 TEST(CrashPacket, carriesTheRecordInItsFixedLayout) {
     crashPacketCarriesTheRecordInItsFixedLayout();
 }
+
+TEST(CrashPacket, readsBackAsTheRecordItCarries) { crashPacketReadsBackAsTheRecordItCarries(); }
 
 // ============================================
 // QUICKDRAW MATCH UPLOAD (PROTOBUF) TESTS

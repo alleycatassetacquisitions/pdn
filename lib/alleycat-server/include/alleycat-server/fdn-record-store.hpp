@@ -2,34 +2,17 @@
 
 #include <cstdio>
 #include <cstring>
-#include <functional>
-#include "alleycat-server/matches-api.hpp"
-#include "alleycat-server/quickdraw-match-codec.hpp"
+#include "alleycat-server/fdn-stored-entry.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "device/wireless-manager.hpp"
-#include "game/match.hpp"
 #include "wireless/record-relay-types.hpp"
 #include "wireless/reliable-channel.hpp"
 
 inline constexpr const char FDN_RECORD_STORE_NAMESPACE[] = "fdn_records";
 inline constexpr size_t FDN_CRASH_RECORD_CAPACITY = 32;
 inline constexpr size_t FDN_MATCH_RECORD_CAPACITY = 64;
-
-static_assert(FDN_MATCH_RECORD_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH,
-              "one upload must be able to drain every stored match record");
-
-// One record as the FDN's storage holds it: what the PDN's frame carried, plus
-// who sent it. The struct is the stored layout.
-template <class Content> struct FdnStoredEntry {
-    uint8_t senderMac[6];
-    uint8_t kind;
-    uint32_t recordNumber;
-    Content content;
-} __attribute__((packed));
-static_assert(sizeof(FdnStoredEntry<CrashRecordContent>) == 53, "stored crash entry size");
-static_assert(sizeof(FdnStoredEntry<MatchRecordContent>) == 139, "stored match entry size");
 
 // One record kind's intake and its ring of slots in storage, owned by
 // FdnRecordStore. head and tail count records ever retired and ever stored; a
@@ -74,6 +57,28 @@ public:
                                   reinterpret_cast<uint8_t*>(&entry),
                                   sizeof(entry)) == sizeof(entry) &&
                entry.kind == static_cast<uint8_t>(Traits::KIND);
+    }
+
+    /** @return true when @p index counts a record that is held. */
+    bool holds(uint32_t index) const { return index - head < tail - head; }
+
+    /**
+     * Retires the unreadable run at the head, in one retirement. An unreadable
+     * entry there could never be uploaded and would block every entry behind it.
+     */
+    void dropUnreadableHead() {
+        Entry entry{};
+        const uint32_t storedCount = tail - head;
+        uint32_t unreadableCount = 0;
+        while (unreadableCount < storedCount && !readEntry(head + unreadableCount, entry)) {
+            ++unreadableCount;
+        }
+        if (unreadableCount > 0) {
+            LOG_E("FDN_RECORDS", "Dropping %u unreadable record(s) of kind %u from %u",
+                  static_cast<unsigned>(unreadableCount), static_cast<unsigned>(Traits::KIND),
+                  static_cast<unsigned>(head));
+            retire(head, unreadableCount);
+        }
     }
 
     /**
@@ -257,7 +262,8 @@ private:
 /**
  * The FDN's non-volatile store of crash records and match records relayed by
  * PDNs. It takes a record frame from any PDN, acknowledges it only once the
- * record is stored, and uploads the match records as one batch. Each record kind
+ * record is stored, and hands the records out to be uploaded: the match
+ * records as one batch, the crash records oldest first, one at a time. Each record kind
  * has its own bound, but both share one storage partition. The FDN holds no
  * record keys: a match record's tag is stored as received and never checked.
  */
@@ -265,8 +271,7 @@ class FdnRecordStore {
 public:
     /** Loads what the storage holds and claims the record and acknowledgement packet types. */
     FdnRecordStore(WirelessManager* wirelessManager, StorageInterface* storage)
-        : wirelessManager(wirelessManager)
-        , crashRing(wirelessManager, storage, storageRefused, "c_")
+        : crashRing(wirelessManager, storage, storageRefused, "c_")
         , matchRing(wirelessManager, storage, storageRefused, "m_") {}
 
     /** @return Number of records of @p kind held. */
@@ -275,90 +280,84 @@ public:
     }
 
     /**
-     * Uploads the stored match records as one POST /quickdraw-matches batch. Any
-     * decodable response retires the batch, so its records stop counting as held
-     * at once: its matches are stored, already stored, or rejected for good. Any
-     * error, an undecodable response included, keeps the batch; the server never
-     * overwrites a stored match, so the retry is safe.
-     *
-     * @param onComplete Told whether the batch was uploaded and retired.
-     * @return false when no upload was attempted because no readable match record
-     * is held; @p onComplete then never fires. Otherwise it may fire before this returns.
+     * Drops the unreadable records at the head of @p kind, which could never
+     * be uploaded and would block every record behind them. The reads below
+     * change nothing, so whoever drains the store asks for this first.
      */
-    bool uploadPendingBatch(const std::function<void(bool uploaded)>& onComplete) {
-        dropUnreadableMatchHead();
-        // Stop short of an unreadable record so it fails no batch; once the records
-        // ahead of it are retired it is the head, and dropUnreadableMatchHead discards it.
-        const uint32_t batchHead = matchRing.getHead();
-        const uint32_t storedCount = matchRing.getStoredCount();
-        uint32_t batchCount = 0;
-        Match probe{};
-        while (batchCount < storedCount && readMatch(batchHead + batchCount, probe)) {
-            ++batchCount;
+    void dropUnreadableOldest(RecordKind kind) {
+        if (kind == RecordKind::CRASH) {
+            crashRing.dropUnreadableHead();
+        } else {
+            matchRing.dropUnreadableHead();
         }
-        if (batchCount == 0) {
+    }
+
+    /**
+     * Reads the oldest relayed crash record held, as it was stored, and writes
+     * to @p position the place retireCrash() takes back.
+     * @return false when no crash record is held or the oldest is unreadable.
+     */
+    bool readOldestCrash(FdnStoredCrashEntry& entry, uint32_t& position) const {
+        position = crashRing.getHead();
+        return crashRing.holds(position) && crashRing.readEntry(position, entry);
+    }
+
+    /**
+     * Retires the relayed crash record read at @p position; its slot is free
+     * for a new record at once.
+     * @return false, retiring nothing, when it is no longer the oldest held.
+     */
+    bool retireCrash(uint32_t position) {
+        if (!crashRing.holds(position) || position != crashRing.getHead()) {
+            LOG_E("FDN_RECORDS", "Crash record at %u is not the oldest held; not retired",
+                  static_cast<unsigned>(position));
             return false;
         }
-
-        MatchesApi::uploadQuickdrawMatches(
-        wirelessManager, batchCount,
-        [this, batchHead](size_t index, QuickdrawMatchRecord& record) -> bool {
-            Match match{};
-            if (!readMatch(batchHead + static_cast<uint32_t>(index), match)) {
-                return false;
-            }
-            record = QuickdrawMatchCodec::fromMatch(match);
-            return true;
-        },
-        [](const QuickdrawMatchRejection& rejection) {
-            char uuidText[UUIDBytes::TEXT_BUFFER_SIZE] = {};
-            rejection.matchId.format(uuidText);
-            LOG_W("FDN_RECORDS", "Server rejected match[%u] %s (code=%d)",
-                  static_cast<unsigned>(rejection.matchIndex), uuidText,
-                  static_cast<int>(rejection.rawCode));
-        },
-        [this, batchHead, batchCount, onComplete](const QuickdrawUploadResult&) {
-            matchRing.retire(batchHead, batchCount);
-            if (onComplete) onComplete(true);
-        },
-        [onComplete](const WirelessErrorInfo& error) {
-            LOG_W("FDN_RECORDS", "Match upload failed: %s", error.message.c_str());
-            if (onComplete) onComplete(false);
-        });
+        crashRing.retire(position, 1);
         return true;
+    }
+
+    /**
+     * Counts the readable match records from the oldest on, the first of them
+     * at @p position; it stops short of an unreadable record, which
+     * dropUnreadableOldest() drops once it is the oldest.
+     */
+    size_t countReadableMatchBatch(uint32_t& position) const {
+        FdnStoredMatchEntry entry{};
+        position = matchRing.getHead();
+        const uint32_t storedCount = matchRing.getStoredCount();
+        uint32_t batchCount = 0;
+        while (batchCount < storedCount && matchRing.readEntry(position + batchCount, entry)) {
+            ++batchCount;
+        }
+        return batchCount;
+    }
+
+    /**
+     * Reads the relayed match record at @p position, as it was stored.
+     * @return false when no readable match record is held there.
+     */
+    bool readMatch(uint32_t position, FdnStoredMatchEntry& entry) const {
+        return matchRing.holds(position) && matchRing.readEntry(position, entry);
+    }
+
+    /**
+     * Retires the @p count relayed match records counted from @p position;
+     * their slots are free at once. Refused when they are no longer the oldest held.
+     */
+    void retireMatchBatch(uint32_t position, size_t count) {
+        if (position != matchRing.getHead() || count > matchRing.getStoredCount()) {
+            LOG_E("FDN_RECORDS", "%u match record(s) at %u are not the oldest held; not retired",
+                  static_cast<unsigned>(count), static_cast<unsigned>(position));
+            return;
+        }
+        matchRing.retire(position, static_cast<uint32_t>(count));
     }
 
 private:
     using CrashRing = FdnRecordRing<CrashRecordTraits, FDN_CRASH_RECORD_CAPACITY>;
     using MatchRing = FdnRecordRing<MatchRecordTraits, FDN_MATCH_RECORD_CAPACITY>;
 
-    bool readMatch(uint32_t index, Match& out) const {
-        MatchRing::Entry entry{};
-        if (!matchRing.readEntry(index, entry)) {
-            return false;
-        }
-        out.deserialize(entry.content.recordBytes);
-        return true;
-    }
-
-    // An unreadable record would fail every batch it heads, so the unreadable
-    // run at the head is dropped instead, in one retirement.
-    void dropUnreadableMatchHead() {
-        Match probe{};
-        uint32_t unreadableCount = 0;
-        while (unreadableCount < matchRing.getStoredCount() &&
-               !readMatch(matchRing.getHead() + unreadableCount, probe)) {
-            ++unreadableCount;
-        }
-        if (unreadableCount == 0) {
-            return;
-        }
-        LOG_E("FDN_RECORDS", "Dropping %u unreadable match record(s) from %u",
-              static_cast<unsigned>(unreadableCount), static_cast<unsigned>(matchRing.getHead()));
-        matchRing.retire(matchRing.getHead(), unreadableCount);
-    }
-
-    WirelessManager* wirelessManager = nullptr;
     // Set by a failed write in either ring and cleared when either frees a slot:
     // the rings share one partition, so room freed by one is room for the other.
     // Declared before the rings, which hold a reference to it.
