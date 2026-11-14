@@ -1272,10 +1272,10 @@ inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
     registerTestPlayer(suite->playerProvider, "0a0a0a0a-0000-4000-8000-000000000003", "LocalHunter",
                        "Hunter");
 
-    EXPECT_CALL(suite->storage, writeBytes(MATCHES_PREFS_NAMESPACE, _, _, MATCH_SLOT_SIZE))
+    EXPECT_CALL(suite->storage, writeBytes(MATCH_RING_PREFS_NAMESPACE, _, _, MATCH_SLOT_SIZE))
     .Times(testing::AtLeast(1))
     .WillRepeatedly(Return(MATCH_SLOT_SIZE));
-    EXPECT_CALL(suite->storage, writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, _))
+    EXPECT_CALL(suite->storage, writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, _))
     .Times(testing::AtLeast(1))
     .WillRepeatedly(Return(sizeof(uint32_t)));
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};

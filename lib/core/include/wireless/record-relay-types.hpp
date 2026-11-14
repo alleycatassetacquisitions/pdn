@@ -7,10 +7,12 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "game/match.hpp"
 
-/// What a record frame carries.
+/// What a record frame carries. LEGACY_MATCH is a match older firmware stored as
+/// JSON, which names its players by PIN; it goes on the match channel.
 enum class RecordKind : uint8_t {
     CRASH = 0x01,
     MATCH = 0x02,
+    LEGACY_MATCH = 0x03,
 };
 
 constexpr size_t CRASH_RECORD_SIZE = sizeof(CrashPacket);
@@ -38,7 +40,28 @@ static_assert(sizeof(CrashRecordContent) == CRASH_RECORD_SIZE, "a crash record i
 static_assert(sizeof(MatchRecordContent) == MATCH_RECORD_SIZE + RECORD_TAG_SIZE,
               "a match record is its bytes, then its tag");
 
-/// PDN-to-FDN record frame. recordNumber is the crash number or the match's sequence number.
+constexpr size_t LEGACY_MATCH_ID_SIZE = 40;
+constexpr size_t LEGACY_PIN_SIZE = 4;
+
+/// The layout of a LEGACY_MATCH record inside a MatchRecordContent. Text fields
+/// are as the old firmware stored them, NUL-padded; the tag is all zero, since
+/// the record was stored before any record key existed.
+struct LegacyMatchContent {
+    char matchId[LEGACY_MATCH_ID_SIZE];
+    char hunterPin[LEGACY_PIN_SIZE];
+    char bountyPin[LEGACY_PIN_SIZE];
+    uint32_t hunterTimeMs;
+    uint32_t bountyTimeMs;
+    uint8_t winnerIsHunter;
+    uint8_t reserved[MATCH_RECORD_SIZE - LEGACY_MATCH_ID_SIZE - 2 * LEGACY_PIN_SIZE -
+                     2 * sizeof(uint32_t) - 1];
+    uint8_t tag[RECORD_TAG_SIZE];
+} __attribute__((packed));
+static_assert(sizeof(LegacyMatchContent) == sizeof(MatchRecordContent),
+              "a legacy match travels in the match record frame, zero tag included");
+
+/// PDN-to-FDN record frame. recordNumber is the crash number, the match's sequence
+/// number, or the index older firmware stored a legacy match under.
 template <class Content> struct RecordFramePacket {
     uint8_t seqId;
     uint8_t kind;

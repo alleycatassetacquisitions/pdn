@@ -136,7 +136,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     SimpleTimer::setPlatformClock(&clock);
 
     FuzzPeerComms peerComms;
-    NativePrefsDriver storage("fuzz", {MATCHES_PREFS_NAMESPACE});
+    NativePrefsDriver storage("fuzz", {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_PREFS_NAMESPACE});
     FuzzRemoteDeviceCoordinator rdc;
 
     Player player;
@@ -258,13 +258,15 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 if (pos < size) {
                     uint32_t seqOverride = data[pos++];
                     if (seqOverride >= 30) {
-                        storage.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, seqOverride);
+                        storage.writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, seqOverride);
                     }
                 }
                 if (matchManager.finalizeMatch()) {
                     uint32_t recordNumber = 0;
+                    RecordKind kind = RecordKind::MATCH;
                     MatchRecordContent content{};
-                    if (matchManager.readLowestPending(recordNumber, content)) {
+                    if (matchManager.readLowestPendingFrame(recordNumber, kind, content) &&
+                        kind == RecordKind::MATCH) {
                         Match stored{};
                         stored.deserialize(content.recordBytes);
                     }
