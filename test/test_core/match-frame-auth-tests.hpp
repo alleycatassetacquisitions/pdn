@@ -7,8 +7,8 @@
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
 
-// X-3: a standalone match's results are sanity-checked (draw window, human
-// floor) and its frames are signed under a key the Hunter sends over the cable.
+// X-3: a standalone match's results are refused before the draw window opens,
+// and its frames are signed under a key the Hunter sends over the cable.
 // Two managers, each with its own radio tap and fake coordinator; the test
 // plays the radio and the cable between them.
 class MatchFrameAuthTests : public testing::Test {
@@ -143,25 +143,25 @@ TEST_F(MatchFrameAuthTests, neverPressedBeforeTheWindowOpensIsDropped) {
     EXPECT_FALSE(bountyMatchManager->matchResultsAreIn());
 }
 
-// Catches: a floor off by one, or the old `>= 0` check left for standalone matches.
-TEST_F(MatchFrameAuthTests, rawTimeBelowTheFloorIsDroppedAndTheFloorItselfAccepted) {
+// Catches: a reaction-time floor. The countdown is a fixed rhythm, so an honest
+// press that anticipates the draw can land at or near 0 ms and must score.
+TEST_F(MatchFrameAuthTests, nearZeroHonestPressInAStandaloneMatchIsScored) {
     performHandshake();
     openBothWindows();
-    const std::string matchId = hunterMatchId();
 
-    MatchCommand guess(hunterMac, MatchCmd::DRAW_RESULT, matchId.c_str(), MIN_DRAW_TIME_MS - 1,
-                       true);
-    bountyMatchManager->listenForMatchEvents(guess);
-    EXPECT_FALSE(bountyMatchManager->getHasReceivedDrawResult()) << "a 79 ms raw time was taken";
+    const MatchPacket hunterResult = hunterPressesAfter(3);
+    bountyRadio.deliverFrameFrom(hunterMac, &hunterResult);
 
-    MatchCommand atFloor(hunterMac, MatchCmd::DRAW_RESULT, matchId.c_str(), MIN_DRAW_TIME_MS, true);
-    bountyMatchManager->listenForMatchEvents(atFloor);
-    EXPECT_TRUE(bountyMatchManager->getHasReceivedDrawResult()) << "an 80 ms raw time was refused";
-    EXPECT_EQ(bountyMatchManager->getCurrentMatch()->getHunterDrawTime(), 80u);
+    ASSERT_TRUE(bountyMatchManager->getHasReceivedDrawResult()) << "a 3 ms raw time was refused";
+    EXPECT_EQ(bountyMatchManager->getCurrentMatch()->getHunterDrawTime(), 3u);
+    bountyMatchManager->sendNeverPressed(750);
+    hunterRadio.deliverFrameFrom(bountyMac, bountyRadio.lastFrame());
+    EXPECT_TRUE(hunterMatchManager->didWin());
+    EXPECT_FALSE(bountyMatchManager->didWin());
 }
 
-// Catches: the floor applied to the effective time, which would refuse an honest
-// fast draw behind a big posse; and the pity report refused.
+// Catches: a check on the effective time, which would refuse an honest fast draw
+// behind a big posse; and the pity report refused.
 TEST_F(MatchFrameAuthTests, honestFastDrawWithBoostAndAPityReportAreAccepted) {
     performHandshake();
     openBothWindows();
@@ -180,7 +180,7 @@ TEST_F(MatchFrameAuthTests, honestFastDrawWithBoostAndAPityReportAreAccepted) {
     EXPECT_FALSE(bountyMatchManager->didWin());
 }
 
-// Catches: the spec's boost scenario (raws 90 and 100, 120 ms boost) broken by the floor.
+// Catches: the spec's boost scenario (raws 90 and 100, 120 ms boost) broken by a draw check.
 TEST_F(MatchFrameAuthTests, boostedNinetyBeatsAnUnboostedHundredOnBothDevices) {
     performHandshake();
     openBothWindows();
@@ -202,7 +202,7 @@ TEST_F(MatchFrameAuthTests, boostedNinetyBeatsAnUnboostedHundredOnBothDevices) {
     EXPECT_EQ(bountyMatchManager->getCurrentMatch()->getHunterDrawTime(), 90u);
 }
 
-// Catches: the floor applied to shootout matches, whose windows open a retry apart.
+// Catches: the draw-window check applied to shootout matches, whose windows open a retry apart.
 TEST_F(MatchFrameAuthTests, shootoutResultAtTenMillisecondsIsStillAcceptedUnsigned) {
     const char shootoutId[] = "SHT-00000000000000000000000000000042";
     bountyMatchManager->initializeShootoutMatch(shootoutId, hunterMac, /*localIsHunter=*/false);

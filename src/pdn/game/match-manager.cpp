@@ -807,26 +807,18 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: names the local draw slot");
             return;
         }
-        if (currentMatchIsShootout()) {
-            // Shootout starts are fan-out retries, so windows open apart and the
-            // floor would refuse honest draws; its matches are never stored.
-            // Negative is still no reaction time, and would beat any honest draw.
-            if (command.playerDrawTime < 0) {
-                LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: negative draw time");
-                return;
-            }
-        } else {
-            // The countdown is fixed, so a result before the window opens, or
-            // faster than a human, is a guess or a forgery.
-            if (!activeMatchState.matchLocalStartTime.has_value()) {
-                LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: before the draw window");
-                return;
-            }
-            if (command.playerDrawTime < MIN_DRAW_TIME_MS) {
-                LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: %ld ms is below the human floor",
-                      command.playerDrawTime);
-                return;
-            }
+        // Not a reaction time, and as a signed effective time it could beat
+        // any honest draw.
+        if (command.playerDrawTime < 0) {
+            LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: negative draw time");
+            return;
+        }
+        // The standalone countdown is fixed, so a result before the window opens
+        // is a guess or a forgery. Shootout starts are fan-out retries, so its
+        // windows open apart; its matches are never stored.
+        if (!currentMatchIsShootout() && !activeMatchState.matchLocalStartTime.has_value()) {
+            LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: before the draw window");
+            return;
         }
 
         const long opponentTime = command.playerDrawTime;

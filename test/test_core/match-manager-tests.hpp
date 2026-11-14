@@ -1305,7 +1305,7 @@ TEST_F(MatchManagerTestSuite, drawResultWithANegativeTimeIsIgnored) {
     EXPECT_FALSE(matchManager->getHasReceivedDrawResult());
     EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 0u);
 
-    // A shootout match has no human floor, so there the sign alone refuses it.
+    // A shootout match has no draw-window check, so there too the sign alone refuses it.
     matchManager->clearCurrentMatch();
     const char* shootoutId = "SHT-83333333222240008000333333333333";
     matchManager->initializeShootoutMatch(shootoutId, hunterMac, false);

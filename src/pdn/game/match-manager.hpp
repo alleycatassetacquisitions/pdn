@@ -45,11 +45,6 @@ inline constexpr const char LEGACY_PREF_COUNT_KEY[] = "count";
 inline constexpr const char LEGACY_PREF_TEST_KEY[] = "test_key";
 inline constexpr size_t LEGACY_UNTAGGED_SLOT_SIZE = MATCH_RECORD_SIZE;
 
-// The human floor: a standalone opponent's raw reaction time below this is a
-// guess timed to the fixed countdown, not a reaction, and is refused. The
-// start is stamped before the stimulus, so measured times only overstate.
-inline constexpr long MIN_DRAW_TIME_MS = 80;
-
 struct LastMatchDisplay {
     // Effective draw times, as used for winner calc: raw minus boost, so a big
     // enough posse behind a fast draw puts them below zero.
