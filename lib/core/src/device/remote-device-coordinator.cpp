@@ -6,6 +6,7 @@
 #include "wireless/mac-functions.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/hello-link-machine.hpp"
+#include "protocol-constants.hpp"
 
 RemoteDeviceCoordinator::RemoteDeviceCoordinator() = default;
 
@@ -51,6 +52,10 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
         if (hw != nullptr) hw->setByteCallback(nullptr);
         delete helloByJack[jackIndex(jack)].machine;
         helloByJack[jackIndex(jack)].machine = nullptr;
+        // With the writer gone a frame still waiting is this side's to clear.
+        // Nothing is reported: the observers are going with the coordinator.
+        ApplicationFrameOutcome unreported = ApplicationFrameOutcome::DROPPED;
+        helloByJack[jackIndex(jack)].applicationFrameHandOff.drop(unreported);
     }
     delete pdnContextChannel;
     delete fdnContextChannel;
@@ -139,8 +144,13 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
 
 void RemoteDeviceCoordinator::sync(Device* PDN) {
     for (SerialIdentifier jack : HELLO_JACKS) {
-        HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
-        if (machine) machine->onStateLoop(PDN);
+        JackHelloLink& link = helloByJack[jackIndex(jack)];
+        // Ahead of the link machine: a frame written since the last tick is
+        // reported while the link it went out on still stands, if it does.
+        if (link.applicationFrameHandOff.takeWritten()) {
+            applicationFrameOutcomeCallbacks.fire(jack, ApplicationFrameOutcome::WRITTEN);
+        }
+        if (link.machine) link.machine->onStateLoop(PDN);
     }
     // Three separate sites move the derived role: a link commits to CONNECTED in
     // the loop above, dies through the Idle mount inside it, or latches a ring
@@ -252,6 +262,9 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         JackHelloLink& link = helloByJack[jackIndex(jack)];
         link.parser.setHelloFrameHandler(
             [this, jack](const HelloPayload& hello) { onHelloReceived(jack, hello); });
+        link.parser.setApplicationFrameHandler([this, jack](const ApplicationPayload& payload) {
+            applicationFrameCallbacks.fire(jack, payload);
+        });
         // exec() runs on the main loop, so the parser is fed single-threaded.
         hw->setByteCallback([this, jack](uint8_t b) {
             helloByJack[jackIndex(jack)].parser.feed(&b, 1);
@@ -288,6 +301,13 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         // no-op on zero state.
         context.onLinkDown = [this, jack](SerialIdentifier j, const std::array<uint8_t, 6>& mac) {
             helloByJack[jackIndex(jack)].parser.requestReset();
+            // The peer a waiting frame was for is gone. Settled here, where the
+            // jack already reads Idle, so its outcome cannot outlive the link
+            // and a send from inside the outcome observer is refused.
+            ApplicationFrameOutcome outcome = ApplicationFrameOutcome::DROPPED;
+            if (helloByJack[jackIndex(jack)].applicationFrameHandOff.drop(outcome)) {
+                applicationFrameOutcomeCallbacks.fire(j, outcome);
+            }
             if (MacToUInt64(mac.data()) != 0) {
                 const bool wasFdn = getPeerDeviceType(j) == DeviceType::FDN;
                 releaseHelloPeer(j, mac.data());
@@ -337,7 +357,37 @@ void RemoteDeviceCoordinator::emitHello() {
         if (hw == nullptr) continue;
         for (uint8_t b : frame)
             hw->print(static_cast<char>(b));
+        // This task is the jack's only writer and has just finished its HELLO,
+        // so the frame cannot land inside one.
+        ApplicationFrameHandOff& handOff = helloByJack[jackIndex(jack)].applicationFrameHandOff;
+        const ApplicationFrame* applicationFrame = handOff.takeForWrite();
+        if (applicationFrame == nullptr) continue;
+        for (uint8_t b : *applicationFrame)
+            hw->print(static_cast<char>(b));
+        handOff.finish();
     }
+}
+
+// One application frame per jack per emit pass, after its HELLO: the peer's
+// HELLO gap is at most one cadence plus both frames' wire time (8N1, about
+// 50 ms at 19200) against the silent-link window.
+static_assert(RemoteDeviceCoordinator::HELLO_CADENCE_MS +
+              (HELLO_FRAME_LEN + APPLICATION_FRAME_LEN) * 10 * 1000 / BAUDRATE <
+              RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS,
+              "an application frame between two HELLO frames must fit the silent-link window");
+
+bool RemoteDeviceCoordinator::sendApplicationFrame(SerialIdentifier jack,
+                                                   const ApplicationPayload& payload) {
+    JackHelloLink& link = helloByJack[jackIndex(jack)];
+    if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED) {
+        LOG_E("RDC", "application frame refused: no peer Connected on the jack");
+        return false;
+    }
+    if (!link.applicationFrameHandOff.offer(payload)) {
+        LOG_E("RDC", "application frame refused: the jack's last one is not finished");
+        return false;
+    }
+    return true;
 }
 
 void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const HelloPayload& hello) {

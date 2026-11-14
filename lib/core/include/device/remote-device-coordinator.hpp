@@ -9,6 +9,7 @@
 #include <vector>
 #include "device/serial-manager.hpp"
 #include "device/serial-frame-parser.hpp"
+#include "device/application-frame-hand-off.hpp"
 #include "utils/callback-list.hpp"
 #include "utils/simple-timer.hpp"
 #include "device/wireless-manager.hpp"
@@ -140,9 +141,9 @@ public:
     }
 
     // ---- Per-jack HELLO connectivity ----
-    // HELLO is the only thing serial carries: discovery, liveness and hop-by-hop
-    // chain context. Each jack runs an independent link SM fed by the real
-    // exec()-driven RX byte pump.
+    // HELLO carries discovery, liveness and hop-by-hop chain context, and is all
+    // a jack carries apart from the application frame further down. Each jack
+    // runs an independent link SM fed by the real exec()-driven RX byte pump.
 
     // The jacks that can carry a HELLO link, in the order sync() drives them.
     static constexpr std::array<SerialIdentifier, 3> HELLO_JACKS = {
@@ -231,6 +232,71 @@ public:
     /** True while a context send to `mac` is still awaiting its SEND_SUCCESS. */
     bool isContextSendPending(const uint8_t* mac) const;
 
+    // ---- Application frame ----
+    // The one frame a jack carries besides HELLO: a fixed-length payload for the
+    // peer on that jack, for bytes that must not cross the radio. RDC frames it,
+    // checks it and hands it up with the jack; it never reads the payload.
+
+    /**
+     * Receives one CRC-valid application frame: the jack it arrived on and its
+     * payload, which is valid only for the call.
+     */
+    using ApplicationFrameCallback =
+    std::function<void(SerialIdentifier jack, const ApplicationPayload& payload)>;
+
+    /**
+     * Registers `owner`'s application-frame consumer; a null callback removes
+     * it and no other owner's. Every registered consumer sees every frame,
+     * from the jack's receive pump on the main loop, between sync() ticks. A
+     * frame carries no source and is handed up in any link state, so a
+     * consumer must itself check who is Connected on `jack`. A device can
+     * receive its own frame, echoed through the jack contacts as the plug
+     * leaves. A frame that fails its CRC, or that the parser joins or
+     * abandons part-way, is scanned as loose bytes, so a payload that happened
+     * to hold a complete valid HELLO image could be taken as one (negligible
+     * for random payloads).
+     */
+    void setOnApplicationFrame(ApplicationFrameCallback callback, const void* owner) {
+        applicationFrameCallbacks.set(std::move(callback), owner);
+    }
+
+    /**
+     * Queues `payload` as one application frame for the peer Connected on
+     * `jack`; the HELLO writer puts it on the jack whole, straight after that
+     * jack's next HELLO frame. Call from the main loop only. Returns false and
+     * queues nothing when no peer is Connected on `jack`, or while the frame
+     * last accepted for it is unfinished or its outcome not yet reported.
+     * After a true return the caller needs no copy of its own: the outcome
+     * observers hear once how the frame ended, and the coordinator's copy is
+     * cleared as the frame is written or dropped. A send from inside a
+     * jack-change disconnect callback is accepted, because the jack still
+     * reads Connected there: it is normally reported DROPPED; on a device it
+     * may be written and reported WRITTEN.
+     */
+    bool sendApplicationFrame(SerialIdentifier jack, const ApplicationPayload& payload);
+
+    /** Reports how one accepted application frame ended, and on which jack. */
+    using ApplicationFrameOutcomeCallback =
+    std::function<void(SerialIdentifier jack, ApplicationFrameOutcome outcome)>;
+
+    /**
+     * Registers `owner`'s observer for how accepted frames end; a null
+     * callback removes it. It fires once per accepted frame, on the main loop.
+     * WRITTEN comes from the sync() after the writer finished and means every
+     * byte was handed to the jack's UART: it may still be shifting out, and
+     * nothing confirms the peer parsed it. A receiver whose main loop stalls
+     * for more than the parser's 50 ms mid-frame timeout part-way through a
+     * frame discards it, and the sender still hears WRITTEN. DROPPED comes as
+     * the link goes down, for a frame the writer had not begun. One it had
+     * begun is past recall and is reported WRITTEN there and then, a moment
+     * before its last byte is handed over, so every outcome is out before
+     * another peer can be Connected on the jack. Destroying the coordinator
+     * reports nothing: a frame still waiting then is cleared unannounced.
+     */
+    void setOnApplicationFrameOutcome(ApplicationFrameOutcomeCallback callback, const void* owner) {
+        applicationFrameOutcomeCallbacks.set(std::move(callback), owner);
+    }
+
     /**
      * Native/test hook: suppress the FreeRTOS emit-task spawn so the caller
      * drives emitHello() and the per-jack link machines (via sync()) on one thread.
@@ -238,8 +304,9 @@ public:
     void setExternalConnectivityTask(bool external) { externalConnectivityTask = external; }
 
     /**
-     * Emits one HELLO frame on every jack from the published atomic snapshot;
-     * touches no main-loop state and fires no callback.
+     * Emits one HELLO frame on every jack from the published atomic snapshot,
+     * each followed by the application frame queued for that jack, if any;
+     * touches no other main-loop state and fires no callback.
      */
     void emitHello();
 
@@ -313,6 +380,8 @@ private:
     CallbackList<MembershipChangeCallback> membershipChangeCallbacks;
     CallbackList<RingClosedCallback> ringClosedCallbacks;
     CallbackList<RingMembershipChangeCallback> ringMembershipChangeCallbacks;
+    CallbackList<ApplicationFrameCallback> applicationFrameCallbacks;
+    CallbackList<ApplicationFrameOutcomeCallback> applicationFrameOutcomeCallbacks;
 
     // ---- HELLO connectivity internals ----
     struct JackHelloLink {
@@ -328,6 +397,7 @@ private:
         // stays opaque and reaches the game layer as raw bytes.
         uint16_t peerUserId = PEER_USER_ID_NONE;
         SimpleTimer contextResendThrottleTimer;
+        ApplicationFrameHandOff applicationFrameHandOff;
     };
     std::array<JackHelloLink, NUM_JACKS> helloByJack;
     bool externalConnectivityTask = false;

@@ -37,6 +37,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         ++decodedCount;
     });
 
+    ApplicationPayload lastApplicationPayload{};
+    size_t applicationCount = 0;
+
+    parser.setApplicationFrameHandler([&](const ApplicationPayload& payload) {
+        lastApplicationPayload = payload;
+        ++applicationCount;
+    });
+
     feedExactCopy(parser, data, size);
 
     // Mode 2: Action stream driving chunking, timeouts, requestReset(), and valid frames.
@@ -57,6 +65,18 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 feedExactCopy(parser, data + pos, len);
                 pos += len;
             }
+        } else if (action == ACTION_FEED_VALID_CRC_FRAME && (param & 1U) == 0U) {
+            // The parameter's low bit picks which of the two frame kinds is fed.
+            if (size - pos < APPLICATION_PAYLOAD_LEN) {
+                break;
+            }
+            ApplicationPayload payload{};
+            std::memcpy(payload.data(), data + pos, payload.size());
+            pos += payload.size();
+
+            ApplicationFrame framed{};
+            encodeApplicationFrame(payload, framed);
+            feedExactCopy(parser, framed.data(), framed.size());
         } else if (action == ACTION_FEED_VALID_CRC_FRAME) {
             if (size - pos < HELLO_PAYLOAD_LEN) {
                 break;
@@ -102,6 +122,28 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         __builtin_trap();
     }
     if (std::memcmp(&lastDecoded, &sentinel, sizeof(HelloPayload)) != 0) {
+        __builtin_trap();
+    }
+
+    // The HELLO sentinel left the parser between frames, so a valid application
+    // frame must decode as well, whatever the input did before.
+    ApplicationPayload applicationSentinel{};
+    for (size_t i = 0; i < applicationSentinel.size(); ++i) {
+        applicationSentinel[i] = static_cast<uint8_t>(0xC0 + i);
+    }
+
+    size_t countBeforeApplicationSentinel = applicationCount;
+    ApplicationFrame applicationFrame{};
+    encodeApplicationFrame(applicationSentinel, applicationFrame);
+    size_t applicationSplit = (size > 0) ? (data[0] % applicationFrame.size()) : 0;
+    feedExactCopy(parser, applicationFrame.data(), applicationSplit);
+    feedExactCopy(parser, applicationFrame.data() + applicationSplit,
+                  applicationFrame.size() - applicationSplit);
+
+    if (applicationCount != countBeforeApplicationSentinel + 1) {
+        __builtin_trap();
+    }
+    if (lastApplicationPayload != applicationSentinel) {
         __builtin_trap();
     }
 
