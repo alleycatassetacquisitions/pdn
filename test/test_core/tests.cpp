@@ -1375,6 +1375,8 @@ TEST(ServerKeyPin, refusesAKeyOneBitAway) { serverKeyPinRefusesAKeyOneBitAway();
 
 TEST(ServerKeyPin, thatIsMalformedTrustsNothing) { serverKeyPinThatIsMalformedTrustsNothing(); }
 
+TEST(ServerKeyPin, flagsFollowOnlyTheLeafKey) { serverKeyPinFlagsFollowOnlyTheLeafKey(); }
+
 // ============================================
 // FDN RECORD STORE AND INTAKE TESTS
 // ============================================
