@@ -431,8 +431,8 @@ inline void devicePlayerTakesMoreWinsThanMatchesAsNoTotals() {
     expectTotalsEqual(player.getRegistrationTotals(), unbeaten);
 }
 
-// A lookup that did not run over HTTPS with the certificate checked gives a
-// profile and no key, however well-formed the key in it is.
+// A lookup from a server that did not present the pinned key gives a profile
+// and no key, however well-formed the key in it is.
 inline void playerApiTakesRecordKeyOnlyFromVerifiedResponse(AlleycatApiTestSuite* suite) {
     Player player;
     RecordKey recordKey;
