@@ -1,27 +1,11 @@
 #pragma once
 
-#include "game/match.hpp"
+#include "alleycat-server/fdn-stored-entry.hpp"
 #include "utils/uuid-bytes.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
-
-/**
- * One completed match for POST /quickdraw-matches. A nil team ID means that player
- * was unassigned at match time.
- */
-struct QuickdrawMatchRecord {
-    UUIDBytes matchId;
-    UUIDBytes playerAId;
-    UUIDBytes playerBId;
-    UUIDBytes playerATeamId;
-    UUIDBytes playerBTeamId;
-    UUIDBytes winnerPlayerId;
-    uint64_t playerADrawTimeMs = 0;
-    uint64_t playerBDrawTimeMs = 0;
-    int64_t occurredAtUnixMs = 0;
-};
 
 /** Reason the server rejected one match. UNKNOWN covers codes added after this build. */
 enum class QuickdrawMatchErrorCode {
@@ -70,15 +54,17 @@ namespace QuickdrawMatchCodec {
 /** Server limit on matches per request. */
 constexpr size_t MAX_MATCHES_PER_BATCH = 100;
 
-/** Fills @p record with the match at @p index; returns false to abort encoding. */
-using MatchSource = std::function<bool(size_t index, QuickdrawMatchRecord& record)>;
+/** Fills @p entry with the stored match record at @p index; returns false to abort encoding. */
+using MatchSource = std::function<bool(size_t index, FdnStoredMatchEntry& entry)>;
 
 /** Receives each rejection, in request order. */
 using RejectionSink = std::function<void(const QuickdrawMatchRejection& rejection)>;
 
 /**
  * Encodes @p matchCount matches pulled from @p source, in index order, into @p payload.
- * @p source is called exactly once per index.
+ * @p source is called exactly once per index. Each match's fields are decoded
+ * from its entry's record bytes; a nil team ID means that player was
+ * unassigned at match time, and the field is left out.
  *
  * @return false when @p source fails or encoding fails.
  */
@@ -92,20 +78,5 @@ bool encodeRequest(size_t matchCount, const MatchSource& source, std::string& pa
  * @return false when @p body is not a valid WriteQuickdrawMatchesResponse.
  */
 bool decodeResponse(const std::string& body, const RejectionSink& onRejection, QuickdrawUploadResult& result);
-
-/** Converts a finalized Match into a QuickdrawMatchRecord for POST /quickdraw-matches. */
-inline QuickdrawMatchRecord fromMatch(const Match& match) {
-    QuickdrawMatchRecord rec{};
-    rec.matchId = match.getMatchUuid();
-    rec.playerAId = match.getHunterPlayerId();
-    rec.playerBId = match.getBountyPlayerId();
-    rec.playerATeamId = match.getHunterTeamId();
-    rec.playerBTeamId = match.getBountyTeamId();
-    rec.winnerPlayerId = match.getWinnerPlayerId();
-    rec.playerADrawTimeMs = match.getHunterDrawTime();
-    rec.playerBDrawTimeMs = match.getBountyDrawTime();
-    rec.occurredAtUnixMs = match.getOccurredAtUnixMs();
-    return rec;
-}
 
 }  // namespace QuickdrawMatchCodec

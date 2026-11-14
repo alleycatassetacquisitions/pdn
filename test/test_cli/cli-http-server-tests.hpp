@@ -101,6 +101,7 @@ public:
     bool errorCallbackCalled;
     std::string lastResponseBody;
     WirelessError lastErrorCode;
+    int lastHttpStatus = -1;
 };
 
 // Test: Client processes requests
@@ -199,8 +200,14 @@ void httpClientUploadsEncodedCrashLog(NativeHttpClientDriverTestSuite* suite) {
     strncpy(rec.commitHash, "testhash", COMMIT_HASH_LENGTH - 1);
 
     const uint8_t mac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    FdnStoredCrashEntry entry{};
+    memcpy(entry.senderMac, mac, sizeof(entry.senderMac));
+    entry.kind = static_cast<uint8_t>(RecordKind::CRASH);
+    entry.recordNumber = rec.crashNumber;
+    const CrashPacket packet = toCrashPacket(rec);
+    memcpy(entry.content.recordBytes, &packet, sizeof(packet));
     uint8_t buf[CrashCodec::MAX_ENCODED_SIZE];
-    const size_t len = CrashCodec::encode(rec, mac, buf, sizeof(buf));
+    const size_t len = CrashCodec::encode(entry, buf, sizeof(buf));
     ASSERT_GT(len, 0u);
 
     HttpRequest request(
@@ -273,4 +280,29 @@ void httpClientRejectsOversizedResponse(NativeHttpClientDriverTestSuite* suite) 
     EXPECT_FALSE(suite->successCallbackCalled);
     EXPECT_TRUE(suite->errorCallbackCalled);
     EXPECT_EQ(suite->lastErrorCode, WirelessError::INVALID_RESPONSE);
+}
+
+// Test: an HTTP error response reaches the caller with its status, and a failure with no
+// response carries none
+void httpClientReportsTheStatusOfAnErrorResponse(NativeHttpClientDriverTestSuite* suite) {
+    suite->driver->setHttpClientState(HttpClientState::CONNECTED);
+    // The mock server answers an empty device log with 400.
+    for (const bool serverOffline : {false, true}) {
+        cli::MockHttpServer::getInstance().setOffline(serverOffline);
+        suite->errorCallbackCalled = false;
+        suite->lastHttpStatus = -1;
+        HttpRequest request(
+        "/device-logs", "POST", "application/protobuf", "",
+        [suite](const std::string&) { suite->successCallbackCalled = true; },
+        [suite](const WirelessErrorInfo& error) {
+            suite->errorCallbackCalled = true;
+            suite->lastHttpStatus = error.httpStatus;
+        });
+        suite->driver->queueRequest(std::move(request));
+        suite->driver->exec();
+
+        EXPECT_FALSE(suite->successCallbackCalled);
+        ASSERT_TRUE(suite->errorCallbackCalled);
+        EXPECT_EQ(suite->lastHttpStatus, serverOffline ? 0 : 400);
+    }
 }

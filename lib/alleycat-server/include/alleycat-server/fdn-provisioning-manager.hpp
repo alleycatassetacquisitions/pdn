@@ -18,6 +18,8 @@
 /**
  * FDN side of player provisioning: answers a cabled PDN's PIN request with the
  * server's profile or LOOKUP_FAILED. Request and reply ride reliable channels.
+ * A lookup owns Wi-Fi from its HTTP request to its answer; while another
+ * component owns it the lookup waits, inside its time limit.
  */
 class FdnProvisioningManager {
 public:
@@ -37,14 +39,18 @@ public:
     }
 
     /**
-     * Serves a parked request once its PDN is Connected, and past
-     * PROVISION_LOOKUP_TIMEOUT_MS leaves Wi-Fi, which makes the HTTP driver fail
-     * the queued request and so ends the lookup with LOOKUP_FAILED. Call every tick.
+     * Serves a parked request once its PDN is Connected, starts a lookup that
+     * was waiting for Wi-Fi once it is free, and past
+     * PROVISION_LOOKUP_TIMEOUT_MS cancels the lookup (see cancelLookup). Call
+     * every tick.
      */
     void sync() {
         if (lookupInFlight && lookupTimer.expired()) {
             LOG_W("FDN_PROVISION", "Player lookup timed out");
             cancelLookup();
+        }
+        if (lookupInFlight && !lookupOwnsWifi) {
+            requestLookup();
         }
         if (!parkedTimer.isRunning()) return;
         if (parkedTimer.expired()) {
@@ -55,14 +61,17 @@ public:
         }
     }
 
-    /** Ends the lookup in flight, if any, by leaving Wi-Fi without waiting for the deadline. */
+    /**
+     * Ends the lookup in flight, if any, with LOOKUP_FAILED, without waiting
+     * for the deadline. Wi-Fi is given up at once.
+     */
     void cancelLookup() {
         if (!lookupInFlight) return;
-        lookupTimer.invalidate();
-        wirelessManager->enablePeerCommsMode();
+        failLookup();
     }
 
-    /** @return true while a PIN lookup is waiting on the server. */
+    /** @return true from a PIN request being taken up until its lookup ends, the wait for Wi-Fi
+     * included. */
     bool isLookupInFlight() const { return lookupInFlight; }
 
     /** Sets the lookup-finished listener; nullptr clears it. */
@@ -106,36 +115,54 @@ private:
     void provisionPdn(const uint8_t* pdnMac, const std::string& pin) {
         if (lookupInFlight) return;
 
-        std::array<uint8_t, 6> targetMac{};
-        memcpy(targetMac.data(), pdnMac, 6);
+        memcpy(lookupMac.data(), pdnMac, lookupMac.size());
+        lookupPin = pin;
         lookupInFlight = true;
+        // Covers the wait for Wi-Fi as well as the request.
         lookupTimer.setTimer(PROVISION_LOOKUP_TIMEOUT_MS);
+        requestLookup();
+    }
+
+    // Queues the lookup's HTTP request if Wi-Fi can be had. While another
+    // component owns it the lookup stays in flight, and sync() comes back here.
+    void requestLookup() {
+        if (!wirelessManager->acquireWifi(this)) return;
+        lookupOwnsWifi = true;
         decodedPlayer = Player{};
 
         PlayerApi::getDevicePlayerByPin(
-        wirelessManager, pin, &decodedPlayer,
-        [this, targetMac, pin](Player& player) {
+        wirelessManager, lookupPin, &decodedPlayer,
+        [this](Player& player) {
             PlayerProvisionPacket pkt = PlayerProvisionCodec::encode(player);
-            finishLookup(targetMac, pin, pkt, player.getServerPlayerName());
+            finishLookup(pkt, player.getServerPlayerName());
         },
-        [this, targetMac, pin](const WirelessErrorInfo&) {
-            PlayerProvisionPacket pkt{};
-            pkt.status = static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED);
-            finishLookup(targetMac, pin, pkt, nullptr);
+        [this](const WirelessErrorInfo&) {
+            // Giving Wi-Fi up fails the request of a lookup that has already ended.
+            if (!lookupInFlight) return;
+            failLookup();
         });
     }
 
-    void finishLookup(const std::array<uint8_t, 6>& targetMac, const std::string& pin,
-                      PlayerProvisionPacket& pkt, const char* playerName) {
+    void failLookup() {
+        PlayerProvisionPacket pkt{};
+        pkt.status = static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED);
+        finishLookup(pkt, nullptr);
+    }
+
+    void finishLookup(PlayerProvisionPacket& pkt, const char* playerName) {
         lookupInFlight = false;
         lookupTimer.invalidate();
-        wirelessManager->enablePeerCommsMode();
+        // Before the reply: it can only be sent with the radio back on peer-to-peer.
+        if (lookupOwnsWifi) {
+            lookupOwnsWifi = false;
+            wirelessManager->releaseWifi(this);
+        }
         if (onLookupDone) onLookupDone(playerName);
-        if (!rdc->isConnectedPeer(DeviceType::PDN, targetMac.data())) {
+        if (!rdc->isConnectedPeer(DeviceType::PDN, lookupMac.data())) {
             return;
         }
-        strncpy(pkt.pin, pin.c_str(), sizeof(pkt.pin) - 1);
-        replyChannel.sendReliable(targetMac.data(), pkt);
+        strncpy(pkt.pin, lookupPin.c_str(), sizeof(pkt.pin) - 1);
+        replyChannel.sendReliable(lookupMac.data(), pkt);
     }
 
     void onProvisionRequest(const uint8_t* fromMac, const PlayerProvisionRequestPacket& request) {
@@ -165,6 +192,9 @@ private:
     ReliableChannel<PlayerProvisionRequestPacket> requestChannel;
     ReliableChannel<PlayerProvisionPacket> replyChannel;
     bool lookupInFlight = false;
+    bool lookupOwnsWifi = false;
+    std::array<uint8_t, 6> lookupMac{};
+    std::string lookupPin;
     bool lookupDuringPlayAllowed = false;
     SimpleTimer lookupTimer;
     SimpleTimer parkedTimer;

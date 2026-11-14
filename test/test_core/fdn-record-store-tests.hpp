@@ -61,8 +61,7 @@ public:
 
 /**
  * An FDN with nothing Connected on its jacks, a record store on in-memory
- * storage, a radio that records every stored acknowledgement it is given, and
- * an HTTP client that records every request.
+ * storage, and a radio that records every stored acknowledgement it is given.
  */
 class FdnRecordStoreTests : public testing::Test {
 public:
@@ -80,11 +79,6 @@ public:
             noteSentFrame(toMac, type, data, length);
             return 1;
         });
-        ON_CALL(*fdnDevice.mockHttpClient, queueRequest(testing::_))
-        .WillByDefault([this](HttpRequest&& request) {
-            httpRequests.push_back(std::move(request));
-            return true;
-        });
 
         fdnRecordStore = new FdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs);
     }
@@ -93,7 +87,6 @@ public:
     void TearDown() override {
         delete fdnRecordStore;
         fdnRecordStore = nullptr;
-        httpRequests.clear();
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
@@ -105,13 +98,25 @@ public:
         fdnRecordStore = new FdnRecordStore(fdnDevice.wirelessManager, &fdnPrefs);
     }
 
-    /** Uploads the stored match records, answers with success, and hands the radio back. */
-    bool uploadMatchRecords() {
-        const size_t requestsBefore = httpRequests.size();
-        if (!fdnRecordStore->uploadPendingBatch(nullptr)) return false;
-        if (httpRequests.size() != requestsBefore + 1) return false;
-        httpRequests.back().onSuccess("");
-        fdnDevice.wirelessManager->enablePeerCommsMode();
+    /**
+     * Drops the unreadable head and retires the readable match batch, as an
+     * upload of it that the server answered does.
+     */
+    bool retireMatchBatch() {
+        fdnRecordStore->dropUnreadableOldest(RecordKind::MATCH);
+        uint32_t position = 0;
+        const size_t batchCount = fdnRecordStore->countReadableMatchBatch(position);
+        if (batchCount == 0) return false;
+        fdnRecordStore->retireMatchBatch(position, batchCount);
+        return true;
+    }
+
+    /** Reads the oldest crash record and retires it, as an upload the server answered does. */
+    bool retireOldestCrash() {
+        FdnStoredCrashEntry entry{};
+        uint32_t position = 0;
+        if (!fdnRecordStore->readOldestCrash(entry, position)) return false;
+        fdnRecordStore->retireCrash(position);
         return true;
     }
 
@@ -187,7 +192,6 @@ public:
     uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x31};
     uint8_t otherPdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x32};
     std::vector<SentRecordAck> sentAcks;
-    std::vector<HttpRequest> httpRequests;
     uint8_t nextSeqId = 0;
 
 private:
@@ -217,6 +221,19 @@ inline std::array<uint8_t, 6> macArray(const uint8_t* mac) {
     std::array<uint8_t, 6> result{};
     memcpy(result.data(), mac, 6);
     return result;
+}
+
+/** Expects the stored @p entry to hold @p frame from @p fromMac with nothing altered. */
+template <class Entry, class Frame>
+void expectEntryCarriesFrame(const Entry& entry, const uint8_t* fromMac, const Frame& frame) {
+    static_assert(sizeof(entry.content) == sizeof(frame.content),
+                  "the entry and the frame are of different record kinds");
+    EXPECT_EQ(memcmp(entry.senderMac, fromMac, sizeof(entry.senderMac)), 0)
+    << "the sender's MAC address was altered";
+    EXPECT_EQ(entry.kind, frame.kind);
+    EXPECT_EQ(static_cast<uint32_t>(entry.recordNumber), static_cast<uint32_t>(frame.recordNumber));
+    EXPECT_EQ(memcmp(&entry.content, &frame.content, sizeof(frame.content)), 0)
+    << "the record bytes or, for a match record, the tag were altered";
 }
 
 inline void fdnStoresThenAcknowledgesARecordFromAPdnThatIsNotConnected(FdnRecordStoreTests* suite) {
@@ -530,7 +547,7 @@ inline void fdnAsksRefusingStorageOnlyOnceUntilASlotIsFreed(FdnRecordStoreTests*
     << "a held record stopped being acknowledged while storage refused new ones";
     EXPECT_EQ(suite->fdnPrefs.writes, writesAfterRefusal);
 
-    ASSERT_TRUE(suite->uploadMatchRecords());
+    ASSERT_TRUE(suite->retireMatchBatch());
     ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
 
     const size_t acksBeforeRetry = suite->sentAcks.size();
@@ -565,7 +582,7 @@ inline void fdnLeavesNoOrphanWhenTheRecordIsWrittenButNotCommitted(FdnRecordStor
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u);
 }
 
-inline void fdnErasesAnUploadedBatchEvenWhenTheHeadCannotAdvance(FdnRecordStoreTests* suite) {
+inline void fdnErasesARetiredBatchEvenWhenTheHeadCannotAdvance(FdnRecordStoreTests* suite) {
     suite->deliver(PktType::kMatchRecord, suite->pdnMac,
                    FdnRecordStoreTests::uploadableMatchFrame(1));
     suite->deliver(PktType::kMatchRecord, suite->pdnMac,
@@ -573,7 +590,7 @@ inline void fdnErasesAnUploadedBatchEvenWhenTheHeadCannotAdvance(FdnRecordStoreT
     ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u);
 
     suite->fdnPrefs.refusedCounterKey = "m_head";
-    ASSERT_TRUE(suite->uploadMatchRecords());
+    ASSERT_TRUE(suite->retireMatchBatch());
     EXPECT_FALSE(suite->fdnPrefs.holdsBlob(FDN_RECORD_STORE_NAMESPACE, "m_0"))
     << "an uploaded record stayed in storage";
     EXPECT_FALSE(suite->fdnPrefs.holdsBlob(FDN_RECORD_STORE_NAMESPACE, "m_1"));
@@ -588,17 +605,16 @@ inline void fdnErasesAnUploadedBatchEvenWhenTheHeadCannotAdvance(FdnRecordStoreT
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u);
 
     // A restart reads the head that was never stored, which rests on the erased
-    // slots; the next upload drops them instead of stalling behind them.
+    // slots; dropping the unreadable head clears them instead of stalling behind them.
     suite->fdnPrefs.refusedCounterKey.clear();
     suite->restartStore();
-    ASSERT_TRUE(suite->uploadMatchRecords());
-    ASSERT_EQ(suite->httpRequests.size(), 2u);
+    ASSERT_TRUE(suite->retireMatchBatch());
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
     EXPECT_FALSE(suite->fdnPrefs.holdsBlob(FDN_RECORD_STORE_NAMESPACE, "m_2"));
 }
 
 // The rings share one partition, so room one of them frees is room for the other.
-inline void fdnMatchUploadThatFreesSlotsRestoresCrashIntake(FdnRecordStoreTests* suite) {
+inline void fdnRetiredMatchBatchThatFreesSlotsRestoresCrashIntake(FdnRecordStoreTests* suite) {
     suite->deliver(PktType::kMatchRecord, suite->pdnMac,
                    FdnRecordStoreTests::uploadableMatchFrame(1));
     ASSERT_EQ(suite->sentAcks.size(), 1u);
@@ -615,7 +631,7 @@ inline void fdnMatchUploadThatFreesSlotsRestoresCrashIntake(FdnRecordStoreTests*
     << "storage that refused a crash record was asked again before anything was freed";
     EXPECT_EQ(suite->sentAcks.size(), 1u);
 
-    ASSERT_TRUE(suite->uploadMatchRecords());
+    ASSERT_TRUE(suite->retireMatchBatch());
 
     suite->deliver(PktType::kCrashRecord, suite->pdnMac, crash);
     ASSERT_EQ(suite->sentAcks.size(), 2u)
@@ -669,23 +685,36 @@ fdnWithFullMatchStorageStillAcknowledgesAResendAndKnowsItAfterARestart(FdnRecord
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 64u);
 }
 
+// The entry read here is what the match upload is handed, so the sender, the
+// record bytes and a tag the FDN cannot check must come back as they arrived.
 inline void fdnDropsAnUnreadableHeadInsteadOfFailingEveryBatch(FdnRecordStoreTests* suite) {
-    for (uint32_t number = 1; number <= 2; ++number) {
-        suite->deliver(PktType::kMatchRecord, suite->pdnMac,
-                       FdnRecordStoreTests::uploadableMatchFrame(number));
+    suite->deliver(PktType::kMatchRecord, suite->pdnMac,
+                   FdnRecordStoreTests::uploadableMatchFrame(1));
+    MatchRecordFramePacket tagged = FdnRecordStoreTests::uploadableMatchFrame(2);
+    for (size_t i = 0; i < sizeof(tagged.content.tag); ++i) {
+        tagged.content.tag[i] = static_cast<uint8_t>(0xA0 + i);
     }
+    suite->deliver(PktType::kMatchRecord, suite->otherPdnMac, tagged);
     ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u);
     const uint8_t torn[3] = {1, 2, 3};
     suite->fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_0", torn, sizeof(torn));
 
-    ASSERT_TRUE(suite->fdnRecordStore->uploadPendingBatch(nullptr));
-    ASSERT_EQ(suite->httpRequests.size(), 1u) << "the readable record still goes up";
-    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u);
-    suite->httpRequests[0].onSuccess("");
-    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
+    uint32_t position = 0;
+    EXPECT_EQ(suite->fdnRecordStore->countReadableMatchBatch(position), 0u)
+    << "counting the batch dropped a record; only the explicit command may";
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u);
+
+    suite->fdnRecordStore->dropUnreadableOldest(RecordKind::MATCH);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u)
+    << "the torn head still counts as held";
+    EXPECT_EQ(suite->fdnRecordStore->countReadableMatchBatch(position), 1u)
+    << "the readable record behind a torn head is still a batch";
+    FdnStoredMatchEntry entry{};
+    ASSERT_TRUE(suite->fdnRecordStore->readMatch(position, entry));
+    expectEntryCarriesFrame(entry, suite->otherPdnMac, tagged);
 }
 
-inline void fdnUploadStopsShortOfAnUnreadableRecord(FdnRecordStoreTests* suite) {
+inline void fdnMatchBatchStopsShortOfAnUnreadableRecord(FdnRecordStoreTests* suite) {
     for (uint32_t number = 1; number <= 3; ++number) {
         suite->deliver(PktType::kMatchRecord, suite->pdnMac,
                        FdnRecordStoreTests::uploadableMatchFrame(number));
@@ -694,15 +723,219 @@ inline void fdnUploadStopsShortOfAnUnreadableRecord(FdnRecordStoreTests* suite) 
     const uint8_t torn[3] = {1, 2, 3};
     suite->fdnPrefs.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_1", torn, sizeof(torn));
 
-    ASSERT_TRUE(suite->fdnRecordStore->uploadPendingBatch(nullptr));
-    ASSERT_EQ(suite->httpRequests.size(), 1u) << "the record ahead of the torn one still goes up";
-    suite->httpRequests[0].onSuccess("");
+    FdnStoredMatchEntry entry{};
+    uint32_t position = 0;
+    ASSERT_EQ(suite->fdnRecordStore->countReadableMatchBatch(position), 1u)
+    << "a torn record further in must not fail the batch ahead of it";
+    ASSERT_TRUE(suite->fdnRecordStore->readMatch(position, entry));
+    expectEntryCarriesFrame(entry, suite->pdnMac, FdnRecordStoreTests::uploadableMatchFrame(1));
+    EXPECT_FALSE(suite->fdnRecordStore->readMatch(position + 1, entry))
+    << "the torn record read as a match";
+    suite->fdnRecordStore->retireMatchBatch(position, 1);
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u);
 
-    ASSERT_TRUE(suite->fdnRecordStore->uploadPendingBatch(nullptr));
-    ASSERT_EQ(suite->httpRequests.size(), 2u);
+    // The batch that was retired is no longer the oldest records held.
+    suite->fdnRecordStore->retireMatchBatch(position, 1);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u)
+    << "a batch was retired twice, which retires records that were never uploaded";
+
+    suite->fdnRecordStore->dropUnreadableOldest(RecordKind::MATCH);
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u)
     << "the torn record is dropped once it is the oldest";
-    suite->httpRequests[1].onSuccess("");
+    ASSERT_EQ(suite->fdnRecordStore->countReadableMatchBatch(position), 1u);
+    ASSERT_TRUE(suite->fdnRecordStore->readMatch(position, entry));
+    expectEntryCarriesFrame(entry, suite->pdnMac, FdnRecordStoreTests::uploadableMatchFrame(3));
+    EXPECT_FALSE(suite->fdnRecordStore->readMatch(position + 1, entry))
+    << "a place past the newest stored match read as a record";
+    suite->fdnRecordStore->retireMatchBatch(position, 1);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
+}
+
+// ---- Relayed crash records, read and retired one at a time ----
+
+inline void fdnHandsOutCrashRecordsOldestFirstAsTheyWereStored(FdnRecordStoreTests* suite) {
+    const CrashRecordFramePacket first = FdnRecordStoreTests::crashFrame(7, 0x5A);
+    const CrashRecordFramePacket second = FdnRecordStoreTests::crashFrame(2, 0x5B);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, first);
+    suite->deliver(PktType::kCrashRecord, suite->otherPdnMac, second);
+
+    FdnStoredCrashEntry entry{};
+    uint32_t firstPosition = 0;
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, firstPosition));
+    expectEntryCarriesFrame(entry, suite->pdnMac, first);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 2u)
+    << "reading a record must not retire it";
+
+    suite->fdnRecordStore->retireCrash(firstPosition);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u);
+    uint32_t secondPosition = 0;
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, secondPosition));
+    expectEntryCarriesFrame(entry, suite->otherPdnMac, second);
+
+    // The record read first is gone, so retiring it again must not take the next one.
+    suite->fdnRecordStore->retireCrash(firstPosition);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u)
+    << "a record was retired on the answer for another";
+
+    suite->fdnRecordStore->retireCrash(secondPosition);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 0u);
+    EXPECT_FALSE(suite->fdnRecordStore->readOldestCrash(entry, secondPosition));
+
+    // With nothing held there is nothing to retire.
+    suite->fdnRecordStore->retireCrash(secondPosition);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 0u);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, first);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u);
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, secondPosition));
+    expectEntryCarriesFrame(entry, suite->pdnMac, first);
+}
+
+// Any freed slot lets storage be asked again, one retired crash record included.
+inline void fdnRetiringOneCrashRecordFreesItsSlotAndClearsTheRefusal(FdnRecordStoreTests* suite) {
+    const CrashRecordFramePacket first = FdnRecordStoreTests::crashFrame(1, 0x10);
+    const CrashRecordFramePacket third = FdnRecordStoreTests::crashFrame(3, 0x12);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, first);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, FdnRecordStoreTests::crashFrame(2, 0x11));
+    ASSERT_EQ(suite->sentAcks.size(), 2u);
+
+    suite->fdnPrefs.refuseBlobWrites = true;
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, third);
+    ASSERT_EQ(suite->sentAcks.size(), 2u) << "a record the storage refused was acknowledged";
+    suite->fdnPrefs.refuseBlobWrites = false;
+    const size_t writesAfterRefusal = suite->fdnPrefs.writes;
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, third);
+    ASSERT_EQ(suite->fdnPrefs.writes, writesAfterRefusal)
+    << "storage that refused a record was asked again before anything was freed";
+
+    ASSERT_TRUE(suite->retireOldestCrash());
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u);
+    EXPECT_FALSE(suite->fdnPrefs.holdsBlob(FDN_RECORD_STORE_NAMESPACE, "c_0"))
+    << "a retired record stayed in storage";
+    EXPECT_TRUE(suite->fdnPrefs.holdsBlob(FDN_RECORD_STORE_NAMESPACE, "c_1"))
+    << "retiring one record erased another";
+
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, third);
+    EXPECT_EQ(suite->sentAcks.size(), 3u)
+    << "the slot one retired crash record freed did not let the store take records again";
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 2u);
+
+    // The retired record is no longer held, so the same frame is a new record.
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, first);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 3u);
+    EXPECT_EQ(suite->sentAcks.size(), 4u);
+}
+
+inline void fdnWithFullCrashStorageTakesOneMoreAfterOneIsRetired(FdnRecordStoreTests* suite) {
+    for (uint32_t number = 1; number <= FDN_CRASH_RECORD_CAPACITY; ++number) {
+        suite->deliver(PktType::kCrashRecord, suite->pdnMac,
+                       FdnRecordStoreTests::crashFrame(number, static_cast<uint8_t>(number)));
+    }
+    ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), FDN_CRASH_RECORD_CAPACITY);
+    const CrashRecordFramePacket oneMore = FdnRecordStoreTests::crashFrame(33, 0x99);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, oneMore);
+    ASSERT_EQ(suite->sentAcks.size(), FDN_CRASH_RECORD_CAPACITY);
+
+    ASSERT_TRUE(suite->retireOldestCrash());
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH),
+              FDN_CRASH_RECORD_CAPACITY - 1);
+
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, oneMore);
+    EXPECT_EQ(suite->sentAcks.size(), FDN_CRASH_RECORD_CAPACITY + 1)
+    << "the retired record's slot was not free for a new record";
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), FDN_CRASH_RECORD_CAPACITY);
+
+    // The new record took the freed slot without disturbing the oldest one left.
+    FdnStoredCrashEntry entry{};
+    uint32_t position = 0;
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, position));
+    expectEntryCarriesFrame(entry, suite->pdnMac, FdnRecordStoreTests::crashFrame(2, 2));
+}
+
+inline void fdnErasesARetiredCrashRecordEvenWhenTheHeadCannotAdvance(FdnRecordStoreTests* suite) {
+    const CrashRecordFramePacket second = FdnRecordStoreTests::crashFrame(2, 0x11);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, FdnRecordStoreTests::crashFrame(1, 0x10));
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, second);
+
+    suite->fdnPrefs.refusedCounterKey = "c_head";
+    ASSERT_TRUE(suite->retireOldestCrash());
+    EXPECT_FALSE(suite->fdnPrefs.holdsBlob(FDN_RECORD_STORE_NAMESPACE, "c_0"))
+    << "a retired record stayed in storage";
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u)
+    << "an erased record still counts as held";
+
+    // A restart reads the head that was never stored, which rests on the erased
+    // slot; dropping the unreadable head clears it instead of stalling behind it.
+    suite->fdnPrefs.refusedCounterKey.clear();
+    suite->restartStore();
+    FdnStoredCrashEntry entry{};
+    uint32_t position = 0;
+    EXPECT_FALSE(suite->fdnRecordStore->readOldestCrash(entry, position));
+    suite->fdnRecordStore->dropUnreadableOldest(RecordKind::CRASH);
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, position));
+    expectEntryCarriesFrame(entry, suite->pdnMac, second);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u);
+}
+
+// ---- A retire names what was read, and is refused once that is no longer the oldest ----
+
+// An answer for a record that has already been retired must not retire or
+// bring back anything: the position it names is not the oldest held any more.
+inline void fdnRefusesToRetireACrashRecordThatIsNoLongerTheOldest(FdnRecordStoreTests* suite) {
+    const CrashRecordFramePacket second = FdnRecordStoreTests::crashFrame(2, 0x21);
+    const CrashRecordFramePacket third = FdnRecordStoreTests::crashFrame(3, 0x22);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, FdnRecordStoreTests::crashFrame(1, 0x20));
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, second);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, third);
+
+    FdnStoredCrashEntry entry{};
+    uint32_t firstPosition = 0;
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, firstPosition));
+    EXPECT_TRUE(suite->fdnRecordStore->retireCrash(firstPosition));
+    EXPECT_FALSE(suite->fdnRecordStore->retireCrash(firstPosition))
+    << "a record that was already retired was reported as retired again";
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 2u);
+
+    uint32_t secondPosition = 0;
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, secondPosition));
+    expectEntryCarriesFrame(entry, suite->pdnMac, second);
+    EXPECT_TRUE(suite->fdnRecordStore->retireCrash(secondPosition));
+
+    // Two places behind the oldest: taking it back would move the store's
+    // head backwards over slots that are already erased.
+    EXPECT_FALSE(suite->fdnRecordStore->retireCrash(firstPosition));
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u)
+    << "a stale retire changed how many records are held";
+    uint32_t thirdPosition = 0;
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, thirdPosition))
+    << "a stale retire left the oldest record unreadable";
+    expectEntryCarriesFrame(entry, suite->pdnMac, third);
+}
+
+// The same for a match batch: here the stale batch reaches past the oldest
+// record into one that was never part of an answered upload.
+inline void fdnRefusesToRetireAMatchBatchThatIsNoLongerTheOldest(FdnRecordStoreTests* suite) {
+    for (uint32_t number = 1; number <= 3; ++number) {
+        suite->deliver(PktType::kMatchRecord, suite->pdnMac,
+                       FdnRecordStoreTests::uploadableMatchFrame(number));
+    }
+    uint32_t position = 0;
+    ASSERT_EQ(suite->fdnRecordStore->countReadableMatchBatch(position), 3u);
+    suite->fdnRecordStore->retireMatchBatch(position, 1);
+    ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u);
+
+    suite->fdnRecordStore->retireMatchBatch(position, 2);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u)
+    << "a batch counted from a position that is no longer the oldest was retired";
+    FdnStoredMatchEntry entry{};
+    ASSERT_TRUE(suite->fdnRecordStore->readMatch(position + 1, entry))
+    << "a stale retire erased a record that was never uploaded";
+    expectEntryCarriesFrame(entry, suite->pdnMac, FdnRecordStoreTests::uploadableMatchFrame(2));
+    ASSERT_TRUE(suite->fdnRecordStore->readMatch(position + 2, entry));
+    expectEntryCarriesFrame(entry, suite->pdnMac, FdnRecordStoreTests::uploadableMatchFrame(3));
+
+    // The batch counted from the oldest record is still taken back.
+    uint32_t currentPosition = 0;
+    ASSERT_EQ(suite->fdnRecordStore->countReadableMatchBatch(currentPosition), 2u);
+    suite->fdnRecordStore->retireMatchBatch(currentPosition, 2);
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
 }

@@ -15,11 +15,9 @@
 #include <driver/usb_serial_jtag.h>
 #include <ArduinoJson.h>
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "device/drivers/logger.hpp"
 #include "device/crash/crash-record.hpp"
-#include "device/wireless-manager.hpp"
 #include "wireless/record-source.hpp"
-#include "utils/simple-timer.hpp"
-#include "alleycat-server/crash-api.hpp"
 
 #ifndef FIRMWARE_COMMIT_HASH
 #define FIRMWARE_COMMIT_HASH "unknown"
@@ -32,26 +30,20 @@ inline constexpr const char CRASH_LOG_NAMESPACE[] = "crashlog";
 inline constexpr const char CRASH_LOG_SERIAL_COMMAND[] = "CRASHLOG";
 
 /**
- * Captures and persists crash records across reboots, then reports them.
- * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
- * storage is initialized and poll serial in loop(). An FDN uploads its own records
- * over HTTP with transmitPending(); a PDN hands this object to its record relay,
- * which sends the pending records to an FDN through the RecordSource calls.
+ * Captures crash records and persists them across reboots, and is the record
+ * source they are reported from. Register CRASH_LOG_NAMESPACE on the shared
+ * Esp32S3PrefsDriver; call capture() after storage is initialized and poll
+ * serial in loop().
  */
 class CrashLogger : public RecordSource<CrashRecordTraits> {
 public:
-    /** Reports over HTTP. Capture still works before the radio is up. */
-    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, WirelessManager* wirelessManager)
+    /** @param prefsDriver Shared prefs driver with CRASH_LOG_NAMESPACE registered. */
+    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver)
         : prefsDriver(prefsDriver)
-        , wirelessManager(wirelessManager)
         , hasCaptured(false)
         , serialCommandLength(0) {
         serialCommandBuffer[0] = '\0';
     }
-
-    /** Reports through a record relay, for a device with no route to the server. */
-    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver)
-        : CrashLogger(prefsDriver, nullptr) {}
 
     /** Call first in setup(): returns the uptime the last boot noted, and clears it. */
     static uint32_t takeCrashedBootUptime();
@@ -112,11 +104,6 @@ public:
         eraseCoreDumpAfterCapture(hadCoreDumpSummary);
     }
 
-    /** True while a recorded crash has not been reported yet. */
-    bool hasPending() const {
-        return readSentSeq() < readCrashSeq();
-    }
-
     /**
      * Writes the lowest-numbered crash record still to be sent that the ring
      * holds readably. An unreadable one is passed over without moving the
@@ -148,34 +135,6 @@ public:
         }
     }
 
-    /**
-     * Uploads every unreported record over HTTP; only the first call per boot
-     * does anything. A failed upload stays pending for the next boot.
-     */
-    void transmitPending() {
-        if (offeredThisBoot) return;
-        offeredThisBoot = true;
-        if (!hasPending()) return;
-        transmitHttp();
-    }
-
-    /**
-     * Call every loop() pass: returns the radio to ESP-NOW once the uploads end and
-     * no other HTTP request is queued, or after UPLOAD_TIMEOUT_MS.
-     */
-    void restoreEspNowAfterUploads() {
-        if (!uploadTimer.isRunning()) {
-            return;
-        }
-        if (wirelessManager->hasQueuedHttpRequests()) {
-            if (!uploadTimer.expired()) {
-                return;
-            }
-            LOG_W(CRASH_LOG_TAG, "Crash uploads timed out");
-        }
-        uploadTimer.invalidate();
-        wirelessManager->enablePeerCommsMode();
-    }
     /** Dumps every stored record to the USB monitor, for a device on a bench. */
     void flushToSerial() const {
         const uint32_t crashSeq = readCrashSeq();
@@ -345,12 +304,8 @@ private:
 
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
-    bool offeredThisBoot = false;
-    // Each unreadable record is logged once per boot, not on every beacon.
+    // Each unreadable record is logged once per boot, not on every read of the pending record.
     uint32_t highestUnreadableReported = 0;
-    SimpleTimer uploadTimer;
-    // With no AP in range, a queued HTTP request never fails.
-    static constexpr unsigned long UPLOAD_TIMEOUT_MS = 15000;
 
     /**
      * Panics often reboot as ESP_RST_SW; capture when a core dump exists or the
@@ -470,51 +425,12 @@ private:
         }
     }
 
-    void transmitHttp() {
-        if (!wirelessManager) return;
-        uploadTimer.setTimer(UPLOAD_TIMEOUT_MS);
-        uploadFrom(readSentSeq() + 1);
-    }
-
-    // One at a time, since sentSeq is a high-water mark.
-    void uploadFrom(uint32_t first) {
-        const uint32_t crashSeq = readCrashSeq();
-        uint8_t* mac = wirelessManager->getMacAddress();
-
-        for (uint32_t n = first; n <= crashSeq; n++) {
-            CrashRecord rec{};
-            if (!loadRecordByNumber(n, rec)) {
-                LOG_W(CRASH_LOG_TAG, "Crash #%lu not in ring buffer — skipping",
-                      static_cast<unsigned long>(n));
-                writeSentSeq(n);
-                continue;
-            }
-
-            CrashApi::uploadCrash(
-                wirelessManager,
-                rec,
-                mac,
-                [this, n](const std::string&) {
-                    LOG_I(CRASH_LOG_TAG, "Uploaded crash #%lu",
-                          static_cast<unsigned long>(n));
-                    writeSentSeq(n);
-                    uploadFrom(n + 1);
-                },
-                [n](const WirelessErrorInfo& err) {
-                    LOG_E(CRASH_LOG_TAG, "Failed to upload crash #%lu: %s — will retry on next boot",
-                          static_cast<unsigned long>(n), err.message.c_str());
-                });
-            return;
-        }
-    }
-
     static bool isCrashLogSerialCommand(const char* line) {
         if (line == nullptr) return false;
         return strcasecmp(line, CRASH_LOG_SERIAL_COMMAND) == 0;
     }
 
     Esp32S3PrefsDriver* prefsDriver;
-    WirelessManager* wirelessManager;
     bool hasCaptured;
 
     char   serialCommandBuffer[32];

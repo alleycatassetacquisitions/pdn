@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "alleycat-server/fdn-record-store.hpp"
+#include "alleycat-server/matches-api.hpp"
 #include "wireless/record-relay-types.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
 #include "game/match-manager.hpp"
@@ -1198,7 +1199,7 @@ TEST(MatchesApiUpload, unqueuedRequestFailsClosed) {
 
     bool errored = false;
     MatchesApi::uploadQuickdrawMatches(
-    &wirelessManager, 1, [](size_t, QuickdrawMatchRecord&) { return true; },
+    &wirelessManager, 1, [](size_t, FdnStoredMatchEntry&) { return true; },
     [](const QuickdrawMatchRejection&) {}, [](const QuickdrawUploadResult&) {},
     [&errored](const WirelessErrorInfo&) { errored = true; });
     EXPECT_TRUE(errored) << "an unqueued upload must not leave its caller waiting";

@@ -39,8 +39,9 @@ struct CrashRecord {
 };
 
 // A crash record as it travels and is relayed: fixed layout, so it has no
-// presence flags. An empty task name marks a record without core dump details,
-// and CRASH_PACKET_NO_EXCEPTION_CAUSE one with details but no exception cause.
+// presence flags. A record without core dump details has all three detail
+// fields zero, and CRASH_PACKET_NO_EXCEPTION_CAUSE marks one with details but
+// no exception cause.
 struct CrashPacket {
     uint32_t crashNumber;
     uint32_t timestamp;
@@ -70,4 +71,30 @@ inline CrashPacket toCrashPacket(const CrashRecord& record) {
     }
     memcpy(packet.commitHash, record.commitHash, COMMIT_HASH_LENGTH);
     return packet;
+}
+
+/**
+ * @return The record @p packet carries. A packet may come off the radio from
+ * any sender, so a string with no terminator is cut at its last byte.
+ */
+inline CrashRecord fromCrashPacket(const CrashPacket& packet) {
+    CrashRecord record{};
+    record.crashNumber = packet.crashNumber;
+    record.timestamp = packet.timestamp;
+    record.resetReason = packet.resetReason;
+    // toCrashPacket leaves all three zero only for a record without details.
+    if (packet.taskName[0] != '\0' || packet.programCounter != 0 || packet.exceptionCause != 0) {
+        CoreDumpDetails& details = record.coreDumpDetails.emplace();
+        details.programCounter = packet.programCounter;
+        // Copied out first: a field of the packed packet cannot be bound to a reference.
+        const uint32_t exceptionCause = packet.exceptionCause;
+        if (exceptionCause != CRASH_PACKET_NO_EXCEPTION_CAUSE) {
+            details.exceptionCause = exceptionCause;
+        }
+        memcpy(details.taskName, packet.taskName, TASK_NAME_LENGTH - 1);
+        details.taskName[TASK_NAME_LENGTH - 1] = '\0';
+    }
+    memcpy(record.commitHash, packet.commitHash, COMMIT_HASH_LENGTH - 1);
+    record.commitHash[COMMIT_HASH_LENGTH - 1] = '\0';
+    return record;
 }

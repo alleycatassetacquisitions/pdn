@@ -6,10 +6,10 @@
 
 IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
                      RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                     FdnRecordStore* fdnRecordStore)
+                     FdnRecordUploader* fdnRecordUploader)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::IDLE)
     , remotePlayerManager(remotePlayerManager)
-    , fdnRecordStore(fdnRecordStore) {}
+    , fdnRecordUploader(fdnRecordUploader) {}
 
 void IdleState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted");
@@ -38,8 +38,7 @@ bool IdleState::transitionToPlayerDetected() {
 
 bool IdleState::transitionToUploadPending() {
     if (!uploadTimer.expired()) return false;
-    // Consumes the cycle, so this must stay idle's last edge: an expiry a cabled PDN
-    // outranks is then never asked about, and waits until idle is next free.
+    // Consumes the expiry, so this must stay idle's last edge.
     uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
-    return fdnRecordStore->getStoredCount(RecordKind::MATCH) > 0;
+    return fdnRecordUploader->hasRecordsWaiting();
 }

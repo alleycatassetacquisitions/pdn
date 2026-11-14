@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "alleycat-server/fdn-record-store.hpp"
+#include "alleycat-server/fdn-record-uploader.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
 #include "device-mock.hpp"
 #include "game/match-manager.hpp"
@@ -414,22 +415,26 @@ inline void matchRelayTransfersAMatchToAConnectedFdnThatUploadsIt(MatchRelayTest
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u);
     EXPECT_EQ(suite->framesOf<MatchRecordTraits>().size(), 1u);
 
-    std::vector<bool> outcomes;
-    auto onComplete = [&outcomes](bool uploaded) { outcomes.push_back(uploaded); };
-    ASSERT_TRUE(suite->fdnRecordStore->uploadPendingBatch(onComplete));
+    FakeRecordSource<CrashRecordTraits> noOwnCrashRecords;
+    FdnRecordUploader fdnRecordUploader(suite->fdnDevice.wirelessManager, &noOwnCrashRecords,
+                                        suite->fdnRecordStore);
+    ASSERT_TRUE(fdnRecordUploader.uploadAllRecords());
     ASSERT_EQ(suite->fdnHttpRequests.size(), 1u);
     EXPECT_EQ(suite->fdnHttpRequests[0].path, "/quickdraw-matches");
     suite->fdnHttpRequests[0].onError(WirelessErrorInfo{WirelessError::SERVER_ERROR, "HTTP 500"});
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 1u)
     << "5xx error must retain stored batch";
+    fdnRecordUploader.sync();
+    EXPECT_TRUE(fdnRecordUploader.didLastCycleFail());
 
     suite->fdnHttpRequests.clear();
-    ASSERT_TRUE(suite->fdnRecordStore->uploadPendingBatch(onComplete));
+    ASSERT_TRUE(fdnRecordUploader.uploadAllRecords());
     ASSERT_EQ(suite->fdnHttpRequests.size(), 1u);
     suite->fdnHttpRequests[0].onSuccess("");
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u)
     << "HTTP 204 must retire uploaded batch";
-    EXPECT_EQ(outcomes, (std::vector<bool>{false, true}));
+    fdnRecordUploader.sync();
+    EXPECT_FALSE(fdnRecordUploader.didLastCycleFail());
     uint8_t retired[256] = {};
     EXPECT_EQ(
     suite->fdnPrefs.readBytes(FDN_RECORD_STORE_NAMESPACE, "m_0", retired, sizeof(retired)), 0u)
@@ -631,11 +636,10 @@ inline void matchRelayHeldByAFullFdnDoesNotHoldBackCrashRecords(MatchRelayTests*
     EXPECT_EQ(suite->collectedMark(), 0u);
 
     // Once the FDN has drained its spool to the server there is room again.
-    ASSERT_TRUE(suite->fdnRecordStore->uploadPendingBatch(nullptr));
-    ASSERT_EQ(suite->fdnHttpRequests.size(), 1u);
-    suite->fdnHttpRequests[0].onSuccess("");
+    uint32_t batchPosition = 0;
+    const size_t batchCount = suite->fdnRecordStore->countReadableMatchBatch(batchPosition);
+    suite->fdnRecordStore->retireMatchBatch(batchPosition, batchCount);
     ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
-    suite->fdnDevice.wirelessManager->enablePeerCommsMode();
 
     suite->hearBeacon(suite->fdnMac);
     suite->pumpAir();

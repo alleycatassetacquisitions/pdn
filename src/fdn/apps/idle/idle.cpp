@@ -4,18 +4,20 @@
 #include <functional>
 
 IdleApp::IdleApp(RemotePlayerManager* remotePlayerManager,
-                 RemoteDeviceCoordinator* remoteDeviceCoordinator, FdnRecordStore* fdnRecordStore,
+                 RemoteDeviceCoordinator* remoteDeviceCoordinator,
+                 FdnRecordUploader* fdnRecordUploader,
                  FdnProvisioningManager* fdnProvisioningManager)
     : remotePlayerManager(remotePlayerManager)
     , remoteDeviceCoordinator(remoteDeviceCoordinator)
-    , fdnRecordStore(fdnRecordStore)
+    , fdnRecordUploader(fdnRecordUploader)
     , fdnProvisioningManager(fdnProvisioningManager) {}
 
 void IdleApp::populateStateMap() {
-    auto* idleState = new IdleState(remotePlayerManager, remoteDeviceCoordinator, fdnRecordStore);
+    auto* idleState =
+    new IdleState(remotePlayerManager, remoteDeviceCoordinator, fdnRecordUploader);
     auto* playerDetectedState =
     new PlayerDetectedState(remotePlayerManager, remoteDeviceCoordinator);
-    auto* uploadPendingState = new UploadPendingState(fdnRecordStore);
+    auto* uploadPendingState = new UploadPendingState(fdnRecordUploader);
     auto* registrationState =
     new RegistrationState(fdnProvisioningManager, remoteDeviceCoordinator);
 

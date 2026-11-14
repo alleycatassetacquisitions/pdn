@@ -528,7 +528,7 @@ private:
         snprintf(errorMsg, sizeof(errorMsg), "HTTP Error: %d", statusCode);
         const WirelessError errorType =
             statusCode >= 500 ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
-        completeFront(false, {errorType, errorMsg});
+        completeFront(false, {errorType, errorMsg, statusCode});
     }
 
     void checkOngoingRequests() {

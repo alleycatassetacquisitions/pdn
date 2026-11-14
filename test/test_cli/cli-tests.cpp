@@ -127,6 +127,10 @@ TEST_F(NativeHttpClientDriverTestSuite, RejectsOversizedResponse) {
     httpClientRejectsOversizedResponse(this);
 }
 
+TEST_F(NativeHttpClientDriverTestSuite, ReportsTheStatusOfAnErrorResponse) {
+    httpClientReportsTheStatusOfAnErrorResponse(this);
+}
+
 // ============================================
 // NATIVE SERIAL DRIVER TESTS
 // ============================================
