@@ -30,9 +30,9 @@ Match results decide prizes, and a few technical attendees may read out a PDN's 
 - `record-relay`: choosing an FDN by beacon or jack, the record frame, sending on the stored acknowledgement, retry triggers, and what an FDN does with a record from any PDN.
 
 ### Modified Capabilities
-- `crash-reporting`: PDN crash records are sent untagged as record frames with no cable needed; the FDN stores up to `32` and uploads them at boot and on its periodic uplink, its own records first; a `400`, `413`, `415` or `422` answer retires a relayed record.
+- `crash-reporting`: PDN crash records are sent untagged as record frames with no cable needed; the FDN stores up to `32` and uploads them at boot and on its periodic uplink in one upload cycle, after the match batch, its own records before the relayed ones; a `400`, `413`, `415` or `422` answer retires a relayed record.
 - `match-collection`: the record tag is stored with the match record; a match that ends with no record key held is not stored; a slot with no tag is never sent; match records are sent as record frames with no cable needed; the upload carries the record bytes and the tag, and the sender's MAC address as a troubleshooting note.
-- `fdn-apps`: the FDN collects records from any PDN, Connected or not; its beacon identifies it as an FDN; the registration screen says when no key could be issued. The requirement "Cabled background services on any Connected PDN" is renamed "Background services for Connected and nearby PDNs".
+- `fdn-apps`: the FDN collects records from any PDN, Connected or not; its beacon identifies it as an FDN; the registration screen says when no key could be issued; a lookup and an upload cycle never hold Wi-Fi together. The requirement "Cabled background services on any Connected PDN" is renamed "Background services for Connected and nearby PDNs".
 - `player-provisioning`: the lookup response carries the record key; the key is delivered over the serial jack before the profile; with no key the FDN delivers no profile and the PDN applies none.
 - `quickdraw-match`: a PDN refuses a match in which the opponent's player UUID equals its own non-nil player UUID, on either side of the handshake, and stores no record naming the same player twice.
 
