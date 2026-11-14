@@ -75,6 +75,7 @@
 - [ ] 9.2 Record the server team's answer on item 2: the lookup response returns the record key for the looked-up player; match uploads carry the raw bytes and the tag, and are verified; the sender's MAC address is kept as a troubleshooting note only
 - [ ] 9.3 Record the server team's answer on item 3: optional winner, for ties
 - [ ] 9.4 Record the server team's answer on item 4: block a player
+- [ ] 9.5 Record the server team's answer on item 5: return the player's totals with the lookup (a feature, ranked last; it does not gate the roll-out; the firmware side is in the `fungible-pdns` change)
 
 ## 10. Migration and specs
 
@@ -82,7 +83,7 @@
 - [x] 10.2 Remove Wi-Fi from the PDN build in a PR of this stack (no spec delta: the base specs already say a PDN uses no Wi-Fi) (#444)
 - [ ] 10.3 Before the roll-out, when the server team has agreed item 2's formats: move the provisional key field of the lookup response (5.1) to the agreed name and number, and fill the match upload seam (7.5)
 - [ ] 10.4 Before the server enables verification and before a PDN is flashed, upload that PDN's stored matches with the firmware it has; a match slot written by older firmware is never sent afterwards
-- [ ] 10.5 At archive, edit the Purpose paragraphs of `crash-reporting`, `match-collection` and `fdn-apps`, which still describe cabled collection and cannot be changed by a delta
+- [ ] 10.5 At archive, edit the Purpose paragraphs of `crash-reporting`, `match-collection` and `fdn-apps`, which still describe cabled collection and cannot be changed by a delta; the Purpose paragraph of `player-provisioning`, which calls the PIN a "player credential" although it is an identifier printed on the player's ID; and the `fdn-apps` Purpose, which says a player "scans their credential". The `fdn-apps` requirement "Connected PDN provisioning vs. symbol-match routing" says "credential" too; it is recorded in `fungible-pdns` design.md, "Found, not changed"
 - [ ] 10.6 Owner updates the threat model, which is kept outside this repository, with the entries under Risks in design.md
 - [x] 10.7 Every firmware PR description of this change states that the stack must not be flashed to event devices before the server verifies tags (#426, #427, #428, #435 to #444)
 - [ ] 10.8 The archived `device-player-lookup`, `quickdraw-match-upload` and `player-types` specs describe today's lookup and upload. Add deltas against them to this change, with the capabilities listed in proposal.md, as each part lands: with section 5, the record key returned beside the `Player` (`device-player-lookup` hands the caller only a `Player`, and a response with no usable key now fails the registration); with 10.3, the raw `112` record bytes, the `16`-byte tag and the sender's MAC address note added to the fields `quickdraw-match-upload` says each match is encoded with; and the clause in `player-types` that the server types change "without changing protobuf definitions", which the key field breaks (section 5 has landed in #441 and #442, so the first part, the `device-player-lookup` delta, is due now)

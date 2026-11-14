@@ -2,9 +2,9 @@
 
 ### Requirement: FDN server lookup and protobuf profile decoding
 
-When a player's credential is presented at an FDN while a PDN is Connected on a serial jack, the FDN SHALL validate the credential and look up the player's registration from the server:
+When a player's PIN is presented at an FDN while a PDN is Connected on a serial jack, the FDN SHALL validate the PIN and look up the player's registration from the server:
 
-- The FDN SHALL validate that the scanned credential consists only of permitted URL-safe credential characters (such as a 4-digit ASCII PIN `[0-9]{4}`) before issuing an HTTPS `GET` request to the server's device-player lookup endpoint.
+- The FDN SHALL validate that the presented PIN consists only of permitted URL-safe characters (for example four ASCII digits, `[0-9]{4}`) before issuing an HTTPS `GET` request to the server's device-player lookup endpoint.
 - On a successful HTTP `200 OK` response (with a bounded response body size so oversized payloads are rejected before exhausting memory), the FDN SHALL decode the protobuf payload via the device-player codec:
   - The player UUID, category UUIDs, and affiliation UUIDs SHALL each be validated as exactly `16` raw bytes and non-nil (not `16` zero bytes); a missing, non-16-byte, or all-zero required UUID SHALL cause the response to be rejected as undecodable.
   - If a team is present, its team UUID SHALL be validated as `16` raw bytes and non-nil; if absent, the team UUID SHALL be recorded as the nil UUID (`16` zero bytes).
