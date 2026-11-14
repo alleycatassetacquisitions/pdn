@@ -550,8 +550,7 @@ inline void fdnReopensTheTurnOnlyAfterTheResultHold(FdnProvisioningTests* suite)
 
     suite->fakeClock->advance(1);
     fdnProv.sync();
-    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK_SECONDARY),
-              RegistrationTurn::OPEN)
+    EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK_SECONDARY), RegistrationTurn::OPEN)
     << "the next PDN was not told its turn once the hold ended";
     EXPECT_EQ(suite->lastTurnSentTo(SerialIdentifier::INPUT_JACK), RegistrationTurn::CLOSED);
 }
