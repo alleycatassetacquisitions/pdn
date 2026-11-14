@@ -54,7 +54,7 @@ In place of `"UNABLE TO"` / `"LOCATE ASSET"`, each for `3000 ms`: when the serve
 
 ### Requirement: Registration screen with no reader
 
-While the band reader does not respond (`fdn-band-reader`), the FDN SHALL show `"NO READER"` over the pending jack's label in place of `"TAP BAND"`. A pending registration SHALL still time out and requeue (`player-provisioning`). Such an FDN registers nobody, staff cards included.
+While the band reader does not respond (`fdn-band-reader`), the FDN SHALL show `"NO READER"` over the pending jack's label in place of `"TAP BAND"`. A pending registration SHALL still time out and requeue (`player-provisioning`). Such an FDN registers nobody.
 
 #### Scenario: Missing reader is shown
 - **WHEN** a registration is pending on the primary jack and the band reader does not respond

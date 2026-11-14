@@ -14,19 +14,39 @@ On boot a PDN SHALL hold no registered profile and a nil 16-byte player UUID, an
 
 ### Requirement: PDN waiting screens
 
-While unprovisioned, the waiting screen SHALL show `"Cable to"` / `"FDN"` when no FDN is Connected on either jack, and `"Tap band"` / `"at FDN"` while one is. On a lookup-failure notification, or when a registration attempt fails, the PDN SHALL show `"Unable to"` / `"Locate Asset"` for `3000 ms` and then the waiting screen again. Each time the waiting screen is shown the PDN SHALL clear its session player provider (`player-provider`).
+While unprovisioned, the waiting screen SHALL show `"Cable to"` / `"FDN"` with no FDN Connected, `"Tap band"` / `"at FDN"` while the cabled FDN says its jack's turn is open, and `"Please"` / `"wait"` otherwise. On a lookup failure or a failed attempt the PDN SHALL show `"Unable to"` / `"Locate Asset"` for `3000 ms`, then the waiting screen. Each time the waiting screen is shown the PDN SHALL clear its session player provider (`player-provider`).
 
 #### Scenario: PDN with no FDN cabled asks to be cabled
 - **WHEN** an unprovisioned PDN shows the waiting screen with no FDN Connected on either jack
 - **THEN** it displays `"Cable to"` / `"FDN"`
 
 #### Scenario: Cabled PDN asks for a band tap
-- **WHEN** an FDN becomes Connected on one of an unprovisioned PDN's jacks
+- **WHEN** the FDN Connected on an unprovisioned PDN's jack says that jack's turn is open
 - **THEN** the PDN displays `"Tap band"` / `"at FDN"`
+
+#### Scenario: Cabled PDN without the turn waits
+- **WHEN** an FDN is Connected on an unprovisioned PDN's jack and has not said that jack's turn is open
+- **THEN** the PDN displays `"Please"` / `"wait"`
 
 #### Scenario: Lookup failure returns to the waiting screen
 - **WHEN** a PDN on the waiting screen receives the lookup-failure notification from the FDN Connected on its jack
 - **THEN** it displays `"Unable to"` / `"Locate Asset"` for `3000 ms`, clears its session player provider, and shows the waiting screen again
+
+### Requirement: FDN tells each jack whether its turn is open
+
+The FDN SHALL tell the PDN on each jack, in what it already sends over the cable, whether that jack's registration turn is open, and SHALL update it whenever the turn opens, moves or closes. A turn SHALL be open only while its registration is pending and a tap counts: not during a lookup or the `3000 ms` result hold after it.
+
+#### Scenario: Only the pending jack's PDN is told to tap
+- **WHEN** unprovisioned PDNs are Connected on both jacks and the primary jack's registration is pending
+- **THEN** the primary jack's PDN shows `"Tap band"` / `"at FDN"` and the secondary jack's PDN shows `"Please"` / `"wait"`
+
+#### Scenario: Turn moves on timeout
+- **WHEN** the primary jack's registration times out while the secondary jack's is queued
+- **THEN** the FDN tells the primary jack's PDN its turn is closed and the secondary jack's PDN its turn is open
+
+#### Scenario: Turn reopens only after the result hold
+- **WHEN** a lookup for the primary jack fails and its PDN is still Connected with no applied profile
+- **THEN** the FDN tells no PDN its turn is open until the `3000 ms` result hold has ended
 
 ### Requirement: Firmware distribution from the waiting screen
 
@@ -118,7 +138,7 @@ When a PDN with no applied profile becomes Connected on an FDN jack, the FDN SHA
 
 ### Requirement: A tap is bound to the pending jack
 
-A band read while a registration is pending and no lookup is running SHALL be looked up for the PDN Connected on the pending jack at the tap, identified by its MAC address. The FDN SHALL write the record key on that jack only while that MAC is still the PDN Connected there, and send the profile or lookup-failure notification to that MAC. A tap with nothing pending, during a lookup, or within `2000 ms` after the pending registration passes to the other jack SHALL be ignored.
+A band read while a registration is pending and no lookup is running SHALL be looked up for the PDN Connected on the pending jack at the tap, identified by its MAC address. The FDN SHALL write the record key on that jack only while that MAC is still the PDN Connected there, and send the profile or lookup-failure notification to that MAC. A tap with nothing pending, during a lookup, or during the `3000 ms` result hold after it SHALL be ignored.
 
 #### Scenario: Tap registers the PDN on the pending jack
 - **WHEN** a linked band is tapped while the primary jack's registration is pending
@@ -136,9 +156,9 @@ A band read while a registration is pending and no lookup is running SHALL be lo
 - **WHEN** the PDN bound at the tap leaves the pending jack during the lookup and another PDN becomes Connected there before the answer
 - **THEN** the FDN writes no record key on that jack and delivers no profile
 
-#### Scenario: Tap just after the pending jack changes is ignored
-- **WHEN** a band is tapped `1000 ms` after the pending registration passed from the primary to the secondary jack
-- **THEN** the FDN issues no lookup and the secondary jack's registration stays pending
+#### Scenario: Tap during the result hold is ignored
+- **WHEN** a band is tapped `1000 ms` after a lookup result for the pending jack
+- **THEN** the FDN issues no lookup
 
 ### Requirement: FDN band lookup
 
@@ -163,14 +183,6 @@ The registration request packet type SHALL be retired and its type number (`26`)
 #### Scenario: Lookup failure reaches the PDN on the pending jack
 - **WHEN** the lookup for a pending registration fails
 - **THEN** the FDN sends the profile packet with the lookup-failed status to the MAC address of the PDN on the pending jack and sends no record key
-
-### Requirement: Staff registration by staff card
-
-A staff card SHALL be a band to the FDN: the FDN SHALL look it up and deliver its result exactly as for a player's band, and SHALL have no operator mode, chooser or button action for registration. Which player a staff card registers SHALL be decided at the desk on the server, not on the FDN.
-
-#### Scenario: Staff card registers the player linked at the desk
-- **WHEN** staff tap a staff card that the desk has linked to player "Ada" while a registration is pending
-- **THEN** the FDN delivers Ada's record key and profile to the PDN on the pending jack, as for Ada's own band
 
 ## REMOVED Requirements
 
