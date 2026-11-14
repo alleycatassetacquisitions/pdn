@@ -21,8 +21,8 @@
 
 /**
  * The PDN of RecordRelayTests with the "matches" namespace in real in-memory
- * storage, so the relay reads the session's own MatchManager. No record key:
- * every frame carries key ID 0.
+ * storage, so the relay reads the session's own MatchManager. No tag is
+ * computed yet: every frame carries an all-zero tag.
  */
 class MatchRelayTests : public RecordRelayTests {
 public:
@@ -119,13 +119,16 @@ public:
         return bytes;
     }
 
-    /** The frame the PDN sends for the match with @p sequenceNumber while it has no record key. */
+    /**
+     * The frame the PDN sends for the match with @p sequenceNumber: its record
+     * and an all-zero tag.
+     */
     MatchRecordFramePacket expectedFrame(uint32_t sequenceNumber) {
         MatchRecordFramePacket frame{};
         frame.kind = static_cast<uint8_t>(RecordKind::MATCH);
         frame.recordNumber = sequenceNumber;
         const std::array<uint8_t, MATCH_RECORD_SIZE> bytes = storedRecord(sequenceNumber);
-        memcpy(frame.recordBytes, bytes.data(), bytes.size());
+        memcpy(frame.content.recordBytes, bytes.data(), bytes.size());
         return frame;
     }
 
@@ -177,9 +180,9 @@ inline void matchRelaySendsAMatchInARecordFrameNumberedByItsSequenceNumber(Match
     suite->framesOf<MatchRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
     EXPECT_EQ(frames[0].toMac, relayMacArray(suite->fdnMac));
-    ASSERT_EQ(frames[0].length, 135u) << "a match record goes out as one 135-byte frame";
+    ASSERT_EQ(frames[0].length, 134u) << "a match record goes out as one 134-byte frame";
 
-    // Kind, number, record bytes, trailer, in that order after the sequence ID.
+    // Kind, number, record bytes, tag, in that order after the sequence ID.
     const std::vector<uint8_t>& bytes = frames[0].bytes;
     EXPECT_EQ(bytes[1], 0x02);
     uint32_t recordNumber = 0;
@@ -191,9 +194,10 @@ inline void matchRelaySendsAMatchInARecordFrameNumberedByItsSequenceNumber(Match
     Match carried{};
     carried.deserialize(&bytes[6]);
     EXPECT_STREQ(carried.getMatchId(), MatchRelayTests::matchIdOf(12).c_str());
-    // No record key in this build: key ID 0 and 16 zero bytes.
+    // No tag is computed in this build: 16 zero bytes.
+    ASSERT_EQ(bytes.size(), 6 + MATCH_RECORD_SIZE + RECORD_TAG_SIZE);
     for (size_t i = 6 + MATCH_RECORD_SIZE; i < bytes.size(); i++) {
-        ASSERT_EQ(bytes[i], 0) << "trailer byte " << (i - 6 - MATCH_RECORD_SIZE);
+        ASSERT_EQ(bytes[i], 0) << "tag byte " << (i - 6 - MATCH_RECORD_SIZE);
     }
     EXPECT_EQ(suite->collectedMark(), 11u) << "sending a record must not retire it";
 }
@@ -354,7 +358,7 @@ inline void matchRelaySendsAMatchOncePerTriggerUntilAcknowledged(MatchRelayTests
     std::vector<SentRecordFrame<MatchRecordFramePacket>> frames =
     suite->framesOf<MatchRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
-    EXPECT_EQ(memcmp(frames[0].frame.recordBytes, expected.recordBytes, MATCH_RECORD_SIZE), 0);
+    EXPECT_EQ(memcmp(&frames[0].frame.content, &expected.content, sizeof(expected.content)), 0);
     suite->reportDelivered<MatchRecordTraits>(frames[0]);
 
     // Staying Connected is not a trigger.
@@ -562,7 +566,7 @@ inline void matchRelayIsNotHeldBackByACrashRecordAFullFdnWillNotTake(MatchRelayT
         frame.seqId = static_cast<uint8_t>(number);
         frame.kind = static_cast<uint8_t>(RecordKind::CRASH);
         frame.recordNumber = number;
-        memset(frame.recordBytes, 0xE0, sizeof(frame.recordBytes));
+        memset(frame.content.recordBytes, 0xE0, sizeof(frame.content.recordBytes));
         suite->fdnDevice.mockPeerComms->triggerPacketCallback(
         otherPdnMac, PktType::kCrashRecord, reinterpret_cast<const uint8_t*>(&frame),
         sizeof(frame));
@@ -601,7 +605,7 @@ inline void matchRelayHeldByAFullFdnDoesNotHoldBackCrashRecords(MatchRelayTests*
         frame.seqId = static_cast<uint8_t>(number);
         frame.kind = static_cast<uint8_t>(RecordKind::MATCH);
         frame.recordNumber = number;
-        match.serialize(frame.recordBytes);
+        match.serialize(frame.content.recordBytes);
         suite->fdnDevice.mockPeerComms->triggerPacketCallback(
         otherPdnMac, PktType::kMatchRecord, reinterpret_cast<const uint8_t*>(&frame),
         sizeof(frame));

@@ -123,8 +123,7 @@ public:
      * sent mark; the acknowledgement of a later record moves the mark past it,
      * if one exists.
      */
-    bool readLowestPending(uint32_t& recordNumber,
-                           uint8_t (&recordBytes)[CrashRecordTraits::RECORD_SIZE]) override {
+    bool readLowestPending(uint32_t& recordNumber, CrashRecordContent& content) override {
         CrashRecord rec{};
         if (!findLowestReadableRecord(
             readSentSeq(), readCrashSeq(), MAX_CRASH_ENTRIES, highestUnreadableReported,
@@ -136,7 +135,7 @@ public:
             return false;
         }
         const CrashPacket packet = toCrashPacket(rec);
-        memcpy(recordBytes, &packet, sizeof(packet));
+        memcpy(content.recordBytes, &packet, sizeof(packet));
         return true;
     }
 

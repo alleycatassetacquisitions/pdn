@@ -141,10 +141,10 @@ public:
 
     /**
      * Offers the oldest uncollected match record still in the 32-slot ring,
-     * passing over any that cannot be read.
+     * passing over any that cannot be read. Its tag is 16 zero bytes: this build
+     * does not tag match records.
      */
-    bool readLowestPending(uint32_t& recordNumber,
-                           uint8_t (&recordBytes)[MatchRecordTraits::RECORD_SIZE]) override;
+    bool readLowestPending(uint32_t& recordNumber, MatchRecordContent& content) override;
 
     /**
      * Stores @p recordNumber as collected_high_water_mark; ignored at or below

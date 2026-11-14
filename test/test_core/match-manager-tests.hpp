@@ -767,8 +767,8 @@ TEST_F(MatchManagerTestSuite, ringBufferStores32MatchesAndWrapsAtSlot0) {
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 33u);
 
     uint32_t oldestPending = 0;
-    uint8_t oldestBytes[MATCH_RECORD_SIZE] = {};
-    ASSERT_TRUE(matchManager->readLowestPending(oldestPending, oldestBytes));
+    MatchRecordContent oldest{};
+    ASSERT_TRUE(matchManager->readLowestPending(oldestPending, oldest));
     EXPECT_EQ(oldestPending, 2u) << "match 1 was overwritten by match 33";
 
     uint8_t slot0[MATCH_BINARY_SIZE] = {};
@@ -1069,12 +1069,12 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsRunFromTheCollectedMarkToTheNew
     rebuildMatchManager(&prefs);
 
     uint32_t recordNumber = 99;
-    uint8_t recordBytes[MATCH_RECORD_SIZE];
-    memset(recordBytes, 0xEE, sizeof(recordBytes));
-    EXPECT_FALSE(matchManager->readLowestPending(recordNumber, recordBytes))
-    << "no match is stored";
+    MatchRecordContent content;
+    memset(&content, 0xEE, sizeof(content));
+    EXPECT_FALSE(matchManager->readLowestPending(recordNumber, content)) << "no match is stored";
     EXPECT_EQ(recordNumber, 99u) << "nothing pending must leave the outputs alone";
-    EXPECT_EQ(recordBytes[0], 0xEE);
+    EXPECT_EQ(content.recordBytes[0], 0xEE);
+    EXPECT_EQ(content.tag[0], 0xEE);
 
     for (uint32_t i = 1; i <= 3; ++i) {
         char mid[37];
@@ -1087,20 +1087,23 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsRunFromTheCollectedMarkToTheNew
         ASSERT_TRUE(matchManager->finalizeMatch());
     }
 
-    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, recordBytes));
+    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 1u);
     uint8_t stored[MATCH_BINARY_SIZE] = {};
     ASSERT_EQ(prefs.readBytes(MATCHES_PREFS_NAMESPACE, "match_0", stored, sizeof(stored)),
               MATCH_BINARY_SIZE);
-    EXPECT_EQ(memcmp(recordBytes, stored, sizeof(stored)), 0)
+    EXPECT_EQ(memcmp(content.recordBytes, stored, sizeof(stored)), 0)
     << "the record bytes are the 112 bytes the PDN stored";
+    for (size_t i = 0; i < sizeof(content.tag); ++i) {
+        ASSERT_EQ(content.tag[i], 0) << "tag byte " << i << " is not zero";
+    }
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 0u) << "reading a record retired it";
 
     matchManager->advanceMark(2);
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 2u);
     EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 2u)
     << "the mark the relay advances is the stored collected_high_water_mark";
-    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, recordBytes));
+    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 3u);
 
     matchManager->advanceMark(1);
@@ -1113,7 +1116,7 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsRunFromTheCollectedMarkToTheNew
     matchManager->advanceMark(3);
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 3u);
     recordNumber = 99;
-    EXPECT_FALSE(matchManager->readLowestPending(recordNumber, recordBytes));
+    EXPECT_FALSE(matchManager->readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 99u);
 }
 
@@ -1136,15 +1139,15 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsStartAtTheOldestMatchStillInThe
     ASSERT_EQ(matchManager->getCollectedHighWaterMark(), 0u);
 
     uint32_t recordNumber = 0;
-    uint8_t recordBytes[MATCH_RECORD_SIZE] = {};
-    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, recordBytes));
+    MatchRecordContent content{};
+    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 3u) << "matches 1 and 2 were overwritten; 34 - 31 is the oldest held";
     Match oldest{};
-    oldest.deserialize(recordBytes);
+    oldest.deserialize(content.recordBytes);
     EXPECT_STREQ(oldest.getMatchId(), "00000003-9abc-4000-8000-000000000000");
 
     matchManager->advanceMark(10);
-    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, recordBytes));
+    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, content));
     EXPECT_EQ(recordNumber, 11u) << "inside the ring the mark decides";
 }
 
@@ -1170,15 +1173,16 @@ TEST_F(MatchManagerTestSuite, pendingMatchRecordsThatAreAllUnreadableOfferNothin
     prefs.writeBytes(MATCHES_PREFS_NAMESPACE, "match_2", torn, sizeof(torn));
 
     uint32_t recordNumber = 99;
-    uint8_t recordBytes[MATCH_RECORD_SIZE];
-    memset(recordBytes, 0xEE, sizeof(recordBytes));
+    uint8_t untouched[sizeof(MatchRecordContent)];
+    memset(untouched, 0xEE, sizeof(untouched));
+    MatchRecordContent content;
+    memset(&content, 0xEE, sizeof(content));
     // Twice: a first read that retired what it passed over would change the second.
     for (int attempt = 0; attempt < 2; ++attempt) {
-        EXPECT_FALSE(matchManager->readLowestPending(recordNumber, recordBytes));
+        EXPECT_FALSE(matchManager->readLowestPending(recordNumber, content));
         EXPECT_EQ(recordNumber, 99u) << "the output number was written with nothing to offer";
-        for (size_t i = 0; i < sizeof(recordBytes); ++i) {
-            ASSERT_EQ(recordBytes[i], 0xEE) << "output byte " << i << " was written";
-        }
+        EXPECT_EQ(memcmp(&content, untouched, sizeof(content)), 0)
+        << "the output record or tag was written with nothing to offer";
         EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 1u)
         << "an unreadable record was retired without an acknowledgement";
         EXPECT_EQ(prefs.readUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0u), 1u);

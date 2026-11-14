@@ -31,18 +31,27 @@
 
 constexpr unsigned long RECORD_RELAY_BEACON_INTERVAL_MS = 12000;
 
+// A crash record has no tag for a fake source to hand out.
+inline void fillRecordTag(CrashRecordContent& /*content*/, uint8_t /*fill*/) {}
+
+inline void fillRecordTag(MatchRecordContent& content, uint8_t fill) {
+    memset(content.tag, fill, sizeof(content.tag));
+}
+
 /**
  * Records of one kind numbered above a mark, up to the newest. Every byte of a
- * record is its number, so two records never read alike.
+ * record is its number, so two records never read alike; every byte of a match
+ * record's tag is tagFill.
  */
 template <class Traits> class FakeRecordSource : public RecordSource<Traits> {
 public:
     /** Hands out record mark + 1 while it is not above the newest. */
-    bool readLowestPending(uint32_t& recordNumber,
-                           uint8_t (&recordBytes)[Traits::RECORD_SIZE]) override {
+    bool readLowestPending(uint32_t& recordNumber, typename Traits::Content& content) override {
         if (mark >= newestNumber) return false;
         recordNumber = mark + 1;
-        memset(recordBytes, static_cast<uint8_t>(recordNumber), Traits::RECORD_SIZE);
+        memset(content.recordBytes, static_cast<uint8_t>(recordNumber),
+               sizeof(content.recordBytes));
+        fillRecordTag(content, tagFill);
         return true;
     }
 
@@ -58,6 +67,7 @@ public:
 
     uint32_t newestNumber = 0;
     uint32_t mark = 0;
+    uint8_t tagFill = 0;
     size_t advanceCalls = 0;
     bool markWritesFail = false;
 };
@@ -208,8 +218,7 @@ public:
         RecordAckPacket ack{};
         ack.kind = frame.kind;
         ack.recordNumber = frame.recordNumber;
-        computeRecordCheck(frame.recordBytes, sizeof(frame.recordBytes), frame.trailer,
-                           ack.recordCheck);
+        computeRecordCheck(frame.content, ack.recordCheck);
         return ack;
     }
 
@@ -319,9 +328,9 @@ recordRelaySendsTheLowestPendingCrashRecordToTheFdnWhoseBeaconItHeard(RecordRela
     suite->framesOf<CrashRecordTraits>();
     ASSERT_EQ(frames.size(), 1u);
     EXPECT_EQ(frames[0].toMac, relayMacArray(suite->fdnMac));
-    ASSERT_EQ(frames[0].length, 65u) << "a crash record goes out as one 65-byte frame";
+    ASSERT_EQ(frames[0].length, 48u) << "a crash record goes out as one 48-byte frame";
 
-    // Kind, number, record bytes, trailer, in that order after the sequence ID.
+    // Kind, number, record bytes, in that order after the sequence ID.
     const std::vector<uint8_t>& bytes = frames[0].bytes;
     EXPECT_EQ(bytes[1], 0x01);
     uint32_t recordNumber = 0;
@@ -330,10 +339,7 @@ recordRelaySendsTheLowestPendingCrashRecordToTheFdnWhoseBeaconItHeard(RecordRela
     for (size_t i = 6; i < 6 + CRASH_RECORD_SIZE; i++) {
         ASSERT_EQ(bytes[i], 7) << "record byte " << (i - 6) << " is not the source's";
     }
-    // No record key in this build: key ID 0 and 16 zero bytes.
-    for (size_t i = 6 + CRASH_RECORD_SIZE; i < bytes.size(); i++) {
-        ASSERT_EQ(bytes[i], 0) << "trailer byte " << (i - 6 - CRASH_RECORD_SIZE);
-    }
+    EXPECT_EQ(bytes.size(), 6 + CRASH_RECORD_SIZE) << "a crash record frame carries no tag";
     EXPECT_EQ(suite->crashSource.mark, 6u) << "sending a record must not retire it";
 }
 
@@ -546,6 +552,117 @@ recordRelayIgnoresAnAcknowledgementThatDoesNotMatchTheFrameItSent(RecordRelayTes
     suite->deliverAcknowledgement<CrashRecordTraits>(suite->fdnMac, matching);
     EXPECT_EQ(suite->crashSource.mark, 3u) << "the record stayed pending, so its own "
                                               "acknowledgement still counts";
+}
+
+/**
+ * The match record lane of a relay on its own, fed by a fake source whose tag
+ * the test chooses. A session's match records come from its MatchManager,
+ * which hands out an all-zero tag.
+ */
+class MatchRecordLaneTests : public testing::Test {
+public:
+    /** Builds the lane with the peer-to-peer radio enabled and no play active. */
+    void SetUp() override {
+        fakeClock = new FakePlatformClock();
+        SimpleTimer::setPlatformClock(fakeClock);
+        fakeClock->setTime(1000);
+
+        ON_CALL(*pdnDevice.mockPeerComms, getPeerCommsState())
+        .WillByDefault(testing::Return(PeerCommsState::ENABLED));
+        ON_CALL(*pdnDevice.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(pdnMac));
+        pdnRadio.attach(*pdnDevice.mockPeerComms);
+
+        matchLane =
+        new RecordRelayLane<MatchRecordTraits>(pdnDevice.wirelessManager, []() { return false; });
+        matchLane->setRecordSource(&matchSource);
+    }
+
+    /** Releases the lane before the radio it is registered on. */
+    void TearDown() override {
+        delete matchLane;
+        matchLane = nullptr;
+        SimpleTimer::setPlatformClock(nullptr);
+        delete fakeClock;
+    }
+
+    /** Delivers @p ack to the lane as if the FDN had sent it. */
+    void deliverAcknowledgement(RecordAckPacket ack) {
+        nextSeqId = nextSeqId == 255 ? 1 : nextSeqId + 1;
+        ack.seqId = nextSeqId;
+        ASSERT_TRUE(pdnDevice.mockPeerComms->triggerPacketCallback(
+        fdnMac, PktType::kMatchRecordAck, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack)))
+        << "nothing on the PDN listens for stored acknowledgements";
+    }
+
+    FakePlatformClock* fakeClock = nullptr;
+    MockDevice pdnDevice;
+    RecordRelayRadioLog pdnRadio;
+    FakeRecordSource<MatchRecordTraits> matchSource;
+    RecordRelayLane<MatchRecordTraits>* matchLane = nullptr;
+    uint8_t pdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+    uint8_t fdnMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF1};
+    uint8_t nextSeqId = 0;
+};
+
+inline void matchRecordLaneSendsTheTagItsSourceHandedOut(MatchRecordLaneTests* suite) {
+    suite->matchSource.newestNumber = 5;
+    suite->matchSource.mark = 4;
+    suite->matchSource.tagFill = 0xB7;
+
+    suite->matchLane->sendLowestPending(suite->fdnMac);
+
+    const std::vector<SentRecordFrame<MatchRecordFramePacket>> frames =
+    suite->pdnRadio.framesOf<MatchRecordFramePacket>(PktType::kMatchRecord);
+    ASSERT_EQ(frames.size(), 1u);
+    ASSERT_EQ(frames[0].length, 134u) << "a match record goes out as one 134-byte frame";
+
+    // Kind, number, record bytes, tag, in that order after the sequence ID.
+    const std::vector<uint8_t>& bytes = frames[0].bytes;
+    EXPECT_EQ(bytes[1], 0x02);
+    uint32_t recordNumber = 0;
+    memcpy(&recordNumber, &bytes[2], sizeof(recordNumber));
+    EXPECT_EQ(recordNumber, 5u);
+    for (size_t i = 6; i < 6 + MATCH_RECORD_SIZE; i++) {
+        ASSERT_EQ(bytes[i], 5) << "record byte " << (i - 6) << " is not the source's";
+    }
+    for (size_t i = 6 + MATCH_RECORD_SIZE; i < bytes.size(); i++) {
+        ASSERT_EQ(bytes[i], 0xB7) << "tag byte " << (i - 6 - MATCH_RECORD_SIZE)
+                                  << " is not the source's";
+    }
+}
+
+inline void
+matchRecordLaneIgnoresAnAcknowledgementWhoseCheckLeavesOutTheTag(MatchRecordLaneTests* suite) {
+    suite->matchSource.newestNumber = 1;
+    suite->matchSource.tagFill = 0xB7;
+
+    suite->matchLane->sendLowestPending(suite->fdnMac);
+    const std::vector<SentRecordFrame<MatchRecordFramePacket>> frames =
+    suite->pdnRadio.framesOf<MatchRecordFramePacket>(PktType::kMatchRecord);
+    ASSERT_EQ(frames.size(), 1u);
+
+    RecordAckPacket overBytesOnly{};
+    overBytesOnly.kind = frames[0].frame.kind;
+    overBytesOnly.recordNumber = frames[0].frame.recordNumber;
+    computeRecordCheck(frames[0].frame.content.recordBytes,
+                       sizeof(frames[0].frame.content.recordBytes), overBytesOnly.recordCheck);
+    suite->deliverAcknowledgement(overBytesOnly);
+
+    // The check of the same record under an all-zero tag.
+    MatchRecordContent zeroTagged = frames[0].frame.content;
+    memset(zeroTagged.tag, 0, sizeof(zeroTagged.tag));
+    RecordAckPacket overAnotherTag = overBytesOnly;
+    computeRecordCheck(zeroTagged, overAnotherTag.recordCheck);
+    suite->deliverAcknowledgement(overAnotherTag);
+
+    EXPECT_EQ(suite->matchSource.mark, 0u)
+    << "an acknowledgement that does not cover the tag retired the record";
+    EXPECT_EQ(suite->matchSource.advanceCalls, 0u);
+
+    RecordAckPacket matching = overBytesOnly;
+    computeRecordCheck(frames[0].frame.content, matching.recordCheck);
+    suite->deliverAcknowledgement(matching);
+    EXPECT_EQ(suite->matchSource.mark, 1u);
 }
 
 inline void
@@ -841,7 +958,7 @@ inline void recordRelayKeepsARecordPendingWhenTheFdnIsFull(RecordRelayTests* sui
         frame.seqId = static_cast<uint8_t>(number);
         frame.kind = static_cast<uint8_t>(RecordKind::CRASH);
         frame.recordNumber = number;
-        memset(frame.recordBytes, 0xE0, sizeof(frame.recordBytes));
+        memset(frame.content.recordBytes, 0xE0, sizeof(frame.content.recordBytes));
         suite->fdnDevice.mockPeerComms->triggerPacketCallback(
         otherPdnMac, PktType::kCrashRecord, reinterpret_cast<const uint8_t*>(&frame),
         sizeof(frame));
@@ -952,7 +1069,7 @@ inline void recordRelayRelaysEachKindOnItsOwn() {
             std::vector<SentRecordFrame<MatchRecordFramePacket>> matchFrames =
             radio.framesOf<MatchRecordFramePacket>(PktType::kMatchRecord);
             ASSERT_EQ(matchFrames.size(), 1u);
-            ASSERT_EQ(matchFrames[0].length, 135u) << "a match record goes out as one frame";
+            ASSERT_EQ(matchFrames[0].length, 134u) << "a match record goes out as one frame";
             EXPECT_EQ(matchFrames[0].kind, 0x02);
             EXPECT_EQ(matchFrames[0].recordNumber, 12u);
             EXPECT_EQ(matchFrames[0].toMac, relayMacArray(fdnMac));
@@ -962,9 +1079,7 @@ inline void recordRelayRelaysEachKindOnItsOwn() {
             ack.seqId = 1;
             ack.kind = matchFrames[0].frame.kind;
             ack.recordNumber = matchFrames[0].frame.recordNumber;
-            computeRecordCheck(matchFrames[0].frame.recordBytes,
-                               sizeof(matchFrames[0].frame.recordBytes),
-                               matchFrames[0].frame.trailer, ack.recordCheck);
+            computeRecordCheck(matchFrames[0].frame.content, ack.recordCheck);
             device.mockPeerComms->triggerPacketCallback(
             fdnMac, PktType::kMatchRecordAck, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
 

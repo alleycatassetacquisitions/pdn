@@ -22,15 +22,14 @@ static_assert(FDN_MATCH_RECORD_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_
 
 // One record as the FDN's storage holds it: what the PDN's frame carried, plus
 // who sent it. The struct is the stored layout.
-template <size_t RECORD_SIZE> struct FdnStoredEntry {
+template <class Content> struct FdnStoredEntry {
     uint8_t senderMac[6];
     uint8_t kind;
     uint32_t recordNumber;
-    RecordTrailer trailer;
-    uint8_t recordBytes[RECORD_SIZE];
+    Content content;
 } __attribute__((packed));
-static_assert(sizeof(FdnStoredEntry<CRASH_RECORD_SIZE>) == 70, "stored crash entry size");
-static_assert(sizeof(FdnStoredEntry<MATCH_RECORD_SIZE>) == 140, "stored match entry size");
+static_assert(sizeof(FdnStoredEntry<CrashRecordContent>) == 53, "stored crash entry size");
+static_assert(sizeof(FdnStoredEntry<MatchRecordContent>) == 139, "stored match entry size");
 
 // One record kind's intake and its ring of slots in storage, owned by
 // FdnRecordStore. head and tail count records ever retired and ever stored; a
@@ -40,7 +39,7 @@ static_assert(sizeof(FdnStoredEntry<MATCH_RECORD_SIZE>) == 140, "stored match en
 template <class Traits, size_t CAPACITY> class FdnRecordRing {
 public:
     using Frame = typename Traits::Frame;
-    using Entry = FdnStoredEntry<Traits::RECORD_SIZE>;
+    using Entry = FdnStoredEntry<typename Traits::Content>;
 
     /**
      * Loads the ring from storage and claims the kind's record and
@@ -81,13 +80,12 @@ public:
      * @return true when the entry is held afterwards, which is when it may be
      * acknowledged: newly stored, or byte-identical to one already held. An
      * entry that shares a held one's sender and number but differs in bytes
-     * or trailer is stored separately: taking it for a duplicate would let a
-     * junk frame stand in for the real one. @p recordCheck receives the check
-     * over the entry's bytes and trailer.
+     * or, for a match record, tag is stored separately: taking it for a
+     * duplicate would let a junk frame stand in for the real one.
+     * @p recordCheck receives the check over the entry's content.
      */
     bool storeRecord(const Entry& entry, uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
-        computeRecordCheck(entry.recordBytes, sizeof(entry.recordBytes), entry.trailer,
-                           recordCheck);
+        computeRecordCheck(entry.content, recordCheck);
         const uint32_t recordNumber = entry.recordNumber;
         // Before the capacity check: a PDN that lost the acknowledgement resends
         // a record that is already held, full or not.
@@ -197,8 +195,7 @@ private:
             HeldRecord& held = heldRecords[index % CAPACITY];
             memcpy(held.senderMac, entry.senderMac, sizeof(held.senderMac));
             held.recordNumber = entry.recordNumber;
-            computeRecordCheck(entry.recordBytes, sizeof(entry.recordBytes), entry.trailer,
-                               held.recordCheck);
+            computeRecordCheck(entry.content, held.recordCheck);
         }
     }
 
@@ -233,8 +230,7 @@ private:
         memcpy(entry.senderMac, fromMac, sizeof(entry.senderMac));
         entry.kind = frame.kind;
         entry.recordNumber = frame.recordNumber;
-        entry.trailer = frame.trailer;
-        memcpy(entry.recordBytes, frame.recordBytes, sizeof(entry.recordBytes));
+        entry.content = frame.content;
 
         uint8_t recordCheck[RECORD_CHECK_SIZE] = {};
         if (!storeRecord(entry, recordCheck)) {
@@ -263,7 +259,7 @@ private:
  * PDNs. It takes a record frame from any PDN, acknowledges it only once the
  * record is stored, and uploads the match records as one batch. Each record kind
  * has its own bound, but both share one storage partition. The FDN holds no
- * record keys: a trailer is stored as received and never checked.
+ * record keys: a match record's tag is stored as received and never checked.
  */
 class FdnRecordStore {
 public:
@@ -341,7 +337,7 @@ private:
         if (!matchRing.readEntry(index, entry)) {
             return false;
         }
-        out.deserialize(entry.recordBytes);
+        out.deserialize(entry.content.recordBytes);
         return true;
     }
 
