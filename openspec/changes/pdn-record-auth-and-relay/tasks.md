@@ -8,7 +8,7 @@
 - [x] 1.6 Owner answered Open Question 5: registration fails when no key arrives, so a PDN with no key is not registered and no match record without a key exists
 - [ ] 1.7 Send the ranked server list (design.md) to the server team as a proposal, with the match record byte layout, the key and tag formulas and the test vector
 - [x] 1.8 Owner ruled after the answers above: the key is derived from the server secret and the player alone; the lookup request is unchanged; the sender's MAC address on a match upload is a troubleshooting note only; blocking is by player only; one person registering two PDNs as two different players is an accepted risk
-- [ ] 1.9 Owner confirms the editor's choices E1 to E10 (design.md, Open Questions); E7: no event runs between the server enabling verification and the roll-out; E8 is that the venue server has to be reached over HTTPS; E9 is the owner's acceptance that a device cabled to an FDN can collect every player's key; E10: matches stored by older firmware are read in place from their own namespace and relayed untagged, with no migration and no new frame type
+- [x] 1.9 Editor's choices closed (design.md, Open Questions): E1, E2, E3, E5, E6, E7 and E8 confirmed by the chief (E8: host names and validity dates not checked, redirects refused, one pinned server key); E4 replaced by E10, answered by the owner; X-2 confirmed by the chief: no fourth relay trigger; X-3 stays open
 
 ## 2. Relay on the PDN (built by the open PRs)
 
@@ -36,7 +36,7 @@
 ## 5. Record key delivery
 
 - [x] 5.1 FDN reads the record key from the lookup response: the firmware's copy of the lookup response gains the provisional field `optional bytes record_key = 10`, marked `SERVER-SEAM(pdn-record-auth-and-relay)`, and follows whatever name and number the server team chooses (10.3); the lookup request is unchanged (#442)
-- [x] 5.2 FDN accepts no record key from a lookup that was not made over HTTPS with the certificate verified (its configured server address and the URL the transfer ended on are both `https://`), and none that is not exactly `32` bytes; a key of another length is no usable key, not an undecodable response; with no accepted key it sends the existing lookup-failure notification and no profile (#442)
+- [x] 5.2 FDN accepts no record key from a lookup that was not made over HTTPS to a server whose certificate carries the pinned public key (configured server address `https://`; host name and validity dates not checked; redirects refused), and none that is not exactly `32` bytes; a key of another length is no usable key, not an undecodable response; with no accepted key it sends the existing lookup-failure notification and no profile (#442)
 - [x] 5.3 Add one opaque application frame to the serial jack framing, checked for length and CRC and handed up with the jack it arrived on; write it without interleaving with HELLO frames (#436)
 - [x] 5.4 FDN delivers the key over the jack only and sends the profile as soon as the jack reports the key frame written, with no added wait; when the jack does not report it written (the jack refuses the frame, or the PDN is no longer Connected on it) the FDN sends no profile, and sends the lookup-failure notification only if the PDN is still Connected; it holds the key in volatile memory only and erases it once written or on disconnect (#442)
 - [x] 5.5 FDN display: `"UNABLE TO"` / `"ISSUE KEY"` for `3000 ms` when a lookup returned a profile and no key the FDN accepts, or the jack did not report the key frame written; when the PDN that asked has unplugged and no PDN remains Connected on either jack the FDN leaves the registration screen at once instead, as today (#442)
@@ -99,3 +99,10 @@
 - [ ] 11.5 On devices, against a test server that returns a key: register, play a match, capture the match record frame, and check its tag equals the first 16 bytes of HMAC-SHA-256 under that key over the frame's `112` record bytes
 - [ ] 11.6 On devices, against a test server that returns no key: registration fails; the FDN shows `"UNABLE TO"` / `"ISSUE KEY"` and the PDN returns to PIN entry
 - [ ] 11.7 On devices: a PDN flashed from deployed firmware with stored JSON matches, and one holding a `112`-byte slot from a bench build, keep them after flashing; each new match is delivered first, then the legacy records, untagged; the FDN holds the kind `0x03` records
+
+## 12. FDN record store in its own storage area (new PR on top of this stack)
+
+- [ ] 12.1 Add a data partition for the FDN record store at `0x7E1000`, size `0x1F000` (124 KB, the free end of flash after `nvs_keys`), in `partitions.csv`
+- [ ] 12.2 Move the FDN record store into that partition, keeping `64` match records, `32` relayed crash records and the `32`-entry legacy ring inside the `64`-match budget; tests that the limits hold
+- [ ] 12.3 Check whether the OTA path can, or must, refuse an image built for a different partition table, and record the answer in design.md, Migration Plan, step 9
+- [ ] 12.4 Reflash every FDN over USB with the new partition table before the roll-out; OTA cannot change it
