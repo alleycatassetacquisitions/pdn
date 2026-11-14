@@ -1411,6 +1411,18 @@ TEST_F(FdnRecordStoreTests, dropsARecordFrameWhoseKindIsNotTheChannels) {
     fdnDropsARecordFrameWhoseKindIsNotTheChannels(this);
 }
 
+TEST_F(FdnRecordStoreTests, storesLegacyMatchesUpToTheirCapAndAcknowledgesNoneBeyond) {
+    fdnStoresLegacyMatchesUpToTheirCapAndAcknowledgesNoneBeyond(this);
+}
+
+TEST_F(FdnRecordStoreTests, refusedLegacyWriteLeavesCurrentRecordsAccepted) {
+    fdnRefusedLegacyWriteLeavesCurrentRecordsAccepted(this);
+}
+
+TEST_F(FdnRecordStoreTests, dropsOnlyTheUnreadableHeadOfTheKindAskedFor) {
+    fdnDropsOnlyTheUnreadableHeadOfTheKindAskedFor(this);
+}
+
 TEST_F(FdnRecordStoreTests, dropsARecordFrameOfTheWrongLength) {
     fdnDropsARecordFrameOfTheWrongLength(this);
 }
@@ -1593,6 +1605,10 @@ TEST_F(FdnRecordUploaderTests, matchBatchSkipsAnUnreadableHead) {
     fdnMatchBatchSkipsAnUnreadableHead(this);
 }
 
+TEST_F(FdnRecordUploaderTests, keepsLegacyMatchesStoredAndOutOfTheUpload) {
+    fdnKeepsLegacyMatchesStoredAndOutOfTheUpload(this);
+}
+
 // ============================================
 // FDN BEACON TESTS
 // ============================================
@@ -1739,8 +1755,16 @@ TEST_F(MatchRelayTests, passesOverAnUnreadableStoredMatch) {
     matchRelayPassesOverAnUnreadableStoredMatch(this);
 }
 
-TEST_F(MatchRelayTests, neverSendsASlotWithNoTagAndSendsTheRecordAfterIt) {
-    matchRelayNeverSendsASlotWithNoTagAndSendsTheRecordAfterIt(this);
+TEST_F(MatchRelayTests, sendsAnUntaggedLegacySlotWithAZeroTagAndAdvancesItsMark) {
+    matchRelaySendsAnUntaggedLegacySlotWithAZeroTagAndAdvancesItsMark(this);
+}
+
+TEST_F(MatchRelayTests, sendsAJsonEraMatchAsALegacyMatchAndErasesItOnlyOnItsAck) {
+    matchRelaySendsAJsonEraMatchAsALegacyMatchAndErasesItOnlyOnItsAck(this);
+}
+
+TEST_F(MatchRelayTests, sendsANewMatchAheadOfPendingLegacyRecords) {
+    matchRelaySendsANewMatchAheadOfPendingLegacyRecords(this);
 }
 
 TEST_F(MatchRelayTests, sendsTheStoredTagAfterARestartAndAnotherRegistration) {

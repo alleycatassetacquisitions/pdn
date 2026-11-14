@@ -64,6 +64,7 @@ public:
 
 private:
     struct LastSent {
+        RecordKind kind;
         uint32_t recordNumber;
         uint8_t fdnMac[6];
         uint8_t recordCheck[RECORD_CHECK_SIZE];
@@ -74,9 +75,9 @@ private:
     // the record again.
     bool isInFlight() const { return frameChannel.isPending(lastSent.fdnMac); }
 
-    // @p fdnMac must not point into lastSent. A non-null @p acknowledgedNumber
-    // names a record that is not sent even if the source still offers it.
-    void sendLowestPendingUnless(const uint8_t* fdnMac, const uint32_t* acknowledgedNumber) {
+    // @p fdnMac must not point into lastSent. A non-null @p acknowledged names a
+    // frame that is not sent again even if the source still offers it.
+    void sendLowestPendingUnless(const uint8_t* fdnMac, const LastSent* acknowledged) {
         if (recordSource == nullptr || playIsActive()) {
             return;
         }
@@ -91,24 +92,32 @@ private:
 
         Frame frame{};
         uint32_t recordNumber = 0;
-        if (!recordSource->readLowestPending(recordNumber, frame.content)) {
+        RecordKind kind = Traits::KIND;
+        if (!recordSource->readLowestPendingFrame(recordNumber, kind, frame.content)) {
             return;
         }
-        if (acknowledgedNumber != nullptr && recordNumber == *acknowledgedNumber) {
+        uint8_t recordCheck[RECORD_CHECK_SIZE] = {};
+        computeRecordCheck(frame.content, recordCheck);
+        // A source can number several sets of records alike, so only the same
+        // kind, number and check is the frame just acknowledged.
+        if (acknowledged != nullptr && kind == acknowledged->kind &&
+            recordNumber == acknowledged->recordNumber &&
+            memcmp(recordCheck, acknowledged->recordCheck, RECORD_CHECK_SIZE) == 0) {
             // The mark did not move, most likely a failed write. Sending the
             // record straight back would have the FDN acknowledge it again, and
             // the two would repeat that as fast as the radio allows.
             LOG_E(RECORD_RELAY_TAG,
                   "Record %u of kind %u is still pending after its acknowledgement",
-                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(Traits::KIND));
+                  static_cast<unsigned>(recordNumber), static_cast<unsigned>(kind));
             return;
         }
-        frame.kind = static_cast<uint8_t>(Traits::KIND);
+        frame.kind = static_cast<uint8_t>(kind);
         frame.recordNumber = recordNumber;
 
+        lastSent.kind = kind;
         lastSent.recordNumber = recordNumber;
         memcpy(lastSent.fdnMac, fdnMac, sizeof(lastSent.fdnMac));
-        computeRecordCheck(frame.content, lastSent.recordCheck);
+        memcpy(lastSent.recordCheck, recordCheck, RECORD_CHECK_SIZE);
         awaitingAcknowledgement = true;
         frameChannel.sendReliable(lastSent.fdnMac, frame);
     }
@@ -120,7 +129,7 @@ private:
         if (recordSource == nullptr || !awaitingAcknowledgement) {
             return;
         }
-        if (ack.kind != static_cast<uint8_t>(Traits::KIND) ||
+        if (ack.kind != static_cast<uint8_t>(lastSent.kind) ||
             ack.recordNumber != lastSent.recordNumber ||
             memcmp(fromMac, lastSent.fdnMac, sizeof(lastSent.fdnMac)) != 0 ||
             memcmp(ack.recordCheck, lastSent.recordCheck, RECORD_CHECK_SIZE) != 0) {
@@ -131,11 +140,13 @@ private:
         // The radio's delivery report can be lost when the frame was not; a retry
         // still armed would send a record that is no longer pending.
         frameChannel.cancelAll();
-        const uint32_t acknowledgedNumber = lastSent.recordNumber;
+        const LastSent acknowledged = lastSent;
         LOG_I(RECORD_RELAY_TAG, "An FDN stored record %u of kind %u",
-              static_cast<unsigned>(acknowledgedNumber), static_cast<unsigned>(Traits::KIND));
-        recordSource->advanceMark(acknowledgedNumber);
-        sendLowestPendingUnless(fromMac, &acknowledgedNumber);
+              static_cast<unsigned>(acknowledged.recordNumber),
+              static_cast<unsigned>(acknowledged.kind));
+        recordSource->onRecordAcknowledged(acknowledged.kind, acknowledged.recordNumber,
+                                           acknowledged.recordCheck);
+        sendLowestPendingUnless(fromMac, &acknowledged);
     }
 
     WirelessManager* wirelessManager = nullptr;

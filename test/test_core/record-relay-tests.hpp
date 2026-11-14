@@ -44,7 +44,7 @@ inline void fillRecordTag(MatchRecordContent& content, uint8_t fill) {
  * record is its number, so two records never read alike; every byte of a match
  * record's tag is tagFill.
  */
-template <class Traits> class FakeRecordSource : public RecordSource<Traits> {
+template <class Traits> class FakeRecordSource : public SingleKindRecordSource<Traits> {
 public:
     /** Hands out record mark + 1 while it is not above the newest. */
     bool readLowestPending(uint32_t& recordNumber, typename Traits::Content& content) override {
@@ -1037,9 +1037,10 @@ inline void recordRelayRelaysEachKindOnItsOwn() {
 
         // Matches 12 and 13 of 13 are stored and still to be collected. The
         // storage is declared first: the match manager closes it on the way out.
-        NativePrefsDriver matchPrefs("relay-kinds-prefs", {MATCHES_PREFS_NAMESPACE});
-        matchPrefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_SEQ_KEY, 13);
-        matchPrefs.writeUInt(MATCHES_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 11);
+        NativePrefsDriver matchPrefs("relay-kinds-prefs",
+                                     {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_PREFS_NAMESPACE});
+        matchPrefs.writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 13);
+        matchPrefs.writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 11);
         for (uint32_t number = 12; number <= 13; number++) {
             char matchId[37];
             snprintf(matchId, sizeof(matchId), "%08u-b0b0-4000-8000-000000000000", number);
@@ -1051,7 +1052,7 @@ inline void recordRelayRelaysEachKindOnItsOwn() {
             char key[16];
             snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY_PREFIX,
                      static_cast<unsigned>((number - 1) % MATCH_RING_CAPACITY));
-            matchPrefs.writeBytes(MATCHES_PREFS_NAMESPACE, key,
+            matchPrefs.writeBytes(MATCH_RING_PREFS_NAMESPACE, key,
                                   reinterpret_cast<const uint8_t*>(&slot), sizeof(slot));
         }
 
