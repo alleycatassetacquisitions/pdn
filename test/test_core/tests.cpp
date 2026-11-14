@@ -1157,11 +1157,15 @@ TEST(Sha256, padsOverABufferThatWasFilledBefore) { sha256PadsOverABufferThatWasF
 
 TEST(Sha256, isTheSameHoweverTheMessageIsSplit) { sha256IsTheSameHoweverTheMessageIsSplit(); }
 
-TEST(RecordCheck, isFirstEightBytesOfSha256OverRecordThenTrailer) {
-    recordCheckIsFirstEightBytesOfSha256OverRecordThenTrailer();
+TEST(RecordCheck, ofACrashRecordIsFirstEightBytesOfSha256OverItsBytes) {
+    recordCheckOfACrashRecordIsFirstEightBytesOfSha256OverItsBytes();
 }
 
-TEST(RecordCheck, changesWithTheTrailer) { recordCheckChangesWithTheTrailer(); }
+TEST(RecordCheck, ofAMatchRecordIsFirstEightBytesOfSha256OverItsBytesThenItsTag) {
+    recordCheckOfAMatchRecordIsFirstEightBytesOfSha256OverItsBytesThenItsTag();
+}
+
+TEST(RecordCheck, changesWithTheTag) { recordCheckChangesWithTheTag(); }
 
 // ============================================
 // FDN RECORD STORE AND INTAKE TESTS
@@ -1217,8 +1221,12 @@ TEST_F(FdnRecordStoreTests, fullMatchStorageSendsNoAcknowledgement) {
     fdnWithFullMatchStorageSendsNoAcknowledgement(this);
 }
 
-TEST_F(FdnRecordStoreTests, storesAndAcknowledgesARecordWithNoRecordKey) {
-    fdnStoresAndAcknowledgesARecordWithNoRecordKey(this);
+TEST_F(FdnRecordStoreTests, acknowledgesACrashRecordWithTheCheckOverItsBytesAlone) {
+    fdnAcknowledgesACrashRecordWithTheCheckOverItsBytesAlone(this);
+}
+
+TEST_F(FdnRecordStoreTests, storesAndAcknowledgesAMatchRecordWithAnAllZeroTag) {
+    fdnStoresAndAcknowledgesAMatchRecordWithAnAllZeroTag(this);
 }
 
 TEST_F(FdnRecordStoreTests, storesARecordWithABadTagUnchanged) {
@@ -1299,6 +1307,14 @@ TEST_F(RecordRelayTests, ignoresALateAcknowledgementFromAnEarlierFdn) {
 
 TEST_F(RecordRelayTests, ignoresAnAcknowledgementThatDoesNotMatchTheFrameItSent) {
     recordRelayIgnoresAnAcknowledgementThatDoesNotMatchTheFrameItSent(this);
+}
+
+TEST_F(MatchRecordLaneTests, sendsTheTagItsSourceHandedOut) {
+    matchRecordLaneSendsTheTagItsSourceHandedOut(this);
+}
+
+TEST_F(MatchRecordLaneTests, ignoresAnAcknowledgementWhoseCheckLeavesOutTheTag) {
+    matchRecordLaneIgnoresAnAcknowledgementWhoseCheckLeavesOutTheTag(this);
 }
 
 TEST_F(RecordRelayTests, advancesTheMarkAndSendsTheNextRecordToTheFdnThatAcknowledged) {

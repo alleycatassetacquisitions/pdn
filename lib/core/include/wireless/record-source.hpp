@@ -16,16 +16,16 @@ public:
     virtual ~RecordSource() = default;
 
     /**
-     * Writes the lowest-numbered record above the mark into @p recordBytes and
-     * its number into @p recordNumber. Reading changes nothing: the mark moves
+     * Writes the lowest-numbered record above the mark into @p content (its
+     * bytes and, for a kind that carries one, its tag) and its number into
+     * @p recordNumber. Reading changes nothing: the mark moves
      * only in advanceMark, so a record is never retired without an
      * acknowledgement. A source that cannot read a record it should hold
      * passes over it here and offers the next one.
      * @return false when nothing can be offered: nothing is pending, or every
      * pending record is unreadable; the outputs are then untouched.
      */
-    virtual bool readLowestPending(uint32_t& recordNumber,
-                                   uint8_t (&recordBytes)[Traits::RECORD_SIZE]) = 0;
+    virtual bool readLowestPending(uint32_t& recordNumber, typename Traits::Content& content) = 0;
 
     /**
      * Moves the mark to @p recordNumber, which an FDN has acknowledged storing.

@@ -82,8 +82,6 @@ inline void sha256PadsOverABufferThatWasFilledBefore() {
     EXPECT_EQ(sha256HexInPieces(message119, 64), sha256HexInPieces(message119, 119));
 }
 
-// A record check hashes the record and then the trailer, so the digest must
-// not depend on where the pieces fall against the 64-byte block.
 inline void sha256IsTheSameHoweverTheMessageIsSplit() {
     const std::string message = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
     for (size_t pieceSize : {1u, 3u, 55u, 56u, 63u}) {
@@ -96,41 +94,49 @@ inline void sha256IsTheSameHoweverTheMessageIsSplit() {
               "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
 }
 
-// Expected values are the first 8 bytes of SHA-256 over record bytes then the
-// 17 trailer bytes, computed with an independent implementation.
-inline void recordCheckIsFirstEightBytesOfSha256OverRecordThenTrailer() {
-    uint8_t crashRecord[CRASH_RECORD_SIZE];
-    for (size_t i = 0; i < sizeof(crashRecord); ++i) {
-        crashRecord[i] = static_cast<uint8_t>(i);
+// Expected values come from an independent implementation (Python's hashlib).
+inline void recordCheckOfACrashRecordIsFirstEightBytesOfSha256OverItsBytes() {
+    CrashRecordContent crash{};
+    for (size_t i = 0; i < sizeof(crash.recordBytes); ++i) {
+        crash.recordBytes[i] = static_cast<uint8_t>(i);
     }
-    const RecordTrailer noRecordKey{};
     uint8_t recordCheck[RECORD_CHECK_SIZE] = {};
-    computeRecordCheck(crashRecord, sizeof(crashRecord), noRecordKey, recordCheck);
-    EXPECT_EQ(toHexText(recordCheck, sizeof(recordCheck)), "1ea6486a623913d7");
-
-    uint8_t matchRecord[MATCH_RECORD_SIZE];
-    for (size_t i = 0; i < sizeof(matchRecord); ++i) {
-        matchRecord[i] = static_cast<uint8_t>(i * 7 + 3);
-    }
-    RecordTrailer trailer{};
-    trailer.keyId = 5;
-    for (size_t i = 0; i < sizeof(trailer.tag); ++i) {
-        trailer.tag[i] = static_cast<uint8_t>(0xA0 + i);
-    }
-    computeRecordCheck(matchRecord, sizeof(matchRecord), trailer, recordCheck);
-    EXPECT_EQ(toHexText(recordCheck, sizeof(recordCheck)), "ee02c639aefa7fc3");
+    computeRecordCheck(crash, recordCheck);
+    EXPECT_EQ(toHexText(recordCheck, sizeof(recordCheck)), "40a1ed73b46030c8");
 }
 
-inline void recordCheckChangesWithTheTrailer() {
-    uint8_t crashRecord[CRASH_RECORD_SIZE] = {};
-    RecordTrailer trailer{};
-    uint8_t underNoKey[RECORD_CHECK_SIZE] = {};
-    computeRecordCheck(crashRecord, sizeof(crashRecord), trailer, underNoKey);
+inline void recordCheckOfAMatchRecordIsFirstEightBytesOfSha256OverItsBytesThenItsTag() {
+    MatchRecordContent match{};
+    for (size_t i = 0; i < sizeof(match.recordBytes); ++i) {
+        match.recordBytes[i] = static_cast<uint8_t>(i * 7 + 3);
+    }
+    for (size_t i = 0; i < sizeof(match.tag); ++i) {
+        match.tag[i] = static_cast<uint8_t>(0xA0 + i);
+    }
+    uint8_t recordCheck[RECORD_CHECK_SIZE] = {};
+    computeRecordCheck(match, recordCheck);
+    EXPECT_EQ(toHexText(recordCheck, sizeof(recordCheck)), "b1f38a5347c2f8d0");
 
-    trailer.keyId = 1;
-    uint8_t underKeyOne[RECORD_CHECK_SIZE] = {};
-    computeRecordCheck(crashRecord, sizeof(crashRecord), trailer, underKeyOne);
-    EXPECT_NE(toHexText(underNoKey, sizeof(underNoKey)),
-              toHexText(underKeyOne, sizeof(underKeyOne)))
-    << "the same record sent under another key ID must not share a check";
+    // An all-zero tag is hashed like any other.
+    memset(match.tag, 0, sizeof(match.tag));
+    computeRecordCheck(match, recordCheck);
+    EXPECT_EQ(toHexText(recordCheck, sizeof(recordCheck)), "f9b3e7a3bdb564a7");
+
+    uint8_t bytesOnly[RECORD_CHECK_SIZE] = {};
+    computeRecordCheck(match.recordBytes, sizeof(match.recordBytes), bytesOnly);
+    EXPECT_EQ(toHexText(bytesOnly, sizeof(bytesOnly)), "96b928cff8528dbb")
+    << "the 112 record bytes alone hash to something else";
+}
+
+inline void recordCheckChangesWithTheTag() {
+    MatchRecordContent match{};
+    uint8_t withAZeroTag[RECORD_CHECK_SIZE] = {};
+    computeRecordCheck(match, withAZeroTag);
+
+    match.tag[RECORD_TAG_SIZE - 1] = 1;
+    uint8_t withAnotherTag[RECORD_CHECK_SIZE] = {};
+    computeRecordCheck(match, withAnotherTag);
+    EXPECT_NE(toHexText(withAZeroTag, sizeof(withAZeroTag)),
+              toHexText(withAnotherTag, sizeof(withAnotherTag)))
+    << "the same match record under another tag must not share a check";
 }

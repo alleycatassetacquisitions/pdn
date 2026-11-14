@@ -263,10 +263,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 }
                 if (matchManager.finalizeMatch()) {
                     uint32_t recordNumber = 0;
-                    uint8_t recordBytes[MatchRecordTraits::RECORD_SIZE] = {};
-                    if (matchManager.readLowestPending(recordNumber, recordBytes)) {
+                    MatchRecordContent content{};
+                    if (matchManager.readLowestPending(recordNumber, content)) {
                         Match stored{};
-                        stored.deserialize(recordBytes);
+                        stored.deserialize(content.recordBytes);
                     }
                 }
                 break;

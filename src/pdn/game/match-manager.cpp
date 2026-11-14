@@ -337,8 +337,7 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
     return true;
 }
 
-bool MatchManager::readLowestPending(uint32_t& recordNumber,
-                                     uint8_t (&recordBytes)[MatchRecordTraits::RECORD_SIZE]) {
+bool MatchManager::readLowestPending(uint32_t& recordNumber, MatchRecordContent& content) {
     // A scratch copy, so a short read leaves the caller's buffer untouched.
     uint8_t buffer[MATCH_BINARY_SIZE] = {};
     // With no storage both numbers read 0, nothing is pending and nothing is loaded.
@@ -357,7 +356,8 @@ bool MatchManager::readLowestPending(uint32_t& recordNumber,
         })) {
         return false;
     }
-    memcpy(recordBytes, buffer, MATCH_BINARY_SIZE);
+    memcpy(content.recordBytes, buffer, MATCH_BINARY_SIZE);
+    memset(content.tag, 0, sizeof(content.tag));
     return true;
 }
 

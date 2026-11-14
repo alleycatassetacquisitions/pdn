@@ -91,7 +91,7 @@ private:
 
         Frame frame{};
         uint32_t recordNumber = 0;
-        if (!recordSource->readLowestPending(recordNumber, frame.recordBytes)) {
+        if (!recordSource->readLowestPending(recordNumber, frame.content)) {
             return;
         }
         if (acknowledgedNumber != nullptr && recordNumber == *acknowledgedNumber) {
@@ -105,12 +105,10 @@ private:
         }
         frame.kind = static_cast<uint8_t>(Traits::KIND);
         frame.recordNumber = recordNumber;
-        // The trailer stays zeroed: key ID 0 with 16 zero bytes, "no record key".
 
         lastSent.recordNumber = recordNumber;
         memcpy(lastSent.fdnMac, fdnMac, sizeof(lastSent.fdnMac));
-        computeRecordCheck(frame.recordBytes, sizeof(frame.recordBytes), frame.trailer,
-                           lastSent.recordCheck);
+        computeRecordCheck(frame.content, lastSent.recordCheck);
         awaitingAcknowledgement = true;
         frameChannel.sendReliable(lastSent.fdnMac, frame);
     }
