@@ -2416,6 +2416,14 @@ TEST_F(StateFlowIntegrationTests, pressInTheGraceExpiryPassStands) {
     stateFlowPressInTheGraceExpiryPassStands(this);
 }
 
+TEST_F(StateFlowIntegrationTests, heldResultThenPressInGraceAppliesTheBoosts) {
+    stateFlowHeldResultThenPressInGraceAppliesTheBoosts(this);
+}
+
+TEST_F(StateFlowIntegrationTests, heldResultThenNoPressReportsPityFromTheWindow) {
+    stateFlowHeldResultThenNoPressReportsPityFromTheWindow(this);
+}
+
 TEST_F(StateFlowIntegrationTests, throughMatchResultToLose) {
     stateFlowThroughMatchResultToLose(this);
 }

@@ -311,6 +311,10 @@ void MatchManager::receiveMatch(const char* matchId, bool opponentIsHunter, uint
 
 void MatchManager::setMatchLocalStartTime(unsigned long localStartTimeMs) {
     activeMatchState.matchLocalStartTime = localStartTimeMs;
+    if (!activeMatchState.earlyOpponentResult.has_value()) return;
+    LOG_I(MATCH_MANAGER_TAG, "Applying the draw result held from before the draw window");
+    applyOpponentResult(*activeMatchState.earlyOpponentResult);
+    activeMatchState.earlyOpponentResult.reset();
 }
 
 unsigned long MatchManager::getMatchLocalStartTime() const {
@@ -893,31 +897,39 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: negative draw time");
             return;
         }
-        // The standalone countdown is fixed, so a result before the window opens
-        // is a guess or a forgery. Shootout starts are fan-out retries, so its
-        // windows open apart; its matches are never stored.
+        const OpponentResult result{command.command, command.isHunter, command.playerDrawTime,
+                                    command.boostMs};
+        // Countdowns start a frame delivery apart, and the channel has acked this
+        // frame and will not resend it, so an early result waits for the window,
+        // the latest one counting. Shootout starts are fan-out retries; its
+        // results apply on arrival.
         if (!currentMatchIsShootout() && !activeMatchState.matchLocalStartTime.has_value()) {
-            LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: before the draw window");
+            LOG_I(MATCH_MANAGER_TAG, "Holding draw result until the draw window opens");
+            activeMatchState.earlyOpponentResult = result;
             return;
         }
-
-        const long opponentTime = command.playerDrawTime;
-        // No frame earns more than a full posse can give.
-        activeMatchState.opponentBoostMs = std::min(command.boostMs, PosseManager::getMaxBoostMs());
-
-        LOG_I(MATCH_MANAGER_TAG, "Opponent reaction time: %ld ms (boost %lu)", opponentTime,
-              activeMatchState.opponentBoostMs);
-
-        command.isHunter ? setHunterDrawTime(opponentTime) : setBountyDrawTime(opponentTime);
-
-        if (command.command == MatchCmd::NEVER_PRESSED) {
-            activeMatchState.opponentNeverPressed = true;
-        }
-
-        setReceivedDrawResult();
+        applyOpponentResult(result);
     } else {
-        LOG_W(MATCH_MANAGER_TAG, "Received unexpected command in Match Manager: %d", command.command);
+        LOG_W(MATCH_MANAGER_TAG, "Received unexpected command in Match Manager: %d",
+              command.command);
     }
+}
+
+void MatchManager::applyOpponentResult(const OpponentResult& result) {
+    // No frame earns more than a full posse can give.
+    activeMatchState.opponentBoostMs = std::min(result.boostMs, PosseManager::getMaxBoostMs());
+
+    LOG_I(MATCH_MANAGER_TAG, "Opponent reaction time: %ld ms (boost %lu)", result.playerDrawTime,
+          activeMatchState.opponentBoostMs);
+
+    result.isHunter ? setHunterDrawTime(result.playerDrawTime)
+                    : setBountyDrawTime(result.playerDrawTime);
+
+    if (result.command == MatchCmd::NEVER_PRESSED) {
+        activeMatchState.opponentNeverPressed = true;
+    }
+
+    setReceivedDrawResult();
 }
 
 void MatchManager::onApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,

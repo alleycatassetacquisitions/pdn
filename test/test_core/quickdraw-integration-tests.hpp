@@ -617,6 +617,82 @@ inline void stateFlowPressInTheGraceExpiryPassStands(StateFlowIntegrationTests* 
     receivedResult.onStateDismounted(&suite->device);
 }
 
+// Re-primes the fixture's match with the local player as Bounty, its draw window
+// still closed (the countdown is running).
+inline void primeAsBountyInCountdown(StateFlowIntegrationTests* suite) {
+    suite->matchManager->clearCurrentMatch();
+    suite->player->setIsHunter(false);
+    uint8_t hunterMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->opponentKey = testMatchKey(0x30);
+    suite->opponentCounter = 1;
+    suite->matchManager->receiveMatch("a1111111-2222-4000-8000-333333333333", true, hunterMac,
+                                      suite->opponentKey, suite->opponentCounter);
+}
+
+// Spec: a result held from the countdown takes the path one arriving as the
+// window opens would: the 750 ms grace runs from the window, the local press is
+// timed from the window, and both boosts count.
+inline void stateFlowHeldResultThenPressInGraceAppliesTheBoosts(StateFlowIntegrationTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(2);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+    primeAsBountyInCountdown(suite);
+    suite->matchManager->setBoostProvider([]() -> unsigned long { return 270; });
+    MatchPacket early = suite->createPacket(MatchCmd::DRAW_RESULT, 0, 0);
+    early.boostMs = 100;
+    signMatchFrame(early, suite->opponentKey, suite->opponentCounter);
+    suite->processPacket(early);
+    ASSERT_FALSE(suite->matchManager->getHasReceivedDrawResult());
+
+    suite->fakeClock->advance(40);
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
+    matchState.onStateLoop(&suite->device);
+    ASSERT_TRUE(matchState.transitionToMatchReceivedResult());
+
+    MatchReceivedResult receivedState(suite->ctx);
+    receivedState.onStateMounted(&suite->device);
+    suite->fakeClock->advance(180);
+    suite->matchManager->getMatchButtonPush()(suite->matchManager);
+    receivedState.onStateLoop(&suite->device);
+
+    EXPECT_TRUE(receivedState.transitionToMatchResult());
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 180u)
+    << "timed from the window, not from the held frame";
+    EXPECT_FALSE(suite->matchManager->didWin()) << "0 - 100 = -100 beats 180 - 270 = -90";
+}
+
+// Spec: with a held result and no local press, the pity time is measured from
+// the window opening, after the full 750 ms grace.
+inline void
+stateFlowHeldResultThenNoPressReportsPityFromTheWindow(StateFlowIntegrationTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(2);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+    primeAsBountyInCountdown(suite);
+    suite->processPacket(suite->createPacket(MatchCmd::DRAW_RESULT, 0, 0));
+
+    suite->fakeClock->advance(40);
+    MatchState matchState(suite->ctx);
+    matchState.onStateMounted(&suite->device);
+    matchState.onStateLoop(&suite->device);
+    ASSERT_TRUE(matchState.transitionToMatchReceivedResult());
+
+    MatchReceivedResult receivedState(suite->ctx);
+    receivedState.onStateMounted(&suite->device);
+    suite->fakeClock->advance(750);
+    receivedState.onStateLoop(&suite->device);
+    EXPECT_FALSE(receivedState.transitionToMatchResult()) << "the grace was cut short";
+    suite->fakeClock->advance(1);
+    receivedState.onStateLoop(&suite->device);
+
+    ASSERT_NE(suite->wirelessManager->lastFrame(), nullptr);
+    EXPECT_EQ(suite->wirelessManager->lastFrame()->command, MatchCmd::NEVER_PRESSED);
+    EXPECT_EQ(suite->wirelessManager->lastFrame()->playerDrawTime, 751);
+    EXPECT_TRUE(receivedState.transitionToMatchResult());
+    EXPECT_FALSE(suite->matchManager->didWin());
+}
+
 inline void stateFlowThroughMatchResultToLose(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);

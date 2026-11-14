@@ -55,6 +55,15 @@ struct LastMatchDisplay {
     bool hasData = false;
 };
 
+// What an opponent's draw result or never-pressed report carries, once it has
+// passed the opponent, slot and sign checks.
+struct OpponentResult {
+    int command = 0;
+    bool isHunter = false;
+    long playerDrawTime = 0;
+    unsigned long boostMs = 0;
+};
+
 struct ActiveMatchState {
     bool matchIsReady = false;
     // The draw slot for THIS match, which a shootout assigns from MAC
@@ -72,9 +81,11 @@ struct ActiveMatchState {
     unsigned long penaltyMs = 0;
     // From the opponent's draw result, held to PosseManager::getMaxBoostMs().
     unsigned long opponentBoostMs = 0;
-    // Set when the local draw window opens; a standalone match takes no
+    // Set when the local draw window opens; a standalone match applies no
     // opponent result before it.
     std::optional<unsigned long> matchLocalStartTime;
+    // Standalone: the opponent's latest result from before the local window opened.
+    std::optional<OpponentResult> earlyOpponentResult;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
     std::optional<Match> match;
@@ -148,7 +159,7 @@ public:
     /** Sets the bounty draw time (ms) on the active match. */
     bool setBountyDrawTime(unsigned long bountyTimeMs);
 
-    /** Records the local timestamp when the match draw window starts, and opens the window. */
+    /** Opens the draw window at localStartTimeMs and applies any opponent result held before it. */
     void setMatchLocalStartTime(unsigned long localStartTimeMs);
 
     bool didWin();
@@ -328,6 +339,8 @@ private:
     // The slot's raw draw time minus its player's posse boost; below zero when
     // the boost is the larger. Needs an active match.
     long getEffectiveDrawTime(bool hunterSlot) const;
+    // Records an opponent result that passed every check into the active match.
+    void applyOpponentResult(const OpponentResult& result);
     /** Writes a tagged match record to the next ring slot and increments the sequence number. */
     bool appendRecordToStorage(const MatchRecordContent& content);
 
