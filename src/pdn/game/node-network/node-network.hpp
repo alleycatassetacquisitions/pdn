@@ -21,6 +21,9 @@ public:
 
     void populateStateMap() override;
 
+    /** Resends due reliable packets, then runs the current state. */
+    void onStateLoop(Device* pdn) override;
+
     PlayerProvider* getPlayerProvider() const;
     MatchManagerV2* getMatchManager() const;
     NodeNetworkStats* getStats() const;

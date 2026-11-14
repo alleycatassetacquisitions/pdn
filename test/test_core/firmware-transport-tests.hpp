@@ -333,6 +333,57 @@ TEST(FirmwareTransportTest, aReceiveWithNoChunksForTooLongIsDropped) {
     EXPECT_FALSE(f.receiverStore.restarted);
 }
 
+TEST(FirmwareTransportTest, aStalledReceiveReportsOneFailure) {
+    FirmwareTransportFixture f;
+    f.deliverFirstFrames(3);
+    EXPECT_TRUE(f.receiver->isReceiving());
+    EXPECT_GT(f.receiver->receivePercent(), 0);
+
+    f.hearNothingFor(20);
+    EXPECT_FALSE(f.receiver->isReceiving());
+    EXPECT_TRUE(f.receiver->takeReceiveFailure());
+    EXPECT_FALSE(f.receiver->takeReceiveFailure());
+}
+
+TEST(FirmwareTransportTest, aRefusedImageReportsAFailure) {
+    FirmwareTransportFixture f;
+    f.receiverStore.acceptImages = false;
+    f.runSeed();
+
+    EXPECT_TRUE(f.receiver->takeReceiveFailure());
+}
+
+TEST(FirmwareTransportTest, losingEligibilityIsNotAFailure) {
+    FirmwareTransportFixture f;
+    f.deliverFirstFrames(3);
+    f.receiver->setEligible(false);
+    f.receiver->sync();
+
+    EXPECT_FALSE(f.receiver->takeReceiveFailure());
+}
+
+TEST(FirmwareTransportTest, anImageTheStoreDeclinesAtChunkZeroIsNotAFailure) {
+    // Devices already on the seed's build decline it; that is routine, not a failed update.
+    FirmwareTransportFixture f;
+    f.receiverStore.wantImages = false;
+    f.runSeed();
+
+    EXPECT_FALSE(f.receiver->takeReceiveFailure());
+}
+
+TEST(FirmwareTransportTest, theFirstBootOfAnUpdateLastsUntilAcknowledged) {
+    FirmwareTransportFixture f;
+    EXPECT_FALSE(f.receiver->isFreshlyUpdated());
+
+    FakeFirmwareRadio radio;
+    FakeFirmwareStore store;
+    store.updatedImage = true;
+    FirmwareUpdateManager updated(&radio, &store);
+    EXPECT_TRUE(updated.isFreshlyUpdated());
+    updated.acknowledgeUpdate();
+    EXPECT_FALSE(updated.isFreshlyUpdated());
+}
+
 TEST(FirmwareTransportTest, chunksOfAnotherImageAreIgnored) {
     FirmwareTransportFixture f;
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {

@@ -24,6 +24,16 @@ public:
     bool beginSeeding();
     /** True from beginSeeding() until its last pass is queued. */
     bool isSeeding() const;
+    /** True while an image is being written. */
+    bool isReceiving() const;
+    /** Percent of the image being received that is written; 0 when none is. */
+    uint8_t receivePercent() const;
+    /** True once for each receive that stalled or ended in a refused image; then false until the next. */
+    bool takeReceiveFailure();
+    /** True on the first boot of an image this device received, until acknowledgeUpdate(). */
+    bool isFreshlyUpdated() const;
+    /** Ends isFreshlyUpdated() for the rest of this boot. */
+    void acknowledgeUpdate();
     /** Call every loop pass on every device. */
     void sync();
 
@@ -40,6 +50,8 @@ private:
     PeerCommsInterface* peerComms;
     FirmwareStoreInterface* firmwareStore;
     bool eligible = false;
+    bool freshlyUpdated = false;
+    bool receiveFailed = false;
 
     ImageId seedImageId{};
     uint32_t seedImageLength = 0;

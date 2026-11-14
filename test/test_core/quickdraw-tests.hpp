@@ -216,6 +216,72 @@ inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     suite->device.firmwareUpdateManager = nullptr;
 }
 
+// After an update the transmit light blinks until the pairing screen is left.
+inline void pairingCodeBlinksAfterAnUpdateUntilLeft(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+    FakeFirmwareStore store;
+    store.updatedImage = true;
+    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
+    suite->device.firmwareUpdateManager = &manager;
+    PlayerProvider playerProvider;
+    PinEntryState pinEntry(&playerProvider);
+
+    pinEntry.onStateMounted(&suite->device);
+    EXPECT_TRUE(suite->device.getLightManager()->isAnimating());
+
+    pinEntry.onStateDismounted(&suite->device);
+    EXPECT_FALSE(suite->device.getLightManager()->isAnimating());
+    EXPECT_FALSE(manager.isFreshlyUpdated());
+
+    pinEntry.onStateMounted(&suite->device);
+    EXPECT_FALSE(suite->device.getLightManager()->isAnimating()) << "a return to the screen does not blink again";
+    pinEntry.onStateDismounted(&suite->device);
+    suite->device.firmwareUpdateManager = nullptr;
+}
+
+// A stalled receive shows FAILED for PLAYER_FETCH_UPDATE_FAILED_MS, then the pairing screen again.
+inline void pairingCodeShowsAFailedUpdate(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+    PeerCommsInterface::PacketCallback onFrame;
+    EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
+        .WillOnce(SaveArg<1>(&onFrame));
+    FakeFirmwareStore store;
+    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
+    suite->device.firmwareUpdateManager = &manager;
+    std::vector<uint8_t> chunkZero(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE, 0);
+    FirmwareChunkHeader header{};
+    header.imageLength = 2 * FIRMWARE_CHUNK_SIZE;
+    std::memcpy(chunkZero.data(), &header, sizeof(header));
+    PlayerProvider playerProvider;
+    PinEntryState pinEntry(&playerProvider);
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(_, _, _))
+        .Times(testing::AnyNumber())
+        .WillRepeatedly(Return(suite->device.mockDisplay));
+    pinEntry.onStateMounted(&suite->device);
+
+    onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("UPDATING"), _, _))
+        .WillOnce(Return(suite->device.mockDisplay));
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_TRUE(suite->device.getLightManager()->isAnimating());
+
+    suite->fakeClock->advance(6000);
+    manager.sync();
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("FAILED"), _, _))
+        .WillOnce(Return(suite->device.mockDisplay));
+    pinEntry.onStateLoop(&suite->device);
+    pinEntry.onStateLoop(&suite->device);
+
+    suite->fakeClock->advance(PLAYER_FETCH_UPDATE_FAILED_MS + 1);
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Pairing Code"), _, _))
+        .WillOnce(Return(suite->device.mockDisplay));
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_FALSE(suite->device.getLightManager()->isAnimating());
+
+    pinEntry.onStateDismounted(&suite->device);
+    suite->device.firmwareUpdateManager = nullptr;
+}
+
 // The pairing screen leaves the radio to whoever switched it to WiFi.
 inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));

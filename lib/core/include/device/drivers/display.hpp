@@ -38,6 +38,9 @@ public:
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
 
+    /** Draws @p image with lit and dark pixels swapped over its whole box; -1 keeps the default. */
+    virtual Display* drawImageInverted(Image image, int xStart, int yStart) = 0;
+
     // Pixel width of the given text in the current font/glyph mode.
     virtual int getTextWidth(const char* text) = 0;
 

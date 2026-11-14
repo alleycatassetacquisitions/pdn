@@ -4,9 +4,10 @@
 #include <string>
 
 namespace {
-const char* const NODES_CREATED_KEY = "nodes_created";
-const char* const SEEN_COUNT_KEY = "seen_count";
-const char* const SEEN_MAC_PREFIX = "seen_";
+// Values hold zero bytes, so they are stored as blobs; string writes stop at the first zero.
+const char* const NODES_CREATED_KEY = "created";
+const char* const SEEN_COUNT_KEY = "peer_count";
+const char* const SEEN_MAC_PREFIX = "peer_";
 
 std::string seenKey(size_t index) {
     return SEEN_MAC_PREFIX + std::to_string(index);
@@ -34,7 +35,7 @@ std::string encodeUint32(uint32_t value) {
 
 NodeNetworkStats::NodeNetworkStats(StorageInterface* storage) : storage(storage) {
     nodesCreated =
-        decodeUint32(storage->read(NODE_NETWORK_STATS_PREFS_NAMESPACE, NODES_CREATED_KEY, ""));
+    decodeUint32(storage->readBlob(NODE_NETWORK_STATS_PREFS_NAMESPACE, NODES_CREATED_KEY));
 }
 
 uint32_t NodeNetworkStats::getNodesCreated() const {
@@ -44,7 +45,8 @@ uint32_t NodeNetworkStats::getNodesCreated() const {
 bool NodeNetworkStats::hasSeenPeer(const uint8_t peerMac[6]) const {
     const size_t seenCount = storage->readUChar(NODE_NETWORK_STATS_PREFS_NAMESPACE, SEEN_COUNT_KEY, 0);
     for (size_t index = 0; index < seenCount; index++) {
-        const std::string encoded = storage->read(NODE_NETWORK_STATS_PREFS_NAMESPACE, seenKey(index), "");
+        const std::string encoded =
+        storage->readBlob(NODE_NETWORK_STATS_PREFS_NAMESPACE, seenKey(index));
         if (encoded.size() == 6 && memcmp(encoded.data(), peerMac, 6) == 0) {
             return true;
         }
@@ -58,13 +60,14 @@ void NodeNetworkStats::markPeerSeen(const uint8_t peerMac[6]) {
         return;
     }
     const std::string encoded(reinterpret_cast<const char*>(peerMac), 6);
-    storage->write(NODE_NETWORK_STATS_PREFS_NAMESPACE, seenKey(seenCount), encoded);
+    storage->writeBlob(NODE_NETWORK_STATS_PREFS_NAMESPACE, seenKey(seenCount), encoded);
     storage->writeUChar(NODE_NETWORK_STATS_PREFS_NAMESPACE, SEEN_COUNT_KEY,
                         static_cast<uint8_t>(seenCount + 1));
 }
 
 void NodeNetworkStats::persistCount() {
-    storage->write(NODE_NETWORK_STATS_PREFS_NAMESPACE, NODES_CREATED_KEY, encodeUint32(nodesCreated));
+    storage->writeBlob(NODE_NETWORK_STATS_PREFS_NAMESPACE, NODES_CREATED_KEY,
+                       encodeUint32(nodesCreated));
 }
 
 bool NodeNetworkStats::recordSuccessfulUploadPartner(const uint8_t peerMac[6]) {

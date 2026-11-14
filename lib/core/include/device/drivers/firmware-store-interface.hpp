@@ -30,6 +30,8 @@ public:
     virtual bool readRunningImage(size_t offset, uint8_t* out, size_t length) const = 0;
     /** The running image's identity: the SHA-256 of the ELF it was built from. */
     virtual void getRunningImageId(uint8_t out[32]) const = 0;
+    /** True when the running image was installed by an update and this is its first boot. */
+    virtual bool bootedFromUpdate() const = 0;
 
     /** Restarts the device; does not return on hardware. */
     virtual void restart() = 0;

@@ -195,6 +195,14 @@ public:
         return this;
     }
 
+    Display* drawImageInverted(Image image, int xStart, int yStart) override {
+        currentImage_ = image;
+        const int x = xStart != -1 ? xStart : image.defaultStartX;
+        const int y = yStart != -1 ? yStart : image.defaultStartY;
+        decodeXBMToBuffer(image.rawImage, image.width, image.height, x, y, true);
+        return this;
+    }
+
     int getTextWidth(const char* text) override {
         if (text == nullptr) return 0;
         // Native font is 5px glyphs + 1px spacing. See FONT_5X7 table above.
@@ -362,7 +370,8 @@ private:
      * XBM format: LSB-first, row-major, ceil(width/8) bytes per row.
      * This mirrors what U8g2's drawXBMP() does on the ESP32.
      */
-    void decodeXBMToBuffer(const unsigned char* data, int imgWidth, int imgHeight, int offsetX, int offsetY) {
+    void decodeXBMToBuffer(const unsigned char* data, int imgWidth, int imgHeight, int offsetX, int offsetY,
+                           bool inverted = false) {
         if (!data) return;
         int bytesPerRow = (imgWidth + 7) / 8;
         for (int row = 0; row < imgHeight; row++) {
@@ -370,7 +379,9 @@ private:
                 int byteIndex = row * bytesPerRow + col / 8;
                 int bitIndex = col % 8;  // LSB first
                 bool pixelOn = (data[byteIndex] >> bitIndex) & 1;
-                if (pixelOn) {
+                if (inverted) {
+                    setPixel(offsetX + col, offsetY + row, !pixelOn);
+                } else if (pixelOn) {
                     setPixel(offsetX + col, offsetY + row, true);
                 }
             }

@@ -10,11 +10,11 @@ public:
     /** Borrows firmwareUpdateManager; its owner pumps sync(). */
     FirmwareUpdate(int stateId, FirmwareUpdateManager* firmwareUpdateManager);
 
-    /** Starts distributing this device's own running image. */
+    /** Starts distributing this device's own running image and blinks the transmit light. */
     void onStateMounted(Device* device) override;
     /** Returns to the host once the seed run ends or fails to start. */
     void onStateLoop(Device* device) override;
-    /** Resets the transition flag; the seed run belongs to firmwareUpdateManager. */
+    /** Stops the lights and resets the transition flag; the seed run belongs to firmwareUpdateManager. */
     void onStateDismounted(Device* device) override;
 
     /** True once the seed run has ended. */

@@ -56,6 +56,8 @@ public:
     }
     /** The id given to setRunningImage. */
     void getRunningImageId(uint8_t out[32]) const override { std::memcpy(out, runningId, 32); }
+    /** The value of updatedImage. */
+    bool bootedFromUpdate() const override { return updatedImage; }
     /** Records the call instead of restarting. */
     void restart() override { restarted = true; }
 
@@ -75,6 +77,7 @@ public:
     int abortCalls = 0;
     bool bootSet = false;
     bool restarted = false;
+    bool updatedImage = false;
 
 private:
     std::vector<uint8_t> runningImage;

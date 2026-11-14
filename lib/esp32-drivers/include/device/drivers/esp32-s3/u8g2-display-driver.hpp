@@ -83,7 +83,22 @@ public:
             y = yStart;
         }
 
+        // Images are always solid; an XOR color left by an inverted text mode would cancel
+        // the pixels of overlapping images.
+        u8g2_SetDrawColor(&screen, 1);
         u8g2_DrawXBMP(&screen, x, y, image.width, image.height, image.rawImage);
+        u8g2_SetDrawColor(&screen, drawColor);
+        return this;
+    }
+
+    Display* drawImageInverted(Image image, int xStart, int yStart) override {
+        const int x = xStart != -1 ? xStart : image.defaultStartX;
+        const int y = yStart != -1 ? yStart : image.defaultStartY;
+        u8g2_SetDrawColor(&screen, 1);
+        u8g2_DrawBox(&screen, x, y, image.width, image.height);
+        u8g2_SetDrawColor(&screen, 0);
+        u8g2_DrawXBMP(&screen, x, y, image.width, image.height, image.rawImage);
+        u8g2_SetDrawColor(&screen, drawColor);
         return this;
     }
 
@@ -114,32 +129,32 @@ public:
         switch (mode) {
             case FontMode::TEXT:
                 u8g2_SetFont(&screen, u8g2_font_tenfatguys_tr);
-                u8g2_SetDrawColor(&screen, 1);
+                setDrawColor(1);
                 u8g2_SetFontMode(&screen, 0);
                 break;
             case FontMode::NUMBER_GLYPH:
                 u8g2_SetFont(&screen, u8g2_font_twelvedings_t_all);
-                u8g2_SetDrawColor(&screen, 1);
+                setDrawColor(1);
                 u8g2_SetFontMode(&screen, 0);
                 break;
             case FontMode::LOADING_GLYPH:
                 u8g2_SetFont(&screen, u8g2_font_unifont_t_76);
-                u8g2_SetDrawColor(&screen, 1);
+                setDrawColor(1);
                 u8g2_SetFontMode(&screen, 0);
                 break;
             case FontMode::TEXT_INVERTED_SMALL:
                 u8g2_SetFont(&screen, u8g2_font_tenthinnerguys_t_all);
                 u8g2_SetFontMode(&screen, 1);
-                u8g2_SetDrawColor(&screen, 2);
+                setDrawColor(2);
                 break;
             case FontMode::TEXT_INVERTED_LARGE:
                 u8g2_SetFont(&screen, u8g2_font_tenfatguys_tr);
                 u8g2_SetFontMode(&screen, 1);
-                u8g2_SetDrawColor(&screen, 2);
+                setDrawColor(2);
                 break;
             case FontMode::SYMBOL_GLYPH:
                 u8g2_SetFont(&screen, u8g2_font_open_iconic_all_4x_t);
-                u8g2_SetDrawColor(&screen, 2);
+                setDrawColor(2);
                 u8g2_SetFontMode(&screen, 1);
                 break;
         }
@@ -149,27 +164,32 @@ public:
     Display* whiteScreen() override {
         u8g2_ClearBuffer(&screen);
         u8g2_SetFontMode(&screen, 0);
-        u8g2_SetDrawColor(&screen, 1);
+        setDrawColor(1);
         u8g2_DrawBox(&screen, 0, 0, u8g2_GetDisplayWidth(&screen), u8g2_GetDisplayHeight(&screen));
         return this;
     }
 
     Display* whiteScreenLeftHalf() override {
         u8g2_SetFontMode(&screen, 0);
-        u8g2_SetDrawColor(&screen, 1);
+        setDrawColor(1);
         u8g2_DrawBox(&screen, 0, 0, u8g2_GetDisplayWidth(&screen) / 2, u8g2_GetDisplayHeight(&screen));
         return this;
     }
 
     Display* whiteScreenRightHalf() override {
         u8g2_SetFontMode(&screen, 0);
-        u8g2_SetDrawColor(&screen, 1);
+        setDrawColor(1);
         u8g2_DrawBox(&screen, u8g2_GetDisplayWidth(&screen) / 2, 0,
                      u8g2_GetDisplayWidth(&screen) / 2, u8g2_GetDisplayHeight(&screen));
         return this;
     }
 
 private:
+    void setDrawColor(uint8_t color) {
+        drawColor = color;
+        u8g2_SetDrawColor(&screen, color);
+    }
+
     // Board wiring. Only cs/dc/reset vary per panel, so those are constructor
     // arguments and these are not.
     static constexpr uint8_t DISPLAY_SCLK_PIN = 12;
@@ -179,5 +199,6 @@ private:
 
     SetupFunction setup;
     u8g2_t screen = {};
+    uint8_t drawColor = 1;
     U8g2Esp32SpiContext context = {};
 };

@@ -57,6 +57,7 @@ public:
         runningImagePending = runningPartition != nullptr &&
                               esp_ota_get_state_partition(runningPartition, &state) == ESP_OK &&
                               state == ESP_OTA_IMG_PENDING_VERIFY;
+        bootedPending = runningImagePending;
         guardingPendingImage = runningImagePending && esp_task_wdt_add(nullptr) == ESP_OK;
         if (runningImagePending && !guardingPendingImage) {
             LOG_E(TAG, "could not put the main task on the task watchdog");
@@ -141,6 +142,9 @@ public:
         std::memcpy(out, esp_app_get_description()->app_elf_sha256, 32);
     }
 
+    /** Pending-verify at boot: set only by esp_ota_set_boot_partition, never by a serial flash. */
+    bool bootedFromUpdate() const override { return bootedPending; }
+
     /** Nothing to set up beyond the constructor. */
     int initialize() override { return 0; }
 
@@ -212,5 +216,7 @@ private:
     esp_ota_handle_t otaHandle = 0;
     SimpleTimer confirmTimer;
     bool runningImagePending = false;
+    // runningImagePending clears at the confirm; this keeps the boot's answer.
+    bool bootedPending = false;
     bool guardingPendingImage = false;
 };

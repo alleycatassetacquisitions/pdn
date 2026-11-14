@@ -15,7 +15,8 @@ NodeNetwork::NodeNetwork(Device* pdn, NodeNetworkWirelessManager* nodeNetworkWir
                                       nodeNetworkWirelessManager, pdn->getRemoteDeviceCoordinator(),
                                       SimpleTimer::getPlatformClock()))
     , nodeNetworkStats(new NodeNetworkStats(pdn->getStorage())) {
-    nodeNetworkWirelessManager->initialize(pdn->getWirelessManager());
+    nodeNetworkWirelessManager->initialize(pdn->getWirelessManager(),
+                                           SimpleTimer::getPlatformClock());
     pdn->getWirelessManager()->setEspNowPacketHandler(
         PktType::kNodeNetworkCommand,
         [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
@@ -58,6 +59,8 @@ void NodeNetwork::populateStateMap() {
     NodeIdle* idle = new NodeIdle(player, matchManager, nodeNetworkStats, rdc);
     NodeDuelCountdown* duelCountdown = new NodeDuelCountdown(matchManager, rdc);
     NodeDuel* duel = new NodeDuel(matchManager, rdc);
+    NodeScore* score = new NodeScore(matchManager);
+    NodeError* error = new NodeError(matchManager);
     NodeWin* win = new NodeWin(matchManager);
     NodeLinkRetry* linkRetry = new NodeLinkRetry(matchManager);
     NodeUploadMatches* upload = new NodeUploadMatches(wireless, matchManager, nodeNetworkStats);
@@ -79,13 +82,20 @@ void NodeNetwork::populateStateMap() {
         new StateTransition([duelCountdown]() { return duelCountdown->shallWeBattle(); }, duel));
     duelCountdown->addTransition(new StateTransition(
         [duelCountdown]() { return duelCountdown->disconnectedBackToIdle(); }, idle));
+    duelCountdown->addTransition(
+    new StateTransition([duelCountdown]() { return duelCountdown->abortedToError(); }, error));
 
-    duel->addTransition(
-        new StateTransition([duel]() { return duel->transitionToWin(); }, win));
-    duel->addTransition(
-        new StateTransition([duel]() { return duel->transitionToLinkRetry(); }, linkRetry));
+    duel->addTransition(new StateTransition([duel]() { return duel->transitionToScore(); }, score));
     duel->addTransition(
         new StateTransition([duel]() { return duel->disconnectedBackToIdle(); }, idle));
+    duel->addTransition(new StateTransition([duel]() { return duel->abortedToError(); }, error));
+
+    error->addTransition(
+    new StateTransition([error]() { return error->transitionToIdle(); }, idle));
+
+    score->addTransition(new StateTransition([score]() { return score->transitionToWin(); }, win));
+    score->addTransition(
+    new StateTransition([score]() { return score->transitionToLinkRetry(); }, linkRetry));
 
     win->addTransition(new StateTransition([win]() { return win->transitionToUpload(); }, upload));
 
@@ -116,6 +126,8 @@ void NodeNetwork::populateStateMap() {
     stateMap.push_back(idle);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);
+    stateMap.push_back(score);
+    stateMap.push_back(error);
     stateMap.push_back(win);
     stateMap.push_back(linkRetry);
     stateMap.push_back(upload);
@@ -123,6 +135,11 @@ void NodeNetwork::populateStateMap() {
     stateMap.push_back(awaken);
     stateMap.push_back(symbol);
     stateMap.push_back(symbolMatched);
+}
+
+void NodeNetwork::onStateLoop(Device* pdn) {
+    nodeNetworkWirelessManager->update();
+    StateMachine::onStateLoop(pdn);
 }
 
 PlayerProvider* NodeNetwork::getPlayerProvider() const {

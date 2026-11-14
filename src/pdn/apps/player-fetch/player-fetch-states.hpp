@@ -20,6 +20,7 @@ constexpr int FIRMWARE_UPDATE = 31;
 
 constexpr const char DEMO_PIN[] = "0000";
 constexpr unsigned long PLAYER_FETCH_FIRMWARE_HOLD_MS = 5000;
+constexpr unsigned long PLAYER_FETCH_UPDATE_FAILED_MS = 5000;
 constexpr int USER_DATA_FETCH_TIMEOUT_MS = 10000;
 constexpr int FETCH_FAILURE_PAGE_TIMEOUT_MS = 3000;
 constexpr int WELCOME_MESSAGE_TIMEOUT_MS = 5000;
@@ -45,10 +46,28 @@ public:
     bool transitionToFirmwareUpdate() const;
 
 private:
+    // What the screen and lights show for firmware updates; PAIRING is the code entry itself.
+    enum class UpdateView : uint8_t {
+        PAIRING,
+        RECEIVING,
+        FAILED,
+    };
+
+    void syncUpdateFeedback(PDN* pdn);
+    void showPairing(PDN* pdn);
+    void showPairingLights(PDN* pdn);
+    void showReceiving(PDN* pdn, uint8_t percent);
+    void showUpdateFailed(PDN* pdn);
+    void startLights(PDN* pdn, AnimationBase* animation);
+
     bool transitionToFetchUserState = false;
     bool transitionToChooseTeamState = false;
     bool transitionToFirmwareUpdateState = false;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
+    UpdateView updateView = UpdateView::PAIRING;
+    uint8_t shownPercent = 0;
+    bool ownsLights = false;
+    SimpleTimer updateFailedTimer;
     SimpleTimer sinceMount;
     bool shouldRender = false;
     PlayerProvider* playerProvider = nullptr;

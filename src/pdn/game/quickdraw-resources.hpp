@@ -10,7 +10,7 @@
 typedef std::map<ImageType, Image> ImageCollection;
 
 inline const ImageCollection alleycatImageCollection = {
-    {ImageType::LOGO_RIGHT, Image(image_logo_alley, 128, 64, 64, 0)},
+{ImageType::LOGO_RIGHT, Image(image_logo_alley, 128, 64, 64, 0)},
 {ImageType::LOGO_LEFT, Image(image_logo_alley, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_alley_0, 128, 64, 0, 0)},
 {ImageType::STAMP, Image(image_alley_stamp, 128, 64, 64, 0)},
@@ -21,11 +21,13 @@ inline const ImageCollection alleycatImageCollection = {
 {ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
 {ImageType::WIN, Image(image_alley_victor, 64, 64, 64, 0)},
 {ImageType::LOSE, Image(image_alley_loser, 64, 64, 64, 0)},
+{ImageType::PRIMARY_BUTTON, Image(primary_button, 64, 64, 32, 0)},
+{ImageType::SECONDARY_BUTTON, Image(secondary_button, 64, 64, 32, 0)},
 };
 
 inline const ImageCollection helixImageCollection = {
-    {ImageType::LOGO_RIGHT, Image(image_logo_helix, 128, 64, 64, 0)},
-    {ImageType::LOGO_LEFT, Image(image_logo_helix, 128, 64, 0, 0)},
+{ImageType::LOGO_RIGHT, Image(image_logo_helix, 128, 64, 64, 0)},
+{ImageType::LOGO_LEFT, Image(image_logo_helix, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_helix_0, 128, 64, 0, 0)},
 {ImageType::STAMP, Image(image_helix_stamp, 128, 64, 64, 0)},
 {ImageType::CONNECT, Image(image_helix_connect, 128, 64, 0, 0)},
@@ -35,10 +37,12 @@ inline const ImageCollection helixImageCollection = {
 {ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
 {ImageType::WIN, Image(image_helix_victor, 64, 64, 64, 0)},
 {ImageType::LOSE, Image(image_helix_loser, 64, 64, 64, 0)},
+{ImageType::PRIMARY_BUTTON, Image(primary_button, 64, 64, 32, 0)},
+{ImageType::SECONDARY_BUTTON, Image(secondary_button, 64, 64, 32, 0)},
 };
 
 inline const ImageCollection endlineImageCollection = {
-    {ImageType::LOGO_RIGHT, Image(image_logo_endline, 128, 64, 64, 0)},
+{ImageType::LOGO_RIGHT, Image(image_logo_endline, 128, 64, 64, 0)},
 {ImageType::LOGO_LEFT, Image(image_logo_endline, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_endline_0, 128, 64, 0, 0)},
 {ImageType::STAMP, Image(image_endline_stamp, 128, 64, 64, 0)},
@@ -49,10 +53,12 @@ inline const ImageCollection endlineImageCollection = {
 {ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
 {ImageType::WIN, Image(image_endline_victor, 64, 64, 64, 0)},
 {ImageType::LOSE, Image(image_endline_loser, 64, 64, 64, 0)},
+{ImageType::PRIMARY_BUTTON, Image(primary_button, 64, 64, 32, 0)},
+{ImageType::SECONDARY_BUTTON, Image(secondary_button, 64, 64, 32, 0)},
 };
 
 inline const ImageCollection resistanceImageCollection = {
-    {ImageType::LOGO_RIGHT, Image(image_resistance_stamp, 128, 64, 64, 0)},
+{ImageType::LOGO_RIGHT, Image(image_resistance_stamp, 128, 64, 64, 0)},
 {ImageType::LOGO_LEFT, Image(image_resistance_stamp, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_resistance_0, 128, 64, 0, 0)},
 {ImageType::STAMP, Image(image_resistance_stamp, 128, 64, 64, 0)},
@@ -63,6 +69,8 @@ inline const ImageCollection resistanceImageCollection = {
 {ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
 {ImageType::WIN, Image(image_resistance_victor, 64, 64, 64, 0)},
 {ImageType::LOSE, Image(image_resistance_loser, 64, 64, 64, 0)},
+{ImageType::PRIMARY_BUTTON, Image(primary_button, 64, 64, 32, 0)},
+{ImageType::SECONDARY_BUTTON, Image(secondary_button, 64, 64, 32, 0)},
 };
 
 // Equivalent LEDColor palettes (derived from FastLED HTML colors in crgb.h):

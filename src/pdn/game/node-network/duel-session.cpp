@@ -1,12 +1,7 @@
 #include "game/node-network/duel-session.hpp"
 
 #include <cstring>
-
-namespace {
-size_t slotIndex(DuelLinkSide side) {
-    return side == DuelLinkSide::INITIATOR ? 0 : 1;
-}
-}  // namespace
+#include <initializer_list>
 
 void DuelSession::prime(DuelLinkSide localSide, const UUIDBytes& matchId, const uint8_t* opponentMac,
                         const DuelParticipant& localParticipant, int64_t occurredAtUnixMs) {
@@ -77,91 +72,176 @@ void DuelSession::setOccurredAtUnixMs(int64_t occurredAtUnixMs) {
     this->occurredAtUnixMs = occurredAtUnixMs;
 }
 
-DuelLinkSide DuelSession::getRemoteSide() const {
+DuelLinkSide DuelSession::getOpponentSide() const {
     return localSide == DuelLinkSide::INITIATOR ? DuelLinkSide::RESPONDER : DuelLinkSide::INITIATOR;
 }
 
-bool DuelSession::recordDrawTime(DuelLinkSide side, uint64_t drawTimeMs) {
-    const size_t index = slotIndex(side);
-    if (drawTimePresent[index]) {
+void DuelSession::recordSyncSample(int32_t offsetMs, uint32_t roundTripMs) {
+    if (syncSampleKnown && roundTripMs >= syncRoundTripMs) {
+        return;
+    }
+    syncSampleKnown = true;
+    syncOffsetMs = offsetMs;
+    syncRoundTripMs = roundTripMs;
+}
+
+bool DuelSession::hasSyncSample() const { return syncSampleKnown; }
+
+int32_t DuelSession::getSyncOffsetMs() const { return syncOffsetMs; }
+
+uint32_t DuelSession::getSyncRoundTripMs() const { return syncRoundTripMs; }
+
+bool DuelSession::setSequence(const NodeInputSequence& sequence, uint32_t stepZeroAtMs) {
+    if (sequenceKnown) {
         return false;
     }
-    drawTimePresent[index] = true;
-    drawTimes[index] = drawTimeMs;
+    this->sequence = sequence;
+    this->stepZeroAtMs = stepZeroAtMs;
+    sequenceKnown = true;
     return true;
 }
 
-bool DuelSession::hasDrawTime(DuelLinkSide side) const {
-    return drawTimePresent[slotIndex(side)];
-}
+bool DuelSession::hasSequence() const { return sequenceKnown; }
 
-uint64_t DuelSession::getDrawTime(DuelLinkSide side) const {
-    return drawTimes[slotIndex(side)];
-}
+const NodeInputSequence& DuelSession::getSequence() const { return sequence; }
 
-bool DuelSession::recordLocalDrawTimeMs(uint64_t drawTimeMs) {
-    return recordDrawTime(localSide, drawTimeMs);
-}
+uint32_t DuelSession::getStepZeroAtMs() const { return stepZeroAtMs; }
 
-bool DuelSession::recordRemoteDrawTimeMs(uint64_t drawTimeMs) {
-    return recordDrawTime(getRemoteSide(), drawTimeMs);
-}
-
-bool DuelSession::hasLocalDrawTime() const {
-    return hasDrawTime(localSide);
-}
-
-bool DuelSession::hasRemoteDrawTime() const {
-    return hasDrawTime(getRemoteSide());
-}
-
-bool DuelSession::hasInitiatorDrawTime() const {
-    return hasDrawTime(DuelLinkSide::INITIATOR);
-}
-
-bool DuelSession::hasResponderDrawTime() const {
-    return hasDrawTime(DuelLinkSide::RESPONDER);
-}
-
-uint64_t DuelSession::getInitiatorDrawTimeMs() const {
-    return getDrawTime(DuelLinkSide::INITIATOR);
-}
-
-uint64_t DuelSession::getResponderDrawTimeMs() const {
-    return getDrawTime(DuelLinkSide::RESPONDER);
-}
-
-void DuelSession::setOpponentNeverPressed() {
-    opponentNeverPressed = true;
-}
-
-void DuelSession::setGraceExpiredWithoutPress() {
-    graceExpiredWithoutPress = true;
-}
-
-bool DuelSession::didOpponentNeverPress() const {
-    return opponentNeverPressed;
-}
-
-bool DuelSession::didGraceExpireWithoutPress() const {
-    return graceExpiredWithoutPress;
-}
-
-bool DuelSession::isExchangeComplete() const {
-    if (hasInitiatorDrawTime() && hasResponderDrawTime()) {
-        return true;
+const NodePrompt& DuelSession::getPrompt(uint8_t step, DuelLinkSide side) const {
+    static const NodePrompt NO_PROMPT;
+    if (step >= NODE_SEQUENCE_LENGTH) {
+        return NO_PROMPT;
     }
-    if (graceExpiredWithoutPress) {
-        return true;
+    const NodeInput& input = sequence.inputs[step];
+    return side == DuelLinkSide::INITIATOR ? input.initiator : input.responder;
+}
+
+bool DuelSession::presses(uint8_t step, DuelLinkSide side) const {
+    return sequenceKnown && getPrompt(step, side).count > 0;
+}
+
+bool DuelSession::isLocalPresser(uint8_t step) const { return presses(step, localSide); }
+
+bool DuelSession::isOpponentPresser(uint8_t step) const { return presses(step, getOpponentSide()); }
+
+NodeStepResult& DuelSession::partResult(uint8_t step, DuelLinkSide side) {
+    return side == DuelLinkSide::INITIATOR ? initiatorResults[step] : responderResults[step];
+}
+
+NodeStepResult DuelSession::getPartResult(uint8_t step, DuelLinkSide side) const {
+    return side == DuelLinkSide::INITIATOR ? initiatorResults[step] : responderResults[step];
+}
+
+bool DuelSession::recordStepResult(uint8_t step, DuelLinkSide side, bool success) {
+    if (!presses(step, side) || getPartResult(step, side) != NodeStepResult::PENDING) {
+        return false;
     }
-    return opponentNeverPressed && hasLocalDrawTime();
+    partResult(step, side) = success ? NodeStepResult::SUCCESS : NodeStepResult::FAILED;
+    return true;
+}
+
+NodeStepResult DuelSession::getStepResult(uint8_t step) const {
+    if (!sequenceKnown || step >= NODE_SEQUENCE_LENGTH) {
+        return NodeStepResult::PENDING;
+    }
+    bool pending = false;
+    for (DuelLinkSide side : {DuelLinkSide::INITIATOR, DuelLinkSide::RESPONDER}) {
+        if (!presses(step, side)) {
+            continue;
+        }
+        const NodeStepResult part = getPartResult(step, side);
+        if (part == NodeStepResult::FAILED) {
+            return NodeStepResult::FAILED;
+        }
+        pending = pending || part == NodeStepResult::PENDING;
+    }
+    return pending ? NodeStepResult::PENDING : NodeStepResult::SUCCESS;
+}
+
+bool DuelSession::hasPartResult(uint8_t step, DuelLinkSide side) const {
+    return presses(step, side) && getPartResult(step, side) != NodeStepResult::PENDING;
+}
+
+void DuelSession::recordOpponentPresses(uint8_t step, uint8_t count) {
+    if (step < NODE_SEQUENCE_LENGTH && count > opponentPresses[step]) {
+        opponentPresses[step] = count;
+    }
+}
+
+uint8_t DuelSession::getOpponentPresses(uint8_t step) const {
+    return step < NODE_SEQUENCE_LENGTH ? opponentPresses[step] : 0;
+}
+
+bool DuelSession::hasStepResult(uint8_t step) const {
+    return getStepResult(step) != NodeStepResult::PENDING;
+}
+
+bool DuelSession::allStepsResolved() const {
+    for (uint8_t step = 0; step < NODE_SEQUENCE_LENGTH; step++) {
+        if (!hasStepResult(step)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void DuelSession::markSequenceDelivered() { sequenceDelivered = true; }
+
+bool DuelSession::isSequenceDelivered() const { return sequenceDelivered; }
+
+void DuelSession::markSequenceUndelivered() { sequenceUndelivered = true; }
+
+bool DuelSession::isSequenceUndelivered() const { return sequenceUndelivered; }
+
+void DuelSession::markOutcomeDelivered() { outcomeDelivered = true; }
+
+bool DuelSession::isOutcomeDelivered() const { return outcomeDelivered; }
+
+void DuelSession::markOutcomeUndelivered() { outcomeUndelivered = true; }
+
+bool DuelSession::isOutcomeUndelivered() const { return outcomeUndelivered; }
+
+uint8_t DuelSession::countSuccesses(DuelLinkSide side) const {
+    uint8_t count = 0;
+    for (uint8_t step = 0; step < NODE_SEQUENCE_LENGTH; step++) {
+        if (getStepResult(step) != NodeStepResult::SUCCESS) {
+            continue;
+        }
+        const DuelLinkSide credited = sequence.inputs[step].initiator.count > 0
+                                      ? DuelLinkSide::INITIATOR
+                                      : DuelLinkSide::RESPONDER;
+        if (credited == side) {
+            count++;
+        }
+    }
+    return count;
+}
+
+void DuelSession::setOutcome(uint8_t initiatorScore, uint8_t responderScore) {
+    this->initiatorScore = initiatorScore;
+    this->responderScore = responderScore;
+    outcomeKnown = true;
+}
+
+bool DuelSession::isOutcomeKnown() const { return outcomeKnown; }
+
+uint8_t DuelSession::getInitiatorScore() const { return initiatorScore; }
+
+uint8_t DuelSession::getResponderScore() const { return responderScore; }
+
+uint8_t DuelSession::getBestKnownScore() const {
+    if (outcomeKnown) {
+        return initiatorScore + responderScore;
+    }
+    return countSuccesses(DuelLinkSide::INITIATOR) + countSuccesses(DuelLinkSide::RESPONDER);
+}
+
+bool DuelSession::isRoundSuccess() const {
+    return outcomeKnown && initiatorScore + responderScore >= NODE_SUCCESS_THRESHOLD;
 }
 
 bool DuelSession::tryBuildUploadRecord(QuickdrawMatchRecord& record) const {
-    if (!active || !handshakeComplete || !opponentParticipantKnown) {
-        return false;
-    }
-    if (!hasInitiatorDrawTime() || !hasResponderDrawTime()) {
+    if (!active || !handshakeComplete || !opponentParticipantKnown || !outcomeKnown) {
         return false;
     }
     if (localParticipant.playerId.isZero() || opponentParticipant.playerId.isZero()) {
@@ -179,8 +259,8 @@ bool DuelSession::tryBuildUploadRecord(QuickdrawMatchRecord& record) const {
     built.playerATeamId = initiator.teamId;
     built.playerBTeamId = responder.teamId;
     built.winnerPlayerId = initiator.playerId;
-    built.playerADrawTimeMs = getInitiatorDrawTimeMs();
-    built.playerBDrawTimeMs = getResponderDrawTimeMs();
+    built.playerADrawTimeMs = initiatorScore;
+    built.playerBDrawTimeMs = responderScore;
     built.occurredAtUnixMs = occurredAtUnixMs;
     record = built;
     return true;

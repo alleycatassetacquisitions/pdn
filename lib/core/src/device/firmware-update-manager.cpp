@@ -27,7 +27,8 @@ size_t chunkLength(uint32_t imageLength, uint16_t index) {
 
 FirmwareUpdateManager::FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore)
     : peerComms(peerComms)
-    , firmwareStore(firmwareStore) {
+    , firmwareStore(firmwareStore)
+    , freshlyUpdated(firmwareStore->bootedFromUpdate()) {
     peerComms->setPacketHandler(
         PktType::kFirmwareUpdate,
         [this](const uint8_t*, const uint8_t* data, size_t length, void*) {
@@ -96,11 +97,13 @@ void FirmwareUpdateManager::writeChunk(uint16_t index, const uint8_t* data, size
 void FirmwareUpdateManager::commit() {
     if (!firmwareStore->writeAt(0, chunkZero.data(), chunkZero.size())) {
         stopReceiving();
+        receiveFailed = true;
         return;
     }
     if (!firmwareStore->finishWrite()) {
         LOG_E(TAG, "image refused");
         receive = Receive::REFUSED;
+        receiveFailed = true;
         return;
     }
     LOG_I(TAG, "image accepted; restarting into it");
@@ -140,10 +143,36 @@ bool FirmwareUpdateManager::isSeeding() const {
     return passesLeft != 0;
 }
 
+bool FirmwareUpdateManager::isReceiving() const {
+    return receive == Receive::WRITING;
+}
+
+uint8_t FirmwareUpdateManager::receivePercent() const {
+    if (!isReceiving() || receiveChunkCount == 0) {
+        return 0;
+    }
+    return static_cast<uint8_t>(static_cast<uint32_t>(chunksWritten) * 100 / receiveChunkCount);
+}
+
+bool FirmwareUpdateManager::takeReceiveFailure() {
+    const bool failed = receiveFailed;
+    receiveFailed = false;
+    return failed;
+}
+
+bool FirmwareUpdateManager::isFreshlyUpdated() const {
+    return freshlyUpdated;
+}
+
+void FirmwareUpdateManager::acknowledgeUpdate() {
+    freshlyUpdated = false;
+}
+
 void FirmwareUpdateManager::sync() {
     if (receive == Receive::WRITING && quietTimer.expired()) {
         LOG_W(TAG, "receive dropped with %u of %u chunks", chunksWritten, receiveChunkCount);
         stopReceiving();
+        receiveFailed = true;
     } else if (receive == Receive::WRITING && chunksWritten == receiveChunkCount) {
         // Here rather than on the last chunk, so a button press in the same pass is seen first.
         commit();

@@ -1078,6 +1078,14 @@ TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) {
     pairingCodeTakesUpdatesWhileUp(this);
 }
 
+TEST_F(IdleStateTests, pairingCodeBlinksAfterAnUpdateUntilLeft) {
+    pairingCodeBlinksAfterAnUpdateUntilLeft(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeShowsAFailedUpdate) {
+    pairingCodeShowsAFailedUpdate(this);
+}
+
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);
 }
@@ -1783,32 +1791,32 @@ TEST(DuelSession, duelSessionMatchesOnlyActiveOpponent) {
 TEST(DuelSession, duelSessionClearResetsEverything) {
     duelSessionClearResetsEverything();
 }
-TEST(DuelSession, duelSessionLocalInitiatorWritesInitiatorSlot) {
-    duelSessionLocalInitiatorWritesInitiatorSlot();
+TEST(DuelSession, duelSessionKeepsSyncSampleWithSmallestRoundTrip) {
+    duelSessionKeepsSyncSampleWithSmallestRoundTrip();
 }
-TEST(DuelSession, duelSessionLocalResponderWritesResponderSlot) {
-    duelSessionLocalResponderWritesResponderSlot();
+TEST(DuelSession, duelSessionSequenceMapsPresserToSide) { duelSessionSequenceMapsPresserToSide(); }
+TEST(DuelSession, duelSessionResponderMapsOwnIdToResponderSide) {
+    duelSessionResponderMapsOwnIdToResponderSide();
 }
-TEST(DuelSession, duelSessionRemoteDrawFillsOppositeSlot) {
-    duelSessionRemoteDrawFillsOppositeSlot();
+TEST(DuelSession, duelSessionBothPressStepHasTwoPressers) {
+    duelSessionBothPressStepHasTwoPressers();
 }
-TEST(DuelSession, duelSessionIgnoresDuplicateDraws) {
-    duelSessionIgnoresDuplicateDraws();
+TEST(DuelSession, duelSessionKeepsFirstSequence) { duelSessionKeepsFirstSequence(); }
+TEST(DuelSession, duelSessionKeepsFirstStepResult) { duelSessionKeepsFirstStepResult(); }
+TEST(DuelSession, duelSessionCountsSuccessesPerPresser) { duelSessionCountsSuccessesPerPresser(); }
+TEST(DuelSession, duelSessionBothPressStepNeedsBothParts) {
+    duelSessionBothPressStepNeedsBothParts();
 }
-TEST(DuelSession, duelSessionExchangeCompleteWhenBothTimesPresent) {
-    duelSessionExchangeCompleteWhenBothTimesPresent();
+TEST(DuelSession, duelSessionKeepsHighestOpponentPressCount) {
+    duelSessionKeepsHighestOpponentPressCount();
 }
-TEST(DuelSession, duelSessionExchangeIncompleteWithOnlyLocalTime) {
-    duelSessionExchangeIncompleteWithOnlyLocalTime();
+TEST(DuelSession, duelSessionRoundSucceedsAtThreshold) { duelSessionRoundSucceedsAtThreshold(); }
+TEST(DuelSession, duelSessionRoundFailsBelowThreshold) { duelSessionRoundFailsBelowThreshold(); }
+TEST(DuelSession, duelSessionRoundNeedsOutcomeToSucceed) {
+    duelSessionRoundNeedsOutcomeToSucceed();
 }
-TEST(DuelSession, duelSessionExchangeCompleteWhenOpponentNeverPressedAfterLocalPress) {
-    duelSessionExchangeCompleteWhenOpponentNeverPressedAfterLocalPress();
-}
-TEST(DuelSession, duelSessionOpponentNeverPressedWaitsForLocalPress) {
-    duelSessionOpponentNeverPressedWaitsForLocalPress();
-}
-TEST(DuelSession, duelSessionExchangeCompleteWhenGraceExpiresWithoutPress) {
-    duelSessionExchangeCompleteWhenGraceExpiresWithoutPress();
+TEST(DuelSession, duelSessionOutcomeOverridesLocalCount) {
+    duelSessionOutcomeOverridesLocalCount();
 }
 TEST(DuelSession, duelSessionRecordUsesInitiatorAsPlayerA) {
     duelSessionRecordUsesInitiatorAsPlayerA();
@@ -1816,15 +1824,13 @@ TEST(DuelSession, duelSessionRecordUsesInitiatorAsPlayerA) {
 TEST(DuelSession, duelSessionRecordMapsLocalInitiatorToPlayerA) {
     duelSessionRecordMapsLocalInitiatorToPlayerA();
 }
-TEST(DuelSession, duelSessionRecordWinnerIsInitiatorRegardlessOfTimes) {
-    duelSessionRecordWinnerIsInitiatorRegardlessOfTimes();
+TEST(DuelSession, duelSessionRecordWinnerIsInitiatorRegardlessOfScores) {
+    duelSessionRecordWinnerIsInitiatorRegardlessOfScores();
 }
 TEST(DuelSession, duelSessionRecordKeepsNilTeamNil) {
     duelSessionRecordKeepsNilTeamNil();
 }
-TEST(DuelSession, duelSessionRecordFailsWhenResponderTimeMissing) {
-    duelSessionRecordFailsWhenResponderTimeMissing();
-}
+TEST(DuelSession, duelSessionRecordFailsWithoutOutcome) { duelSessionRecordFailsWithoutOutcome(); }
 TEST(DuelSession, duelSessionRecordFailsBeforeHandshakeComplete) {
     duelSessionRecordFailsBeforeHandshakeComplete();
 }
@@ -1833,6 +1839,12 @@ TEST(DuelSession, duelSessionRecordFailsWhenOpponentIdIsNil) {
 }
 TEST(DuelSession, duelSessionTimestampCanBeCorrected) {
     duelSessionTimestampCanBeCorrected();
+}
+TEST(NodeInputSequence, nodeInputSequenceUsesRandomForKindButtonsAndSide) {
+    nodeInputSequenceUsesRandomForKindButtonsAndSide();
+}
+TEST(NodeInputSequence, nodeStepTimingDependsOnPromptLength) {
+    nodeStepTimingDependsOnPromptLength();
 }
 
 TEST(MatchStorage, matchStorageStartsEmpty) {
@@ -1878,17 +1890,41 @@ TEST(NodeNetworkWireless, nodeNetworkWirelessDeliversDecodedPacket) {
 TEST(NodeNetworkWireless, nodeNetworkWirelessDropsWrongLength) {
     nodeNetworkWirelessDropsWrongLength();
 }
-TEST(NodeNetworkWireless, nodeNetworkWirelessDropsWrongVersion) {
-    nodeNetworkWirelessDropsWrongVersion();
-}
 TEST(NodeNetworkWireless, nodeNetworkWirelessDropsUnknownCommand) {
     nodeNetworkWirelessDropsUnknownCommand();
+}
+TEST(NodeNetworkWireless, nodeNetworkWirelessAcceptsInputPress) {
+    nodeNetworkWirelessAcceptsInputPress();
 }
 TEST(NodeNetworkWireless, nodeNetworkWirelessSurvivesMissingCallback) {
     nodeNetworkWirelessSurvivesMissingCallback();
 }
 TEST(NodeNetworkWireless, nodeNetworkWirelessClearCallbacksStopsDelivery) {
     nodeNetworkWirelessClearCallbacksStopsDelivery();
+}
+TEST_F(NodeNetworkReliableSuite, nodeNetworkReliableSendMarksPacket) {
+    nodeNetworkReliableSendMarksPacket(this);
+}
+TEST_F(NodeNetworkReliableSuite, nodeNetworkReliableResendsUntilAcked) {
+    nodeNetworkReliableResendsUntilAcked(this);
+}
+TEST_F(NodeNetworkReliableSuite, nodeNetworkReliableReportsUndelivered) {
+    nodeNetworkReliableReportsUndelivered(this);
+}
+TEST_F(NodeNetworkReliableSuite, nodeNetworkReliableIgnoresAckFromOtherMac) {
+    nodeNetworkReliableIgnoresAckFromOtherMac(this);
+}
+TEST_F(NodeNetworkReliableSuite, nodeNetworkReliableRefusesWhenTableFull) {
+    nodeNetworkReliableRefusesWhenTableFull(this);
+}
+TEST_F(NodeNetworkReliableSuite, nodeNetworkReliableReceiverAcksAndDropsRepeats) {
+    nodeNetworkReliableReceiverAcksAndDropsRepeats(this);
+}
+TEST_F(NodeNetworkReliableSuite, nodeNetworkReliableAckIsNotDelivered) {
+    nodeNetworkReliableAckIsNotDelivered(this);
+}
+TEST_F(NodeNetworkReliableSuite, nodeNetworkUnreliablePacketIsNotAcked) {
+    nodeNetworkUnreliablePacketIsNotAcked(this);
 }
 
 TEST_F(MatchManagerV2TestSuite, matchManagerV2StartMatchSendsOffer) {
@@ -1984,77 +2020,143 @@ TEST_F(MatchManagerV2TestSuite, matchManagerV2InitiatorIgnoresCorrectionFromStra
 TEST_F(MatchManagerV2TestSuite, matchManagerV2InitiatorIgnoresNonPositiveCorrection) {
     matchManagerV2InitiatorIgnoresNonPositiveCorrection(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2LocalDrawIsRefusedBeforeHandshake) {
-    matchManagerV2LocalDrawIsRefusedBeforeHandshake(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2SyncProbeCarriesUptime) {
+    matchManagerV2SyncProbeCarriesUptime(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2LocalDrawRecordsAndSends) {
-    matchManagerV2LocalDrawRecordsAndSends(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2SyncReplyGivesOffsetAndRoundTrip) {
+    matchManagerV2SyncReplyGivesOffsetAndRoundTrip(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderDrawUsesResponderSide) {
-    matchManagerV2ResponderDrawUsesResponderSide(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2SlowSyncIsNotGoodEnough) {
+    matchManagerV2SlowSyncIsNotGoodEnough(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2SecondLocalDrawIsIgnored) {
-    matchManagerV2SecondLocalDrawIsIgnored(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2SyncReplyFromStrangerIsIgnored) {
+    matchManagerV2SyncReplyFromStrangerIsIgnored(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2RemoteDrawFillsOppositeSlot) {
-    matchManagerV2RemoteDrawFillsOppositeSlot(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2BeginRoundRefusedBeforeHandshake) {
+    matchManagerV2BeginRoundRefusedBeforeHandshake(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2DuplicateRemoteDrawIsIgnored) {
-    matchManagerV2DuplicateRemoteDrawIsIgnored(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2BeginRoundRefusedWithoutSync) {
+    matchManagerV2BeginRoundRefusedWithoutSync(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2RemoteDrawClaimingOwnSideIsIgnored) {
-    matchManagerV2RemoteDrawClaimingOwnSideIsIgnored(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2BeginRoundRefusedForResponder) {
+    matchManagerV2BeginRoundRefusedForResponder(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2RemoteDrawForOtherMatchIsIgnored) {
-    matchManagerV2RemoteDrawForOtherMatchIsIgnored(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2BeginRoundSendsReliableSequence) {
+    matchManagerV2BeginRoundSendsReliableSequence(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2RemoteDrawFromStrangerIsIgnored) {
-    matchManagerV2RemoteDrawFromStrangerIsIgnored(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2SequenceAckMarksDelivered) {
+    matchManagerV2SequenceAckMarksDelivered(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2RemoteDrawBeforeHandshakeIsIgnored) {
-    matchManagerV2RemoteDrawBeforeHandshakeIsIgnored(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2UndeliveredSequenceIsFlagged) {
+    matchManagerV2UndeliveredSequenceIsFlagged(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2RemoteNeverPressedRecordsTimeAndFlag) {
-    matchManagerV2RemoteNeverPressedRecordsTimeAndFlag(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2InitiatorRecordsResponderResult) {
+    matchManagerV2InitiatorRecordsResponderResult(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2LocalGraceExpirySendsNeverPressed) {
-    matchManagerV2LocalGraceExpirySendsNeverPressed(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2InitiatorIgnoresResultForItsOwnStep) {
+    matchManagerV2InitiatorIgnoresResultForItsOwnStep(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2LocalGraceExpiryIsRefusedAfterPress) {
-    matchManagerV2LocalGraceExpiryIsRefusedAfterPress(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2InitiatorIgnoresResultFromStranger) {
+    matchManagerV2InitiatorIgnoresResultFromStranger(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2SyncsInsideWindow) {
-    matchManagerV2SyncsInsideWindow(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2LateResultAfterExpiryStaysFailed) {
+    matchManagerV2LateResultAfterExpiryStaysFailed(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2SyncsAtExactWindowEdge) {
-    matchManagerV2SyncsAtExactWindowEdge(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2LocalResultRefusedForOpponentStep) {
+    matchManagerV2LocalResultRefusedForOpponentStep(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2SyncsAtWindowEdgeEitherDirection) {
-    matchManagerV2SyncsAtWindowEdgeEitherDirection(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2InitiatorLocalResultIsSentReliably) {
+    matchManagerV2InitiatorLocalResultIsSentReliably(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2FailsJustOutsideWindow) {
-    matchManagerV2FailsJustOutsideWindow(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2LocalPressIsSentUnreliably) {
+    matchManagerV2LocalPressIsSentUnreliably(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2FailsFarOutsideWindow) {
-    matchManagerV2FailsFarOutsideWindow(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2OpponentPressesAreRecorded) {
+    matchManagerV2OpponentPressesAreRecorded(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2DoesNotSyncWithoutRemoteTime) {
-    matchManagerV2DoesNotSyncWithoutRemoteTime(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2BothPressStepSucceedsOnlyWhenBothSucceed) {
+    matchManagerV2BothPressStepSucceedsOnlyWhenBothSucceed(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2DoesNotSyncWithoutSession) {
-    matchManagerV2DoesNotSyncWithoutSession(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2SequenceEncodesTwoButtonAndBothPrompts) {
+    matchManagerV2SequenceEncodesTwoButtonAndBothPrompts(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2FinishRoundFailsUnresolvedStepsAndSendsOutcome) {
+    matchManagerV2FinishRoundFailsUnresolvedStepsAndSendsOutcome(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2OutcomeKeepsResendingAfterConcluding) {
+    matchManagerV2OutcomeKeepsResendingAfterConcluding(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2OutcomeAckMarksDelivered) {
+    matchManagerV2OutcomeAckMarksDelivered(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2UndeliveredOutcomeIsFlagged) {
+    matchManagerV2UndeliveredOutcomeIsFlagged(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderAnswersSync) {
+    matchManagerV2ResponderAnswersSync(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderIgnoresSyncFromStranger) {
+    matchManagerV2ResponderIgnoresSyncFromStranger(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderStoresSequence) {
+    matchManagerV2ResponderStoresSequence(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderAbortsOnPastSequence) {
+    matchManagerV2ResponderAbortsOnPastSequence(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderAbortsOnFarFutureSequence) {
+    matchManagerV2ResponderAbortsOnFarFutureSequence(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderLocalResultIsSentReliably) {
+    matchManagerV2ResponderLocalResultIsSentReliably(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderViewerCannotReportResult) {
+    matchManagerV2ResponderViewerCannotReportResult(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderAbortsOnInvalidPrompts) {
+    matchManagerV2ResponderAbortsOnInvalidPrompts(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderRecordsInitiatorResult) {
+    matchManagerV2ResponderRecordsInitiatorResult(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderStoresOutcome) {
+    matchManagerV2ResponderStoresOutcome(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ResponderIgnoresImpossibleOutcome) {
+    matchManagerV2ResponderIgnoresImpossibleOutcome(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2AbortSendsAbortAndIsNotCounted) {
+    matchManagerV2AbortSendsAbortAndIsNotCounted(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2AbortFromOpponentClearsSession) {
+    matchManagerV2AbortFromOpponentClearsSession(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2AbortFromStrangerIsIgnored) {
+    matchManagerV2AbortFromStrangerIsIgnored(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2StartMatchClearsAbort) {
+    matchManagerV2StartMatchClearsAbort(this);
 }
 TEST_F(MatchManagerV2TestSuite, matchManagerV2FinalizeStoresRecordAndClearsSession) {
     matchManagerV2FinalizeStoresRecordAndClearsSession(this);
 }
-TEST_F(MatchManagerV2TestSuite, matchManagerV2FinalizeRefusedWhenNotSynced) {
-    matchManagerV2FinalizeRefusedWhenNotSynced(this);
+TEST_F(MatchManagerV2TestSuite, matchManagerV2FinalizeRefusedBelowThreshold) {
+    matchManagerV2FinalizeRefusedBelowThreshold(this);
 }
 TEST_F(MatchManagerV2TestSuite, matchManagerV2FinalizeRefusedWithoutSession) {
     matchManagerV2FinalizeRefusedWithoutSession(this);
 }
 TEST_F(MatchManagerV2TestSuite, matchManagerV2FinalizeRefusedWhenStorageWriteFails) {
     matchManagerV2FinalizeRefusedWhenStorageWriteFails(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ConcludeSuccessStoresAndRemembersScore) {
+    matchManagerV2ConcludeSuccessStoresAndRemembersScore(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ConcludeFailureCountsAttempt) {
+    matchManagerV2ConcludeFailureCountsAttempt(this);
+}
+TEST_F(MatchManagerV2TestSuite, matchManagerV2ConcludeWithoutOutcomeUsesLocalScoreAndFails) {
+    matchManagerV2ConcludeWithoutOutcomeUsesLocalScoreAndFails(this);
 }
 TEST_F(MatchManagerV2TestSuite, matchManagerV2ClearCurrentMatchLeavesStorageAlone) {
     matchManagerV2ClearCurrentMatchLeavesStorageAlone(this);
@@ -2083,8 +2185,14 @@ TEST_F(MatchManagerV2TestSuite, matchManagerV2FailedAttemptsAreNotStoredInRecord
 TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationHandshakeSharesIdentityAndTimestamp) {
     nodeNetworkIntegrationHandshakeSharesIdentityAndTimestamp(this);
 }
-TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationBothSidesAgreeOnSync) {
-    nodeNetworkIntegrationBothSidesAgreeOnSync(this);
+TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationSyncMeasuresUptimeOffset) {
+    nodeNetworkIntegrationSyncMeasuresUptimeOffset(this);
+}
+TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationBothRunTheSameSchedule) {
+    nodeNetworkIntegrationBothRunTheSameSchedule(this);
+}
+TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationBothSidesAgreeOnSuccess) {
+    nodeNetworkIntegrationBothSidesAgreeOnSuccess(this);
 }
 TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationBothSidesAgreeOnFailure) {
     nodeNetworkIntegrationBothSidesAgreeOnFailure(this);
@@ -2092,8 +2200,20 @@ TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationBothSidesAgreeOnFailur
 TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationBothDevicesStoreIdenticalRecords) {
     nodeNetworkIntegrationBothDevicesStoreIdenticalRecords(this);
 }
-TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationNeverPressedFailsBothSides) {
-    nodeNetworkIntegrationNeverPressedFailsBothSides(this);
+TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationLostInputResultIsResent) {
+    nodeNetworkIntegrationLostInputResultIsResent(this);
+}
+TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationLostOutcomeIsResent) {
+    nodeNetworkIntegrationLostOutcomeIsResent(this);
+}
+TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationOutcomeNeverArrives) {
+    nodeNetworkIntegrationOutcomeNeverArrives(this);
+}
+TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationLostOutcomeAcksSplitTheDevices) {
+    nodeNetworkIntegrationLostOutcomeAcksSplitTheDevices(this);
+}
+TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationAbortReachesOpponent) {
+    nodeNetworkIntegrationAbortReachesOpponent(this);
 }
 TEST_F(NodeNetworkIntegrationSuite, nodeNetworkIntegrationThreeFailuresExhaustBothDevices) {
     nodeNetworkIntegrationThreeFailuresExhaustBothDevices(this);
@@ -2146,6 +2266,79 @@ TEST_F(NodeIdleLinkTestSuite, nodeIdleStopsOfferingWhenLinkDrops) {
 }
 TEST_F(NodeIdleLinkTestSuite, nodeIdleRoutesFdnToSymbolFlow) {
     nodeIdleRoutesFdnToSymbolFlow(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeCountdownInitiatorSyncsThenSendsSequence) {
+    nodeCountdownInitiatorSyncsThenSendsSequence(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeCountdownInitiatorAbortsWithoutSync) {
+    nodeCountdownInitiatorAbortsWithoutSync(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeCountdownInitiatorAbortsWhenSequenceUnacked) {
+    nodeCountdownInitiatorAbortsWhenSequenceUnacked(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeCountdownResponderAbortsWithoutSequence) {
+    nodeCountdownResponderAbortsWithoutSequence(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeCountdownResponderBattlesAtStepZero) {
+    nodeCountdownResponderBattlesAtStepZero(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeCountdownAbortFromOpponentRoutesToError) {
+    nodeCountdownAbortFromOpponentRoutesToError(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelResponderCorrectPressReportsSuccess) {
+    nodeDuelResponderCorrectPressReportsSuccess(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelResponderWrongPressFailsAndLaterPressesAreIgnored) {
+    nodeDuelResponderWrongPressFailsAndLaterPressesAreIgnored(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelPressBeforeStepIsIgnored) {
+    nodeDuelPressBeforeStepIsIgnored(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelResponderTimeoutFailsInput) {
+    nodeDuelResponderTimeoutFailsInput(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelResponderViewerPressIsIgnored) {
+    nodeDuelResponderViewerPressIsIgnored(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelDoublePromptNeedsBothPressesInOrder) {
+    nodeDuelDoublePromptNeedsBothPressesInOrder(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelDoublePromptWrongFirstPressEndsStep) {
+    nodeDuelDoublePromptWrongFirstPressEndsStep(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelViewerSeesTwoButtonsAndOpponentPresses) {
+    nodeDuelViewerSeesTwoButtonsAndOpponentPresses(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelBothPressStepShowsOwnPromptAndNeedsBoth) {
+    nodeDuelBothPressStepShowsOwnPromptAndNeedsBoth(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelResponderConcludesOnOutcome) {
+    nodeDuelResponderConcludesOnOutcome(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelPresserSeesStageResultAfterPress) {
+    nodeDuelPresserSeesStageResultAfterPress(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelViewerStageResultFillsInWhenReported) {
+    nodeDuelViewerStageResultFillsInWhenReported(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelResponderWithoutOutcomeAborts) {
+    nodeDuelResponderWithoutOutcomeAborts(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelInitiatorRunsFullRound) {
+    nodeDuelInitiatorRunsFullRound(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelInitiatorExpiresMissingResults) {
+    nodeDuelInitiatorExpiresMissingResults(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelInitiatorAbortsWhenOutcomeUnacked) {
+    nodeDuelInitiatorAbortsWhenOutcomeUnacked(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeDuelSessionDropAborts) { nodeDuelSessionDropAborts(this); }
+TEST_F(NodeDuelStateTestSuite, nodeScoreShowsScoreThenRoutesBySuccess) {
+    nodeScoreShowsScoreThenRoutesBySuccess(this);
+}
+TEST_F(NodeDuelStateTestSuite, nodeErrorShowsRetryingThenReturnsToIdle) {
+    nodeErrorShowsRetryingThenReturnsToIdle(this);
 }
 TEST(NodeNetworkWireless, nodeNetworkIgnoresOfferBeforeLinkSideIsAssigned) {
     nodeNetworkIgnoresOfferBeforeLinkSideIsAssigned();

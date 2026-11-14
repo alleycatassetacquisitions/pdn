@@ -15,6 +15,8 @@ enum class ImageType {
     DRAW = 8,
     WIN = 9,
     LOSE = 10,
+    PRIMARY_BUTTON = 11,
+    SECONDARY_BUTTON = 12,
 };
 
 struct Image {
