@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "device/serial-frame-parser.hpp"
+#include "utils/secure-wipe.hpp"
 
 // How an application frame that was accepted for a jack ended.
 enum class ApplicationFrameOutcome : uint8_t {
@@ -107,14 +108,7 @@ private:
     // SETTLED is WRITING with its outcome already reported by drop().
     enum class State : uint8_t { EMPTY, OFFERED, WRITING, WRITTEN, SETTLED };
 
-    // Through a volatile pointer so the clear survives where the compiler can
-    // see the slot is about to be destroyed and would drop a plain store.
-    void clearFrame() {
-        volatile uint8_t* bytes = frame.data();
-        for (size_t i = 0; i < frame.size(); ++i) {
-            bytes[i] = 0;
-        }
-    }
+    void clearFrame() { secureWipe(frame.data(), frame.size()); }
 
     ApplicationFrame frame{};
     std::atomic<State> state{State::EMPTY};
