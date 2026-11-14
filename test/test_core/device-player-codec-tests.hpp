@@ -66,6 +66,41 @@ inline std::string encodeTestPlayer(const std::string& id, const std::string& na
     return body;
 }
 
+inline void appendTestUint32Field(std::string& body, uint32_t tag, uint32_t value) {
+    pb_byte_t buffer[16];
+    pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
+    EXPECT_TRUE(pb_encode_tag(&stream, PB_WT_VARINT, tag) && pb_encode_varint(&stream, value))
+    << PB_GET_ERROR(&stream);
+    body.append(reinterpret_cast<const char*>(buffer), stream.bytes_written);
+}
+
+/** Appends the player's server totals, as a server that sends them answers. */
+inline void appendTestTotals(std::string& body, const PlayerTotals& totals) {
+    // SERVER-SEAM(fungible-pdns): the three scoring totals are provisional fields.
+    const uint32_t matchesTag = alleycat_device_DevicePlayerResponse_scoring_matches_played_tag;
+    const uint32_t winsTag = alleycat_device_DevicePlayerResponse_scoring_wins_tag;
+    const uint32_t averageTag =
+    alleycat_device_DevicePlayerResponse_scoring_average_draw_time_ms_tag;
+    appendTestUint32Field(body, matchesTag, totals.matchesPlayed);
+    appendTestUint32Field(body, winsTag, totals.wins);
+    appendTestUint32Field(body, averageTag, totals.averageDrawTimeMs);
+}
+
+/** Totals no field of which fits in 16 bits, so a narrowed copy shows. */
+inline PlayerTotals makeTestTotals() {
+    PlayerTotals totals;
+    totals.matchesPlayed = 70000;
+    totals.wins = 66000;
+    totals.averageDrawTimeMs = 4000000000u;
+    return totals;
+}
+
+inline void expectTotalsEqual(const PlayerTotals& actual, const PlayerTotals& expected) {
+    EXPECT_EQ(actual.matchesPlayed, expected.matchesPlayed);
+    EXPECT_EQ(actual.wins, expected.wins);
+    EXPECT_EQ(actual.averageDrawTimeMs, expected.averageDrawTimeMs);
+}
+
 /** Decodes the profile of @p body for a test that does not look at the record key. */
 inline bool decodeTestProfile(const std::string& body, Player& player) {
     RecordKey recordKey;
@@ -327,6 +362,73 @@ inline void devicePlayerRejectedResponseYieldsNoRecordKey() {
     EXPECT_FALSE(recordKey.isHeld()) << "a key was taken from a response with no valid player";
     EXPECT_FALSE(DevicePlayerCodec::decode(brokenAfterKey, player, recordKey));
     EXPECT_FALSE(recordKey.isHeld()) << "a key was taken from a response that did not decode";
+}
+
+inline void devicePlayerDecodesTotalsWithProfile() {
+    std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
+    appendTestTotals(body, makeTestTotals());
+    appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Night Shift");
+
+    Player player;
+    RecordKey recordKey;
+    ASSERT_TRUE(DevicePlayerCodec::decode(body, player, recordKey));
+
+    expectTotalsEqual(player.getRegistrationTotals(), makeTestTotals());
+    EXPECT_TRUE(holdsTestRecordKey(recordKey));
+    EXPECT_STREQ(player.getRegistrationTeam().name, "Night Shift")
+    << "fields after the totals must still decode";
+}
+
+// Today's server, and any player with no scored match, answers with no totals.
+// The Player starts out holding some, so that one player's totals are seen not
+// to pass to the next.
+inline void devicePlayerDecodesProfileWithoutTotalsAsZero() {
+    const std::string withoutTotals = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
+    std::string withTotals = withoutTotals;
+    appendTestTotals(withTotals, makeTestTotals());
+
+    Player player;
+    RecordKey recordKey;
+    ASSERT_TRUE(DevicePlayerCodec::decode(withTotals, player, recordKey));
+    ASSERT_TRUE(DevicePlayerCodec::decode(withoutTotals, player, recordKey));
+    EXPECT_STREQ(player.getServerPlayerName(), "Alex");
+    EXPECT_TRUE(holdsTestRecordKey(recordKey));
+    expectTotalsEqual(player.getRegistrationTotals(), PlayerTotals{});
+
+    // Each field is optional on its own.
+    PlayerTotals nineLosses;
+    nineLosses.matchesPlayed = 9;
+    std::string onlyMatches = withoutTotals;
+    const uint32_t matchesTag = alleycat_device_DevicePlayerResponse_scoring_matches_played_tag;
+    appendTestUint32Field(onlyMatches, matchesTag, nineLosses.matchesPlayed);
+    ASSERT_TRUE(DevicePlayerCodec::decode(withTotals, player, recordKey));
+    ASSERT_TRUE(DevicePlayerCodec::decode(onlyMatches, player, recordKey));
+    expectTotalsEqual(player.getRegistrationTotals(), nineLosses);
+}
+
+// Wins above matches would wrap a losses subtraction; such totals are dropped
+// and the player still registers.
+inline void devicePlayerTakesMoreWinsThanMatchesAsNoTotals() {
+    PlayerTotals impossible;
+    impossible.matchesPlayed = 7;
+    impossible.wins = 8;
+    impossible.averageDrawTimeMs = 345;
+    std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
+    appendTestTotals(body, impossible);
+
+    Player player;
+    RecordKey recordKey;
+    ASSERT_TRUE(DevicePlayerCodec::decode(body, player, recordKey));
+    EXPECT_STREQ(player.getServerPlayerName(), "Alex");
+    EXPECT_TRUE(holdsTestRecordKey(recordKey));
+    expectTotalsEqual(player.getRegistrationTotals(), PlayerTotals{});
+
+    PlayerTotals unbeaten = impossible;
+    unbeaten.wins = unbeaten.matchesPlayed;
+    body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
+    appendTestTotals(body, unbeaten);
+    ASSERT_TRUE(DevicePlayerCodec::decode(body, player, recordKey));
+    expectTotalsEqual(player.getRegistrationTotals(), unbeaten);
 }
 
 // A lookup from a server that did not present the pinned key gives a profile

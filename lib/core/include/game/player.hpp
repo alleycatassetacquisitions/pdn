@@ -124,11 +124,24 @@ public:
     /** @return true when registration includes a non-nil team id. */
     bool hasTeam() const;
 
-    /** Replaces registration fields and syncs legacy gameplay fields. */
-    void applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
-                                  const Team& team, const std::vector<Affiliation>& affiliations);
+    /**
+     * @return The server totals taken when the registration profile was applied, never
+     * updated by later matches; all zero when it came with none.
+     */
+    const PlayerTotals& getRegistrationTotals() const;
 
-    /** Clears registration fields only; does not reset match stats or legacy fields. */
+    /**
+     * Replaces registration fields, @p totals included, and syncs legacy gameplay
+     * fields. Totals claiming more wins than matches played are taken as none.
+     */
+    void applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
+                                  const Team& team, const std::vector<Affiliation>& affiliations,
+                                  const PlayerTotals& totals = PlayerTotals{});
+
+    /**
+     * Clears registration fields, the registration totals included; does not reset
+     * match stats or legacy fields.
+     */
     void clearRegistrationProfile();
 
 private:
@@ -141,6 +154,7 @@ private:
     char serverPlayerName[PlayerLimits::NAME_BUFFER_SIZE] = {};
     Team registrationTeam;
     std::vector<Affiliation> registrationAffiliations;
+    PlayerTotals registrationTotals;
     bool registrationProfileStored = false;
 
     std::string id = "default";

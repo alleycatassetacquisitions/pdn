@@ -13,7 +13,7 @@
  */
 namespace PlayerProvisionCodec {
 
-/** Packs @p player's registration fields into a PROFILE_DELIVERED packet. */
+/** Packs @p player's registration fields, totals included, into a PROFILE_DELIVERED packet. */
 inline PlayerProvisionPacket encode(const Player& player) {
     PlayerProvisionPacket pkt{};
     pkt.status = static_cast<uint8_t>(ProvisionStatus::PROFILE_DELIVERED);
@@ -36,12 +36,16 @@ inline PlayerProvisionPacket encode(const Player& player) {
         strncpy(pkt.affiliations[i].affiliationName, affiliations[i].affiliationName,
                 sizeof(pkt.affiliations[i].affiliationName) - 1);
     }
+    const PlayerTotals& totals = player.getRegistrationTotals();
+    pkt.totalMatchesPlayed = totals.matchesPlayed;
+    pkt.totalWins = totals.wins;
+    pkt.totalAverageDrawTimeMs = totals.averageDrawTimeMs;
     return pkt;
 }
 
 /**
- * Applies a PROFILE_DELIVERED @p pkt to @p outPlayer's registration fields. Validates
- * first, so a rejected packet leaves @p outPlayer untouched.
+ * Applies a PROFILE_DELIVERED @p pkt to @p outPlayer's registration fields, its totals
+ * included. Validates first, so a rejected packet leaves @p outPlayer untouched.
  *
  * @return false for any other status, a nil player ID, or an empty name.
  */
@@ -78,7 +82,8 @@ inline bool decode(const PlayerProvisionPacket& pkt, Player& outPlayer) {
         affiliations.push_back(aff);
     }
 
-    outPlayer.applyRegistrationProfile(playerId, playerName, team, affiliations);
+    const PlayerTotals totals{pkt.totalMatchesPlayed, pkt.totalWins, pkt.totalAverageDrawTimeMs};
+    outPlayer.applyRegistrationProfile(playerId, playerName, team, affiliations, totals);
     return true;
 }
 

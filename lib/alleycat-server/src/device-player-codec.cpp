@@ -112,7 +112,13 @@ bool decode(const std::string& body, Player& player, RecordKey& recordKey) {
     if (message.has_team_id) {
         std::memcpy(team.id.bytes, message.team_id, UUIDBytes::SIZE);
     }
-    player.applyRegistrationProfile(serverId, serverName, team, affiliations);
+    // SERVER-SEAM(fungible-pdns): the three scoring totals are provisional fields.
+    // One the response lacks is left at the zero the message started with.
+    PlayerTotals totals;
+    totals.matchesPlayed = message.scoring_matches_played;
+    totals.wins = message.scoring_wins;
+    totals.averageDrawTimeMs = message.scoring_average_draw_time_ms;
+    player.applyRegistrationProfile(serverId, serverName, team, affiliations, totals);
     return true;
 }
 

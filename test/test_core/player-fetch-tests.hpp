@@ -109,6 +109,23 @@ inline PlayerProvisionPacket makeProvisionPacket(const char* name) {
     return pkt;
 }
 
+/**
+ * Registers the suite's PDN for PIN 0007 through a real FDN whose server answers
+ * the lookup with @p body.
+ */
+inline void registerThroughFdn(PlayerFetchTestSuite* suite, const std::string& body) {
+    FdnProvisioningManager fdnProv(suite->fdnDevice.wirelessManager, &suite->fdnRdc);
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
+    fetch.onStateMounted(&suite->device);
+    ASSERT_EQ(suite->queuedRequests.size(), 1u);
+    suite->queuedRequests[0].onSuccess(body);
+    suite->carryRecordKeyAcrossJack();
+    fetch.onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch.transitionToWelcome());
+    fetch.onStateDismounted(&suite->device);
+}
+
 inline void completePinOnEntry(PDN* pdn, PinEntryState* pinEntry,
                                parameterizedCallbackFunction& primaryPress,
                                parameterizedCallbackFunction& secondaryPress, void*& ctx,
@@ -235,6 +252,60 @@ inline void fetchUserStoresProvisionedPlayerOnSuccess(PlayerFetchTestSuite* suit
     fetch.onStateDismounted(&suite->device);
 }
 
+// The totals the server returned for the player reach the PDN's Player unchanged,
+// and stand there as received while this PDN's own matches are counted apart.
+inline void registrationTakesServerTotalsAsBaseline(PlayerFetchTestSuite* suite) {
+    std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada");
+    appendTestTotals(body, makeTestTotals());
+    ASSERT_NO_FATAL_FAILURE(registerThroughFdn(suite, body));
+
+    Player* player = suite->playerProvider.getPlayer();
+    ASSERT_TRUE(suite->playerProvider.hasPlayer());
+    expectTotalsEqual(player->getRegistrationTotals(), makeTestTotals());
+    EXPECT_EQ(player->getMatchesPlayed(), 0) << "server totals were counted as session matches";
+    EXPECT_EQ(player->getWins(), 0);
+    EXPECT_EQ(player->getAverageReactionTime(), 0u);
+
+    player->incrementMatchesPlayed();
+    player->incrementWins();
+    player->addReactionTime(250);
+    expectTotalsEqual(player->getRegistrationTotals(), makeTestTotals());
+    EXPECT_EQ(player->getMatchesPlayed(), 1);
+    EXPECT_EQ(player->getWins(), 1);
+    EXPECT_EQ(player->getAverageReactionTime(), 250u);
+
+    suite->playerProvider.clear();
+    expectTotalsEqual(player->getRegistrationTotals(), PlayerTotals{});
+}
+
+inline void registrationWithoutServerTotalsHasZeroBaseline(PlayerFetchTestSuite* suite) {
+    const std::string body = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada");
+    ASSERT_NO_FATAL_FAILURE(registerThroughFdn(suite, body));
+
+    ASSERT_TRUE(suite->playerProvider.hasPlayer()) << "a lookup with no totals must still register";
+    EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
+    expectTotalsEqual(suite->playerProvider.getPlayer()->getRegistrationTotals(), PlayerTotals{});
+}
+
+inline void provisionPacketCarriesTotals() {
+    Player source;
+    source.applyRegistrationProfile(makeTestUuid(TEST_PLAYER_ID), "Ada", Team{}, {},
+                                    makeTestTotals());
+    const PlayerProvisionPacket sent = PlayerProvisionCodec::encode(source);
+    Player received;
+    ASSERT_TRUE(PlayerProvisionCodec::decode(sent, received));
+    expectTotalsEqual(received.getRegistrationTotals(), makeTestTotals());
+
+    // A packet is whatever its sender says; totals with wins above matches are
+    // dropped and the profile still applies.
+    PlayerProvisionPacket impossible = sent;
+    impossible.totalWins = impossible.totalMatchesPlayed + 1;
+    Player other;
+    ASSERT_TRUE(PlayerProvisionCodec::decode(impossible, other));
+    EXPECT_STREQ(other.getServerPlayerName(), "Ada");
+    expectTotalsEqual(other.getRegistrationTotals(), PlayerTotals{});
+}
+
 inline void fetchUserIgnoresUncabledOrMalformedProvision(PlayerFetchTestSuite* suite) {
     suite->playerProvider.setRegistrationPin("0007");
     FetchUserState fetch(&suite->provisioningClient, &suite->playerProvider);
@@ -337,7 +408,12 @@ inline void fdnLookupDeadlineLeavesWifi(PlayerFetchTestSuite* suite) {
     EXPECT_EQ(suite->queuedRequests.size(), 2u) << "the timed-out lookup no longer blocks the next";
 }
 
+// The demo profile has no server behind it, so it starts from no totals even on
+// a Player that held some.
 inline void chooseTeamConfirmEntersHub(PlayerFetchTestSuite* suite) {
+    Player* player = suite->playerProvider.getPlayer();
+    player->applyRegistrationProfile(makeTestUuid(TEST_PLAYER_ID), "Ada", Team{}, {},
+                                     makeTestTotals());
     ChooseTeamState chooseTeam(&suite->playerProvider);
     parameterizedCallbackFunction secondaryPress = nullptr;
     void* secondaryCtx = nullptr;
@@ -350,6 +426,8 @@ inline void chooseTeamConfirmEntersHub(PlayerFetchTestSuite* suite) {
     ASSERT_NE(secondaryPress, nullptr);
     secondaryPress(secondaryCtx);
     EXPECT_TRUE(chooseTeam.transitionToHub());
+    EXPECT_STREQ(player->getServerPlayerName(), "Demo");
+    expectTotalsEqual(player->getRegistrationTotals(), PlayerTotals{});
     chooseTeam.onStateDismounted(&suite->device);
 }
 

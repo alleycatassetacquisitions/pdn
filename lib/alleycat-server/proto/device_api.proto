@@ -38,6 +38,13 @@ message DevicePlayerResponse {
   // server team agrees them. The 32-byte record key for this player; the PDN tags
   // its match records with it. Absent from a server that does not return keys.
   optional bytes record_key = 10;
+  // SERVER-SEAM(fungible-pdns): provisional names and numbers until the server
+  // team agrees them. The player's totals over scoring matches in the active
+  // event, as GET /score/players computes them. Absent from a server that does
+  // not send totals; the PDN then starts from zero.
+  optional uint32 scoring_matches_played = 11;
+  optional uint32 scoring_wins = 12;
+  optional uint32 scoring_average_draw_time_ms = 13;
 }
 
 // One current player assignment. Categories and affiliations belong to the

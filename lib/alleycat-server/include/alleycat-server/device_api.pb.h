@@ -63,6 +63,16 @@ typedef struct _alleycat_device_DevicePlayerResponse {
  server team agrees them. The 32-byte record key for this player; the PDN tags
  its match records with it. Absent from a server that does not return keys. */
     pb_callback_t record_key;
+    /* SERVER-SEAM(fungible-pdns): provisional names and numbers until the server
+ team agrees them. The player's totals over scoring matches in the active
+ event, as GET /score/players computes them. Absent from a server that does
+ not send totals; the PDN then starts from zero. */
+    bool has_scoring_matches_played;
+    uint32_t scoring_matches_played;
+    bool has_scoring_wins;
+    uint32_t scoring_wins;
+    bool has_scoring_average_draw_time_ms;
+    uint32_t scoring_average_draw_time_ms;
 } alleycat_device_DevicePlayerResponse;
 
 /* One current player assignment. Categories and affiliations belong to the
@@ -195,14 +205,14 @@ extern "C" {
 
 
 /* Initializer values for message structs */
-#define alleycat_device_DevicePlayerResponse_init_default {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerResponse_init_default {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, false, 0, false, 0, false, 0}
 #define alleycat_device_DevicePlayerAffiliation_init_default {{0}, {{NULL}, NULL}, {0}, {{NULL}, NULL}}
 #define alleycat_device_WriteDeviceLogRequest_init_default {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
 #define alleycat_device_WriteQuickdrawMatchesRequest_init_default {{{NULL}, NULL}}
 #define alleycat_device_WriteQuickdrawMatchesResponse_init_default {{{NULL}, NULL}}
 #define alleycat_device_QuickdrawMatchRejection_init_default {0, "", 0, {"", ""}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
 #define alleycat_device_QuickdrawMatch_init_default {"", "", "", false, "", false, "", false, 0, false, 0, "", false, 0}
-#define alleycat_device_DevicePlayerResponse_init_zero {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerResponse_init_zero {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, false, 0, false, 0, false, 0}
 #define alleycat_device_DevicePlayerAffiliation_init_zero {{0}, {{NULL}, NULL}, {0}, {{NULL}, NULL}}
 #define alleycat_device_WriteDeviceLogRequest_init_zero {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
 #define alleycat_device_WriteQuickdrawMatchesRequest_init_zero {{{NULL}, NULL}}
@@ -217,6 +227,9 @@ extern "C" {
 #define alleycat_device_DevicePlayerResponse_team_name_tag 7
 #define alleycat_device_DevicePlayerResponse_affiliations_tag 9
 #define alleycat_device_DevicePlayerResponse_record_key_tag 10
+#define alleycat_device_DevicePlayerResponse_scoring_matches_played_tag 11
+#define alleycat_device_DevicePlayerResponse_scoring_wins_tag 12
+#define alleycat_device_DevicePlayerResponse_scoring_average_draw_time_ms_tag 13
 #define alleycat_device_DevicePlayerAffiliation_category_id_tag 1
 #define alleycat_device_DevicePlayerAffiliation_category_name_tag 2
 #define alleycat_device_DevicePlayerAffiliation_affiliation_id_tag 3
@@ -252,7 +265,10 @@ X(a, CALLBACK, SINGULAR, STRING,   name,              4) \
 X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, team_id,           6) \
 X(a, CALLBACK, OPTIONAL, STRING,   team_name,         7) \
 X(a, CALLBACK, REPEATED, MESSAGE,  affiliations,      9) \
-X(a, CALLBACK, OPTIONAL, BYTES,    record_key,       10)
+X(a, CALLBACK, OPTIONAL, BYTES,    record_key,       10) \
+X(a, STATIC,   OPTIONAL, UINT32,   scoring_matches_played,  11) \
+X(a, STATIC,   OPTIONAL, UINT32,   scoring_wins,     12) \
+X(a, STATIC,   OPTIONAL, UINT32,   scoring_average_draw_time_ms,  13)
 #define alleycat_device_DevicePlayerResponse_CALLBACK pb_default_field_callback
 #define alleycat_device_DevicePlayerResponse_DEFAULT NULL
 #define alleycat_device_DevicePlayerResponse_affiliations_MSGTYPE alleycat_device_DevicePlayerAffiliation

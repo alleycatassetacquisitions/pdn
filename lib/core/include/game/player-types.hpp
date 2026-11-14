@@ -27,6 +27,20 @@ struct Affiliation {
     char affiliationName[PlayerLimits::NAME_BUFFER_SIZE] = {};
 };
 
+/**
+ * A player's totals over the matches the server scores in the active event; all
+ * zero when none were sent or accepted. Display only. Each field spans the full
+ * 32 bits off the wire, so sums and products of them need a wider type.
+ */
+struct PlayerTotals {
+    uint32_t matchesPlayed = 0;
+    uint32_t wins = 0;
+    uint32_t averageDrawTimeMs = 0;
+
+    /** @return false when the totals claim more wins than matches played. */
+    bool isConsistent() const { return wins <= matchesPlayed; }
+};
+
 /** PDN-to-FDN over PktType::kPlayerProvisionRequest: look up this PIN for the sender. */
 struct PlayerProvisionRequestPacket {
     uint8_t seqId;
@@ -54,7 +68,8 @@ struct WireAffiliation {
 
 /**
  * FDN-to-PDN registration over PktType::kPlayerProvision. pin echoes the request so
- * a late reply to an earlier PIN is not applied.
+ * a late reply to an earlier PIN is not applied. The three totals are the player's
+ * PlayerTotals, all zero when the lookup yielded none.
  */
 struct PlayerProvisionPacket {
     uint8_t seqId;
@@ -66,4 +81,8 @@ struct PlayerProvisionPacket {
     char teamName[PlayerLimits::NAME_BUFFER_SIZE];
     uint8_t affiliationCount;
     WireAffiliation affiliations[PlayerLimits::MAX_AFFILIATIONS];
+    uint32_t totalMatchesPlayed;
+    uint32_t totalWins;
+    uint32_t totalAverageDrawTimeMs;
 } __attribute__((packed));
+static_assert(sizeof(PlayerProvisionPacket) == 596, "PlayerProvisionPacket wire size");

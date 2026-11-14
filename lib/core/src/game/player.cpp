@@ -231,9 +231,12 @@ const std::vector<Affiliation>& Player::getRegistrationAffiliations() const {
 
 bool Player::hasTeam() const { return !registrationTeam.id.isZero(); }
 
+const PlayerTotals& Player::getRegistrationTotals() const { return registrationTotals; }
+
 void Player::applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
                                       const Team& team,
-                                      const std::vector<Affiliation>& affiliations) {
+                                      const std::vector<Affiliation>& affiliations,
+                                      const PlayerTotals& totals) {
     serverPlayerId = serverId;
     if (serverName != nullptr) {
         std::strncpy(serverPlayerName, serverName, PlayerLimits::NAME_BUFFER_SIZE - 1);
@@ -243,6 +246,14 @@ void Player::applyRegistrationProfile(const UUIDBytes& serverId, const char* ser
     }
     registrationTeam = team;
     registrationAffiliations = affiliations;
+    registrationTotals = totals;
+    // A reader taking losses as matches less wins must not wrap.
+    if (!registrationTotals.isConsistent()) {
+        LOG_W(TAG, "Totals dropped: %lu wins in %lu matches",
+              static_cast<unsigned long>(totals.wins),
+              static_cast<unsigned long>(totals.matchesPlayed));
+        registrationTotals = PlayerTotals{};
+    }
     registrationProfileStored = true;
     syncLegacyFieldsFromRegistration();
 }
@@ -252,6 +263,7 @@ void Player::clearRegistrationProfile() {
     serverPlayerName[0] = '\0';
     registrationTeam = Team();
     registrationAffiliations.clear();
+    registrationTotals = PlayerTotals{};
     registrationProfileStored = false;
 }
 
