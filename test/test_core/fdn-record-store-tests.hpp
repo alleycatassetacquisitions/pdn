@@ -875,3 +875,67 @@ inline void fdnErasesARetiredCrashRecordEvenWhenTheHeadCannotAdvance(FdnRecordSt
     expectEntryCarriesFrame(entry, suite->pdnMac, second);
     EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u);
 }
+
+// ---- A retire names what was read, and is refused once that is no longer the oldest ----
+
+// An answer for a record that has already been retired must not retire or
+// bring back anything: the position it names is not the oldest held any more.
+inline void fdnRefusesToRetireACrashRecordThatIsNoLongerTheOldest(FdnRecordStoreTests* suite) {
+    const CrashRecordFramePacket second = FdnRecordStoreTests::crashFrame(2, 0x21);
+    const CrashRecordFramePacket third = FdnRecordStoreTests::crashFrame(3, 0x22);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, FdnRecordStoreTests::crashFrame(1, 0x20));
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, second);
+    suite->deliver(PktType::kCrashRecord, suite->pdnMac, third);
+
+    FdnStoredCrashEntry entry{};
+    uint32_t firstPosition = 0;
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, firstPosition));
+    EXPECT_TRUE(suite->fdnRecordStore->retireCrash(firstPosition));
+    EXPECT_FALSE(suite->fdnRecordStore->retireCrash(firstPosition))
+    << "a record that was already retired was reported as retired again";
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 2u);
+
+    uint32_t secondPosition = 0;
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, secondPosition));
+    expectEntryCarriesFrame(entry, suite->pdnMac, second);
+    EXPECT_TRUE(suite->fdnRecordStore->retireCrash(secondPosition));
+
+    // Two places behind the oldest: taking it back would move the store's
+    // head backwards over slots that are already erased.
+    EXPECT_FALSE(suite->fdnRecordStore->retireCrash(firstPosition));
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::CRASH), 1u)
+    << "a stale retire changed how many records are held";
+    uint32_t thirdPosition = 0;
+    ASSERT_TRUE(suite->fdnRecordStore->readOldestCrash(entry, thirdPosition))
+    << "a stale retire left the oldest record unreadable";
+    expectEntryCarriesFrame(entry, suite->pdnMac, third);
+}
+
+// The same for a match batch: here the stale batch reaches past the oldest
+// record into one that was never part of an answered upload.
+inline void fdnRefusesToRetireAMatchBatchThatIsNoLongerTheOldest(FdnRecordStoreTests* suite) {
+    for (uint32_t number = 1; number <= 3; ++number) {
+        suite->deliver(PktType::kMatchRecord, suite->pdnMac,
+                       FdnRecordStoreTests::uploadableMatchFrame(number));
+    }
+    uint32_t position = 0;
+    ASSERT_EQ(suite->fdnRecordStore->countReadableMatchBatch(position), 3u);
+    suite->fdnRecordStore->retireMatchBatch(position, 1);
+    ASSERT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u);
+
+    suite->fdnRecordStore->retireMatchBatch(position, 2);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 2u)
+    << "a batch counted from a position that is no longer the oldest was retired";
+    FdnStoredMatchEntry entry{};
+    ASSERT_TRUE(suite->fdnRecordStore->readMatch(position + 1, entry))
+    << "a stale retire erased a record that was never uploaded";
+    expectEntryCarriesFrame(entry, suite->pdnMac, FdnRecordStoreTests::uploadableMatchFrame(2));
+    ASSERT_TRUE(suite->fdnRecordStore->readMatch(position + 2, entry));
+    expectEntryCarriesFrame(entry, suite->pdnMac, FdnRecordStoreTests::uploadableMatchFrame(3));
+
+    // The batch counted from the oldest record is still taken back.
+    uint32_t currentPosition = 0;
+    ASSERT_EQ(suite->fdnRecordStore->countReadableMatchBatch(currentPosition), 2u);
+    suite->fdnRecordStore->retireMatchBatch(currentPosition, 2);
+    EXPECT_EQ(suite->fdnRecordStore->getStoredCount(RecordKind::MATCH), 0u);
+}
