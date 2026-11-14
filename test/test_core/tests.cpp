@@ -654,6 +654,10 @@ TEST(QuickdrawStateGraph, registrationHandsOffFromWelcomeMessage) {
     registrationHandsOffFromWelcomeMessage();
 }
 
+TEST(QuickdrawStateGraph, gameplayAppsHaveNoHandOffToRegistration) {
+    gameplayAppsHaveNoHandOffToRegistration();
+}
+
 // ============================================
 // SERIAL TESTS
 // ============================================
@@ -862,6 +866,10 @@ TEST(TextLines, fitALongestNameWithSpacesOnThreeLines) {
 
 TEST(TextLines, showAllOfANameThatOnlyFitsWhenFilled) {
     textLinesShowAllOfANameThatOnlyFitsWhenFilled();
+}
+
+TEST(TextLines, fillThreeLinesWithALongestNameWithoutSpaces) {
+    textLinesFillThreeLinesWithALongestNameWithoutSpaces();
 }
 
 TEST(TextLines, splitAWordWiderThanTheLimit) { textLinesSplitAWordWiderThanTheLimit(); }
@@ -1145,6 +1153,10 @@ TEST(PlayerProvider, clearDropsProfile) { playerProviderClearDropsProfile(); }
 
 TEST(PlayerProvider, clearDropsAndOverwritesRecordKey) {
     playerProviderClearDropsAndOverwritesRecordKey();
+}
+
+TEST(PlayerProvider, clearDropsThePinAndKeepsRoleAndSessionStatistics) {
+    playerProviderClearDropsThePinAndKeepsRoleAndSessionStatistics();
 }
 
 TEST(PlayerRegistrationShim, mapsHelixAffiliation) { playerLegacyShimMapsHelixAffiliation(); }
@@ -1951,6 +1963,10 @@ TEST_F(IdleStateTests, remountStartsOnTheNameScreen) { idleRemountStartsOnTheNam
 
 TEST_F(IdleStateTests, screensShowServerTotalsPlusTheSession) {
     idleScreensShowServerTotalsPlusTheSession(this);
+}
+
+TEST_F(IdleStateTests, nameScreenShowsDemoForTheDemoProfile) {
+    idleNameScreenShowsDemoForTheDemoProfile(this);
 }
 
 TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
@@ -2835,6 +2851,8 @@ TEST_F(PosseManagerTests, strangerConfirmsCannotSilenceRealSupporter) {
     posseStrangerConfirmsCannotSilenceRealSupporter(this);
 }
 
+TEST_F(PosseManagerTests, boostIsHeldToAFullPosse) { posseBoostIsHeldToAFullPosse(this); }
+
 TEST_F(PosseManagerTests, chainJoinForAnotherChallengerIsIgnored) {
     posseChainJoinForAnotherChallengerIsIgnored(this);
 }
@@ -2984,8 +3002,16 @@ TEST_F(PosseMultiDeviceFixture, demoChallengerIsBoostedByARegisteredSupporter) {
     posseMultiDeviceDemoChallengerIsBoostedByARegisteredSupporter(this);
 }
 
-TEST_F(PosseMultiDeviceFixture, twoSupportersOfOnePlayerBothCount) {
-    posseMultiDeviceTwoSupportersOfOnePlayerBothCount(this);
+TEST_F(PosseMultiDeviceFixture, twoSupportersOfOnePlayerGrantOneBoost) {
+    posseMultiDeviceTwoSupportersOfOnePlayerGrantOneBoost(this);
+}
+
+TEST_F(PosseMultiDeviceFixture, twoSupportersOfTwoPlayersBothCount) {
+    posseMultiDeviceTwoSupportersOfTwoPlayersBothCount(this);
+}
+
+TEST_F(PosseMultiDeviceFixture, supporterThatDoesNotCountIsSentTheResult) {
+    posseMultiDeviceSupporterThatDoesNotCountIsSentTheResult(this);
 }
 
 TEST_F(PosseMultiDeviceFixture, gameEventReachesDistantSupporter) {

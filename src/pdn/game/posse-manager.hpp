@@ -98,7 +98,8 @@ public:
     void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChallengerMac);
     /**
      * Records a press from originatorMac if supporterPlayerId is non-nil and not
-     * this device's player; chain membership is filtered when read.
+     * this device's player; chain membership and one-boost-per-player are applied
+     * when read.
      */
     void onConfirmReceived(const uint8_t* originatorMac, const UUIDBytes& supporterPlayerId);
     void onChainStateChanged();
@@ -178,6 +179,10 @@ private:
     MacSlots receivedConfirms{};
     size_t receivedConfirmCount = 0;
     size_t receivedConfirmWrite = 0;
+    // Player behind each receivedConfirms slot, same index. Deduplicated when
+    // read rather than on arrival: whichever PDN of a player is still a chain
+    // member at that moment must be the one that carries the boost.
+    std::array<UUIDBytes, MAX_CHAIN_SUPPORTERS> receivedConfirmPlayerIds{};
 
     // Supporters that named this device as their challenger. Everything past the
     // direct supporter-jack peer lives here and nowhere else: the role cascade

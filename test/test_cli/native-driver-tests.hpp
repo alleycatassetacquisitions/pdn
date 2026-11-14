@@ -865,6 +865,15 @@ inline void cliDeliverCabledProvision(cli::DeviceInstance& device) {
     device.peerCommsDriver->exec();
 }
 
+/**
+ * Takes a device on PIN entry to FetchUserState as if its own id had been
+ * entered as the PIN.
+ */
+inline void cliEnterDeviceIdAsPin(cli::DeviceInstance& device) {
+    device.playerProvider->setRegistrationPin(device.deviceId.c_str());
+    device.pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID), StateId(PlayerFetchStateId::FETCH_USER));
+}
+
 class CliCommandTestSuite : public testing::Test {
 public:
     void SetUp() override {
@@ -876,9 +885,10 @@ public:
         device = cli::DeviceFactory::createDevice(0, true);
 
         // The CLI factory launches into the hub. These tests exercise the
-        // registration flow (HTTP fetch transitions, reboot semantics), so swap
-        // back to the registration app at its fetch state.
+        // registration flow (HTTP fetch transitions, reboot semantics), so restart
+        // into registration and go on to its fetch state.
         device.reboot();
+        cliEnterDeviceIdAsPin(device);
     }
 
     void TearDown() override {
@@ -913,27 +923,40 @@ void cliDeviceCabledProvisionTransitions(CliCommandTestSuite* suite) {
     ASSERT_EQ(state->getStateId(), PlayerFetchStateId::WELCOME);
 }
 
-// Test: Reboot resets device back to FetchUserData
-void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
-    // Advance past FetchUserData
+// Test: Reboot is a restart: PIN entry, and a fresh player with nothing held
+void cliCommandRebootLandsOnPinEntryWithNothingHeld(CliCommandTestSuite* suite) {
     cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
         suite->device.pdn->loop();
     }
-    State* state = suite->device.getCurrentState();
-    ASSERT_NE(state, nullptr);
-    ASSERT_NE(state->getStateId(), PlayerFetchStateId::FETCH_USER);
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::WELCOME);
+    ASSERT_TRUE(suite->device.playerProvider->hasPlayer());
+    ASSERT_TRUE(suite->device.playerProvider->getRecordKey()->isHeld());
+    suite->device.player->incrementMatchesPlayed();
+    suite->device.player->incrementWins();
+    suite->device.player->incrementStreak();
+    suite->device.player->addReactionTime(250);
 
     suite->device.reboot();
 
-    // Should be back at FetchUserData within the registration app
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    state = suite->device.getCurrentState();
+    State* state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PlayerFetchStateId::FETCH_USER);
+    EXPECT_EQ(state->getStateId(), PlayerFetchStateId::PIN_ENTRY);
+    const Player* player = suite->device.player;
+    EXPECT_FALSE(suite->device.playerProvider->hasPlayer());
+    EXPECT_TRUE(player->getServerPlayerId().isZero());
+    EXPECT_FALSE(suite->device.playerProvider->getRecordKey()->isHeld());
+    EXPECT_STREQ(suite->device.playerProvider->getRegistrationPin(), "");
+    // PIN entry's clear keeps the session statistics; only a fresh player drops them.
+    EXPECT_EQ(player->getMatchesPlayed(), 0);
+    EXPECT_EQ(player->getWins(), 0);
+    EXPECT_EQ(player->getStreak(), 0);
+    EXPECT_EQ(player->getLastReactionTime(), 0u);
+    EXPECT_EQ(player->getAverageReactionTime(), 0u);
 }
 
-// Test: Reboot from a later state returns to FetchUserData and can re-transition
+// Test: Reboot from a later state lands on PIN entry and the device registers again
 void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     // Advance device further (past FetchUserData into WelcomeMessage or beyond)
     cliDeliverCabledProvision(suite->device);
@@ -946,8 +969,9 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     suite->device.reboot();
 
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::FETCH_USER);
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::PIN_ENTRY);
 
+    cliEnterDeviceIdAsPin(suite->device);
     cliDeliverCabledProvision(suite->device);
     for (int i = 0; i < 10; i++) {
         suite->device.pdn->loop();
@@ -1177,7 +1201,7 @@ void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     // History should be cleared
     ASSERT_TRUE(suite->device.stateHistory.empty());
 
-    // Device should be at FetchUserData within the registration app
+    // Device should be on PIN entry within the registration app
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::FETCH_USER);
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::PIN_ENTRY);
 }

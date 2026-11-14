@@ -93,6 +93,34 @@ inline void playerProviderClearDropsAndOverwritesRecordKey() {
     << "the dropped key is still readable in memory";
 }
 
+// Clearing runs when PIN entry is shown and drops only the registration: the
+// role, the legacy name and the session statistics stand until a restart.
+inline void playerProviderClearDropsThePinAndKeepsRoleAndSessionStatistics() {
+    PlayerProvider playerProvider;
+    playerProvider.setRegistrationPin("4321");
+    Team bounty;
+    IdGenerator::copyId(bounty.name, "Bounty");
+    Player* player = playerProvider.getPlayer();
+    player->applyRegistrationProfile(makeTestUuid("11111111-2222-4333-8444-555555555555"), "Bo",
+                                     bounty, {});
+    ASSERT_FALSE(player->isHunter()) << "the role must differ from a fresh player's";
+    for (int match = 0; match < 3; ++match) {
+        player->incrementMatchesPlayed();
+    }
+    player->incrementWins();
+    player->addReactionTime(250);
+
+    playerProvider.clear();
+
+    EXPECT_STREQ(playerProvider.getRegistrationPin(), "");
+    EXPECT_FALSE(player->isHunter());
+    EXPECT_EQ(player->getName(), "Bo");
+    EXPECT_EQ(player->getMatchesPlayed(), 3);
+    EXPECT_EQ(player->getWins(), 1);
+    EXPECT_EQ(player->getLastReactionTime(), 250u);
+    EXPECT_EQ(player->getAverageReactionTime(), 250u / 3);
+}
+
 inline void playerLegacyShimMapsHelixAffiliation() {
     PlayerProvider playerProvider;
     applyTestRegistration(playerProvider.getPlayer(), "11111111-2222-4333-8444-555555555555", "Bo");

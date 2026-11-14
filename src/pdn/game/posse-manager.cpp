@@ -265,7 +265,16 @@ void PosseManager::onConfirmReceived(const uint8_t* originatorMac,
     // challenger who gets to count it, are both read live in
     // getConfirmedSupporterCount — neither is knowable for certain at the moment
     // a press arrives.
+    size_t slot =
+    receivedConfirmCount < MAX_CHAIN_SUPPORTERS ? receivedConfirmCount : receivedConfirmWrite;
+    for (size_t i = 0; i < receivedConfirmCount; i++) {
+        if (memcmp(receivedConfirms[i].data(), originatorMac, 6) == 0) {
+            slot = i;
+            break;
+        }
+    }
     recordMac(receivedConfirms, receivedConfirmCount, receivedConfirmWrite, originatorMac);
+    receivedConfirmPlayerIds[slot] = supporterPlayerId;
 }
 
 void PosseManager::onChainJoinReceived(const uint8_t* supporterMac,
@@ -347,14 +356,29 @@ unsigned long PosseManager::getBoostMs() const {
 size_t PosseManager::getConfirmedSupporterCount() const {
     if (!isChallenger()) return 0;
     std::vector<std::array<uint8_t, 6>> peers = getSupporterChainPeers();
+    // One boost per supporting player: a player who brings two PDNs is counted
+    // once, however many of them press.
+    std::array<UUIDBytes, MAX_CHAIN_SUPPORTERS> countedPlayerIds{};
     size_t confirmed = 0;
     for (size_t i = 0; i < receivedConfirmCount; i++) {
+        bool isMember = false;
         for (const std::array<uint8_t, 6>& peer : peers) {
             if (memcmp(peer.data(), receivedConfirms[i].data(), 6) == 0) {
-                confirmed++;
+                isMember = true;
                 break;
             }
         }
+        if (!isMember) continue;
+        bool playerAlreadyCounted = false;
+        for (size_t j = 0; j < confirmed; j++) {
+            if (countedPlayerIds[j] == receivedConfirmPlayerIds[i]) {
+                playerAlreadyCounted = true;
+                break;
+            }
+        }
+        if (playerAlreadyCounted) continue;
+        countedPlayerIds[confirmed] = receivedConfirmPlayerIds[i];
+        confirmed++;
     }
     return confirmed;
 }

@@ -405,6 +405,26 @@ inline void posseStrangerConfirmsCannotSilenceRealSupporter(PosseManagerTests* s
     EXPECT_EQ(posse.getBoostMs(), PosseManager::BOOST_PER_SUPPORTER_MS);
 }
 
+// More eligible supporters than the posse has slots, each a player of its own,
+// earn no more than a full posse: 270 ms, the bound both sides of a match hold
+// a boost to.
+inline void posseBoostIsHeldToAFullPosse(PosseManagerTests* suite) {
+    suite->setupHunterChallenger();
+    PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    ASSERT_TRUE(posse.isChallenger());
+
+    for (int i = 0; i < 20; i++) {
+        uint8_t supporter[6] = {0x5E, 0x5E, 0x5E, 0x5E, static_cast<uint8_t>(i), 0x01};
+        posse.onChainJoinReceived(supporter, suite->localMac);
+        suite->deliverConfirm(posse, supporter);
+    }
+    suite->deliverConfirm(posse, suite->supporterMac);
+    posse.onChainStateChanged();
+
+    EXPECT_EQ(posse.getBoostMs(), 270u);
+    EXPECT_EQ(PosseManager::getMaxBoostMs(), 270u);
+}
+
 // A join is a MAC claiming chain membership, so it has to name the challenger it
 // claims to follow. Chains run side by side in one room and every frame is in
 // range of all of them; without the check, one chain's supporter would enrol

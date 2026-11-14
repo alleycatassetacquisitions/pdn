@@ -536,7 +536,7 @@ private:
         }
         auto& dev = devices[targetDevice];
         dev.reboot();
-        result.message = "Rebooted " + dev.deviceId + " -> FetchUserData";
+        result.message = "Rebooted " + dev.deviceId + " -> PinEntry";
         return result;
     }
 

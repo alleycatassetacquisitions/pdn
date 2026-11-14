@@ -644,17 +644,62 @@ posseMultiDeviceDemoChallengerIsBoostedByARegisteredSupporter(PosseMultiDeviceFi
     EXPECT_EQ(suite->node(0).posse->getBoostMs(), 15u);
 }
 
-// The only player a supporter is compared with is the challenger's. Two PDNs
-// registered as one other player are two supporters.
-inline void posseMultiDeviceTwoSupportersOfOnePlayerBothCount(PosseMultiDeviceFixture* suite) {
+// One boost per supporting player: two PDNs registered as the same other
+// player buy one boost between them, however many of them press.
+inline void posseMultiDeviceTwoSupportersOfOnePlayerGrantOneBoost(PosseMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     registerTestPlayerId(*suite->node(2).player, suite->node(1).player->getServerPlayerId());
     suite->formHunterPosse();
 
     suite->pressEverySupporter();
 
+    EXPECT_EQ(suite->node(0).posse->getSupporterChainPeers().size(), 2u);
+    EXPECT_EQ(suite->node(0).posse->getConfirmedSupporterCount(), 1u);
+    EXPECT_EQ(suite->node(0).posse->getBoostMs(), 15u);
+}
+
+// Deduplication is by player, not a blanket cap: two supporters registered as
+// two different players each earn a boost.
+inline void posseMultiDeviceTwoSupportersOfTwoPlayersBothCount(PosseMultiDeviceFixture* suite) {
+    suite->spawnDevices(3);
+    ASSERT_FALSE(suite->node(1).player->getServerPlayerId() ==
+                 suite->node(2).player->getServerPlayerId());
+    suite->formHunterPosse();
+
+    suite->pressEverySupporter();
+
     EXPECT_EQ(suite->node(0).posse->getConfirmedSupporterCount(), 2u);
     EXPECT_EQ(suite->node(0).posse->getBoostMs(), 30u);
+}
+
+// A supporter that buys no boost is still in the posse: it stays on the roster
+// and its screen is told how the round ended like any other supporter's.
+inline void
+posseMultiDeviceSupporterThatDoesNotCountIsSentTheResult(PosseMultiDeviceFixture* suite) {
+    suite->spawnDevices(4);
+    registerTestPlayerId(*suite->node(1).player, UUIDBytes());
+    registerTestPlayerId(*suite->node(2).player, suite->node(0).player->getServerPlayerId());
+    suite->formHunterPosse();
+    suite->pressEverySupporter();
+
+    MultiDeviceNode& challenger = suite->node(0);
+    ASSERT_EQ(challenger.posse->getConfirmedSupporterCount(), 1u)
+    << "only node 3 is a registered player other than the challenger";
+    EXPECT_EQ(challenger.posse->getSupporterChainPeers().size(), 3u);
+
+    std::vector<std::vector<uint8_t>> heard(suite->nodeCount());
+    for (size_t i = 1; i < suite->nodeCount(); ++i) {
+        std::vector<uint8_t>* events = &heard[i];
+        suite->node(i).posse->setOnGameEvent(
+        [events](uint8_t eventType) { events->push_back(eventType); });
+    }
+    challenger.posse->sendGameEventToSupporters(ChainGameEventType::WIN);
+    suite->deliverAllPackets();
+
+    const std::vector<uint8_t> win = {static_cast<uint8_t>(ChainGameEventType::WIN)};
+    EXPECT_EQ(heard[1], win) << "the demo supporter was not sent the result";
+    EXPECT_EQ(heard[2], win) << "the supporter registered as the challenger was not sent it";
+    EXPECT_EQ(heard[3], win);
 }
 
 // The challenger's COUNTDOWN/WIN/LOSS have to land on every supporter, not just
