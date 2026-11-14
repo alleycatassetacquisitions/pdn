@@ -29,11 +29,6 @@ constexpr uint8_t fdnDisplayCS          = 10;
 constexpr uint8_t fdnDisplayDC          = 9;
 constexpr uint8_t fdnDisplayRST         = 14;
 
-// --- Flash ---
-// The NVS partition in partitions.csv that holds the record store. Firmware
-// before it kept the same namespace in the default partition.
-inline constexpr const char FDN_RECORD_STORE_PARTITION_LABEL[] = "fdn_store";
-
 // --- FDN device identity ---
 // Player ID is 4 characters, zero-padded (e.g. FDN box 0 = "0000")
 constexpr uint8_t FDN_BOX_ID = 0;

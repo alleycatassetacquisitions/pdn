@@ -494,10 +494,6 @@ bool MatchManager::appendRecordToStorage(const MatchRecordContent& content) {
     return true;
 }
 
-StorageInterface* MatchManager::storageHolding(const char* ns) const {
-    return strcmp(ns, MATCH_RING_PREFS_NAMESPACE) == 0 ? ringStorage : storage;
-}
-
 bool MatchManager::readRingSlot(StorageInterface* area, const char* ns, uint32_t seq,
                                 MatchRecordContent& content) {
     char key[16];
@@ -512,14 +508,14 @@ bool MatchManager::readRingSlot(StorageInterface* area, const char* ns, uint32_t
     return true;
 }
 
-// Oldest first, and a record is erased from @p oldLocation only once every one
-// is held here, "seq" last: a move cut short, by a power loss or otherwise,
-// leaves each record in at least one place, and the next boot finishes it,
-// passing over the records ringStorage already holds. Nothing is written to
-// @p oldLocation, which older firmware's matches may have filled. A record not
-// readable there is dropped, since it could never be sent. Into an empty ring
-// the records keep their numbers, so one an FDN took without its acknowledgement
-// arriving is sent again as the same record.
+// Pending records only, oldest first. @p oldLocation's ring is erased, "seq"
+// last, only once every readable one is held here, so a move cut short loses
+// nothing and the next boot finishes it, passing over records already held.
+// Nothing is written to @p oldLocation, which older firmware's matches may have
+// filled. An unreadable record is dropped, since it could never be sent. Into
+// an empty ring the records keep their numbers up to the first one dropped, so
+// one an FDN took without its acknowledgement arriving is sent again as the
+// same record.
 void MatchManager::moveRingRecordsFrom(StorageInterface* oldLocation) {
     const uint32_t oldNewest = oldLocation->readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0);
     if (oldNewest == 0) {
@@ -530,9 +526,15 @@ void MatchManager::moveRingRecordsFrom(StorageInterface* oldLocation) {
     MATCH_RING_CAPACITY);
     if (getMatchSequenceNumber() == 0) {
         const uint32_t lastCollected = firstPending == 0 ? oldNewest : firstPending - 1;
-        // The mark first: should "seq" then fail, initialize() clamps the mark.
-        ringStorage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, lastCollected);
-        ringStorage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, lastCollected);
+        // Records moved under any other numbers would read as collected or
+        // pending wrongly, so a failed write stops the move with nothing erased.
+        if (ringStorage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY,
+                                   lastCollected) != sizeof(uint32_t) ||
+            ringStorage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, lastCollected) !=
+            sizeof(uint32_t)) {
+            LOG_E(MATCH_MANAGER_TAG, "Moving the match ring failed to number it; nothing moved");
+            return;
+        }
     }
     for (uint32_t number = firstPending; number != 0 && number <= oldNewest; number++) {
         MatchRecordContent content{};
@@ -562,7 +564,11 @@ void MatchManager::moveRingRecordsFrom(StorageInterface* oldLocation) {
 
 bool MatchManager::ringHoldsRecord(const MatchRecordContent& content) {
     const uint32_t newest = getMatchSequenceNumber();
-    for (uint32_t number = firstPendingRecordNumber(0, newest, MATCH_RING_CAPACITY);
+    // Not the slot the next record goes to: an append cut short between its
+    // slot and "seq" leaves that record's bytes there under an older number,
+    // and counting it as held would drop it. The oldest held record is then
+    // not checked, and at worst is stored again.
+    for (uint32_t number = firstPendingRecordNumber(0, newest, MATCH_RING_CAPACITY - 1);
          number != 0 && number <= newest; number++) {
         MatchRecordContent held{};
         if (readRingSlot(ringStorage, MATCH_RING_PREFS_NAMESPACE, number, held) &&
@@ -573,9 +579,9 @@ bool MatchManager::ringHoldsRecord(const MatchRecordContent& content) {
     return false;
 }
 
-bool MatchManager::readLowestPendingInRing(const char* ns, uint32_t& highestReported,
-                                           uint32_t& recordNumber, MatchRecordContent& content) {
-    StorageInterface* area = storageHolding(ns);
+bool MatchManager::readLowestPendingInRing(StorageInterface* area, const char* ns,
+                                           uint32_t& highestReported, uint32_t& recordNumber,
+                                           MatchRecordContent& content) {
     return findLowestReadableRecord(
     area->readUInt(ns, PREF_COLLECTED_SEQ_KEY, 0), area->readUInt(ns, PREF_SEQ_KEY, 0),
     MATCH_RING_CAPACITY, highestReported, recordNumber,
@@ -616,10 +622,10 @@ bool MatchManager::readLowestPendingLegacyJson(uint32_t& recordNumber,
 
 bool MatchManager::readLowestPendingFrame(uint32_t& recordNumber, RecordKind& kind,
                                           MatchRecordContent& content) {
-    if (readLowestPendingInRing(MATCH_RING_PREFS_NAMESPACE, highestUnreadableReported, recordNumber,
-                                content) ||
-        readLowestPendingInRing(LEGACY_MATCHES_PREFS_NAMESPACE, highestLegacyUnreadableReported,
-                                recordNumber, content)) {
+    if (readLowestPendingInRing(ringStorage, MATCH_RING_PREFS_NAMESPACE, highestUnreadableReported,
+                                recordNumber, content) ||
+        readLowestPendingInRing(storage, LEGACY_MATCHES_PREFS_NAMESPACE,
+                                highestLegacyUnreadableReported, recordNumber, content)) {
         kind = RecordKind::MATCH;
         return true;
     }
@@ -630,9 +636,8 @@ bool MatchManager::readLowestPendingFrame(uint32_t& recordNumber, RecordKind& ki
     return false;
 }
 
-bool MatchManager::ringHoldsPending(const char* ns, uint32_t seq,
+bool MatchManager::ringHoldsPending(StorageInterface* area, const char* ns, uint32_t seq,
                                     const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]) {
-    StorageInterface* area = storageHolding(ns);
     const uint32_t newest = area->readUInt(ns, PREF_SEQ_KEY, 0);
     const uint32_t firstPending = firstPendingRecordNumber(
     area->readUInt(ns, PREF_COLLECTED_SEQ_KEY, 0), newest, MATCH_RING_CAPACITY);
@@ -648,8 +653,7 @@ bool MatchManager::ringHoldsPending(const char* ns, uint32_t seq,
     return memcmp(slotCheck, recordCheck, RECORD_CHECK_SIZE) == 0;
 }
 
-void MatchManager::advanceRingMark(const char* ns, uint32_t recordNumber) {
-    StorageInterface* area = storageHolding(ns);
+void MatchManager::advanceRingMark(StorageInterface* area, const char* ns, uint32_t recordNumber) {
     const uint32_t collected = area->readUInt(ns, PREF_COLLECTED_SEQ_KEY, 0);
     if (advancedRecordMark(collected, area->readUInt(ns, PREF_SEQ_KEY, 0), recordNumber) ==
         collected) {
@@ -711,10 +715,11 @@ void MatchManager::onRecordAcknowledged(RecordKind kind, uint32_t recordNumber,
         return;
     }
     // Both rings number from 1, so the record check says which one was stored.
-    if (ringHoldsPending(MATCH_RING_PREFS_NAMESPACE, recordNumber, recordCheck)) {
-        advanceRingMark(MATCH_RING_PREFS_NAMESPACE, recordNumber);
-    } else if (ringHoldsPending(LEGACY_MATCHES_PREFS_NAMESPACE, recordNumber, recordCheck)) {
-        advanceRingMark(LEGACY_MATCHES_PREFS_NAMESPACE, recordNumber);
+    if (ringHoldsPending(ringStorage, MATCH_RING_PREFS_NAMESPACE, recordNumber, recordCheck)) {
+        advanceRingMark(ringStorage, MATCH_RING_PREFS_NAMESPACE, recordNumber);
+    } else if (ringHoldsPending(storage, LEGACY_MATCHES_PREFS_NAMESPACE, recordNumber,
+                                recordCheck)) {
+        advanceRingMark(storage, LEGACY_MATCHES_PREFS_NAMESPACE, recordNumber);
     } else {
         LOG_W(MATCH_MANAGER_TAG, "Acknowledged match %u is no longer pending",
               static_cast<unsigned>(recordNumber));

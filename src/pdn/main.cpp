@@ -2,7 +2,6 @@
 #include <freertos/task.h>
 #include <esp_log.h>
 #include <nvs_flash.h>
-#include <esp_flash.h>
 #include <esp_partition.h>
 
 // How long the splash screen stays up before the first app mounts.
@@ -18,6 +17,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
+#include "device/drivers/esp32-s3/store-partition.hpp"
 #include "device/crash/crash-logger.hpp"
 
 #include "pdn-constants.hpp"
@@ -62,31 +62,24 @@ GameSession* gameSession = nullptr;
 
 SymbolWirelessManager* symbolWirelessManager = nullptr;
 
-// True when the match ring's partition is in the partition table, or, on a
-// deployed table that ends before its range, once that range is registered for
-// this boot. Nothing is erased: a registration holds only until restart, so a
-// first one cannot be told from a later one, and NVS takes any other data left in
-// the range, as from an old table's spiffs, for free pages and erases each page
-// when it first uses it.
-static bool findOrRegisterMatchRingPartition() {
+// True when the store partition is in the partition table, or, on a deployed
+// table that ends before its range, once that range is registered for this
+// boot. The registration is refused when a partition of the running table
+// overlaps the range or the image's flash size (8 MB, which boot already
+// checked the chip holds) does not reach its end. Nothing is erased: a
+// registration holds only until restart, so a first one cannot be told from a
+// later one, and NVS takes other data left in the range, as from an old table's
+// spiffs, for free pages and erases each page when it first uses it.
+static bool findOrRegisterStorePartition() {
     if (esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS,
-                                 MATCH_RING_PARTITION_LABEL) != nullptr) {
+                                 STORE_PARTITION_LABEL) != nullptr) {
         return true;
     }
-    uint32_t flashSize = 0;
-    if (esp_flash_get_physical_size(nullptr, &flashSize) != ESP_OK || flashSize < PDN_FLASH_SIZE) {
-        LOG_E("SETUP", "Flash of %u bytes has no room for the match ring's partition",
-              static_cast<unsigned>(flashSize));
-        return false;
-    }
-    // Refused when a partition of the running table overlaps the range, or the
-    // image header's flash size does not reach its end.
     const esp_err_t status = esp_partition_register_external(
-    nullptr, MATCH_RING_PARTITION_OFFSET, MATCH_RING_PARTITION_SIZE, MATCH_RING_PARTITION_LABEL,
+    nullptr, STORE_PARTITION_OFFSET, STORE_PARTITION_SIZE, STORE_PARTITION_LABEL,
     ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, nullptr);
     if (status != ESP_OK) {
-        LOG_E("SETUP", "Registering the match ring's partition failed: %s",
-              esp_err_to_name(status));
+        LOG_E("SETUP", "Registering the store partition failed: %s", esp_err_to_name(status));
         return false;
     }
     return true;
@@ -164,8 +157,8 @@ static void setup() {
 
     // The ring's records move out of the default partition, which an init
     // failure above erases and older firmware's matches may have filled.
-    if (findOrRegisterMatchRingPartition()) {
-        matchRingDriver = new Esp32S3PrefsDriver(MATCH_RING_DRIVER_NAME, MATCH_RING_PARTITION_LABEL,
+    if (findOrRegisterStorePartition()) {
+        matchRingDriver = new Esp32S3PrefsDriver(MATCH_RING_DRIVER_NAME, STORE_PARTITION_LABEL,
                                                  {MATCH_RING_PREFS_NAMESPACE});
         if (matchRingDriver->initialize() != 0) {
             delete matchRingDriver;

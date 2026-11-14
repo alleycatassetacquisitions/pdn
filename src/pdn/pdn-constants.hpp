@@ -22,15 +22,3 @@ constexpr uint8_t displayRST         = 14;
 // --- LED strip lengths ---
 constexpr uint8_t numDisplayLights = 13;
 constexpr uint8_t numGripLights    = 6;
-
-// --- Flash ---
-// The match ring's NVS partition: the end of flash, which partitions.csv labels
-// fdn_store and a PDN otherwise leaves idle. Deployed tables end before it, so
-// there the PDN registers the same range under the same label for each boot;
-// renaming it in the table would take a USB flash. Firmware before it kept the
-// ring in the default partition.
-inline constexpr const char MATCH_RING_PARTITION_LABEL[] = "fdn_store";
-constexpr uint32_t MATCH_RING_PARTITION_OFFSET = 0x7E1000;
-constexpr uint32_t MATCH_RING_PARTITION_SIZE = 0x1F000;
-// The flash every PDN has; the range above ends at its end.
-constexpr uint32_t PDN_FLASH_SIZE = 0x800000;

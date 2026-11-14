@@ -17,6 +17,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1309-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "device/drivers/esp32-s3/store-partition.hpp"
 
 #include "fdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -133,8 +134,8 @@ static void setup() {
     // partition does not open.
     storageDriver =
     new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_RECORD_STORE_NAMESPACE, CRASH_LOG_NAMESPACE});
-    recordStoreDriver = new Esp32S3PrefsDriver(
-    FDN_RECORD_STORE_DRIVER_NAME, FDN_RECORD_STORE_PARTITION_LABEL, {FDN_RECORD_STORE_NAMESPACE});
+    recordStoreDriver = new Esp32S3PrefsDriver(FDN_RECORD_STORE_DRIVER_NAME, STORE_PARTITION_LABEL,
+                                               {FDN_RECORD_STORE_NAMESPACE});
 
     DriverConfig fdnConfig = {
         {DISPLAY_DRIVER_NAME,              displayDriver},

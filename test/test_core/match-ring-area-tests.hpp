@@ -11,14 +11,15 @@
 // ============================================
 
 /**
- * In-memory storage whose blob writes fail once blobWritesLeft runs out, as an
- * area that fills up, or loses power, part way through a move would.
+ * In-memory storage whose blob writes fail once blobWritesLeft runs out, and
+ * whose next seqWritesToFail writes of "seq" fail, as an area that fills up, or
+ * loses power, part way through a move would.
  */
-class BlobBudgetPrefs : public NativePrefsDriver {
+class FailingWritesPrefs : public NativePrefsDriver {
 public:
     /** Registers @p namespaces and allows @p blobWrites blob writes. */
-    BlobBudgetPrefs(const std::string& name, std::initializer_list<const char*> namespaces,
-                    int blobWrites)
+    FailingWritesPrefs(const std::string& name, std::initializer_list<const char*> namespaces,
+                       int blobWrites)
         : NativePrefsDriver(name, namespaces)
         , blobWritesLeft(blobWrites) {}
 
@@ -32,7 +33,17 @@ public:
         return NativePrefsDriver::writeBytes(ns, key, data, length);
     }
 
+    /** Fails, writing nothing, while seqWritesToFail counts down for "seq". */
+    size_t writeUInt(const std::string& ns, const std::string& key, uint32_t value) override {
+        if (key == PREF_SEQ_KEY && seqWritesToFail > 0) {
+            seqWritesToFail--;
+            return 0;
+        }
+        return NativePrefsDriver::writeUInt(ns, key, value);
+    }
+
     int blobWritesLeft;
+    int seqWritesToFail = 0;
 };
 
 // A ring record whose bytes all say `number`, so each is told apart from the others.
@@ -231,7 +242,7 @@ TEST_F(MatchManagerTestSuite, rebootAfterRingMoveChangesNothing) {
 TEST_F(MatchManagerTestSuite, ringMoveCutShortLosesNothingAndFinishesNextBoot) {
     NativePrefsDriver& prefs = makeNativePrefs("cut-prefs");
     writeRing(prefs, 1, 5, 0);
-    auto* area = new BlobBudgetPrefs("cut-area", {MATCH_RING_PREFS_NAMESPACE}, 2);
+    auto* area = new FailingWritesPrefs("cut-area", {MATCH_RING_PREFS_NAMESPACE}, 2);
     ringArea = area;
 
     rebuildMatchManager(&prefs, area);
@@ -315,4 +326,44 @@ TEST_F(MatchManagerTestSuite, collectedMarkAboveNewestIsClampedInTheRingArea) {
     rebuildMatchManager(&prefs, &area);
 
     EXPECT_EQ(area.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0), 5u);
+}
+
+// Numbering an empty area's ring failed: records stored under other numbers
+// would read as collected, so nothing moves and the old ring stays whole.
+TEST_F(MatchManagerTestSuite, ringMoveThatCannotNumberTheAreaMovesNothing) {
+    NativePrefsDriver& prefs = makeNativePrefs("unnumbered-prefs");
+    writeRing(prefs, 1, 5, 2);
+    auto* area = new FailingWritesPrefs("unnumbered-area", {MATCH_RING_PREFS_NAMESPACE}, 100);
+    area->seqWritesToFail = 1;
+    ringArea = area;
+
+    rebuildMatchManager(&prefs, area);
+
+    EXPECT_EQ(prefs.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0), 5u);
+    for (uint32_t number = 3; number <= 5; number++) {
+        EXPECT_TRUE(ringSlotHolds(prefs, number, numberedRingRecord(number))) << "match " << number;
+    }
+    EXPECT_FALSE(ringSlotHolds(*area, 1, numberedRingRecord(3)))
+    << "a match was moved under a number the mark covers";
+}
+
+// Power lost between a moved record's slot and its "seq" in a full ring: its
+// bytes sit in the slot the next record goes to, under the oldest number held.
+// They do not count as held, so the record is stored again, not dropped.
+TEST_F(MatchManagerTestSuite, ringMoveCutBetweenSlotAndSeqInAFullRingLosesNothing) {
+    NativePrefsDriver& prefs = makeNativePrefs("orphan-prefs");
+    writeRing(prefs, 1, 2, 0);
+    NativePrefsDriver& area = makeRingArea(this);
+    writeRing(area, 9, 40, 40);
+    char nextSlot[16];
+    ringSlotKey(41, nextSlot);
+    const MatchRecordContent orphan = numberedRingRecord(1);
+    area.writeBytes(MATCH_RING_PREFS_NAMESPACE, nextSlot, reinterpret_cast<const uint8_t*>(&orphan),
+                    MATCH_SLOT_SIZE);
+
+    rebuildMatchManager(&prefs, &area);
+
+    EXPECT_EQ(area.readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0), 42u);
+    EXPECT_TRUE(ringSlotHolds(area, 41, numberedRingRecord(1)));
+    EXPECT_TRUE(ringSlotHolds(area, 42, numberedRingRecord(2)));
 }

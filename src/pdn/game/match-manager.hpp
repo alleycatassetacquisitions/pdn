@@ -98,8 +98,8 @@ public:
      * Claims the kMatchCommand channel on wirelessManager and, with an rdc,
      * registers for its application frames and jack changes. storage is
      * required and holds older firmware's matches; ringStorage, when given,
-     * holds this firmware's ring, and the ring records storage holds, where
-     * firmware before it kept them, are moved there first. Without ringStorage
+     * holds this firmware's ring, and the pending ring records storage holds,
+     * where firmware before it kept them, are moved there first. Without ringStorage
      * the ring stays in storage. wirelessManager and rdc may be null in tests;
      * with a null rdc no standalone match starts either way. recordKey is
      * borrowed and read only when a finished match is tagged; while it is null
@@ -331,24 +331,25 @@ private:
     /** Writes a tagged match record to the next ring slot and increments the sequence number. */
     bool appendRecordToStorage(const MatchRecordContent& content);
 
-    // The storage holding namespace @p ns: ringStorage for this firmware's ring.
-    StorageInterface* storageHolding(const char* ns) const;
-    // Reads ring slot @p seq of namespace @p ns in @p area. A slot of
-    // LEGACY_UNTAGGED_SLOT_SIZE bytes reads with a zero tag.
+    // Each ring is namespace @p ns in @p area: this firmware's in ringStorage,
+    // older firmware's in storage.
+    // Reads ring slot @p seq. A slot of LEGACY_UNTAGGED_SLOT_SIZE bytes reads with a zero tag.
     static bool readRingSlot(StorageInterface* area, const char* ns, uint32_t seq,
                              MatchRecordContent& content);
-    // Moves into ringStorage the ring records @p oldLocation holds, then erases
-    // them there; see the definition for why a cut-short move loses nothing.
+    // Moves @p oldLocation's pending ring records into ringStorage and, once all
+    // are held, erases its ring; see the definition.
     void moveRingRecordsFrom(StorageInterface* oldLocation);
-    // True when one of the slots ringStorage's ring holds is byte-identical to @p content.
+    // True when a slot of ringStorage's ring, other than the one the next record
+    // goes to, is byte-identical to @p content.
     bool ringHoldsRecord(const MatchRecordContent& content);
-    bool readLowestPendingInRing(const char* ns, uint32_t& highestReported, uint32_t& recordNumber,
-                                 MatchRecordContent& content);
+    static bool readLowestPendingInRing(StorageInterface* area, const char* ns,
+                                        uint32_t& highestReported, uint32_t& recordNumber,
+                                        MatchRecordContent& content);
     bool readLowestPendingLegacyJson(uint32_t& recordNumber, MatchRecordContent& content);
-    // True when ring slot @p seq of @p ns is pending and its record check is @p recordCheck.
-    bool ringHoldsPending(const char* ns, uint32_t seq,
-                          const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]);
-    void advanceRingMark(const char* ns, uint32_t recordNumber);
+    // True when ring slot @p seq is pending and its record check is @p recordCheck.
+    static bool ringHoldsPending(StorageInterface* area, const char* ns, uint32_t seq,
+                                 const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]);
+    static void advanceRingMark(StorageInterface* area, const char* ns, uint32_t recordNumber);
     void retireLegacyJsonMatch(uint32_t index, const uint8_t (&recordCheck)[RECORD_CHECK_SIZE]);
 
     // Each unreadable stored match is logged once per boot, not on every beacon.
