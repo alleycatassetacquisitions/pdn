@@ -129,6 +129,30 @@ inline void rdcOutputPortConnectionLifecycle(RDCTests* suite) {
     EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK), nullptr);
 }
 
+// Frames cut short by a cable bounce, from a sender whose MAC starts with a letter.
+inline void rdcTruncatedMacFrameIsDropped(RDCTests* suite) {
+    const std::string cutFrames[] = {
+    SEND_MAC_ADDRESS + "E4:B0:63",
+    SEND_MAC_ADDRESS + "E4:B0:63:80:FE:E4",
+    SEND_MAC_ADDRESS + "E4:B0:63:80:FE:E4#1t",
+    SEND_MAC_ADDRESS + "E4:B0:63:80:FE:E4#1t\xEF",
+    SEND_MAC_ADDRESS + "E4:B0:63:80:FE:E4#1t1\xEF",
+    SEND_MAC_ADDRESS,
+    };
+    for (const std::string& frame : cutFrames) {
+        suite->device.outputJackSerial.stringCallback(frame);
+        suite->rdc.sync(&suite->device);
+        EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK),
+                  PortStatus::DISCONNECTED);
+        EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
+    }
+
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "E4:B0:63:80:FE:E4#1t1");
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTING);
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
+}
+
 inline void rdcConnectedPortDisconnectsOnHeartbeatTimeout(RDCTests* suite) {
     // Complete the output-port handshake
     suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
