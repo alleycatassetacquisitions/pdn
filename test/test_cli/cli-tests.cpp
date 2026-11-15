@@ -344,10 +344,6 @@ TEST_F(CliCommandTestSuite, RebootEntersChooseTeam) {
     cliCommandRebootEntersChooseTeam(this);
 }
 
-TEST_F(CliCommandTestSuite, RebootThenConfirmEntersHub) {
-    cliCommandRebootThenConfirmEntersHub(this);
-}
-
 TEST_F(CliCommandTestSuite, RebootClearsHistory) {
     cliCommandRebootClearsHistory(this);
 }

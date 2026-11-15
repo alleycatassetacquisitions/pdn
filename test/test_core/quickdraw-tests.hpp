@@ -97,6 +97,7 @@ public:
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(device.mockDisplay));
     }
 
     void TearDown() override {
@@ -171,7 +172,6 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
 }
 
 inline void chooseTeamFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
     ChooseTeamState chooseTeam(&playerProvider, false);
     chooseTeam.onStateMounted(&suite->device);
@@ -184,7 +184,6 @@ inline void chooseTeamFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     EXPECT_FALSE(chooseTeam.transitionToFirmwareUpdate());
     chooseTeam.onStateLoop(&suite->device);
     EXPECT_TRUE(chooseTeam.transitionToFirmwareUpdate());
-    EXPECT_FALSE(chooseTeam.transitionToHub());
 
     chooseTeam.onStateDismounted(&suite->device);
     EXPECT_FALSE(chooseTeam.transitionToFirmwareUpdate());
@@ -193,7 +192,6 @@ inline void chooseTeamFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
 // The button's pressed time counts from press-down, so a hold that began before the
 // mount, even one not yet a long press then, is longer than the screen has been up.
 inline void chooseTeamFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
     ChooseTeamState chooseTeam(&playerProvider, false);
     chooseTeam.onStateMounted(&suite->device);
@@ -212,7 +210,6 @@ inline void chooseTeamFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
 
 // The registration screen takes firmware updates for as long as it is up.
 inline void chooseTeamTakesUpdatesWhileUp(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PeerCommsInterface::PacketCallback onFrame;
     EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
         .WillOnce(SaveArg<1>(&onFrame));

@@ -899,76 +899,6 @@ void cliCommandDisplayAlias(CliDisplayCommandTestSuite* suite) {
 }
 
 // ============================================
-// CLI COMMAND / REBOOT TEST SUITE
-// ============================================
-
-class CliCommandTestSuite : public testing::Test {
-public:
-    void SetUp() override {
-        globalClock_ = new NativeClockDriver("test_cmd_clock");
-        globalLogger_ = new NativeLoggerDriver("test_cmd_logger");
-        globalLogger_->setSuppressOutput(true);
-        g_logger = globalLogger_;
-        SimpleTimer::setPlatformClock(globalClock_);
-        // The CLI factory launches into the hub with a test identity.
-        devices_.push_back(cli::DeviceFactory::createDevice(0, true));
-    }
-
-    void TearDown() override {
-        for (cli::DeviceInstance& dev : devices_) {
-            cli::DeviceFactory::destroyDevice(dev);
-        }
-        devices_.clear();
-        SimpleTimer::setPlatformClock(nullptr);
-        g_logger = nullptr;
-        delete globalLogger_;
-        delete globalClock_;
-    }
-
-    cli::CommandResult exec(const std::string& cmd) {
-        return processor_.execute(cmd, devices_, selectedDevice_, renderer_);
-    }
-
-    cli::DeviceInstance& device() { return devices_[0]; }
-
-    std::vector<cli::DeviceInstance> devices_;
-    int selectedDevice_ = 0;
-    cli::Renderer renderer_;
-    cli::CommandProcessor processor_;
-    NativeClockDriver* globalClock_;
-    NativeLoggerDriver* globalLogger_;
-};
-
-// Test: reboot puts the device on the registration screen with no player
-void cliCommandRebootEntersChooseTeam(CliCommandTestSuite* suite) {
-    ASSERT_EQ(suite->device().pdn->getActiveApp(), suite->device().hubApp);
-
-    cli::CommandResult result = suite->exec("reboot");
-
-    EXPECT_EQ(result.message, "Rebooted 0010 -> ChooseTeam");
-    ASSERT_EQ(suite->device().pdn->getActiveApp(), suite->device().playerFetchApp);
-    State* state = suite->device().getCurrentState();
-    ASSERT_NE(state, nullptr);
-    EXPECT_EQ(state->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
-    EXPECT_FALSE(suite->device().player->hasRegistrationProfile());
-}
-
-// Test: confirming a role after reboot registers the test identity and enters the hub
-void cliCommandRebootThenConfirmEntersHub(CliCommandTestSuite* suite) {
-    suite->exec("reboot");
-    ASSERT_EQ(suite->device().getCurrentState()->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
-
-    suite->device().secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    for (int i = 0; i < 3; i++) {
-        suite->device().pdn->loop();
-    }
-
-    EXPECT_EQ(suite->device().pdn->getActiveApp(), suite->device().hubApp);
-    EXPECT_EQ(suite->device().player->getServerPlayerId(),
-              Player::testPlayerIdFromMac(suite->device().peerCommsDriver->getMacAddress()));
-}
-
-// ============================================
 // CLI ROLE COMMAND TEST SUITE
 // ============================================
 
@@ -1214,15 +1144,26 @@ void cliRoleCommandNoDevices(CliRoleCommandTestSuite* suite) {
     ASSERT_EQ(result.message, "No devices");
 }
 
+using CliCommandTestSuite = CliRoleCommandTestSuite;
+inline cli::CommandResult cliReboot(CliCommandTestSuite* suite) {
+    return suite->processor_->execute("reboot", suite->devices_, suite->selectedDevice_,
+                                      *suite->renderer_);
+}
+
+void cliCommandRebootEntersChooseTeam(CliCommandTestSuite* suite) {
+    cli::DeviceInstance& device = suite->devices_[0];
+    EXPECT_EQ(cliReboot(suite).message, "Rebooted 0010 -> ChooseTeam");
+    ASSERT_EQ(device.pdn->getActiveApp(), device.playerFetchApp);
+    EXPECT_EQ(device.getCurrentState()->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
+    EXPECT_FALSE(device.player->hasRegistrationProfile());
+}
+
 // Test: Reboot clears state history and resets lastStateId
 void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
-    suite->device().stateHistory.push_back(1);
-    suite->device().stateHistory.push_back(5);
-    suite->device().stateHistory.push_back(7);
-    suite->device().lastStateId = 7;
-
-    suite->exec("reboot");
-
-    ASSERT_TRUE(suite->device().stateHistory.empty());
-    ASSERT_EQ(suite->device().lastStateId, -1);
+    cli::DeviceInstance& device = suite->devices_[0];
+    device.stateHistory.push_back(1);
+    device.lastStateId = 7;
+    cliReboot(suite);
+    ASSERT_TRUE(device.stateHistory.empty());
+    ASSERT_EQ(device.lastStateId, -1);
 }

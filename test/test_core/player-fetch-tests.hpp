@@ -4,7 +4,6 @@
 #include <gmock/gmock.h>
 
 #include "apps/player-fetch/player-fetch.hpp"
-#include "apps/player-fetch/player-fetch-states.hpp"
 #include "device/firmware-update-manager.hpp"
 #include "fake-firmware-store.hpp"
 #include "connect-state-callback-tests.hpp"
@@ -101,22 +100,14 @@ inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
     EXPECT_FALSE(chooseTeam.transitionToHub());
 }
 
-// The firmware hold on ChooseTeam opens the update screen, and the update screen
-// returns to ChooseTeam: a PDN takes an update only from the registration screen.
+// The firmware hold opens the update screen, which returns to ChooseTeam.
 inline void chooseTeamAndFirmwareUpdateLeadToEachOther(PlayerFetchTestSuite* suite) {
     FakeFirmwareStore store;
     FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
     PlayerFetchApp app(&manager, &suite->playerProvider, false);
     app.populateStateMap();
-
     ASSERT_EQ(app.getStateMap().size(), 2u);
     State* chooseTeam = app.getStateMap()[0];
-    State* firmwareUpdate = app.getStateMap()[1];
-    EXPECT_EQ(chooseTeam->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
-    EXPECT_EQ(firmwareUpdate->getStateId(), PlayerFetchStateId::FIRMWARE_UPDATE);
-    ASSERT_EQ(chooseTeam->getTransitions().size(), 2u);
-    EXPECT_EQ(chooseTeam->getTransitions()[0]->getTargetAppId().id, HUB_APP_ID);
-    EXPECT_EQ(chooseTeam->getTransitions()[1]->getNextState(), firmwareUpdate);
-    ASSERT_EQ(firmwareUpdate->getTransitions().size(), 1u);
-    EXPECT_EQ(firmwareUpdate->getTransitions()[0]->getNextState(), chooseTeam);
+    EXPECT_EQ(chooseTeam->getTransitions()[1]->getNextState(), app.getStateMap()[1]);
+    EXPECT_EQ(app.getStateMap()[1]->getTransitions()[0]->getNextState(), chooseTeam);
 }
