@@ -870,6 +870,10 @@ TEST_F(MatchManagerTestSuite, boostSubtractedFromHunterReactionTime) {
     matchManagerBoostSubtractedFromHunterReactionTime(this);
 }
 
+TEST_F(MatchManagerTestSuite, resultSnapshotCarriesOnlyThisMatchsPenalty) {
+    matchManagerResultSnapshotCarriesOnlyThisMatchsPenalty(this);
+}
+
 TEST_F(MatchManagerTestSuite, clearCurrentMatchResetsBoost) {
     matchManagerClearCurrentMatchResetsBoost(matchManager, player);
 }
@@ -967,12 +971,20 @@ TEST_F(MatchManagerTestSuite, hunterMatchIsReadyAfterAck) {
     matchManagerHunterMatchIsReadyAfterAck(matchManager, player);
 }
 
-TEST_F(MatchManagerTestSuite, bountyMatchIsReadyAfterReceivingMatch) {
-    matchManagerBountyMatchIsReadyAfterReceivingMatch(matchManager, player);
+TEST_F(MatchManagerTestSuite, bountyReadiesWhenItsAckIsDelivered) {
+    matchManagerBountyReadiesWhenItsAckIsDelivered(this);
+}
+
+TEST_F(MatchManagerTestSuite, bountyIgnoresDeliveryOfAnotherFrame) {
+    matchManagerBountyIgnoresDeliveryOfAnotherFrame(this);
+}
+
+TEST_F(MatchManagerTestSuite, bountyDropsTheMatchWhenItsAckIsAbandoned) {
+    matchManagerBountyDropsTheMatchWhenItsAckIsAbandoned(this);
 }
 
 TEST_F(MatchManagerTestSuite, clearMatchResetsMatchIsReadyFlag) {
-    matchManagerClearMatchResetsMatchIsReadyFlag(matchManager, player);
+    matchManagerClearMatchResetsMatchIsReadyFlag(this);
 }
 
 TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
@@ -1251,6 +1263,12 @@ TEST_F(MatchCountdownTests, multipleEarlyPressesAccumulatePenalty) {
     countdownMultipleEarlyPressesAccumulatePenalty(this);
 }
 
+TEST_F(MatchCountdownTests, bindsMasherOnPressAndResetsStaleCount) {
+    countdownBindsMasherOnPressAndResetsStaleCount(this);
+}
+
+TEST_F(MatchCountdownTests, dismountDetachesMasher) { countdownDismountDetachesMasher(this); }
+
 TEST_F(MatchCountdownTests, progressesThroughStages) { countdownProgressesThroughStages(this); }
 
 TEST_F(MatchCountdownTests, battleTransitionSetsFlag) { countdownBattleTransitionSetsFlag(this); }
@@ -1266,6 +1284,10 @@ TEST_F(MatchStateTests, shootoutTimeoutForfeitsTheMatchHunter) {
 }
 
 // Scenario 1: DUT presses button first
+TEST_F(MatchStateTests, scoresOnButtonPressAndIgnoresClick) {
+    matchScoresOnButtonPressAndIgnoresClick(this);
+}
+
 TEST_F(MatchStateTests, buttonPressTransitionsToMatchPushed) {
     matchButtonPressTransitionsToMatchPushed(this);
 }
@@ -1402,6 +1424,18 @@ TEST_F(StateCleanupTests, pushedLeavesTheMatchAloneWhenDisconnected) {
 
 TEST_F(StateCleanupTests, receivedResultLeavesTheMatchAloneWhenDisconnected) {
     receivedResultLeavesTheMatchAloneWhenDisconnected(this);
+}
+
+TEST_F(StateCleanupTests, idleEntersSymbolOnlyFromTheOutputJack) {
+    idleEntersSymbolOnlyFromTheOutputJack(this);
+}
+
+TEST_F(StateCleanupTests, symbolStateLeavesForIdleWithoutBlocking) {
+    symbolStateLeavesForIdleWithoutBlocking(this);
+}
+
+TEST_F(StateCleanupTests, symbolMatchedLeavesForIdleWithoutBlocking) {
+    symbolMatchedLeavesForIdleWithoutBlocking(this);
 }
 
 TEST_F(StateCleanupTests, countdownDebouncesTransientDisconnect) {
@@ -2105,6 +2139,9 @@ TEST_F(ShootoutManagerTests, matchStartWaitsOutTheBracketRevealWindow) { matchSt
 TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
 TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
+TEST_F(ShootoutManagerTests, resultBeforeTheFirstMatchStartsIsIgnored) {
+    resultBeforeTheFirstMatchStartsIsIgnored(this);
+}
 TEST_F(ShootoutManagerTests, eachMatchGetsItsOwnResultRetry) { eachMatchGetsItsOwnResultRetry(this); }
 TEST_F(ShootoutManagerTests, staleResultDoesNotEndTheCurrentMatch) { staleResultDoesNotEndTheCurrentMatch(this); }
 TEST_F(ShootoutManagerTests, coordinatorMissingOurResultIsRecoveredBySender) { coordinatorMissingOurResultIsRecoveredBySender(this); }
