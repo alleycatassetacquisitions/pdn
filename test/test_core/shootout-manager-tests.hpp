@@ -976,13 +976,12 @@ inline void matchResultReceivedAdvancesLocalBracket(ShootoutManagerTests* suite)
 inline void resultBeforeTheFirstMatchStartsIsIgnored(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x04, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
-    std::array<uint8_t, 6> aMac  = {0x02, 0, 0, 0, 0, 0};
-    std::array<uint8_t, 6> bMac  = {0x03, 0, 0, 0, 0, 0};
-    std::array<uint8_t, 6> me    = {0x04, 0, 0, 0, 0, 0};
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(testing::Return(selfMac));
+    std::array<uint8_t, 6> aMac = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> bMac = {0x03, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x04, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(selfMac));
     ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+    .WillByDefault(testing::Return(1));
     suite->followRingHead(coord);
     suite->shootout->setRingMembersForTest({coord, aMac, bMac, me});
     suite->shootout->startProposal();
@@ -994,7 +993,7 @@ inline void resultBeforeTheFirstMatchStartsIsIgnored(ShootoutManagerTests* suite
 
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
-        .Times(0);
+    .Times(0);
     suite->shootout->onMatchResultReceived(aMac.data(), bMac.data(), 0, 7, aMac.data());
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
     EXPECT_FALSE(suite->shootout->isEliminated(bMac.data()));
@@ -1004,8 +1003,8 @@ inline void resultBeforeTheFirstMatchStartsIsIgnored(ShootoutManagerTests* suite
     suite->shootout->onMatchStartReceived(coord.data(), aMac.data(), bMac.data(), 0, 2);
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
-        .Times(1)
-        .WillOnce(testing::Return(1));
+    .Times(1)
+    .WillOnce(testing::Return(1));
     suite->shootout->onMatchResultReceived(aMac.data(), bMac.data(), 0, 7, aMac.data());
     EXPECT_TRUE(suite->shootout->isEliminated(bMac.data()));
 }
@@ -2221,8 +2220,8 @@ inline void admittedFrameWithBadContentIsStillAcked(ShootoutManagerTests* suite)
 
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
-        .Times(4)
-        .WillRepeatedly(testing::Return(1));
+    .Times(4)
+    .WillRepeatedly(testing::Return(1));
 
     suite->shootout->onMatchStartReceived(coord.data(), me.data(), stranger.data(), 0, 2);
     EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), -1)
