@@ -18,7 +18,9 @@ enum class PktType : uint8_t {
     kSymbolMatchCommand = 13,
     kFdnConnect = 14,
     kPdnConnectionContext = 15,
-    kFdnConnectionContext = 16,
+    // Event firmware listens for firmware frames here; see the assert after DataPktHdr.
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kFirmwareUpdate = 16,
     kConnectionAnnounce = 17,
     kDisconnectReport = 18,
     kHeadTransfer = 19,
@@ -30,8 +32,7 @@ enum class PktType : uint8_t {
     // Reserved: older builds broadcast crash records on this number.
     // NOLINTNEXTLINE(readability-identifier-naming)
     kCrashLog = 21,
-    // NOLINTNEXTLINE(readability-identifier-naming)
-    kFirmwareUpdate = 22,
+    // Reserved: older comms-rewrite builds sent firmware frames on 22.
     // Record relay, PDN to FDN and the FDN's ack back (wireless/record-relay-types.hpp).
     // NOLINTNEXTLINE(readability-identifier-naming)
     kCrashRecord = 23,
@@ -39,6 +40,8 @@ enum class PktType : uint8_t {
     kMatchRecord = 24,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kRecordAck = 25,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kFdnConnectionContext = 26,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -84,6 +87,7 @@ struct DataPktHdr
     PktType packetType;
 } __attribute__((packed));
 static_assert(sizeof(DataPktHdr) == 1, "older builds parse firmware frames with a one-byte header");
+static_assert(static_cast<uint8_t>(PktType::kFirmwareUpdate) == 16, "event firmware listens for firmware frames on 16");
 
 struct ChainConfirmPayload
 {

@@ -1,7 +1,7 @@
 ## Wire contract
 
 - **FDN beacon**: `PlayerInfoPkt` gains a trailing `senderDeviceType` byte. The FDN beacons every 12 s from its tick, in every app.
-- **Packet types**: `kCrashRecord` 23, `kMatchRecord` 24, `kRecordAck` 25, after `kFirmwareUpdate` 22. `kCrashLog` 21 stays reserved; its dead handler goes.
+- **Packet types**: `kCrashRecord` 23, `kMatchRecord` 24, `kRecordAck` 25, after 22 (reserved: older comms-rewrite builds sent firmware frames there; `kFirmwareUpdate` is back on 16). `kCrashLog` 21 stays reserved; its dead handler goes.
 - **Frame**: `{u8 seqId, u8 kind, u32 recordNumber, content}`. Crash, kind 0x01: 42-byte crash packet, 48 B. Match, kind 0x02: 112-byte record, 118 B. No tag.
 - **Ack**: `{u8 seqId, u8 kind, u32 recordNumber, u16 crc16(content)}`, 8 B, sent only after a durable write and re-sent for a duplicate. The CRC names the frame; it is not authentication.
 
