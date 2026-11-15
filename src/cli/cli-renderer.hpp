@@ -456,7 +456,7 @@ private:
                    pendingPkts));
         bufferLine(format("|   TX: %s", espNowTxStr.c_str()));
         bufferLine(format("|   RX: %s", espNowRxStr.c_str()));
-        
+
         bufferLine(format("| Errors: %s", errorStr.c_str()));
         
         bufferLine(format("%s+--------------------------------------------------------------+\033[0m", headerColor));

@@ -10,7 +10,10 @@ ChooseTeamState::ChooseTeamState(PlayerProvider* playerProvider,
     , firmwareUpdateManager(firmwareUpdateManager)
     , testIdentity(testIdentity) {}
 
-ChooseTeamState::~ChooseTeamState() { playerProvider = nullptr; firmwareUpdateManager = nullptr; }
+ChooseTeamState::~ChooseTeamState() {
+    playerProvider = nullptr;
+    firmwareUpdateManager = nullptr;
+}
 
 void ChooseTeamState::onStateMounted(PDN* pdn) {
     playerProvider->clear();
@@ -73,9 +76,7 @@ void ChooseTeamState::onStateDismounted(PDN* pdn) {
 
 bool ChooseTeamState::transitionToHub() const { return transitionToHubState; }
 
-bool ChooseTeamState::transitionToFirmwareUpdate() const {
-    return transitionToFirmwareUpdateState;
-}
+bool ChooseTeamState::transitionToFirmwareUpdate() const { return transitionToFirmwareUpdateState; }
 
 void ChooseTeamState::renderUi(PDN* pdn) const {
     pdn->getDisplay()->invalidateScreen();

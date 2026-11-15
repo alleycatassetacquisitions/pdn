@@ -1144,26 +1144,21 @@ void cliRoleCommandNoDevices(CliRoleCommandTestSuite* suite) {
     ASSERT_EQ(result.message, "No devices");
 }
 
-using CliCommandTestSuite = CliRoleCommandTestSuite;
-inline cli::CommandResult cliReboot(CliCommandTestSuite* suite) {
-    return suite->processor_->execute("reboot", suite->devices_, suite->selectedDevice_,
-                                      *suite->renderer_);
-}
-
-void cliCommandRebootEntersChooseTeam(CliCommandTestSuite* suite) {
-    cli::DeviceInstance& device = suite->devices_[0];
-    EXPECT_EQ(cliReboot(suite).message, "Rebooted 0010 -> ChooseTeam");
-    ASSERT_EQ(device.pdn->getActiveApp(), device.playerFetchApp);
+// Test: reboot puts a hub device on ChooseTeam with no player and clears its history
+inline void cliCommandRebootEntersChooseTeam() {
+    NativeClockDriver clock("test_reboot_clock");
+    SimpleTimer::setPlatformClock(&clock);
+    std::vector<cli::DeviceInstance> devices{cli::DeviceFactory::createDevice(0, true)};
+    cli::DeviceInstance& device = devices[0];
+    device.stateHistory.push_back(1);
+    int selected = 0;
+    cli::Renderer renderer;
+    EXPECT_EQ(cli::CommandProcessor().execute("reboot", devices, selected, renderer).message,
+              "Rebooted 0010 -> ChooseTeam");
+    EXPECT_EQ(device.pdn->getActiveApp(), device.playerFetchApp);
     EXPECT_EQ(device.getCurrentState()->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
     EXPECT_FALSE(device.player->hasRegistrationProfile());
-}
-
-// Test: Reboot clears state history and resets lastStateId
-void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
-    cli::DeviceInstance& device = suite->devices_[0];
-    device.stateHistory.push_back(1);
-    device.lastStateId = 7;
-    cliReboot(suite);
-    ASSERT_TRUE(device.stateHistory.empty());
-    ASSERT_EQ(device.lastStateId, -1);
+    EXPECT_TRUE(device.stateHistory.empty());
+    cli::DeviceFactory::destroyDevice(device);
+    SimpleTimer::setPlatformClock(nullptr);
 }

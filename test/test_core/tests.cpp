@@ -1204,9 +1204,7 @@ TEST_F(IdleStateTests, chooseTeamFirmwareHoldCarriedInDoesNotFire) {
     chooseTeamFirmwareHoldCarriedInDoesNotFire(this);
 }
 
-TEST_F(IdleStateTests, chooseTeamTakesUpdatesWhileUp) {
-    chooseTeamTakesUpdatesWhileUp(this);
-}
+TEST_F(IdleStateTests, chooseTeamTakesUpdatesWhileUp) { chooseTeamTakesUpdatesWhileUp(this); }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);

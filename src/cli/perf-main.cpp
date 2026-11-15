@@ -133,7 +133,7 @@ static void deliver(StubPeerComms& target, const uint8_t mac[6], MatchPacket& pk
 
 struct DeviceCtx {
     StubPeerComms    peerComms;
-    StubStorage      storage;
+    StubStorage storage;
     WirelessManager* wirelessMgr = nullptr;
     MatchManager*    matchMgr       = nullptr;
     Player           player;

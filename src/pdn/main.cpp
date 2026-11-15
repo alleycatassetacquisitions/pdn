@@ -109,18 +109,18 @@ static void setup() {
 
     // Create driver configuration
     DriverConfig pdnConfig = {
-        {DISPLAY_DRIVER_NAME, displayDriver},
-        {PRIMARY_BUTTON_DRIVER_NAME, primaryButtonDriver},
-        {SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonDriver},
-        {LIGHT_DRIVER_NAME, lightDriver},
-        {HAPTICS_DRIVER_NAME, hapticsDriver},
-        {SERIAL_OUT_DRIVER_NAME, serialOutDriver},
-        {SERIAL_IN_DRIVER_NAME, serialInDriver},
-        {PEER_COMMS_DRIVER_NAME, peerCommsDriver},
-        {PLATFORM_CLOCK_DRIVER_NAME, clockDriver},
-        {LOGGER_DRIVER_NAME, loggerDriver},
-        {STORAGE_DRIVER_NAME, storageDriver},
-        {FIRMWARE_STORE_DRIVER_NAME, firmwareStore},
+    {DISPLAY_DRIVER_NAME, displayDriver},
+    {PRIMARY_BUTTON_DRIVER_NAME, primaryButtonDriver},
+    {SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonDriver},
+    {LIGHT_DRIVER_NAME, lightDriver},
+    {HAPTICS_DRIVER_NAME, hapticsDriver},
+    {SERIAL_OUT_DRIVER_NAME, serialOutDriver},
+    {SERIAL_IN_DRIVER_NAME, serialInDriver},
+    {PEER_COMMS_DRIVER_NAME, peerCommsDriver},
+    {PLATFORM_CLOCK_DRIVER_NAME, clockDriver},
+    {LOGGER_DRIVER_NAME, loggerDriver},
+    {STORAGE_DRIVER_NAME, storageDriver},
+    {FIRMWARE_STORE_DRIVER_NAME, firmwareStore},
     };
 
     // Create core game objects
@@ -132,8 +132,8 @@ static void setup() {
     pdn->begin();
     // Create wireless managers
     LOG_I("SETUP", "Creating SymbolWirelessManager...");
-    symbolWirelessManager = new SymbolWirelessManager(pdn->getWirelessManager(),
-                                                      pdn->getRemoteDeviceCoordinator());
+    symbolWirelessManager =
+    new SymbolWirelessManager(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
 
     // The PDN's crash records go to an FDN through the record relay.
     crashLogger = new CrashLogger(storageDriver);
@@ -143,8 +143,8 @@ static void setup() {
     gameSession->setCrashRecordSource(crashLogger);
 
     GameContext gameContext = gameSession->getContext();
-    playerFetchApp = new PlayerFetchApp(pdn->getFirmwareUpdateManager(), playerProvider,
-                                        TEST_PLAYER_IDENTITY);
+    playerFetchApp =
+    new PlayerFetchApp(pdn->getFirmwareUpdateManager(), playerProvider, TEST_PLAYER_IDENTITY);
     hubApp = new HubApp(gameContext);
     matchApp = new MatchApp(gameContext);
     shootoutApp = new ShootoutApp(gameContext);

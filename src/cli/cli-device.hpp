@@ -170,19 +170,19 @@ public:
 
         // Create driver configuration
         DriverConfig pdnConfig = {
-            {DISPLAY_DRIVER_NAME, instance.displayDriver},
-            {PRIMARY_BUTTON_DRIVER_NAME, instance.primaryButtonDriver},
-            {SECONDARY_BUTTON_DRIVER_NAME, instance.secondaryButtonDriver},
-            {LIGHT_DRIVER_NAME, instance.lightDriver},
-            {HAPTICS_DRIVER_NAME, instance.hapticsDriver},
-            {SERIAL_OUT_DRIVER_NAME, instance.serialOutDriver},
-            {SERIAL_IN_DRIVER_NAME, instance.serialInDriver},
-            {PEER_COMMS_DRIVER_NAME, instance.peerCommsDriver},
-            {PLATFORM_CLOCK_DRIVER_NAME, instance.clockDriver},
-            {LOGGER_DRIVER_NAME, instance.loggerDriver},
-            {STORAGE_DRIVER_NAME, instance.storageDriver},
+        {DISPLAY_DRIVER_NAME, instance.displayDriver},
+        {PRIMARY_BUTTON_DRIVER_NAME, instance.primaryButtonDriver},
+        {SECONDARY_BUTTON_DRIVER_NAME, instance.secondaryButtonDriver},
+        {LIGHT_DRIVER_NAME, instance.lightDriver},
+        {HAPTICS_DRIVER_NAME, instance.hapticsDriver},
+        {SERIAL_OUT_DRIVER_NAME, instance.serialOutDriver},
+        {SERIAL_IN_DRIVER_NAME, instance.serialInDriver},
+        {PEER_COMMS_DRIVER_NAME, instance.peerCommsDriver},
+        {PLATFORM_CLOCK_DRIVER_NAME, instance.clockDriver},
+        {LOGGER_DRIVER_NAME, instance.loggerDriver},
+        {STORAGE_DRIVER_NAME, instance.storageDriver},
         };
-        
+
         // Create PDN
         instance.pdn = PDN::createPDN(pdnConfig);
         instance.pdn->begin();
@@ -206,8 +206,8 @@ public:
             instance.symbolWirelessManager);
 
         GameContext gameContext = instance.gameSession->getContext();
-        instance.playerFetchApp = new PlayerFetchApp(instance.pdn->getFirmwareUpdateManager(),
-                                                     instance.playerProvider, true);
+        instance.playerFetchApp =
+        new PlayerFetchApp(instance.pdn->getFirmwareUpdateManager(), instance.playerProvider, true);
         instance.hubApp = new HubApp(gameContext);
         instance.matchApp = new MatchApp(gameContext);
         instance.shootoutApp = new ShootoutApp(gameContext);
