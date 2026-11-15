@@ -2139,6 +2139,9 @@ TEST_F(ShootoutManagerTests, matchStartWaitsOutTheBracketRevealWindow) { matchSt
 TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
 TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
+TEST_F(ShootoutManagerTests, resultBeforeTheFirstMatchStartsIsIgnored) {
+    resultBeforeTheFirstMatchStartsIsIgnored(this);
+}
 TEST_F(ShootoutManagerTests, eachMatchGetsItsOwnResultRetry) { eachMatchGetsItsOwnResultRetry(this); }
 TEST_F(ShootoutManagerTests, staleResultDoesNotEndTheCurrentMatch) { staleResultDoesNotEndTheCurrentMatch(this); }
 TEST_F(ShootoutManagerTests, coordinatorMissingOurResultIsRecoveredBySender) { coordinatorMissingOurResultIsRecoveredBySender(this); }

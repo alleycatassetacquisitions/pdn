@@ -971,6 +971,45 @@ inline void matchResultReceivedAdvancesLocalBracket(ShootoutManagerTests* suite)
     EXPECT_FALSE(suite->shootout->isEliminated(aMac.data()));
 }
 
+// Before the first match starts nothing has been played, so a result that turns
+// up then is a stray. It is neither applied nor acknowledged.
+inline void resultBeforeTheFirstMatchStartsIsIgnored(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x04, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> aMac  = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> bMac  = {0x03, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me    = {0x04, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+    suite->followRingHead(coord);
+    suite->shootout->setRingMembersForTest({coord, aMac, bMac, me});
+    suite->shootout->startProposal();
+    for (const std::array<uint8_t, 6>& m : {coord, aMac, bMac, me}) {
+        suite->shootout->onConfirmReceived(m.data());
+    }
+    suite->shootout->onBracketReceived(coord.data(), {aMac, bMac, coord, me}, 1);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
+        .Times(0);
+    suite->shootout->onMatchResultReceived(aMac.data(), bMac.data(), 0, 7, aMac.data());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    EXPECT_FALSE(suite->shootout->isEliminated(bMac.data()));
+    testing::Mock::VerifyAndClearExpectations(suite->device.mockPeerComms);
+
+    // The same result is taken once the match it names has started.
+    suite->shootout->onMatchStartReceived(coord.data(), aMac.data(), bMac.data(), 0, 2);
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
+        .Times(1)
+        .WillOnce(testing::Return(1));
+    suite->shootout->onMatchResultReceived(aMac.data(), bMac.data(), 0, 7, aMac.data());
+    EXPECT_TRUE(suite->shootout->isEliminated(bMac.data()));
+}
+
 // Every match gets its own attempt. A device-wide flag would be spent by the
 // first match this device wins and never returned, so a later lost result would
 // go unrecovered on the same device — and on every later tournament in the same
@@ -2182,12 +2221,16 @@ inline void admittedFrameWithBadContentIsStillAcked(ShootoutManagerTests* suite)
 
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
-        .Times(3)
+        .Times(4)
         .WillRepeatedly(testing::Return(1));
 
     suite->shootout->onMatchStartReceived(coord.data(), me.data(), stranger.data(), 0, 2);
     EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), -1)
         << "a pair naming a device outside the bracket started a match";
+
+    // A result is only admitted once match play has begun, so start a real one.
+    suite->shootout->onMatchStartReceived(coord.data(), me.data(), other.data(), 0, 5);
+    ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), 0);
 
     suite->shootout->onMatchResultReceived(stranger.data(), other.data(), 0, 3, coord.data());
     EXPECT_FALSE(suite->shootout->isEliminated(other.data()))
