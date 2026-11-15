@@ -115,7 +115,7 @@ public:
 
     // ---- Chain-level surface ----
 
-    /** This device's chain role, derived from jack presence plus the ring latch. */
+    /** This device's chain role, derived from its PDN-to-PDN jack links plus the ring latch. */
     virtual ChainRole getChainRole() const;
 
     /**
@@ -183,7 +183,8 @@ public:
     /**
      * Hands a received peer context to the game layer opaquely: the jack it
      * arrived on, the peer's device kind, and the raw profile bytes
-     * (PlayerProfile for PDN, FdnProfile for FDN). RDC never interprets them.
+     * (PlayerProfile for PDN, FdnProfile for FDN). RDC reads only
+     * FdnProfile::utcUnixMs, for clock sync; otherwise opaque.
      */
     using ContextReceivedCallback =
         std::function<void(SerialIdentifier jack, DeviceType peerType,
@@ -229,7 +230,7 @@ public:
     /**
      * The peer's opaque profile bytes on `jack`, or nullptr before its context
      * arrives. PlayerProfile for a PDN peer, FdnProfile for an FDN one; which it
-     * is comes from getPeerDeviceType. RDC never interprets them. Held per jack
+     * is comes from getPeerDeviceType. RDC reads only FdnProfile::utcUnixMs. Held per jack
      * rather than only forwarded on arrival, so a state mounting later still gets
      * the peer's identity instead of only whoever was mounted at the time.
      */
@@ -249,9 +250,8 @@ public:
     void setExternalConnectivityTask(bool external) { externalConnectivityTask = external; }
 
     /**
-     * The connectivity task's sole action: emit one HELLO frame on every jack.
-     * TX only — touches no SM state and fires no callback, so it is safe to run
-     * on a separate FreeRTOS task while the main loop owns everything else.
+     * Emits one HELLO frame on every jack from the published atomic snapshot;
+     * touches no main-loop state and fires no callback.
      */
     void emitHello();
 
@@ -415,12 +415,9 @@ private:
     static unsigned long nowMs();
 
     // ---- Device-level chain state machine ----
-    // headMac (48 bits) + a confirmed bit packed into one atomic: the emit task
-    // reads it while the main loop writes it. The confirmed bit rises only when the
-    // announce to the head currently held is delivered.
-    static constexpr uint64_t HEAD_MAC_MASK = 0xFFFFFFFFFFFFULL;
-    static constexpr uint64_t CONFIRMED_BIT = 1ULL << 48;
-    std::atomic<uint64_t> chainHeadState{0};
+    // Main-loop-owned; chainHeadMac is all-zero when no upstream head is held.
+    std::array<uint8_t, 6> chainHeadMac{};
+    bool chainHeadConfirmed = false;
     // Latched when this structural head sees its own MAC return on the INPUT jack;
     // cleared when any ring link drops. Dominates getChainRole().
     bool ringLatched = false;
@@ -430,31 +427,38 @@ private:
     // single-sourced: the latching device holds no head, so its own flag is
     // never fed back to it and a cleared latch drains round the ring.
     bool upstreamRingClosed = false;
+    // Written only by publishHelloState() on the main loop so emitHello() reads
+    // a consistent view in one load.
+    static constexpr uint64_t HEAD_MAC_MASK = 0xFFFFFFFFFFFFULL;
+    static constexpr uint64_t CONFIRMED_BIT = 1ULL << 48;
+    static constexpr uint64_t RING_CLOSED_BIT = 1ULL << 49;
+    std::atomic<uint64_t> publishedHelloState{0};
     // Last time the own-MAC head returned on INPUT while latched (seeded at
     // closure): the ring-latch evidence stamp checked against RING_EVIDENCE_TIMEOUT_MS.
     unsigned long lastSelfHeadReturnMs = 0;
-    // Stable storage backing getHeadMac()'s returned pointer.
-    mutable std::array<uint8_t, 6> headMacScratch{};
     // Last role reported to chainRoleChangeCallback, for edge-triggered firing.
     ChainRole lastChainRole = ChainRole::STANDALONE;
     // The effective head the INPUT peer last advertised (all-zero = none), kept
-    // apart from chainHeadState: a HELLO can advertise a head long before the
+    // apart from chainHeadMac: a HELLO can advertise a head long before the
     // link carrying it is established, and only the latter may be acted on.
     std::array<uint8_t, 6> upstreamAdvertisedHead{};
 
-    static uint64_t packHead(const uint8_t* mac, bool confirmed);
     static void unpackMac(uint64_t value, uint8_t* out);
-    // Ring detection and the latched-head conflict, driven by any INPUT HELLO;
-    // taking on a foreign head is left to adoptUpstreamHead.
+    void publishHelloState();
+    // A Connected jack counts toward the chain unless either end is an FDN, which
+    // is a jack peer for symbol match and never a chain member.
+    bool isChainLink(SerialIdentifier jack) const;
+    // Ring detection and the latched-head conflict, driven by every INPUT HELLO a
+    // PDN hears; taking on a foreign head is left to adoptUpstreamHead.
     void applyUpstreamHead(const HelloPayload& hello);
-    // Adopts upstreamAdvertisedHead once the INPUT link reports CONNECTED: hands
+    // Adopts upstreamAdvertisedHead once the INPUT jack is a chain link: hands
     // over the roster and announces. No-op before that.
     void adoptUpstreamHead();
     void onLinkLost(SerialIdentifier jack);
     void maybeFireChainRoleChange();
     // Roster traffic is addressed to the head as head, so it dies with the role.
     // A surviving retransmit would address a device that is no longer the head.
-    void cancelHeadRosterTraffic(uint64_t headMac48);
+    void cancelHeadRosterTraffic(const uint8_t* headMac);
 
     // ---- Head roster ----
     // member MAC -> its direct upstream MAC. Only the roster authority (see
@@ -466,7 +470,7 @@ private:
     // disconnectedMac of the report most recently sent whose delivery is not yet
     // confirmed (all-zero = none). A head change cancels the in-flight report to
     // the old head, and unlike the announce path nothing re-triggers it, so
-    // applyUpstreamHead re-sends it to the successor — otherwise the departed
+    // adoptUpstreamHead re-sends it to the successor — otherwise the departed
     // member stays a phantom in the new head's roster.
     std::array<uint8_t, 6> pendingReportMac{};
     uint8_t pendingReportSeqId = 0;
@@ -480,6 +484,10 @@ private:
     // Reliable-send a DisconnectReport naming `lostMac` to `headMac`, tracking
     // it as the pending report until its delivery is confirmed.
     void sendDisconnectReport(const uint8_t* headMac, const uint8_t* lostMac);
+    // Stop retrying every pending report that names `returnedMac`: delivered after
+    // that peer re-announces, it would erase a live member.
+    void retractReportFor(const uint8_t* returnedMac);
+    void clearPendingReport();
     // Drop `mac` and every member whose upstream chain passes through it.
     void removeChainMemberSubtree(const uint8_t* mac);
     // One OUTPUT jack means one downstream: when `member` announces `upstream`,

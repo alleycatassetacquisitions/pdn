@@ -29,6 +29,9 @@ public:
         unixTimeMs = timeMs;
     }
 
+    /** Sets simulated UTC milliseconds via PlatformClock interface. */
+    void setUnixMilliseconds(int64_t timeMs) override { unixTimeMs = timeMs; }
+
     void setTime(unsigned long time) {
         currentTime = time;
     }

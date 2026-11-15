@@ -2,6 +2,7 @@
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/serial-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "utils/http-date.hpp"
 #include "wireless/mac-functions.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/hello-link-machine.hpp"
@@ -112,10 +113,12 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
         // the ack.
         connectionAnnounceChannel->setOnDelivered([this](uint8_t seqId, const uint8_t* toMac) {
             if (seqId != pendingAnnounceSeqId) return;
-            const uint64_t head = chainHeadState.load();
-            const uint64_t headMac48 = head & HEAD_MAC_MASK;
-            if (headMac48 == 0 || headMac48 != MacToUInt64(toMac)) return;
-            chainHeadState.store(head | CONFIRMED_BIT);
+            if (MacToUInt64(chainHeadMac.data()) == 0 ||
+                memcmp(chainHeadMac.data(), toMac, 6) != 0) {
+                return;
+            }
+            chainHeadConfirmed = true;
+            publishHelloState();
         });
     }
     // KEEP_DISTINCT: each report is a distinct event, not current state. A
@@ -132,7 +135,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
         // older report's late delivery must not clear the newer pending one.
         disconnectReportChannel->setOnDelivered([this](uint8_t seqId, const uint8_t*) {
             if (seqId != pendingReportSeqId) return;
-            pendingReportMac.fill(0);
+            clearPendingReport();
         });
     }
     headTransferChannel = transport->channel<HeadTransferPayload>(
@@ -262,13 +265,21 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         context.jack = jack;
         context.nowMs = [] { return RemoteDeviceCoordinator::nowMs(); };
         context.onContextRequest = [this](SerialIdentifier j) {
+            // Ahead of this attempt's context send, which the peer needs to reach
+            // Connected and re-announce.
+            if (j == SerialIdentifier::OUTPUT_JACK) {
+                retractReportFor(helloByJack[jackIndex(j)].machine->peer().data());
+            }
             initiateContextExchange(j);
         };
         context.onJackChange = [this](SerialIdentifier j, bool connected) {
             // The upstream link reaching Connected is the moment its advertised
             // head becomes adoptable, and the game layer must see the resulting
             // chain state on the connect it is told about — so adopt first.
-            if (connected && j == SerialIdentifier::INPUT_JACK) adoptUpstreamHead();
+            if (connected) {
+                if (j == SerialIdentifier::INPUT_JACK) adoptUpstreamHead();
+                publishHelloState();
+            }
             // Copied before the call: a handler that reacts by dismounting its own
             // state clears this slot, which would destroy the std::function whose
             // operator() frame is still live.
@@ -286,10 +297,14 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         context.onLinkDown = [this, jack](SerialIdentifier j, const std::array<uint8_t, 6>& mac) {
             helloByJack[jackIndex(jack)].parser.requestReset();
             if (MacToUInt64(mac.data()) != 0) {
+                const bool wasFdn = getPeerDeviceType(j) == DeviceType::FDN;
                 releaseHelloPeer(j, mac.data());
                 // Downstream (OUTPUT) departures are this device's to report: it
-                // is the only node that sees that HELLO go silent.
-                if (j == SerialIdentifier::OUTPUT_JACK) reportDownstreamLoss(mac.data());
+                // is the only node that sees that HELLO go silent. An FDN was
+                // never a chain member, so its departure is nobody's news.
+                if (j == SerialIdentifier::OUTPUT_JACK && !wasFdn) {
+                    reportDownstreamLoss(mac.data());
+                }
             }
             onLinkLost(jack);
             // This is where a link death is reported: Idle is mounted, so the jack
@@ -318,17 +333,13 @@ void RemoteDeviceCoordinator::emitHello() {
     HelloPayload hello{};
     memcpy(hello.source, selfMac.data(), 6);
     hello.deviceType = static_cast<uint8_t>(selfDeviceType);
-    // Single atomic load: the main loop is the sole writer, so one snapshot of the
-    // packed head/confirmed word is internally consistent. All-zero headMac means
-    // "I am the head/standalone"; confirmed rises only once the announce to that
-    // head is delivered.
-    const uint64_t head = chainHeadState.load();
-    const uint64_t mac48 = head & HEAD_MAC_MASK;
+    const uint64_t snapshot = publishedHelloState.load();
+    const uint64_t mac48 = snapshot & HEAD_MAC_MASK;
     if (mac48 != 0) unpackMac(mac48, hello.headMac);
-    if ((head & CONFIRMED_BIT) != 0) hello.flags |= HELLO_FLAG_CONFIRMED;
-    if (isInRing()) hello.flags |= HELLO_FLAG_RING_CLOSED;
+    if ((snapshot & CONFIRMED_BIT) != 0) hello.flags |= HELLO_FLAG_CONFIRMED;
+    if ((snapshot & RING_CLOSED_BIT) != 0) hello.flags |= HELLO_FLAG_RING_CLOSED;
 
-    const std::vector<uint8_t> frame = encodeFramed(hello);
+    const std::array<uint8_t, HELLO_FRAME_LEN> frame = encodeHelloFrame(hello);
     for (SerialIdentifier jack : HELLO_JACKS) {
         HWSerialWrapper* hw = jackWrapper(jack);
         if (hw == nullptr) continue;
@@ -350,10 +361,9 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     JackHelloLink& link = helloByJack[jackIndex(jack)];
     if (link.machine) link.machine->onHelloReceived(hello);
 
-    // Head inheritance + ring detection are directional: only the upstream (INPUT)
-    // jack drives them, so the head's MAC cascades downstream. The FDN secondary
-    // input jack is a symbol link and takes no part in the chain.
-    if (jack == SerialIdentifier::INPUT_JACK) {
+    // INPUT-only so the head's MAC cascades downstream, and on a PDN only: an FDN
+    // that took its PDN's head would announce itself into that head's roster.
+    if (jack == SerialIdentifier::INPUT_JACK && selfDeviceType == DeviceType::PDN) {
         applyUpstreamHead(hello);
     }
 }
@@ -383,6 +393,9 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
         if (fdnContextChannel == nullptr) return;
         FdnConnectionContext ctx{};
         ctx.chainRole = role;
+        PlatformClock* clock = SimpleTimer::getPlatformClock();
+        const int64_t unixMs = clock != nullptr ? clock->unixMilliseconds() : 0;
+        ctx.fdn.utcUnixMs = isValidUtcUnixMs(unixMs) ? unixMs : 0;
         fdnContextChannel->sendReliable(mac, ctx);
         return;
     }
@@ -435,6 +448,17 @@ void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceTy
     // (ESP-NOW vs serial) so no jack is CONNECTING yet, and in a 2-node ring the two
     // jacks facing this peer enter CONNECTING one tick apart (sync() drives them in
     // order), so the later jack must still find the context. The TTL clears the cache.
+    // A peer cannot change kind while its link stays up; chain role reads the
+    // kind, and this frame arrives over unauthenticated ESP-NOW.
+    for (SerialIdentifier jack : HELLO_JACKS) {
+        const JackHelloLink& link = helloByJack[jackIndex(jack)];
+        if (link.machine == nullptr || link.peerDeviceType == DeviceType::UNKNOWN) continue;
+        if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
+        if (link.peerDeviceType != peerType) {
+            LOG_W("RDC", "ignoring a context of another device kind for a live jack");
+            return;
+        }
+    }
     bufferContext(fromMac, peerType, chainRole, peerUserId, profile, len);
     applyContextToJacks(fromMac, peerType, chainRole, peerUserId, profile, len);
 }
@@ -491,6 +515,18 @@ void RemoteDeviceCoordinator::recordJackContext(SerialIdentifier jack, DeviceTyp
     link.peerProfileLen = std::min(len, link.peerProfile.size());
     memcpy(link.peerProfile.data(), profile, link.peerProfileLen);
     link.peerUserId = peerUserId;
+
+    if (selfDeviceType == DeviceType::PDN && peerType == DeviceType::FDN &&
+        len >= sizeof(FdnProfile)) {
+        FdnProfile fdn{};
+        memcpy(&fdn, profile, sizeof(fdn));
+        if (isValidUtcUnixMs(fdn.utcUnixMs)) {
+            PlatformClock* clock = SimpleTimer::getPlatformClock();
+            if (clock != nullptr) {
+                clock->setUnixMilliseconds(fdn.utcUnixMs);
+            }
+        }
+    }
 }
 
 void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceType peerType,
@@ -582,12 +618,6 @@ RemoteDeviceCoordinator::getHelloLinkState(SerialIdentifier jack) const {
     }
 }
 
-uint64_t RemoteDeviceCoordinator::packHead(const uint8_t* mac, bool confirmed) {
-    uint64_t value = MacToUInt64(mac) & HEAD_MAC_MASK;
-    if (confirmed) value |= CONFIRMED_BIT;
-    return value;
-}
-
 void RemoteDeviceCoordinator::unpackMac(uint64_t value, uint8_t* out) {
     for (int i = 5; i >= 0; --i) {
         out[i] = static_cast<uint8_t>(value & 0xFF);
@@ -595,37 +625,49 @@ void RemoteDeviceCoordinator::unpackMac(uint64_t value, uint8_t* out) {
     }
 }
 
+void RemoteDeviceCoordinator::publishHelloState() {
+    uint64_t snapshot = MacToUInt64(chainHeadMac.data()) & HEAD_MAC_MASK;
+    if (chainHeadConfirmed) snapshot |= CONFIRMED_BIT;
+    if (isInRing()) snapshot |= RING_CLOSED_BIT;
+    publishedHelloState.store(snapshot);
+}
+
 bool RemoteDeviceCoordinator::isInRing() const {
     if (ringLatched) return true;
     // Relayed membership. An upstream asserting closure only concerns this
     // device while the ring can still run through it, so both chain links must
     // be up — holding a head already implies a Connected INPUT, and the OUTPUT
-    // check makes a pulled downstream cable drop membership here immediately
-    // rather than waiting for the head's own evidence window.
+    // check makes a pulled downstream cable, or an FDN plugged in its place,
+    // drop membership here immediately rather than waiting for the head's own
+    // evidence window.
     // Requiring a held head is also what keeps the relay acyclic: the latching
     // device holds none, so its assertion is never fed back to it and clearing
     // its latch drains the flag round the ring.
-    if ((chainHeadState.load() & HEAD_MAC_MASK) == 0) return false;
-    if (getHelloLinkState(SerialIdentifier::OUTPUT_JACK) != HelloLinkState::CONNECTED) return false;
+    if (MacToUInt64(chainHeadMac.data()) == 0) return false;
+    if (!isChainLink(SerialIdentifier::OUTPUT_JACK)) return false;
     return upstreamRingClosed;
+}
+
+bool RemoteDeviceCoordinator::isChainLink(SerialIdentifier jack) const {
+    return selfDeviceType == DeviceType::PDN &&
+           getHelloLinkState(jack) == HelloLinkState::CONNECTED &&
+           getPeerDeviceType(jack) != DeviceType::FDN;
 }
 
 ChainRole RemoteDeviceCoordinator::getChainRole() const {
     if (ringLatched) return ChainRole::RING;
-    if (getHelloLinkState(SerialIdentifier::INPUT_JACK) == HelloLinkState::CONNECTED) {
+    if (isChainLink(SerialIdentifier::INPUT_JACK)) {
         return ChainRole::CHILD;
     }
-    if (getHelloLinkState(SerialIdentifier::OUTPUT_JACK) == HelloLinkState::CONNECTED) {
+    if (isChainLink(SerialIdentifier::OUTPUT_JACK)) {
         return ChainRole::HEAD;
     }
     return ChainRole::STANDALONE;
 }
 
 const uint8_t* RemoteDeviceCoordinator::getHeadMac() const {
-    const uint64_t mac48 = chainHeadState.load() & HEAD_MAC_MASK;
-    if (mac48 == 0) return nullptr;
-    unpackMac(mac48, headMacScratch.data());
-    return headMacScratch.data();
+    if (MacToUInt64(chainHeadMac.data()) == 0) return nullptr;
+    return chainHeadMac.data();
 }
 
 void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
@@ -664,27 +706,25 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     }
 
     // Ring: this device's own MAC returns on its INPUT jack, so the head it seeded
-    // traveled the whole ring back. Gate on OUTPUT being connected (a downstream
+    // traveled the whole ring back. Gate on OUTPUT being a chain link (a downstream
     // exists), NOT on role==HEAD — two already-connected sub-chains merging into a
     // ring deliver our head back on an INPUT that is already CONNECTED, where
     // role==HEAD (which demands INPUT be un-connected) would miss the closure.
-    if (!ringLatched && peerHeadIsSelf &&
-        getHelloLinkState(SerialIdentifier::OUTPUT_JACK) == HelloLinkState::CONNECTED) {
+    if (!ringLatched && peerHeadIsSelf && isChainLink(SerialIdentifier::OUTPUT_JACK)) {
         ringLatched = true;
         // Seed the evidence stamp at closure so a break immediately after still
         // has a valid baseline to time out from.
         lastSelfHeadReturnMs = nowMs();
         // Our own MAC came back, so we ARE the head: drop any head adopted while the
         // ring was forming, or we would sit in RING advertising a stale foreign head.
-        const uint64_t formingHead = chainHeadState.load() & HEAD_MAC_MASK;
-        chainHeadState.store(0);
-        // A downstream-loss report is owed only while we remain a child under a
-        // head. Becoming our own head voids it: clear the pending re-send state so
-        // a later head adoption (applyUpstreamHead's successor-chase) cannot ship
-        // this stale report to an unrelated new head and prune a live member.
-        pendingReportMac.fill(0);
-        pendingReportSeqId = 0;
-        cancelHeadRosterTraffic(formingHead);
+        const std::array<uint8_t, 6> formingHead = chainHeadMac;
+        chainHeadMac.fill(0);
+        chainHeadConfirmed = false;
+        // Becoming our own head voids the pending report, or adoptUpstreamHead's
+        // successor-chase would ship it to an unrelated new head and prune a live member.
+        clearPendingReport();
+        cancelHeadRosterTraffic(formingHead.data());
+        publishHelloState();
         // Copied before the call, as the chain-change dispatch is:
         // the subscriber is a game-layer manager that clears this slot in its own
         // destructor, so a handler reaching a teardown would free the std::function
@@ -696,12 +736,16 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
 
     // A device never inherits its own MAC as a head (that is what "I am head"
     // encodes as an absent head_mac); the ring case above already handled it.
-    if (peerHeadIsSelf) return;
+    if (peerHeadIsSelf) {
+        publishHelloState();
+        return;
+    }
 
     // Record what the upstream claims and let the link machine decide whether it
     // counts: a HELLO is one-way evidence, adoption is not.
     memcpy(upstreamAdvertisedHead.data(), peerEffectiveHead, 6);
     adoptUpstreamHead();
+    publishHelloState();
 }
 
 void RemoteDeviceCoordinator::adoptUpstreamHead() {
@@ -709,19 +753,18 @@ void RemoteDeviceCoordinator::adoptUpstreamHead() {
     // real. A one-way cable delivers its HELLOs forever while this side never
     // establishes; adopting off those would advertise a head no downstream can
     // reach and hand this device's roster to a peer that cannot answer.
-    if (getHelloLinkState(SerialIdentifier::INPUT_JACK) != HelloLinkState::CONNECTED) return;
-    const uint64_t newHead = MacToUInt64(upstreamAdvertisedHead.data());
-    if (newHead == 0) return;
-    const uint64_t previousHead = chainHeadState.load() & HEAD_MAC_MASK;
-    if (previousHead == newHead) return;
+    if (!isChainLink(SerialIdentifier::INPUT_JACK)) return;
+    if (MacToUInt64(upstreamAdvertisedHead.data()) == 0) return;
+    if (memcmp(chainHeadMac.data(), upstreamAdvertisedHead.data(), 6) == 0) return;
     const uint8_t* headMac = upstreamAdvertisedHead.data();
 
     // Announce, report and transfer are all addressed to the head as head, so
     // they die with the role rather than following the device.
-    cancelHeadRosterTraffic(previousHead);
+    cancelHeadRosterTraffic(chainHeadMac.data());
     // Adopt the upstream head, dropping to confirmed=0 until re-confirmed under
     // it. The new head then propagates in our own HELLO.
-    chainHeadState.store(packHead(headMac, false));
+    memcpy(chainHeadMac.data(), headMac, 6);
+    chainHeadConfirmed = false;
     // A demoted head hands its roster to the successor; for a plain child
     // the roster is empty and this no-ops. Then announce under the new head so
     // confirmed can rise again.
@@ -748,29 +791,26 @@ void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier jack) {
     // Only the upstream (INPUT) peer supplies the inherited head; its loss makes
     // this device its own head again.
     if (jack == SerialIdentifier::INPUT_JACK) {
-        const uint64_t lostHead = chainHeadState.load() & HEAD_MAC_MASK;
-        chainHeadState.store(0);
+        const std::array<uint8_t, 6> lostHead = chainHeadMac;
+        chainHeadMac.fill(0);
+        chainHeadConfirmed = false;
         // The departed peer's claim dies with it, or the next upstream to reach
         // Connected would be adopted as whatever this one last advertised.
         upstreamAdvertisedHead.fill(0);
         upstreamRingClosed = false;
-        // A downstream-loss report is owed only while we remain a child under a
-        // head. Becoming our own head voids it: clear the pending re-send state so
-        // a later head adoption (applyUpstreamHead's successor-chase) cannot ship
-        // this stale report to an unrelated new head and prune a live member.
-        pendingReportMac.fill(0);
-        pendingReportSeqId = 0;
-        cancelHeadRosterTraffic(lostHead);
+        // Becoming our own head voids the pending report, or adoptUpstreamHead's
+        // successor-chase would ship it to an unrelated new head and prune a live member.
+        clearPendingReport();
+        cancelHeadRosterTraffic(lostHead.data());
     }
+    publishHelloState();
 }
 
-void RemoteDeviceCoordinator::cancelHeadRosterTraffic(uint64_t headMac48) {
-    if (headMac48 == 0) return;
-    uint8_t mac[6];
-    unpackMac(headMac48, mac);
-    if (connectionAnnounceChannel != nullptr) connectionAnnounceChannel->cancel(mac);
-    if (disconnectReportChannel != nullptr) disconnectReportChannel->cancel(mac);
-    if (headTransferChannel != nullptr) headTransferChannel->cancel(mac);
+void RemoteDeviceCoordinator::cancelHeadRosterTraffic(const uint8_t* headMac) {
+    if (MacToUInt64(headMac) == 0) return;
+    if (connectionAnnounceChannel != nullptr) connectionAnnounceChannel->cancel(headMac);
+    if (disconnectReportChannel != nullptr) disconnectReportChannel->cancel(headMac);
+    if (headTransferChannel != nullptr) headTransferChannel->cancel(headMac);
 }
 
 void RemoteDeviceCoordinator::maybeFireChainRoleChange() {
@@ -787,7 +827,7 @@ void RemoteDeviceCoordinator::maybeFireChainRoleChange() {
 bool RemoteDeviceCoordinator::isRosterAuthority() const {
     // Only the device currently heading a chain (or a latched ring, its own
     // head) may edit a roster. Gating on role rather than "no head held"
-    // matters for STANDALONE: an ex-head keeps an all-zero head word after its
+    // matters for STANDALONE: an ex-head holds no head after its
     // chain dies, and late Resender retries from members would otherwise seed
     // phantom entries that resurface the next time it heads a chain.
     const ChainRole role = getChainRole();
@@ -806,25 +846,21 @@ std::vector<std::array<uint8_t, 6>> RemoteDeviceCoordinator::getChainMembers() c
 
 void RemoteDeviceCoordinator::maybeAnnounceToHead() {
     if (connectionAnnounceChannel == nullptr) return;
-    const uint64_t headMac48 = chainHeadState.load() & HEAD_MAC_MASK;
     // No upstream head held: this device IS its chain's head (or standalone, or a
     // latched ring, which stores no head). Nothing to announce, no self-sends.
-    if (headMac48 == 0) return;
+    if (MacToUInt64(chainHeadMac.data()) == 0) return;
     // The announce names the upstream neighbour, which is known because a head is
     // only ever held while that link is Connected (adoptUpstreamHead).
     const HelloLinkMachine* upstream =
         helloByJack[jackIndex(SerialIdentifier::INPUT_JACK)].machine;
     if (upstream == nullptr) return;
-    uint8_t headMac[6];
-    unpackMac(headMac48, headMac);
     ConnectionAnnouncePayload announce{};
     memcpy(announce.upstreamMac, upstream->peer().data(), 6);
-    pendingAnnounceSeqId = connectionAnnounceChannel->sendReliable(headMac, announce);
+    pendingAnnounceSeqId = connectionAnnounceChannel->sendReliable(chainHeadMac.data(), announce);
 }
 
 void RemoteDeviceCoordinator::reportDownstreamLoss(const uint8_t* lostMac) {
-    const uint64_t headMac48 = chainHeadState.load() & HEAD_MAC_MASK;
-    if (headMac48 == 0) {
+    if (MacToUInt64(chainHeadMac.data()) == 0) {
         // This device is the head (incl. a latched ring) and its only OUTPUT
         // link died, so the entire chain below is unreachable — not just
         // lostMac's subtree. A full clear also flushes any entry whose recorded
@@ -839,10 +875,8 @@ void RemoteDeviceCoordinator::reportDownstreamLoss(const uint8_t* lostMac) {
     // every member is still chained beneath the head. Suppressing the
     // head-naming report here is the outer of two guards — it avoids dead
     // traffic; the head's own self-report reject is the trust boundary.
-    if (headMac48 == MacToUInt64(lostMac)) return;
-    uint8_t headMac[6];
-    unpackMac(headMac48, headMac);
-    sendDisconnectReport(headMac, lostMac);
+    if (memcmp(chainHeadMac.data(), lostMac, 6) == 0) return;
+    sendDisconnectReport(chainHeadMac.data(), lostMac);
 }
 
 void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
@@ -854,6 +888,21 @@ void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
     // memmove, not memcpy: the successor-chase re-send passes pendingReportMac
     // back in as lostMac, so source and destination alias on that path.
     memmove(pendingReportMac.data(), lostMac, 6);
+}
+
+void RemoteDeviceCoordinator::retractReportFor(const uint8_t* returnedMac) {
+    if (disconnectReportChannel == nullptr) return;
+    // By what each frame names, not by the newest-report slot: a later report
+    // overwrites that slot while this peer's own report is still retrying.
+    disconnectReportChannel->cancelMatching([returnedMac](const DisconnectReportPayload& report) {
+        return memcmp(report.disconnectedMac, returnedMac, 6) == 0;
+    });
+    if (memcmp(pendingReportMac.data(), returnedMac, 6) == 0) clearPendingReport();
+}
+
+void RemoteDeviceCoordinator::clearPendingReport() {
+    pendingReportMac.fill(0);
+    pendingReportSeqId = 0;
 }
 
 void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {
@@ -968,15 +1017,14 @@ void RemoteDeviceCoordinator::onDisconnectReport(const uint8_t* fromMac,
         // Head propagation is hop-by-hop, so a just-demoted head can still be
         // addressed under the old regime; forward the edit to the head now
         // held rather than dropping it.
-        const uint64_t headMac48 = chainHeadState.load() & HEAD_MAC_MASK;
         // Never forward a report back to the device it arrived from: during a
         // head transient two mutually-stale non-authorities can each hold the
         // other as head and bounce the report between them, and with
         // KEEP_DISTINCT every hop would pile up a fresh pending retry entry.
-        if (headMac48 == 0 || headMac48 == MacToUInt64(fromMac)) return;
-        uint8_t headMac[6];
-        unpackMac(headMac48, headMac);
-        sendDisconnectReport(headMac, report.disconnectedMac);
+        if (MacToUInt64(chainHeadMac.data()) == 0 || memcmp(chainHeadMac.data(), fromMac, 6) == 0) {
+            return;
+        }
+        sendDisconnectReport(chainHeadMac.data(), report.disconnectedMac);
         return;
     }
     removeChainMemberSubtree(report.disconnectedMac);

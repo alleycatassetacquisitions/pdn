@@ -1713,6 +1713,9 @@ TEST_F(RDCHelloTests, announceOverCapIsDroppedNotAdmitted) {
 TEST_F(RDCHelloTests, headTransferCarriesFullCapRoster) {
     rdcHeadTransferCarriesFullCapRoster(this);
 }
+TEST_F(RDCHelloTests, fdnContextSyncsPdnWallClockOnlyFromCabledFdn) {
+    rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(this);
+}
 TEST_F(RDCHelloTests, staleTransferDoesNotReforkClaimedUpstream) {
     rdcStaleTransferDoesNotReforkClaimedUpstream(this);
 }
@@ -1746,6 +1749,15 @@ TEST_F(RDCHelloTests, backToBackReportsBothRetryToHead) {
 }
 TEST_F(RDCHelloTests, pendingReportResentOnHeadChange) {
     rdcPendingReportResentOnHeadChange(this);
+}
+TEST_F(RDCHelloTests, returningDownstreamRetractsItsReport) {
+    rdcReturningDownstreamRetractsItsReport(this);
+}
+TEST_F(RDCHelloTests, returningDownstreamRetractsADisplacedReport) {
+    rdcReturningDownstreamRetractsADisplacedReport(this);
+}
+TEST_F(RDCHelloTests, newDownstreamLeavesReportPending) {
+    rdcNewDownstreamLeavesReportPending(this);
 }
 TEST_F(RDCHelloTests, pendingReportVoidedByBecomingHead) {
     rdcPendingReportVoidedByBecomingHead(this);
@@ -1835,6 +1847,22 @@ TEST_F(RDCHelloTests, chainRoleChangeReportsRingLatch) {
 TEST_F(RDCHelloTests, unprovenUpstreamIsNeverAdopted) {
     rdcUnprovenUpstreamIsNeverAdopted(this);
 }
+TEST_F(RDCHelloTests, emitHelloReadsPublishedSnapshotOnly) {
+    rdcEmitHelloReadsPublishedSnapshotOnly(this);
+}
+TEST_F(RDCHelloTests, pdnCabledOnlyToAnFdnStaysStandalone) {
+    rdcPdnCabledOnlyToAnFdnStaysStandalone(this);
+}
+TEST_F(RDCHelloTests, fdnLeavingTheOutputJackIsNotReportedToTheHead) {
+    rdcFdnLeavingTheOutputJackIsNotReportedToTheHead(this);
+}
+TEST_F(RDCHelloTests, contextOfAnotherKindDoesNotRetypeAConnectedPeer) {
+    rdcContextOfAnotherKindDoesNotRetypeAConnectedPeer(this);
+}
+TEST_F(RDCHelloTests, fdnOnTheOutputJackEndsRelayedRingMembership) {
+    rdcFdnOnTheOutputJackEndsRelayedRingMembership(this);
+}
+TEST(RDCHelloStandalone, fdnNeverAdoptsItsPdnsChainHead) { rdcFdnNeverAdoptsItsPdnsChainHead(); }
 
 // ============================================
 // POSSE MANAGER TESTS
