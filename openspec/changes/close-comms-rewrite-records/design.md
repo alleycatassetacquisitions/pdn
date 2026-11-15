@@ -21,5 +21,5 @@
 
 ## Decisions
 
-- **Beacon trigger over cable-only** (owner ruling). Crash records from PDNs never plugged into an FDN still arrive. Without tags, a device posing as an FDN can make PDNs retire records; the gate covers this. An FDN-side direct-peer check is possible later.
+- **Beacon trigger over cable-only** (owner ruling). Crash records from PDNs never plugged into an FDN still arrive. Without tags (record authentication, #486), a device posing as an FDN can make PDNs retire records; the gate covers this. An FDN-side direct-peer check is possible later.
 - **Boot-time `nvs_flash_erase`** on `NO_FREE_PAGES`/`NEW_VERSION_FOUND` stays: it is not a flash step, and neither fires with the current IDF and table. A framework bump must re-check it.

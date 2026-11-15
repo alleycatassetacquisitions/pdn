@@ -11,11 +11,11 @@ PDNs do not use Wi-Fi, so crash and match records reach the server only through 
 
 ## Non-goals
 
-Record tags or keys, band or PIN-via-FDN registration, fungible PDN features, transport refactors, storage partitions. The FDN credential lookup and profile delivery text in `player-provisioning` and `fdn-apps` is not implemented and stays for the registration project.
+Record tags or keys (record authentication, #486), band or PIN-via-FDN registration (#485), PDN swaps (#487), transport refactors, storage partitions (#485). The FDN credential lookup and profile delivery text in `player-provisioning` and `fdn-apps` is not implemented and stays for the registration project (#485).
 
 ## Roll-out gate
 
-This change is test-only and is not flashed to event devices until the registration project lands. Event devices stay on tag `event-firmware-2026-11` (`main` @ `1399f6f3`). This replaces the retired "server verifies tags" gate. Lifting the gate requires, in the registration project: real registration, and the storage partitions (#463 FDN `fdn_store`, #472 PDN match ring) so new matches survive a full NVS.
+This change is test-only and is not flashed to event devices until the registration project (#485) lands. Event devices stay on tag `event-firmware-2026-11b` (`main` @ `2f7d3957`). This replaces the retired "server verifies tags" gate. Lifting the gate requires, in the registration project: real registration, and the storage partitions (#463 FDN `fdn_store`, #472 PDN match ring) so new matches survive a full NVS.
 
 ## Capabilities
 
