@@ -70,7 +70,7 @@ inline void confirmChooseTeam(PlayerFetchTestSuite* suite, ChooseTeamState* choo
 
 inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(PlayerFetchTestSuite* suite) {
     uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
-    ChooseTeamState chooseTeam(&suite->playerProvider, true);
+    ChooseTeamState chooseTeam(&suite->playerProvider, nullptr, true);
     confirmChooseTeam(suite, &chooseTeam, mac, true);
 
     Player* player = suite->playerProvider.getPlayer();
@@ -87,7 +87,7 @@ inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(PlayerFetchTest
 
 inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
     uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
-    ChooseTeamState chooseTeam(&suite->playerProvider, false);
+    ChooseTeamState chooseTeam(&suite->playerProvider, nullptr, false);
     confirmChooseTeam(suite, &chooseTeam, mac, false);
 
     Player* player = suite->playerProvider.getPlayer();

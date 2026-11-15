@@ -8,7 +8,6 @@
 #include "state/connect-state.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "game/match-manager.hpp"
-#include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 #include <array>
 #include <atomic>

@@ -16,17 +16,17 @@ Terms used throughout:
 
 ### Requirement: Bounded persistent match ring buffer and collection watermark on PDN
 
-Every completed standalone 1v1 match on a PDN SHALL be persisted in a bounded non-volatile ring buffer in binary form alongside a monotonic sequence counter and collection watermark:
+Every completed standalone 1v1 match between two different non-nil player UUIDs whose winner both devices agree on SHALL be persisted on the PDN in a bounded non-volatile ring buffer in binary form, in its own storage area, alongside a monotonic sequence counter and collection watermark:
 
-- Each persisted standalone match SHALL increment the PDN's persisted `match_sequence_number` by `1` (starting at `1`) and write the binary match record into a `32`-slot circular buffer indexed by `(match_sequence_number - 1) mod 32`.
+- Each persisted match SHALL increment the persisted `match_sequence_number` by `1` (starting at `1`) and write the binary match record, which names both player UUIDs, into a `32`-slot circular buffer indexed by `(match_sequence_number - 1) mod 32`.
 - Binary match records containing raw 16-byte UUIDs (which may include `0x00` bytes) SHALL round-trip through non-volatile storage without null-byte truncation.
-- If more than `32` matches occur before an FDN collects them, newer matches SHALL overwrite the oldest slots in the `32`-slot ring buffer without failing or blocking gameplay.
-- The PDN SHALL persist a separate `collected_high_water_mark` (`0` initially). If `collected_high_water_mark > match_sequence_number` (such as after storage corruption), the PDN SHALL clamp `collected_high_water_mark` to `match_sequence_number`. A retained match with sequence number `N` is pending FDN collection whenever `N > collected_high_water_mark` and `N > match_sequence_number - 32`.
-- Advancing `collected_high_water_mark` to `M` marks all matches `<= M` as collected while leaving any newer matches `> M` pending.
+- While `32` matches are pending, the PDN SHALL NOT persist a new match and SHALL log the refusal; a pending match is never overwritten, and gameplay is not blocked.
+- A match with a nil player UUID on either side, the same player UUID on both sides, a shootout match, or a match whose two results disagree on the winner SHALL NOT be persisted.
+- The PDN SHALL persist a separate `collected_high_water_mark` (`0` initially), clamped to `match_sequence_number` if larger. Match `N` is pending whenever `N > collected_high_water_mark` and `N > match_sequence_number - 32`. Advancing the mark to `M` marks matches `<= M` as collected and leaves newer matches pending.
 
 #### Scenario: 33rd match overwrites oldest slot without losing newer uncollected matches
-- **WHEN** a PDN has 32 uncollected matches (`1..32`) and records a 33rd standalone match before encountering an FDN
-- **THEN** match `33` overwrites slot `0`, `match_sequence_number` becomes `33`, and matches `2..33` remain available in ascending order for FDN collection
+- **WHEN** a PDN has 32 pending matches (`1..32`) and finishes a 33rd standalone match before encountering an FDN
+- **THEN** the 33rd match is not stored, `match_sequence_number` stays `32`, and matches `1..32` remain pending in ascending order
 
 #### Scenario: Binary UUIDs containing zero bytes round-trip intact through storage
 - **WHEN** a match record whose 16-byte match UUID, player UUIDs, or team UUIDs contain `0x00` bytes is written to and read back from non-volatile storage
@@ -34,27 +34,27 @@ Every completed standalone 1v1 match on a PDN SHALL be persisted in a bounded no
 
 ### Requirement: PDN-to-FDN match transfer, FDN spool bounds, and watermark advancement
 
-When a PDN with pending match records is Connected to an FDN on a physical serial jack:
+A PDN with pending match records SHALL deliver them to any FDN it hears by beacon, Connected on a jack or not, as record frames (`record-relay`):
 
-- The PDN SHALL read retained uncollected match records in oldest-first order (from `max(collected_high_water_mark + 1, match_sequence_number - 31)` to `match_sequence_number`) and transmit them to the cabled FDN's verified MAC address over the peer-to-peer radio.
-- The PDN SHALL accept match ingestion acknowledgements only from the verified MAC address of an FDN currently Connected on a serial jack (ignoring wireless acknowledgements from any uncabled sender MAC) and SHALL advance its persisted `collected_high_water_mark` to a match's sequence number only after that cabled FDN acknowledges ingesting the record.
-- The FDN SHALL stage ingested PDN match records in a capacity-bounded non-volatile spool (retaining up to `64` match records awaiting server upload). If the FDN's spool is full, the FDN SHALL withhold ingestion acknowledgement so the PDN retains the uncollected records in its own 32-slot ring buffer until the FDN drains its spool to the server.
-- If the PDN disconnects before all pending matches are acknowledged by the FDN, `collected_high_water_mark` SHALL reflect the last acknowledged match so only the remaining uncollected matches are sent on the next FDN contact.
+- The PDN SHALL send pending match records oldest first, from `max(collected_high_water_mark + 1, match_sequence_number - 31)` to `match_sequence_number`.
+- The PDN SHALL advance its persisted `collected_high_water_mark` to a match's sequence number only on that FDN's stored acknowledgement for the record (`record-relay`), never on an acknowledgement from any other sender.
+- The FDN SHALL stage received match records in a capacity-bounded non-volatile store of up to `32` match records awaiting upload. If the store is full, the FDN SHALL withhold the stored acknowledgement so the PDN keeps the records pending.
+- If contact ends before all pending matches are acknowledged, `collected_high_water_mark` SHALL reflect the last acknowledged match so only the rest are sent on the next contact.
 
 #### Scenario: Partial FDN collection advances watermark only for acknowledged matches
-- **WHEN** a PDN has uncollected matches `1..5` and unplugs from a Connected FDN after the FDN acknowledges matches `1`, `2`, and `3`
-- **THEN** the PDN's `collected_high_water_mark` advances to `3`, and on the next FDN contact the PDN transmits only matches `4` and `5`
+- **WHEN** a PDN has pending matches `1..5` and leaves an FDN's range after the FDN acknowledges matches `1`, `2`, and `3`
+- **THEN** the PDN's `collected_high_water_mark` advances to `3`, and on the next FDN beacon the PDN sends only matches `4` and `5`
 
 #### Scenario: Spoofed wireless acknowledgement from uncabled sender is ignored
-- **WHEN** a PDN with uncollected matches `1..5` receives a match ingestion acknowledgement from a wireless sender MAC that is not Connected as an FDN on a serial jack
+- **WHEN** a PDN that sent match `1` to an FDN receives a stored acknowledgement for match `1` from a different sender MAC
 - **THEN** the PDN ignores the acknowledgement and leaves `collected_high_water_mark` unchanged
 
 ### Requirement: FDN protobuf batch encoding and upload to server
 
-An FDN holding ingested match records SHALL upload them to the central server in batches over authenticated HTTPS (`Authorization: Bearer <token>`):
+An FDN holding stored match records SHALL upload them to the central server in batches over HTTPS, at boot and every `300,000 ms` while records wait, but not while a jack is Connected, sending its match batch before crash records:
 
 - Each upload batch SHALL contain between `1` and `100` match records; a request with `0` or more than `100` matches SHALL be rejected locally without queuing an HTTP request.
-- The FDN SHALL encode the batch via the quickdraw-match protobuf codec as a `POST /quickdraw-matches` request with content type `application/protobuf`.
+- The FDN SHALL encode the batch via the quickdraw-match protobuf codec as a `POST /quickdraw-matches` request with content type `application/protobuf`. On a `400`, `413` or `415` response it SHALL send the oldest record alone and retire it on any response, so one rejected record cannot block the store.
 - For each match record in the batch, the codec SHALL write:
   - the match UUID, both player UUIDs (`player_a_id` and `player_b_id`), and the winner UUID (`winner_player_id`) formatted as lowercase `8-4-4-4-12` hexadecimal text;
   - each player's team UUID (`player_a_team_id`, `player_b_team_id`) as lowercase `8-4-4-4-12` hexadecimal text if and only if that team UUID is not nil;
@@ -87,3 +87,11 @@ When the FDN receives a response (bounded in size so an oversized response body 
 #### Scenario: Transient network or 5xx failure retains batch for retry
 - **WHEN** an FDN's `POST /quickdraw-matches` request times out or receives an HTTP 503 error
 - **THEN** the FDN retains all matches in the batch for the next upload cycle
+
+### Requirement: Matches stored by older firmware are kept
+
+A PDN SHALL keep matches stored by older firmware in their original storage unchanged: no path SHALL write, clear or erase them. They SHALL NOT be relayed until the server offers a route for them.
+
+#### Scenario: Update over older-firmware matches
+- **WHEN** this firmware first boots on a PDN holding 5 matches stored by older firmware and plays a match
+- **THEN** the 5 older matches are still stored byte for byte and none was sent

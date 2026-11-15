@@ -3,19 +3,23 @@
 #include "device/firmware-update-manager.hpp"
 #include "id-generator.hpp"
 
-ChooseTeamState::ChooseTeamState(PlayerProvider* playerProvider, bool testIdentity)
+ChooseTeamState::ChooseTeamState(PlayerProvider* playerProvider,
+                                 FirmwareUpdateManager* firmwareUpdateManager, bool testIdentity)
     : TypedState<PDN>(PlayerFetchStateId::CHOOSE_TEAM)
     , playerProvider(playerProvider)
+    , firmwareUpdateManager(firmwareUpdateManager)
     , testIdentity(testIdentity) {}
 
-ChooseTeamState::~ChooseTeamState() { playerProvider = nullptr; }
+ChooseTeamState::~ChooseTeamState() {
+    playerProvider = nullptr;
+    firmwareUpdateManager = nullptr;
+}
 
 void ChooseTeamState::onStateMounted(PDN* pdn) {
     playerProvider->clear();
     macAddress = pdn->getWirelessManager()->getMacAddress();
     sinceMount.setTimer(0);
     // The first screen after boot is where a PDN takes an ESP-NOW firmware update.
-    firmwareUpdateManager = pdn->getFirmwareUpdateManager();
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->setEligible(true);
     }
@@ -64,7 +68,6 @@ void ChooseTeamState::onStateDismounted(PDN* pdn) {
     transitionToFirmwareUpdateState = false;
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->setEligible(false);
-        firmwareUpdateManager = nullptr;
     }
     macAddress = nullptr;
     displayIsDirty = false;

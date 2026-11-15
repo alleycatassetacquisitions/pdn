@@ -20,7 +20,7 @@ At boot, before entering gameplay apps, the PDN SHALL display the faction boot s
 
 - The PDN SHALL render the boot splash screen and hold for `3000 ms`.
 - After the splash hold, the PDN SHALL register its top-level apps — player provisioning, hub, match, shootout, and symbol — and mount the initial provisioning app (`player-provisioning`).
-- When player provisioning completes (after the `5000 ms` welcome hold in the provisioning app), the PDN SHALL transition into the hub app, which enters via its awaken sequence before mounting the hub idle state.
+- When the player confirms a role on the provisioning screen, the PDN SHALL transition into the hub app, which enters via its awaken sequence before mounting the hub idle state.
 
 #### Scenario: Boot splash holds for 3000 ms before mounting initial provisioning app
 - **WHEN** a PDN completes hardware and crash-reporting initialization at boot

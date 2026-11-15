@@ -32,12 +32,11 @@ Clearing the session player provider SHALL drop the registration profile on the 
 - **AND** the player's registration profile is cleared
 
 ### Requirement: Provisioning app uses the session player provider
-The PDN provisioning app SHALL read and update registration fields (player UUID, display name, team, and affiliations) exclusively through the shared session player provider instance shared with gameplay apps.
+The PDN provisioning app SHALL read and update registration fields (player UUID, display name, team, and affiliations) exclusively through the session player provider, whose `Player` the gameplay apps also use.
 
 #### Scenario: Provisioning success path
-- **WHEN** a player profile is delivered from a Connected FDN
-- **THEN** the decoded profile is applied to the shared session player's registration fields
-- **AND** the welcome screen reads the player's display name from the applied registration profile
+- **WHEN** a role is confirmed on the provisioning screen
+- **THEN** the profile is applied to the shared session player's registration fields
 
 #### Scenario: Shared session player across provisioning and gameplay apps
 - **WHEN** firmware initializes the provisioning app and gameplay apps

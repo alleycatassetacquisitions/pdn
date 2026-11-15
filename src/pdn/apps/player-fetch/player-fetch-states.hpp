@@ -16,8 +16,12 @@ constexpr unsigned long PLAYER_FETCH_FIRMWARE_HOLD_MS = 5000;
 
 class ChooseTeamState : public TypedState<PDN> {
 public:
-    /** Role picker: MAC test UUID and "Test" if @p testIdentity, else nil UUID and "Demo". */
-    ChooseTeamState(PlayerProvider* playerProvider, bool testIdentity);
+    /**
+     * Role picker: MAC test UUID and "Test" if @p testIdentity, else nil UUID and "Demo".
+     * While it is up, @p firmwareUpdateManager (may be null) takes firmware updates.
+     */
+    ChooseTeamState(PlayerProvider* playerProvider, FirmwareUpdateManager* firmwareUpdateManager,
+                    bool testIdentity);
     /** @copydoc TypedState::~TypedState */
     ~ChooseTeamState() override;
 

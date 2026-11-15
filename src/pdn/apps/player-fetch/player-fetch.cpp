@@ -14,7 +14,8 @@ PlayerFetchApp::~PlayerFetchApp() {
 }
 
 void PlayerFetchApp::populateStateMap() {
-    ChooseTeamState* chooseTeam = new ChooseTeamState(playerProvider, testIdentity);
+    ChooseTeamState* chooseTeam =
+    new ChooseTeamState(playerProvider, firmwareUpdateManager, testIdentity);
 
     // Nothing checks a top-level app's own transition list, so registration's
     // hand-off to gameplay lives on the state that triggers it.

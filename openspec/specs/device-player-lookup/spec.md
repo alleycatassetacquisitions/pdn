@@ -1,7 +1,7 @@
 # device-player-lookup Specification
 
 ## Purpose
-This capability covers the call an FDN makes to the central server to fetch a player's registration by PIN over the protobuf device API (`GET /device/players/by-pin/{pin}`). It defines the request, how a `DevicePlayerResponse` is decoded into a `Player` within the firmware's fixed limits on name length and affiliation count, and how undecodable responses and transport errors are reported to the caller.
+This capability covers the client for fetching a player's registration by PIN from the central server over the protobuf device API (`GET /device/players/by-pin/{pin}`). No device calls it yet; the registration project (#485) gives it a caller. It defines the request, how a `DevicePlayerResponse` is decoded into a `Player` within the firmware's fixed limits on name length and affiliation count, and how undecodable responses and transport errors are reported to the caller.
 
 ## Requirements
 
@@ -12,17 +12,17 @@ The client SHALL queue a `GET` request to `/device/players/by-pin/{pin}` with no
 - **WHEN** a lookup is requested for PIN `"0007"`
 - **THEN** the queued request has method `GET`, path `/device/players/by-pin/0007`, and an empty payload
 
-### Requirement: Successful response is decoded into a device player
-On a successful response, the client SHALL decode the body as `DevicePlayerResponse` and pass a `DevicePlayer` to the success callback. The `DevicePlayer` SHALL contain the player UUID, name, team (if present), and affiliations in server order. UUIDs arrive as 16 raw bytes and SHALL be held as 16 bytes; an absent team SHALL be held as the nil UUID. Display names arrive as unterminated ASCII of up to 255 bytes and SHALL be held as terminated strings of at most 36 characters, truncating longer names. An absent name SHALL be held as the empty string. The device SHALL keep at most three affiliations.
+### Requirement: Successful response is decoded into a player
+On a successful response, the client SHALL decode the body as `DevicePlayerResponse` and pass a `Player` to the success callback. The `Player` SHALL contain the player UUID, name, team (if present), and affiliations in server order. UUIDs arrive as 16 raw bytes and SHALL be held as 16 bytes; an absent team SHALL be held as the nil UUID. Display names arrive as unterminated ASCII of up to 255 bytes and SHALL be held as terminated strings of at most 36 characters, truncating longer names. An absent name SHALL be held as the empty string. The device SHALL keep at most three affiliations.
 
 #### Scenario: Player with team and affiliations
 - **WHEN** the response contains a team and two affiliations
-- **THEN** the `DevicePlayer` reports that it has a team, with the team UUID and name
+- **THEN** the `Player` reports that it has a team, with the team UUID and name
 - **AND** its affiliations list has two entries in response order, each with category UUID, category name, affiliation UUID, and affiliation name
 
 #### Scenario: Unassigned player
 - **WHEN** the response omits `team_id` and `team_name` and has no affiliations
-- **THEN** the `DevicePlayer` reports that it has no team
+- **THEN** the `Player` reports that it has no team
 - **AND** its affiliations list is empty
 
 #### Scenario: Maximum-length name
@@ -40,12 +40,12 @@ On a successful response, the client SHALL decode the body as `DevicePlayerRespo
 
 #### Scenario: Maximum affiliations
 - **WHEN** the response contains three affiliations
-- **THEN** the `DevicePlayer` has three affiliations
+- **THEN** the `Player` has three affiliations
 
 #### Scenario: Affiliations past the device limit
 - **WHEN** the response contains more than three affiliations
 - **THEN** the response is still decoded
-- **AND** the `DevicePlayer` holds the first three affiliations in response order
+- **AND** the `Player` holds the first three affiliations in response order
 
 ### Requirement: Undecodable responses are reported as errors
 If a successful HTTP response body cannot be decoded as `DevicePlayerResponse`, the client SHALL invoke the error callback with `WirelessError::INVALID_RESPONSE` and SHALL NOT invoke the success callback.

@@ -17,7 +17,7 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     serialManager = new SerialManager(
         getPeripheral<HWSerialWrapper>(SERIAL_OUT_DRIVER_NAME),
         getPeripheral<HWSerialWrapper>(SERIAL_IN_DRIVER_NAME));
-    wirelessManager = new WirelessManager(getPeerComms(), getHttpClient());
+    wirelessManager = new WirelessManager(getPeerComms());
     remoteDeviceCoordinator = new RemoteDeviceCoordinator();
     FirmwareStoreInterface* firmwareStore = getPeripheral<FirmwareStoreInterface>(FIRMWARE_STORE_DRIVER_NAME);
     if (firmwareStore != nullptr) {

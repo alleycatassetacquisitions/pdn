@@ -38,7 +38,7 @@ static const char* WM_TAG = "WirelessManager";
  */
 class WirelessManager {
 public:
-    /** A null @p httpClient (the PDN) keeps the manager on ESP-NOW and refuses every HTTP request. */
+    /** A null @p httpClient keeps the manager on ESP-NOW and refuses every HTTP request. */
     explicit WirelessManager(PeerCommsInterface* peerComms,
                              HttpClientInterface* httpClient = nullptr)
         : peerComms(peerComms)

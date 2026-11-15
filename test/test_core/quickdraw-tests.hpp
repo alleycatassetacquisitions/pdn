@@ -173,7 +173,7 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
 
 inline void chooseTeamFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     PlayerProvider playerProvider;
-    ChooseTeamState chooseTeam(&playerProvider, false);
+    ChooseTeamState chooseTeam(&playerProvider, nullptr, false);
     chooseTeam.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 1000);
 
@@ -193,7 +193,7 @@ inline void chooseTeamFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
 // mount, even one not yet a long press then, is longer than the screen has been up.
 inline void chooseTeamFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     PlayerProvider playerProvider;
-    ChooseTeamState chooseTeam(&playerProvider, false);
+    ChooseTeamState chooseTeam(&playerProvider, nullptr, false);
     chooseTeam.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS - 500);
 
@@ -215,7 +215,6 @@ inline void chooseTeamTakesUpdatesWhileUp(IdleStateTests* suite) {
         .WillOnce(SaveArg<1>(&onFrame));
     FakeFirmwareStore store;
     FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
-    suite->device.firmwareUpdateManager = &manager;
     std::vector<uint8_t> chunkZero(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE, 0);
     FirmwareChunkHeader header{};
     header.imageLength = 2 * FIRMWARE_CHUNK_SIZE;
@@ -225,14 +224,13 @@ inline void chooseTeamTakesUpdatesWhileUp(IdleStateTests* suite) {
     EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
 
     PlayerProvider playerProvider;
-    ChooseTeamState chooseTeam(&playerProvider, false);
+    ChooseTeamState chooseTeam(&playerProvider, &manager, false);
     chooseTeam.onStateMounted(&suite->device);
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 1);
 
     chooseTeam.onStateDismounted(&suite->device);
     EXPECT_EQ(store.abortCalls, 1) << "leaving the screen drops the receive";
-    suite->device.firmwareUpdateManager = nullptr;
 }
 
 // Test: transitionToMatchCountdown stays false while match exists but ACK not yet received

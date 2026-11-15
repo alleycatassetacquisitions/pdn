@@ -64,11 +64,11 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    platformio upgrade
    ```
 
-4. Configure WiFi credentials (for ESP32-S3 builds):
+4. Configure WiFi credentials (for FDN builds):
    ```bash
    cp wifi_credentials.ini.example wifi_credentials.ini
    ```
-   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL, and for an FDN, its symbol-match codeword. Every build needs the file, because PlatformIO reads it when it loads the project, but only FDN images embed its values: a PDN has no Wi-Fi. This file is excluded from version control for security.
+   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL, and the FDN's symbol-match codeword. Only FDN builds need the file and only FDN images embed its values: a PDN has no Wi-Fi. This file is excluded from version control for security.
 
 5. Build the project using PlatformIO:
    ```bash
