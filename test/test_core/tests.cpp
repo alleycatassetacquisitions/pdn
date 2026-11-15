@@ -1505,6 +1505,8 @@ TEST_F(RDCTests, outputPortConnectionLifecycle) {
     rdcOutputPortConnectionLifecycle(this);
 }
 
+TEST_F(RDCTests, truncatedMacFrameIsDropped) { rdcTruncatedMacFrameIsDropped(this); }
+
 TEST_F(RDCTests, connectedPortDisconnectsOnHeartbeatTimeout) {
     rdcConnectedPortDisconnectsOnHeartbeatTimeout(this);
 }
