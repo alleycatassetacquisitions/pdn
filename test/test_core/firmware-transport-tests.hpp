@@ -376,7 +376,7 @@ TEST(FirmwareTransportTest, anUnreadableImageIsNotSeeded) {
 
 // Event firmware (tag event-firmware-2026-11b) reads a firmware frame as one type byte,
 // a 32-byte image id, a 4-byte image length and a 2-byte index, then the chunk.
-// Built here byte by byte so a renumber or layout change fails this test, not only a build.
+// Read at fixed offsets, so a layout change or a renumber without the static_assert fails here.
 TEST(FirmwareTransportTest, aChunkFrameParsesWithTheEventFirmwareLayout) {
     FirmwareTransportFixture f;
     f.deliverFirstFrames(1);
@@ -395,5 +395,5 @@ TEST(FirmwareTransportTest, aChunkFrameParsesWithTheEventFirmwareLayout) {
     EXPECT_EQ(imageLength, FirmwareTransportFixture::IMAGE_LENGTH);
     EXPECT_EQ(air[37] | (air[38] << 8), 0);
     EXPECT_TRUE(std::equal(air.begin() + 39, air.end(), f.image.begin()));
-    EXPECT_NE(PktType::kFdnConnectionContext, PktType::kFirmwareUpdate) << "16 carries firmware only";
+    EXPECT_NE(PktType::kFdnConnectionContext, PktType::kFirmwareUpdate) << "the FDN context left 16 to firmware";
 }
