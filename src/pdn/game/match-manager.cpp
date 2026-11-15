@@ -518,6 +518,11 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
                command.command == MatchCmd::NEVER_PRESSED) {
         LOG_I(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
+        // A frame naming this device's own slot would overwrite the local time.
+        if (command.isHunter == activeMatchState.localIsHunter) {
+            LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: names the local draw slot");
+            return;
+        }
         // A negative raw time would beat every honest draw.
         if (command.playerDrawTime < 0) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: negative draw time");
