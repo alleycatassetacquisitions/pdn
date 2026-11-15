@@ -174,8 +174,9 @@ public:
         instance.httpClientDriver->setMockServerEnabled(true);  // Enable mock HTTP server
         instance.httpClientDriver->setConnected(true);  // Simulate WiFi connection
         instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
-        instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix, {MATCHES_PREFS_NAMESPACE});
-        
+        instance.storageDriver =
+        new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix, {MATCH_RING_PREFS_NAMESPACE});
+
         // Configure mock HTTP server with this device's player data
         MockPlayerConfig playerConfig;
         playerConfig.id = instance.deviceId;

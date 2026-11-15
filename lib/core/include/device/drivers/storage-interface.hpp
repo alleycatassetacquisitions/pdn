@@ -12,10 +12,6 @@ public:
     virtual size_t write(const std::string& ns, const std::string& key, const std::string& value) = 0;
     /** Reads a string back, or `defaultValue` when the key is unset. */
     virtual std::string read(const std::string& ns, const std::string& key, const std::string& defaultValue) = 0;
-    /** Drops one key from `ns`. True when something was removed. */
-    virtual bool remove(const std::string& ns, const std::string& key) = 0;
-    /** Drops every key in `ns`. */
-    virtual bool clear(const std::string& ns) = 0;
     /** Flushes and closes the backing store. */
     virtual void end() = 0;
     /** Reads one byte back, or `defaultValue` when the key is unset. */

@@ -18,7 +18,7 @@
  * UnknownStorageNamespaceException.
  *
  * Usage:
- *   new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE})
+ *   new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCH_RING_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE})
  */
 class Esp32S3PrefsDriver : public StorageDriverInterface {
 public:
@@ -79,24 +79,6 @@ public:
             return defaultValue;
         }
         return std::string(buffer.data());
-    }
-
-    /** Drops one key from `ns`. */
-    bool remove(const std::string& ns, const std::string& key) override {
-        nvs_handle_t handle = requireHandle(ns);
-        if (nvs_erase_key(handle, key.c_str()) != ESP_OK) {
-            return false;
-        }
-        return nvs_commit(handle) == ESP_OK;
-    }
-
-    /** Drops every key in `ns`. */
-    bool clear(const std::string& ns) override {
-        nvs_handle_t handle = requireHandle(ns);
-        if (nvs_erase_all(handle) != ESP_OK) {
-            return false;
-        }
-        return nvs_commit(handle) == ESP_OK;
     }
 
     /** Closes every namespace handle; the driver is unusable afterwards. */

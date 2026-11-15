@@ -46,45 +46,6 @@ public:
         return it != stringStorage.end() ? it->second : defaultValue;
     }
 
-    /** Drops all entries for one key. */
-    bool remove(const std::string& ns, const std::string& key) override {
-        requireRegisteredNamespace(ns);
-        const std::string composite = compositeKey(ns, key);
-        bool removed = false;
-        if (stringStorage.erase(composite) > 0) {
-            removed = true;
-        }
-        if (ucharStorage.erase(composite) > 0) {
-            removed = true;
-        }
-        if (uintStorage.erase(composite) > 0) {
-            removed = true;
-        }
-        if (blobStorage.erase(composite) > 0) {
-            removed = true;
-        }
-        return removed;
-    }
-
-    /** Drops every entry in one namespace. */
-    bool clear(const std::string& ns) override {
-        requireRegisteredNamespace(ns);
-        const std::string prefix = ns + "/";
-        for (auto it = stringStorage.begin(); it != stringStorage.end(); ) {
-            it = it->first.rfind(prefix, 0) == 0 ? stringStorage.erase(it) : ++it;
-        }
-        for (auto it = ucharStorage.begin(); it != ucharStorage.end(); ) {
-            it = it->first.rfind(prefix, 0) == 0 ? ucharStorage.erase(it) : ++it;
-        }
-        for (auto it = uintStorage.begin(); it != uintStorage.end();) {
-            it = it->first.rfind(prefix, 0) == 0 ? uintStorage.erase(it) : ++it;
-        }
-        for (auto it = blobStorage.begin(); it != blobStorage.end();) {
-            it = it->first.rfind(prefix, 0) == 0 ? blobStorage.erase(it) : ++it;
-        }
-        return true;
-    }
-
     /** No backing store to flush or close. */
     void end() override {}
 

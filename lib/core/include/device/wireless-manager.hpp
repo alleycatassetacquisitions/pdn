@@ -112,13 +112,6 @@ public:
         return currentMode;
     }
 
-    /** True when WiFi mode is active and the HTTP client is connected. */
-    bool isWifiConnected() {
-        return currentMode == WirelessMode::WIFI &&
-               httpClient->getHttpClientState() == HttpClientState::CONNECTED &&
-               httpClient->isConnected();
-    }
-
     /** True when ESP-NOW mode is active and peer comms is enabled. */
     bool isEspNowReady() {
         return currentMode == WirelessMode::ESPNOW &&

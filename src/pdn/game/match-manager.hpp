@@ -1,10 +1,7 @@
 /*
-    This class is responsible for managing the matches.
-    It will be responsible for creating, updating and deleting matches.
-    In addition to creating and updating matches, this class is responsible for
-    saving and loading matches from EEPROM. In addition to saving/loading from
-    EEPROM, this class will be responsible for serializing and deserializing
-    matches to and from a JSON array.
+    Runs the match handshake and draw for this PDN and keeps qualifying
+    standalone matches as 112-byte records in a 32-slot ring until an FDN
+    collects them.
 */
 #pragma once
 
@@ -25,8 +22,9 @@
 
 class ShootoutManager;
 
-// Preferences namespace and keys
-inline constexpr const char MATCHES_PREFS_NAMESPACE[] = "matches";
+// The match record ring. Matches stored by older firmware live in namespace
+// "matches", which this firmware never opens.
+inline constexpr const char MATCH_RING_PREFS_NAMESPACE[] = "match_ring";
 
 struct LastMatchDisplay {
     // Effective draw times (raw minus boost); may be negative.
@@ -74,8 +72,8 @@ public:
     void initializeMatch(uint8_t* opponentMac);
 
     /** Primes a match from an incoming SEND_MATCH_ID and replies with MATCH_ID_ACK. */
-    void receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter,
-                      uint8_t* opponentMac);
+    void receiveMatch(const char* matchId, const UUIDBytes& opponentPlayerId,
+                      const UUIDBytes& opponentTeamId, bool opponentIsHunter, uint8_t* opponentMac);
 
     /**
      * Shootout mode: primes a match without the SEND_MATCH_ID handshake. Both
@@ -88,8 +86,11 @@ public:
     /** True once the match handshake has completed and countdown may begin. */
     bool isMatchReady() const;
 
-    /** Finalizes the active match (persisting non-shootout matches to storage) and clears active
-     * match state. */
+    /**
+     * Finalizes the active match and clears active match state. A standalone match
+     * between two different registered players whose winner both devices agree on
+     * is appended to the ring, unless 32 records already wait there.
+     */
     bool finalizeMatch();
 
     bool setHunterDrawTime(unsigned long hunter_time_ms);
@@ -121,14 +122,29 @@ public:
     /** Returns the active match, or std::nullopt if none. */
     std::optional<Match>& getCurrentMatch() { return activeMatchState.match; }
 
-    /** Serializes all stored matches to a JSON array string. */
-    std::string toJson();
+    /** Records the ring holds at most; a full ring refuses new matches. */
+    static constexpr uint32_t MATCH_RING_CAPACITY = 32;
 
-    /** Clears all matches from storage. */
-    void clearStorage();
+    /** @return number of the newest stored record (0 when none was ever stored). */
+    uint32_t getMatchSequenceNumber();
 
-    /** Returns the number of stored matches. */
-    size_t getStoredMatchCount();
+    /** @return number of the newest record an FDN has collected. */
+    uint32_t getCollectedHighWaterMark();
+
+    /** @return number of the oldest record still waiting for collection, or 0 when none waits. */
+    uint32_t getFirstPendingSequenceNumber();
+
+    /**
+     * Reads record @p sequenceNumber into @p record.
+     * @return false when that record is not in the ring or its slot cannot be read.
+     */
+    bool readRecord(uint32_t sequenceNumber, MatchRecord& record);
+
+    /**
+     * Marks every record up to @p sequenceNumber collected, freeing their slots.
+     * @return false, changing nothing, when @p sequenceNumber is not a waiting record.
+     */
+    bool markCollected(uint32_t sequenceNumber);
 
     /** Clears the active match and resets all per-match state flags. */
     void clearCurrentMatch();
@@ -210,24 +226,10 @@ private:
     // The recorded winner: a side that never pressed or (for the opponent)
     // never reported loses, else the lower effective time; a tie to the Bounty.
     bool isHunterWinner() const;
-    /**
-     * Appends a match to storage
-     * @param match Match to save
-     * @return true if save was successful
-     */
-    bool appendMatchToStorage(const Match* match);
-
-    /**
-     * Updates the stored match count
-     */
-    void updateStoredMatchCount(uint8_t count);
-
-    /**
-     * Reads a match from storage at the specified index
-     * @param index Index of the match to read
-     * @return New Match object if successful, nullptr if invalid
-     */
-    Match* readMatchFromStorage(uint8_t index);
+    // True when the opponent's device arrives at the same winner as this one,
+    // so the record may name it.
+    bool isWinnerAgreed() const;
+    bool appendRecordToStorage(const Match& match);
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake match commands

@@ -1,5 +1,4 @@
 #include "game/match-manager.hpp"
-#include <ArduinoJson.h>
 #include "device/drivers/logger.hpp"
 #include "wireless/match-packet.hpp"
 #include "game/posse-manager.hpp"
@@ -9,9 +8,9 @@
 #include <algorithm>
 #include <cstring>
 
-static constexpr const char* PREF_COUNT_KEY = "count";
-static constexpr const char* PREF_MATCH_KEY  = "match_";
-static constexpr uint8_t     MAX_MATCHES      = 255;
+static constexpr const char* PREF_SEQ_KEY = "seq";
+static constexpr const char* PREF_COLLECTED_SEQ_KEY = "collectedSeq";
+static constexpr const char* PREF_MATCH_KEY = "match_";
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
@@ -21,8 +20,8 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     , resender(wirelessManager)
     , matchChannel(wirelessManager, &resender, PktType::kMatchCommand, nullptr) {
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
-        MatchCommand command(fromMac, p.command, p.matchId, p.playerId, p.playerDrawTime,
-                             p.isHunter);
+        MatchCommand command(fromMac, p.command, p.matchId, p.playerDrawTime, p.isHunter,
+                             p.playerUuid, p.teamUuid);
         command.boostMs = p.boostMs;
         listenForMatchEvents(command);
     });
@@ -57,7 +56,8 @@ uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* m
     packet.boostMs = static_cast<uint32_t>(boostMs);
     packet.isHunter = isHunter;
     IdGenerator::copyId(packet.matchId, matchId);
-    IdGenerator::copyId(packet.playerId, player->getUserID().c_str());
+    packet.playerUuid = player->getServerPlayerId();
+    packet.teamUuid = player->getRegistrationTeam().id;
 
     LOG_I(MATCH_MANAGER_TAG, "Sending command %i to %s", command, MacToString(mac));
     return matchChannel.sendReliable(mac, packet);
@@ -109,7 +109,9 @@ void MatchManager::clearCurrentMatch() {
 void MatchManager::primeMatch(const char* matchId, const uint8_t* opponentMac,
                               bool localIsHunter) {
     activeMatchState.localIsHunter = localIsHunter;
-    activeMatchState.match.emplace(matchId, player->getUserID().c_str(), localIsHunter);
+    activeMatchState.match.emplace(matchId);
+    activeMatchState.match->setPlayer(localIsHunter, player->getServerPlayerId(),
+                                      player->getRegistrationTeam().id);
     memcpy(activeMatchState.opponentMac.data(), opponentMac, 6);
 }
 
@@ -140,18 +142,15 @@ void MatchManager::initializeShootoutMatch(const char* matchId, uint8_t* opponen
     activeMatchState.matchIsReady = true;
 }
 
-void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter,
+void MatchManager::receiveMatch(const char* matchId, const UUIDBytes& opponentPlayerId,
+                                const UUIDBytes& opponentTeamId, bool opponentIsHunter,
                                 uint8_t* opponentMac) {
     if (activeMatchState.match.has_value()) {
         return;
     }
 
     primeMatch(matchId, opponentMac, player->isHunter());
-    if (opponentIsHunter) {
-        activeMatchState.match->setHunterId(opponentId);
-    } else {
-        activeMatchState.match->setBountyId(opponentId);
-    }
+    activeMatchState.match->setPlayer(opponentIsHunter, opponentPlayerId, opponentTeamId);
 
     auto* clock = SimpleTimer::getPlatformClock();
     LOG_D(MATCH_MANAGER_TAG, "TIMING receiveMatch-ackSent T=%lu",
@@ -211,16 +210,33 @@ bool MatchManager::isHunterWinner() const {
     return getEffectiveDrawTime(true) < getEffectiveDrawTime(false);
 }
 
+bool MatchManager::isWinnerAgreed() const {
+    const bool localNeverPressed = activeMatchState.gracePeriodExpiredNoResult;
+    const bool opponentNeverPressed = activeMatchState.opponentNeverPressed;
+    // A side that never pressed loses on both devices; when both never pressed,
+    // each device names itself the winner.
+    if (localNeverPressed != opponentNeverPressed) return true;
+    if (localNeverPressed) return false;
+    // Without the opponent's result this device names it the winner unseen,
+    // while the opponent compares the two times.
+    return activeMatchState.hasReceivedDrawResult;
+}
+
 bool MatchManager::finalizeMatch() {
     if (!activeMatchState.match) {
         LOG_E(MATCH_MANAGER_TAG, "Cannot finalize match - no active match or ID mismatch\n");
         return false;
     }
 
+    Match& match = *activeMatchState.match;
     const long hunterTime = getEffectiveDrawTime(true);
     const long bountyTime = getEffectiveDrawTime(false);
     // The record keeps raw times, so it is told the winner.
-    activeMatchState.match->setWinnerIsHunter(isHunterWinner());
+    match.setWinnerPlayerId(isHunterWinner() ? match.getHunterPlayerId()
+                                             : match.getBountyPlayerId());
+    if (PlatformClock* clock = SimpleTimer::getPlatformClock()) {
+        match.setOccurredAtUnixMs(clock->unixMilliseconds());
+    }
 
     // The whole result-screen snapshot is taken here, before clearCurrentMatch wipes the match.
     lastMatchDisplay.myTimeMs = activeMatchState.localIsHunter ? hunterTime : bountyTime;
@@ -229,23 +245,22 @@ bool MatchManager::finalizeMatch() {
     lastMatchDisplay.penaltyMs = activeMatchState.penaltyMs;
     lastMatchDisplay.hasData = true;
 
-    std::string matchId = activeMatchState.match->getMatchId();
-
-    // Shootout matches are local-ephemeral: no save, no upload.
-    if (currentMatchIsShootout()) {
+    // Shootout matches are local-ephemeral. The server needs two different
+    // registered players and a winner, so a record naming a nil or repeated
+    // player, or a winner the opponent's record could contradict, is not kept.
+    if (currentMatchIsShootout() || match.getHunterPlayerId().isZero() ||
+        match.getBountyPlayerId().isZero() ||
+        match.getHunterPlayerId() == match.getBountyPlayerId() || !isWinnerAgreed()) {
         clearCurrentMatch();
         return true;
     }
 
-    if (appendMatchToStorage(&*activeMatchState.match)) {
-        updateStoredMatchCount(getStoredMatchCount() + 1);
-        clearCurrentMatch();
-        LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", matchId.c_str());
-        return true;
+    const bool stored = appendRecordToStorage(match);
+    if (stored) {
+        LOG_I(MATCH_MANAGER_TAG, "Stored match %s", match.getMatchId());
     }
-
-    LOG_E("PDN", "Failed to finalize match %s\n", matchId.c_str());
-    return false;
+    clearCurrentMatch();
+    return stored;
 }
 
 bool MatchManager::getHasReceivedDrawResult() const {
@@ -286,110 +301,80 @@ long MatchManager::getEffectiveDrawTime(bool hunterSlot) const {
     return static_cast<long>(rawTimeMs) - static_cast<long>(boostMs);
 }
 
-std::string MatchManager::toJson() {
-    // Create JSON document with an object at the root
-    JsonDocument doc;  // Adjust size based on max matches
-    
-    // Create a "matches" array within the root object
-    JsonArray matchArray = doc["matches"].to<JsonArray>();
-
-    // Read all matches from storage
-    uint8_t count = getStoredMatchCount();
-    for (uint8_t i = 0; i < count; i++) {
-        Match* match = readMatchFromStorage(i);
-        if (match) {
-            // Add match to array
-            std::string matchJson = match->toJson();
-            JsonDocument matchDoc;
-            deserializeJson(matchDoc, matchJson);
-            matchArray.add(matchDoc.as<JsonObject>());
-            delete match;
-        }
-    }
-
-    // Serialize to string
-    std::string output;
-    serializeJson(doc, output);
-    return output;
+// The slot record sequenceNumber (from 1) occupies.
+static void matchSlotKey(uint32_t sequenceNumber, char (&key)[16]) {
+    snprintf(key, sizeof(key), "%s%u", PREF_MATCH_KEY,
+             static_cast<unsigned>((sequenceNumber - 1) % MatchManager::MATCH_RING_CAPACITY));
 }
 
-void MatchManager::clearStorage() {
-    storage->clear(MATCHES_PREFS_NAMESPACE);
-    updateStoredMatchCount(0);
-    LOG_I("PDN", "Cleared match storage\n");
+uint32_t MatchManager::getMatchSequenceNumber() {
+    return storage->readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0);
 }
 
-size_t MatchManager::getStoredMatchCount() {
-    return storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, 0);
+uint32_t MatchManager::getCollectedHighWaterMark() {
+    return std::min(storage->readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0),
+                    getMatchSequenceNumber());
 }
 
-bool MatchManager::appendMatchToStorage(const Match* match) {
-    if (!match) return false;
+uint32_t MatchManager::getFirstPendingSequenceNumber() {
+    const uint32_t newest = getMatchSequenceNumber();
+    const uint32_t oldestInRing =
+    newest > MATCH_RING_CAPACITY ? newest - MATCH_RING_CAPACITY + 1 : 1;
+    const uint32_t first = std::max(getCollectedHighWaterMark() + 1, oldestInRing);
+    return first <= newest ? first : 0;
+}
 
-    uint8_t count = getStoredMatchCount();
-    if (count >= MAX_MATCHES) {
-        LOG_E("PDN", "Cannot save match - storage full\n");
+bool MatchManager::readRecord(uint32_t sequenceNumber, MatchRecord& record) {
+    const uint32_t newest = getMatchSequenceNumber();
+    if (sequenceNumber == 0 || sequenceNumber > newest ||
+        newest - sequenceNumber >= MATCH_RING_CAPACITY) {
         return false;
     }
-
-    // Convert match to JSON for storage
-    std::string matchJson = match->toJson();
-    
-    // Create key for this match
     char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, count);
+    matchSlotKey(sequenceNumber, key);
+    return storage->readBytes(MATCH_RING_PREFS_NAMESPACE, key, reinterpret_cast<uint8_t*>(&record),
+                              sizeof(MatchRecord)) == sizeof(MatchRecord);
+}
 
-    LOG_W(MATCH_MANAGER_TAG, "Attempting to save match to storage at key %s (JSON length: %d bytes)", 
-            key, matchJson.length());
-    LOG_W(MATCH_MANAGER_TAG, "Match JSON: %s", matchJson.c_str());
-    
-    // Try to check if preferences is working
-    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, "test_key", 123) != 1) {
-        LOG_E(MATCH_MANAGER_TAG, "NVS Preference test write failed! Potential hardware or NVS issue");
-    } else {
-        uint8_t testValue = storage->readUChar(MATCHES_PREFS_NAMESPACE, "test_key", 0);
-        LOG_W(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", testValue);
-    }
-
-    // Save match JSON to preferences
-    if (storage->write(MATCHES_PREFS_NAMESPACE, key, matchJson) != matchJson.length()) {
-        LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
-                key, matchJson.length());
-        
+bool MatchManager::markCollected(uint32_t sequenceNumber) {
+    if (sequenceNumber <= getCollectedHighWaterMark() ||
+        sequenceNumber > getMatchSequenceNumber()) {
         return false;
     }
-
-    LOG_W(MATCH_MANAGER_TAG, "Successfully saved match to storage at index %d", count);
+    if (storage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, sequenceNumber) !=
+        sizeof(uint32_t)) {
+        LOG_E(MATCH_MANAGER_TAG, "Failed to mark match %u collected", sequenceNumber);
+        return false;
+    }
     return true;
 }
 
-void MatchManager::updateStoredMatchCount(uint8_t count) {
-    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, count) != 1) {
-        LOG_E("PDN", "Failed to update match count\n");
-    } else {
-        LOG_I("PDN", "Updated stored match count to %d\n", count);
-    }
-}
-
-Match* MatchManager::readMatchFromStorage(uint8_t index) {
-    if (index >= getStoredMatchCount()) {
-        return nullptr;
+bool MatchManager::appendRecordToStorage(const Match& match) {
+    const uint32_t newest = getMatchSequenceNumber();
+    // Every slot holds a record no FDN has taken yet; overwriting one would lose it.
+    if (newest - getCollectedHighWaterMark() >= MATCH_RING_CAPACITY) {
+        LOG_E(MATCH_MANAGER_TAG, "Match %s not stored: %u matches wait for an FDN",
+              match.getMatchId(), MATCH_RING_CAPACITY);
+        return false;
     }
 
-    // Create key for this match
+    const uint32_t nextSeq = newest + 1;
     char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
-    
-    // Read match JSON from preferences
-    std::string matchJson = storage->read(MATCHES_PREFS_NAMESPACE, key, "");
-    if (matchJson.empty()) {
-        return nullptr;
+    matchSlotKey(nextSeq, key);
+    uint8_t record[sizeof(MatchRecord)];
+    match.serialize(record);
+    if (storage->writeBytes(MATCH_RING_PREFS_NAMESPACE, key, record, sizeof(record)) !=
+        sizeof(record)) {
+        LOG_E(MATCH_MANAGER_TAG, "Failed to save match record at key %s", key);
+        return false;
     }
-
-    // Create and deserialize match
-    Match* match = new Match();
-    match->fromJson(matchJson);
-    return match;
+    // "seq" moves last, so a failed write loses no pending record: the slot it
+    // overwrote belonged to a collected one.
+    if (storage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, nextSeq) != sizeof(uint32_t)) {
+        LOG_E(MATCH_MANAGER_TAG, "Failed to update match sequence number to %u", nextSeq);
+        return false;
+    }
+    return true;
 }
 
 parameterizedCallbackFunction MatchManager::getButtonMasher() {
@@ -500,18 +485,16 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
                         player->isHunter());
             return;
         } else {
-            receiveMatch(command.matchId, command.playerId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr));
+            receiveMatch(command.matchId, command.playerUuid, command.teamUuid, command.isHunter,
+                         const_cast<uint8_t*>(command.wifiMacAddr));
         }
     } else if (command.command == MatchCmd::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
         if (activeMatchState.matchIsReady || activeMatchState.pendingAckSeqId != 0) return;
         matchChannel.cancel(activeMatchState.opponentMac.data());
-        if (activeMatchState.localIsHunter) {
-            activeMatchState.match->setBountyId(command.playerId);
-        } else {
-            activeMatchState.match->setHunterId(command.playerId);
-        }
+        activeMatchState.match->setPlayer(!activeMatchState.localIsHunter, command.playerUuid,
+                                          command.teamUuid);
         auto* clock = SimpleTimer::getPlatformClock();
         LOG_D(MATCH_MANAGER_TAG, "TIMING matchAck-ready T=%lu", clock ? clock->milliseconds() : 0UL);
         activeMatchState.matchIsReady = true;

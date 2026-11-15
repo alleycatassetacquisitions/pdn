@@ -1,25 +1,31 @@
 #pragma once
 
-#include <string>
+#include <cstddef>
+#include <cstdint>
 #include "../../include/id-generator.hpp"
-
-// Player ID is stored as 4 raw bytes (no UUID encoding needed)
-constexpr size_t PLAYER_ID_BINARY_SIZE = 4;
-
-// Size of match data in bytes: 1 UUID match_id (16 bytes) + 2 player IDs (4 bytes each) + 2 draw times (8 bytes each)
-constexpr size_t MATCH_BINARY_SIZE = IdGenerator::UUID_BINARY_SIZE + 2 * PLAYER_ID_BINARY_SIZE + 2 * sizeof(unsigned long);
-
-// JSON keys for match serialization
-constexpr const char* JSON_KEY_MATCH_ID = "match_id";
-constexpr const char* JSON_KEY_HUNTER_ID = "hunter";
-constexpr const char* JSON_KEY_BOUNTY_ID = "bounty";
-constexpr const char* JSON_KEY_WINNER_IS_HUNTER = "winner_is_hunter";
-constexpr const char* JSON_KEY_HUNTER_TIME = "hunter_time";
-constexpr const char* JSON_KEY_BOUNTY_TIME = "bounty_time";
+#include "utils/uuid-bytes.hpp"
 
 /**
- * Represents a match between a hunter and bounty player.
- * Stores match details and outcome, with serialization support.
+ * A Match as NVS stores it. Packed: field order is the 112-byte layout.
+ */
+struct MatchRecord {
+    UUIDBytes matchUuid;
+    uint32_t hunterDrawTimeMs;
+    uint32_t bountyDrawTimeMs;
+    UUIDBytes hunterPlayerId;
+    UUIDBytes bountyPlayerId;
+    UUIDBytes hunterTeamId;
+    UUIDBytes bountyTeamId;
+    UUIDBytes winnerPlayerId;
+    int64_t occurredAtUnixMs;
+} __attribute__((packed));
+
+constexpr size_t MATCH_BINARY_SIZE = sizeof(MatchRecord);
+static_assert(MATCH_BINARY_SIZE == 112, "stored records use this layout");
+
+/**
+ * A match between a hunter and a bounty: its text id for the handshake and the
+ * record it is stored as.
  */
 class Match {
 public:
@@ -28,91 +34,69 @@ public:
      */
     Match() = default;
 
-    /**
-     * Creates a new match from raw C-strings — no heap allocation in the hot path.
-     */
-    Match(const char* matchId, const char* playerId, bool isHunter);
+    /** Creates a match identified by @p matchId. */
+    explicit Match(const char* matchId);
 
     /**
-     * Deleted: three strings would otherwise bind to the overload above, converting
-     * the bounty id to `true` and leaving the bounty unset.
-     */
-    Match(const char* matchId, const char* hunterId, const char* bountyId) = delete;
-
-    /**
-     * Sets the hunter's draw time
+     * Sets the hunter's raw draw time
      * @param timeMs draw time in milliseconds
      */
-    void setHunterDrawTime(unsigned long timeMs);
+    void setHunterDrawTime(unsigned long timeMs) {
+        record.hunterDrawTimeMs = static_cast<uint32_t>(timeMs);
+    }
 
     /**
-     * Sets the bounty's draw time
+     * Sets the bounty's raw draw time
      * @param timeMs draw time in milliseconds
      */
-    void setBountyDrawTime(unsigned long timeMs);
+    void setBountyDrawTime(unsigned long timeMs) {
+        record.bountyDrawTimeMs = static_cast<uint32_t>(timeMs);
+    }
+
+    /** Names the player and team UUIDs of the hunter slot, or of the bounty slot. */
+    void setPlayer(bool hunterSlot, const UUIDBytes& playerId, const UUIDBytes& teamId) {
+        (hunterSlot ? record.hunterPlayerId : record.bountyPlayerId) = playerId;
+        (hunterSlot ? record.hunterTeamId : record.bountyTeamId) = teamId;
+    }
+
+    /** Sets the 16-byte winning player UUID. */
+    void setWinnerPlayerId(const UUIDBytes& id) { record.winnerPlayerId = id; }
+
+    /** Sets the UTC time at which the match finalized (milliseconds). */
+    void setOccurredAtUnixMs(int64_t unixMs) { record.occurredAtUnixMs = unixMs; }
 
     /**
-     * Records the winning draw slot; raw draw times cannot decide it.
-     * @param hunterWon true if the Hunter slot won
-     */
-    void setWinnerIsHunter(bool hunterWon);
-
-    /**
-     * Sets the hunter's ID
-     * @param hunterId Hunter player's ID
-     */
-    void setHunterId(const char* hunterId);
-
-    /**
-     * Sets the bounty's ID
-     * @param bountyId Bounty player's ID
-     */
-    void setBountyId(const char* bountyId);
-
-    /**
-     * @return Match data as JSON string
-     */
-    std::string toJson() const;
-
-    /**
-     * Populates match data from JSON string
-     * @param json JSON string containing match data
-     */
-    void fromJson(const std::string &json);
-
-    /**
-     * Serializes match data to a byte array
-     * @param buffer Buffer to write the serialized data to (must be at least MATCH_BINARY_SIZE bytes)
+     * Writes the record to @p buffer (at least MATCH_BINARY_SIZE bytes).
      * @return Number of bytes written
      */
     size_t serialize(uint8_t* buffer) const;
 
     /**
-     * Deserializes match data from a byte array
-     * @param buffer Buffer containing the serialized data
+     * Reads the record from @p buffer; the match id becomes the record's UUID as text.
      * @return Number of bytes read
      */
     size_t deserialize(const uint8_t* buffer);
 
-    /**
-     * @return Size of serialized match data in bytes
-     */
-    static size_t binarySize() { return MATCH_BINARY_SIZE; }
-
-    // Getters — return direct pointers into the fixed-size storage, no heap involved
-    const char* getMatchId() const { return match_id; }
-    const char* getHunterId() const { return hunter; }
-    const char* getBountyId() const { return bounty; }
-    unsigned long getHunterDrawTime() const { return hunter_draw_time_ms; }
-    unsigned long getBountyDrawTime() const { return bounty_draw_time_ms; }
-    /** @return true if the Hunter slot won, as set by setWinnerIsHunter */
-    bool isWinnerHunter() const { return winnerIsHunter; }
+    /** @return Null-terminated match ID string. */
+    const char* getMatchId() const { return matchId; }
+    /** @return Hunter raw draw time in milliseconds. */
+    unsigned long getHunterDrawTime() const { return record.hunterDrawTimeMs; }
+    /** @return Bounty raw draw time in milliseconds. */
+    unsigned long getBountyDrawTime() const { return record.bountyDrawTimeMs; }
+    /** @return 16-byte hunter player UUID. */
+    const UUIDBytes& getHunterPlayerId() const { return record.hunterPlayerId; }
+    /** @return 16-byte bounty player UUID. */
+    const UUIDBytes& getBountyPlayerId() const { return record.bountyPlayerId; }
+    /** @return 16-byte hunter team UUID. */
+    const UUIDBytes& getHunterTeamId() const { return record.hunterTeamId; }
+    /** @return 16-byte bounty team UUID. */
+    const UUIDBytes& getBountyTeamId() const { return record.bountyTeamId; }
+    /** @return 16-byte winning player UUID. */
+    const UUIDBytes& getWinnerPlayerId() const { return record.winnerPlayerId; }
+    /** @return UTC time at which the match finalized (milliseconds). */
+    int64_t getOccurredAtUnixMs() const { return record.occurredAtUnixMs; }
 
 private:
-    char match_id[IdGenerator::UUID_BUFFER_SIZE] = {};
-    char hunter[5] = {};
-    char bounty[5] = {};
-    unsigned long hunter_draw_time_ms = 0;
-    unsigned long bounty_draw_time_ms = 0;
-    bool winnerIsHunter = false;
+    char matchId[IdGenerator::UUID_BUFFER_SIZE] = {};
+    MatchRecord record = {};
 };

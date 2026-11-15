@@ -20,7 +20,6 @@ Sleep::~Sleep() {
 }
 
 void Sleep::onStateMounted(PDN* pdn) {
-    pdn->getHaptics()->off();
     pdn->getDisplay()->
         invalidateScreen()->
         drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->

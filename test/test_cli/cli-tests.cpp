@@ -427,6 +427,10 @@ TEST_F(CliSimulationTestSuite, DevicesStartWithDistinctTestIdentities) {
 
 TEST_F(CliSimulationTestSuite, CabledDevicesConnect) { cliSimulationCabledDevicesConnect(this); }
 
+TEST_F(CliSimulationTestSuite, DuelStoresOneRecordOnEachPdn) {
+    cliDuelStoresOneRecordOnEachPdn(this);
+}
+
 // ============================================
 // MAIN
 // ============================================

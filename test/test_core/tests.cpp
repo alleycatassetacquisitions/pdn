@@ -704,29 +704,11 @@ TEST_F(MatchTestSuite, shootoutIdConversionStaysInBounds) {
     matchShootoutIdConversionStaysInBounds();
 }
 
-TEST_F(MatchTestSuite, deserializeClearsPlayerIdTail) {
-    matchDeserializeClearsPlayerIdTail();
-}
-
-TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) {
-    matchShorterIdOverwriteClearsTheTail();
-}
-
-TEST_F(MatchTestSuite, jsonRoundTripPreservesAllFields) {
-    matchJsonRoundTripPreservesAllFields();
-}
-
-TEST_F(MatchTestSuite, jsonContainsWinnerFlag) {
-    matchJsonContainsWinnerFlag();
-}
-
 TEST_F(MatchTestSuite, binaryRoundTripPreservesAllFields) {
     matchBinaryRoundTripPreservesAllFields();
 }
 
-TEST_F(MatchTestSuite, binarySizeIsCorrect) {
-    matchBinarySizeIsCorrect();
-}
+TEST_F(MatchTestSuite, recordLayoutIs112Bytes) { matchRecordLayoutIs112Bytes(); }
 
 TEST_F(MatchTestSuite, setupClearsDrawTimes) {
     matchSetupClearsDrawTimes();
@@ -734,10 +716,6 @@ TEST_F(MatchTestSuite, setupClearsDrawTimes) {
 
 TEST_F(MatchTestSuite, drawTimesSetCorrectly) {
     matchDrawTimesSetCorrectly();
-}
-
-TEST_F(MatchTestSuite, withZeroDrawTimes) {
-    matchWithZeroDrawTimes();
 }
 
 TEST_F(MatchTestSuite, withLargeDrawTimes) {
@@ -1195,8 +1173,6 @@ TEST_F(MatchIntegrationTestSuite, completeMatchFlowBountyWins) {
     completeMatchFlowBountyWins(this);
 }
 
-TEST_F(MatchIntegrationTestSuite, matchSerializationRoundTrip) { matchSerializationRoundTrip(); }
-
 TEST_F(MatchIntegrationTestSuite, playerStatsAccumulateAcrossMatches) {
     playerStatsAccumulateAcrossMatches(hunter);
 }
@@ -1462,6 +1438,10 @@ TEST_F(StateCleanupTests, matchReceivedResultDebouncesTransientDisconnect) {
 
 TEST_F(StateCleanupTests, countdownFreezesDisconnectDebounceDuringShootout) {
     countdownFreezesDisconnectDebounceDuringShootout(this);
+}
+
+TEST_F(StateCleanupTests, winAndLoseStopTheirAnimation) {
+    cleanupWinAndLoseStopTheirAnimation(this);
 }
 
 // ============================================

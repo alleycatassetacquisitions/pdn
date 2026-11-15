@@ -136,7 +136,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     SimpleTimer::setPlatformClock(&clock);
 
     FuzzPeerComms peerComms;
-    NativePrefsDriver storage("fuzz", {MATCHES_PREFS_NAMESPACE});
+    NativePrefsDriver storage("fuzz", {MATCH_RING_PREFS_NAMESPACE});
     FuzzRemoteDeviceCoordinator rdc;
 
     WirelessManager wirelessManager(&peerComms, nullptr);
@@ -192,7 +192,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             }
             case 1: {
                 // Deliver a raw MatchPacket directly from fuzz bytes (tests non-null-terminated
-                // matchId/playerId and arbitrary command/drawTime values)
+                // matchId and arbitrary command/drawTime values)
                 if (size - pos < sizeof(MatchPacket)) {
                     pos = size;
                     break;
@@ -214,7 +214,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 } else {
                     std::memset(pkt.matchId, 'A', IdGenerator::UUID_BUFFER_SIZE);
                 }
-                std::memcpy(pkt.playerId, data + pos, 5);
+                std::memcpy(pkt.playerUuid.bytes, data + pos, 5);
                 pkt.isHunter = data[pos + 5];
                 pkt.command = static_cast<int>(data[pos + 6] % 12U);
                 pkt.seqId = data[pos + 7];
@@ -257,17 +257,17 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             }
             case 8: {
-                // Jump count near MAX_MATCHES (255) to exercise storage-full boundary.
+                // Jump the sequence number past the ring's capacity to exercise the full-ring
+                // refusal.
                 if (pos < size) {
-                    uint8_t countOverride = data[pos++];
-                    if (countOverride >= 250) {
-                        storage.writeUChar(MATCHES_PREFS_NAMESPACE, "count", countOverride);
+                    uint8_t sequenceOverride = data[pos++];
+                    if (sequenceOverride >= 250) {
+                        storage.writeUInt(MATCH_RING_PREFS_NAMESPACE, "seq", sequenceOverride);
                     }
                 }
                 if (matchManager.finalizeMatch()) {
-                    std::string json = matchManager.toJson();
-                    volatile size_t jsonLen = json.size();
-                    (void)jsonLen;
+                    MatchRecord record{};
+                    (void)matchManager.readRecord(matchManager.getMatchSequenceNumber(), record);
                 }
                 break;
             }
