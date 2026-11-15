@@ -1,5 +1,6 @@
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "device/device.hpp"
+#include "device/firmware-update-manager.hpp"
 #include "id-generator.hpp"
 
 ChooseTeamState::ChooseTeamState(PlayerProvider* playerProvider, bool testIdentity)
@@ -10,7 +11,14 @@ ChooseTeamState::ChooseTeamState(PlayerProvider* playerProvider, bool testIdenti
 ChooseTeamState::~ChooseTeamState() { playerProvider = nullptr; }
 
 void ChooseTeamState::onStateMounted(PDN* pdn) {
+    playerProvider->clear();
     macAddress = pdn->getWirelessManager()->getMacAddress();
+    sinceMount.setTimer(0);
+    // The first screen after boot is where a PDN takes an ESP-NOW firmware update.
+    firmwareUpdateManager = pdn->getFirmwareUpdateManager();
+    if (firmwareUpdateManager != nullptr) {
+        firmwareUpdateManager->setEligible(true);
+    }
     renderUi(pdn);
 
     pdn->getPrimaryButton()->setButtonPress(
@@ -37,6 +45,12 @@ void ChooseTeamState::onStateMounted(PDN* pdn) {
 }
 
 void ChooseTeamState::onStateLoop(PDN* pdn) {
+    // The pressed time counts from press-down, so a hold carried in from the
+    // previous screen is longer than this one has been up and does not count.
+    const unsigned long heldMs = pdn->getSecondaryButton()->longPressedMillis();
+    if (heldMs >= PLAYER_FETCH_FIRMWARE_HOLD_MS && heldMs <= sinceMount.getElapsedTime()) {
+        transitionToFirmwareUpdateState = true;
+    }
     if (displayIsDirty) {
         renderUi(pdn);
         displayIsDirty = false;
@@ -47,12 +61,21 @@ void ChooseTeamState::onStateDismounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
     transitionToHubState = false;
+    transitionToFirmwareUpdateState = false;
+    if (firmwareUpdateManager != nullptr) {
+        firmwareUpdateManager->setEligible(false);
+        firmwareUpdateManager = nullptr;
+    }
     macAddress = nullptr;
     displayIsDirty = false;
     hunterSelected = true;
 }
 
 bool ChooseTeamState::transitionToHub() const { return transitionToHubState; }
+
+bool ChooseTeamState::transitionToFirmwareUpdate() const {
+    return transitionToFirmwareUpdateState;
+}
 
 void ChooseTeamState::renderUi(PDN* pdn) const {
     pdn->getDisplay()->invalidateScreen();

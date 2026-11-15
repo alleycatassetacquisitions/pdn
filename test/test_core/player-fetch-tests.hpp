@@ -3,10 +3,11 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
-#include "alleycat-protobuf-test-helpers.hpp"
+#include "apps/player-fetch/player-fetch.hpp"
 #include "apps/player-fetch/player-fetch-states.hpp"
+#include "device/firmware-update-manager.hpp"
+#include "fake-firmware-store.hpp"
 #include "connect-state-callback-tests.hpp"
-#include "device-player-codec-tests.hpp"
 #include "utility-tests.hpp"
 #include "game/player-provider.hpp"
 
@@ -22,24 +23,15 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(0);
 
-        ON_CALL(*device.mockHttpClient, queueRequest(testing::_))
-        .WillByDefault(Invoke([this](HttpRequest&& request) {
-            queuedRequests.push_back(std::move(request));
-            return true;
-        }));
-
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(*device.mockDisplay, renderGlyph(_, _, _))
-        .WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, render()).WillByDefault(Return());
     }
 
-    /** Tears down heap fixtures and clears queued HTTP requests. */
+    /** Restores the platform clock. */
     void TearDown() override {
-        queuedRequests.clear();
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
@@ -47,119 +39,7 @@ public:
     FakePlatformClock* fakeClock = nullptr;
     PlayerProvider playerProvider;
     MockDevice device;
-    std::vector<HttpRequest> queuedRequests;
 };
-
-inline void completePinOnEntry(PDN* pdn, PinEntryState* pinEntry,
-                               parameterizedCallbackFunction& primaryPress,
-                               parameterizedCallbackFunction& secondaryPress, void*& ctx,
-                               const int digits[4]) {
-    pinEntry->onStateMounted(pdn);
-    ASSERT_NE(primaryPress, nullptr);
-    ASSERT_NE(secondaryPress, nullptr);
-    for (int index = 0; index < 4; index++) {
-        for (int press = 0; press < digits[index]; press++) {
-            primaryPress(ctx);
-        }
-        secondaryPress(ctx);
-    }
-}
-
-inline void pinEntryRoutesNonDemoPinToFetch(PlayerFetchTestSuite* suite) {
-    parameterizedCallbackFunction primaryPress = nullptr;
-    parameterizedCallbackFunction secondaryPress = nullptr;
-    void* ctx = nullptr;
-    ON_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
-    .WillByDefault(
-    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
-        primaryPress = fn;
-        ctx = buttonCtx;
-    }));
-    ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
-    .WillByDefault(
-    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
-        secondaryPress = fn;
-        ctx = buttonCtx;
-    }));
-
-    PinEntryState pinEntry(&suite->playerProvider);
-    const int digits[4] = {0, 0, 0, 7};
-    completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
-    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "0007");
-    EXPECT_TRUE(pinEntry.transitionToFetchUser());
-    EXPECT_FALSE(pinEntry.transitionToChooseTeam());
-    pinEntry.onStateDismounted(&suite->device);
-}
-
-inline void pinEntryRoutesDemoPinToChooseTeam(PlayerFetchTestSuite* suite) {
-    parameterizedCallbackFunction primaryPress = nullptr;
-    parameterizedCallbackFunction secondaryPress = nullptr;
-    void* ctx = nullptr;
-    ON_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
-    .WillByDefault(
-    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
-        primaryPress = fn;
-        ctx = buttonCtx;
-    }));
-    ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
-    .WillByDefault(
-    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
-        secondaryPress = fn;
-        ctx = buttonCtx;
-    }));
-
-    PinEntryState pinEntry(&suite->playerProvider);
-    const int digits[4] = {0, 0, 0, 0};
-    completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
-    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), DEMO_PIN);
-    EXPECT_TRUE(pinEntry.transitionToChooseTeam());
-    EXPECT_FALSE(pinEntry.transitionToFetchUser());
-    pinEntry.onStateDismounted(&suite->device);
-}
-
-inline void fetchUserQueuesDevicePlayerLookup(PlayerFetchTestSuite* suite) {
-    suite->playerProvider.setRegistrationPin("1234");
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
-    fetch.onStateMounted(&suite->device);
-    ASSERT_EQ(suite->queuedRequests.size(), 1u);
-    EXPECT_EQ(suite->queuedRequests[0].path, "/device/players/by-pin/1234");
-    EXPECT_TRUE(suite->queuedRequests[0].payload.empty());
-    suite->queuedRequests.clear();
-    fetch.onStateDismounted(&suite->device);
-}
-
-inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
-    suite->playerProvider.setRegistrationPin("0007");
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
-    fetch.onStateMounted(&suite->device);
-    ASSERT_EQ(suite->queuedRequests.size(), 1u);
-
-    suite->queuedRequests[0].onSuccess(
-        encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada"));
-
-    fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(suite->playerProvider.hasPlayer());
-    EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
-    EXPECT_TRUE(fetch.transitionToWelcome());
-    suite->queuedRequests.clear();
-    fetch.onStateDismounted(&suite->device);
-}
-
-inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* suite) {
-    suite->playerProvider.setRegistrationPin("9999");
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
-    fetch.onStateMounted(&suite->device);
-    suite->queuedRequests[0].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404"});
-
-    fetch.onStateLoop(&suite->device);
-    EXPECT_FALSE(fetch.transitionToPinEntry());
-
-    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
-    fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(fetch.transitionToPinEntry());
-    suite->queuedRequests.clear();
-    fetch.onStateDismounted(&suite->device);
-}
 
 // Returns with ChooseTeam still mounted so callers can check its flags before dismounting.
 inline void confirmChooseTeam(PlayerFetchTestSuite* suite, ChooseTeamState* chooseTeam,
@@ -219,4 +99,24 @@ inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
 
     dismountState(&chooseTeam, &suite->device);
     EXPECT_FALSE(chooseTeam.transitionToHub());
+}
+
+// The firmware hold on ChooseTeam opens the update screen, and the update screen
+// returns to ChooseTeam: a PDN takes an update only from the registration screen.
+inline void chooseTeamAndFirmwareUpdateLeadToEachOther(PlayerFetchTestSuite* suite) {
+    FakeFirmwareStore store;
+    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
+    PlayerFetchApp app(&manager, &suite->playerProvider, false);
+    app.populateStateMap();
+
+    ASSERT_EQ(app.getStateMap().size(), 2u);
+    State* chooseTeam = app.getStateMap()[0];
+    State* firmwareUpdate = app.getStateMap()[1];
+    EXPECT_EQ(chooseTeam->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
+    EXPECT_EQ(firmwareUpdate->getStateId(), PlayerFetchStateId::FIRMWARE_UPDATE);
+    ASSERT_EQ(chooseTeam->getTransitions().size(), 2u);
+    EXPECT_EQ(chooseTeam->getTransitions()[0]->getTargetAppId().id, HUB_APP_ID);
+    EXPECT_EQ(chooseTeam->getTransitions()[1]->getNextState(), firmwareUpdate);
+    ASSERT_EQ(firmwareUpdate->getTransitions().size(), 1u);
+    EXPECT_EQ(firmwareUpdate->getTransitions()[0]->getNextState(), chooseTeam);
 }

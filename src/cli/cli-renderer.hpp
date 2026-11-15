@@ -458,26 +458,6 @@ private:
         bufferLine(format("|   TX: %s", espNowTxStr.c_str()));
         bufferLine(format("|   RX: %s", espNowRxStr.c_str()));
         
-        // Build HTTP history string
-        std::string httpStr = "(none)";
-        const auto& httpHistory = device.httpClientDriver->getRequestHistory();
-        if (!httpHistory.empty()) {
-            httpStr = "";
-            int count = 0;
-            for (auto it = httpHistory.rbegin(); it != httpHistory.rend() && count < 3; ++it, ++count) {
-                if (count > 0) httpStr += ", ";
-                httpStr += it->method + " " + truncate(it->path, 20);
-                httpStr += it->success ? " [OK]" : format(" [%d]", it->statusCode);
-            }
-        }
-        
-        bufferLine(format("| HTTP: %s  Pending=%zu  Mock=%s",
-                   device.httpClientDriver->isConnected() ? "Connected" : "Disconnected",
-                   device.httpClientDriver->getPendingRequestCount(),
-                   device.httpClientDriver->isMockServerEnabled() ? "ON" : "OFF"));
-        
-        bufferLine(format("|   Requests: %s", httpStr.c_str()));
-        
         bufferLine(format("| Errors: %s", errorStr.c_str()));
         
         bufferLine(format("%s+--------------------------------------------------------------+\033[0m", headerColor));

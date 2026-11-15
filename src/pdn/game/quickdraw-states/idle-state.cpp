@@ -26,8 +26,6 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(PDN* pdn) {
-    pdn->getWirelessManager()->enablePeerCommsMode();
-
     AnimationConfig config;
 
     AnimationBase* animation;

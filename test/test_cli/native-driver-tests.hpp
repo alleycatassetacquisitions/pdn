@@ -902,13 +902,6 @@ void cliCommandDisplayAlias(CliDisplayCommandTestSuite* suite) {
 // CLI COMMAND / REBOOT TEST SUITE
 // ============================================
 
-/** Pin entry clears the provider on mount; set PIN after PlayerFetch mounts. */
-inline void cliSkipQuickdrawToFetchUser(cli::DeviceInstance& device) {
-    device.playerProvider->setRegistrationPin(device.deviceId.c_str());
-    device.pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID),
-                             StateId(PlayerFetchStateId::FETCH_USER));
-}
-
 class CliCommandTestSuite : public testing::Test {
 public:
     void SetUp() override {
@@ -917,95 +910,62 @@ public:
         globalLogger_->setSuppressOutput(true);
         g_logger = globalLogger_;
         SimpleTimer::setPlatformClock(globalClock_);
-        device = cli::DeviceFactory::createDevice(0, true);
-
-        // The CLI factory launches into the hub. These tests exercise the
-        // registration flow (HTTP fetch transitions, reboot semantics), so swap
-        // back to the registration app at its fetch state.
-        cliSkipQuickdrawToFetchUser(device);
+        // The CLI factory launches into the hub with a test identity.
+        devices_.push_back(cli::DeviceFactory::createDevice(0, true));
     }
 
     void TearDown() override {
-        cli::DeviceFactory::destroyDevice(device);
+        for (cli::DeviceInstance& dev : devices_) {
+            cli::DeviceFactory::destroyDevice(dev);
+        }
+        devices_.clear();
         SimpleTimer::setPlatformClock(nullptr);
         g_logger = nullptr;
         delete globalLogger_;
         delete globalClock_;
     }
 
-    cli::DeviceInstance device;
+    cli::CommandResult exec(const std::string& cmd) {
+        return processor_.execute(cmd, devices_, selectedDevice_, renderer_);
+    }
+
+    cli::DeviceInstance& device() { return devices_[0]; }
+
+    std::vector<cli::DeviceInstance> devices_;
+    int selectedDevice_ = 0;
+    cli::Renderer renderer_;
+    cli::CommandProcessor processor_;
     NativeClockDriver* globalClock_;
     NativeLoggerDriver* globalLogger_;
 };
 
-// Test: Mock HTTP fetch transitions device from FetchUserData to WelcomeMessage
-void cliDeviceMockHttpFetchTransitions(CliCommandTestSuite* suite) {
-    ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    State* state = suite->device.getCurrentState();
-    ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PlayerFetchStateId::FETCH_USER);
+// Test: reboot puts the device on the registration screen with no player
+void cliCommandRebootEntersChooseTeam(CliCommandTestSuite* suite) {
+    ASSERT_EQ(suite->device().pdn->getActiveApp(), suite->device().hubApp);
 
-    // Run a few loop cycles — mock HTTP responds immediately
-    for (int i = 0; i < 10; i++) {
-        suite->device.pdn->loop();
-    }
+    cli::CommandResult result = suite->exec("reboot");
 
-    // Should have transitioned to WelcomeMessage, still inside the registration app
-    ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    state = suite->device.getCurrentState();
+    EXPECT_EQ(result.message, "Rebooted 0010 -> ChooseTeam");
+    ASSERT_EQ(suite->device().pdn->getActiveApp(), suite->device().playerFetchApp);
+    State* state = suite->device().getCurrentState();
     ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PlayerFetchStateId::WELCOME);
+    EXPECT_EQ(state->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
+    EXPECT_FALSE(suite->device().player->hasRegistrationProfile());
 }
 
-// Test: Reboot resets device back to FetchUserData
-void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
-    // Advance past FetchUserData
-    for (int i = 0; i < 10; i++) {
-        suite->device.pdn->loop();
-    }
-    State* state = suite->device.getCurrentState();
-    ASSERT_NE(state, nullptr);
-    ASSERT_NE(state->getStateId(), PlayerFetchStateId::FETCH_USER);
+// Test: confirming a role after reboot registers the test identity and enters the hub
+void cliCommandRebootThenConfirmEntersHub(CliCommandTestSuite* suite) {
+    suite->exec("reboot");
+    ASSERT_EQ(suite->device().getCurrentState()->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
 
-    // Reboot: same sequence as cmdReboot
-    suite->device.httpClientDriver->setMockServerEnabled(true);
-    suite->device.httpClientDriver->setConnected(true);
-    suite->device.stateHistory.clear();
-    suite->device.lastStateId = -1;
-    cliSkipQuickdrawToFetchUser(suite->device);
-
-    // Should be back at FetchUserData within the registration app
-    ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    state = suite->device.getCurrentState();
-    ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PlayerFetchStateId::FETCH_USER);
-}
-
-// Test: Reboot from a later state returns to FetchUserData and can re-transition
-void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
-    // Advance device further (past FetchUserData into WelcomeMessage or beyond)
-    for (int i = 0; i < 10; i++) {
-        suite->device.pdn->loop();
+    suite->device().secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    for (int i = 0; i < 3; i++) {
+        suite->device().pdn->loop();
     }
 
-    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::WELCOME);
-
-    // Reboot
-    suite->device.httpClientDriver->setMockServerEnabled(true);
-    suite->device.httpClientDriver->setConnected(true);
-    suite->device.stateHistory.clear();
-    suite->device.lastStateId = -1;
-    cliSkipQuickdrawToFetchUser(suite->device);
-
-    ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::FETCH_USER);
-
-    // Run loops again — should transition to WelcomeMessage again
-    for (int i = 0; i < 10; i++) {
-        suite->device.pdn->loop();
-    }
-
-    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::WELCOME);
+    EXPECT_EQ(suite->device().pdn->getActiveApp(), suite->device().hubApp);
+    EXPECT_EQ(suite->device().player->getServerPlayerId(),
+              Player::testPlayerIdFromMac(suite->device().peerCommsDriver->getMacAddress()));
 }
 
 // ============================================
@@ -1256,28 +1216,13 @@ void cliRoleCommandNoDevices(CliRoleCommandTestSuite* suite) {
 
 // Test: Reboot clears state history and resets lastStateId
 void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
-    // Add some fake state history
-    suite->device.stateHistory.push_back(1);
-    suite->device.stateHistory.push_back(5);
-    suite->device.stateHistory.push_back(7);
-    suite->device.lastStateId = 7;
+    suite->device().stateHistory.push_back(1);
+    suite->device().stateHistory.push_back(5);
+    suite->device().stateHistory.push_back(7);
+    suite->device().lastStateId = 7;
 
-    ASSERT_EQ(suite->device.stateHistory.size(), 3u);
-    ASSERT_EQ(suite->device.lastStateId, 7);
+    suite->exec("reboot");
 
-    // Reboot
-    suite->device.httpClientDriver->setMockServerEnabled(true);
-    suite->device.httpClientDriver->setConnected(true);
-    suite->device.stateHistory.clear();
-    suite->device.lastStateId = -1;
-
-    cliSkipQuickdrawToFetchUser(suite->device);
-
-    // History should be cleared
-    ASSERT_TRUE(suite->device.stateHistory.empty());
-    ASSERT_EQ(suite->device.lastStateId, -1);
-
-    // Device should be at FetchUserData within the registration app
-    ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerFetchApp);
-    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PlayerFetchStateId::FETCH_USER);
+    ASSERT_TRUE(suite->device().stateHistory.empty());
+    ASSERT_EQ(suite->device().lastStateId, -1);
 }

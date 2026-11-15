@@ -8,7 +8,6 @@
 
 // CLI-specific test headers
 #include "cli-broker-tests.hpp"
-#include "cli-http-server-tests.hpp"
 #include "native-driver-tests.hpp"
 
 // ============================================
@@ -52,70 +51,6 @@ TEST_F(NativePeerBrokerTestSuite, UniqueMacGeneration) {
 }
 
 TEST_F(NativePeerBrokerTestSuite, DisabledPeerNoReceive) { peerBrokerDisabledPeerNoReceive(this); }
-
-// ============================================
-// MOCK HTTP SERVER TESTS
-// ============================================
-
-TEST_F(MockHttpServerTestSuite, GetPlayerReturnsCorrectData) {
-    httpServerGetDevicePlayerByPinReturnsData(this);
-}
-
-TEST_F(MockHttpServerTestSuite, GetPlayerReturnsDefaults) {
-    httpServerGetDevicePlayerByPinReturns404(this);
-}
-
-TEST_F(MockHttpServerTestSuite, UnknownEndpointReturns404) {
-    httpServerUnknownEndpointReturns404(this);
-}
-
-TEST_F(MockHttpServerTestSuite, TracksHistory) {
-    httpServerTracksHistory(this);
-}
-
-TEST_F(MockHttpServerTestSuite, OfflineModeSimulation) {
-    httpServerOfflineModeSimulation(this);
-}
-
-TEST_F(MockHttpServerTestSuite, ClearHistory) {
-    httpServerClearHistory(this);
-}
-
-TEST_F(MockHttpServerTestSuite, DeviceLogsReturns204) {
-    httpServerDeviceLogsReturns204(this);
-}
-
-TEST_F(MockHttpServerTestSuite, DeviceLogsEmptyBodyReturns400) {
-    httpServerDeviceLogsEmptyBodyReturns400(this);
-}
-
-// ============================================
-// NATIVE HTTP CLIENT DRIVER TESTS
-// ============================================
-
-TEST_F(NativeHttpClientDriverTestSuite, ProcessesRequests) {
-    httpClientProcessesRequests(this);
-}
-
-TEST_F(NativeHttpClientDriverTestSuite, DisconnectFailsQueuedRequests) {
-    httpClientDisconnectFailsQueuedRequests(this);
-}
-
-TEST_F(NativeHttpClientDriverTestSuite, HandlesOfflineServer) {
-    httpClientHandlesOfflineServer(this);
-}
-
-TEST_F(NativeHttpClientDriverTestSuite, TracksHistory) {
-    httpClientTracksHistory(this);
-}
-
-TEST_F(NativeHttpClientDriverTestSuite, DisabledMockServerFails) {
-    httpClientDisabledMockServerFails(this);
-}
-
-TEST_F(NativeHttpClientDriverTestSuite, UploadsEncodedCrashLog) {
-    httpClientUploadsEncodedCrashLog(this);
-}
 
 // ============================================
 // NATIVE SERIAL DRIVER TESTS
@@ -405,16 +340,12 @@ TEST_F(CliRoleCommandTestSuite, NoDevices) {
 // CLI COMMAND / REBOOT TESTS
 // ============================================
 
-TEST_F(CliCommandTestSuite, MockHttpFetchTransitions) {
-    cliDeviceMockHttpFetchTransitions(this);
+TEST_F(CliCommandTestSuite, RebootEntersChooseTeam) {
+    cliCommandRebootEntersChooseTeam(this);
 }
 
-TEST_F(CliCommandTestSuite, RebootResetsState) {
-    cliCommandRebootResetsState(this);
-}
-
-TEST_F(CliCommandTestSuite, RebootFromLaterState) {
-    cliCommandRebootFromLaterState(this);
+TEST_F(CliCommandTestSuite, RebootThenConfirmEntersHub) {
+    cliCommandRebootThenConfirmEntersHub(this);
 }
 
 TEST_F(CliCommandTestSuite, RebootClearsHistory) {

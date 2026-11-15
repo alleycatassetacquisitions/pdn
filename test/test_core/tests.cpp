@@ -1080,32 +1080,16 @@ TEST(PlayerRegistrationShim, formatsServerIdAsUserId) { playerLegacyShimFormatsS
 // PLAYER FETCH APP TESTS
 // ============================================
 
-TEST_F(PlayerFetchTestSuite, pinEntryRoutesNonDemoPinToFetch) {
-    pinEntryRoutesNonDemoPinToFetch(this);
-}
-
-TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
-    pinEntryRoutesDemoPinToChooseTeam(this);
-}
-
-TEST_F(PlayerFetchTestSuite, fetchUserQueuesDevicePlayerLookup) {
-    fetchUserQueuesDevicePlayerLookup(this);
-}
-
-TEST_F(PlayerFetchTestSuite, fetchUserStoresDevicePlayerOnSuccess) {
-    fetchUserStoresDevicePlayerOnSuccess(this);
-}
-
-TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
-    fetchUserFailureReturnsToPinAfterPageTimeout(this);
-}
-
 TEST_F(PlayerFetchTestSuite, chooseTeamTestIdentityRegistersMacPlayerAndEntersHub) {
     chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(this);
 }
 
 TEST_F(PlayerFetchTestSuite, chooseTeamDemoKeepsNilPlayerId) {
     chooseTeamDemoKeepsNilPlayerId(this);
+}
+
+TEST_F(PlayerFetchTestSuite, chooseTeamAndFirmwareUpdateLeadToEachOther) {
+    chooseTeamAndFirmwareUpdateLeadToEachOther(this);
 }
 
 // ============================================
@@ -1212,28 +1196,16 @@ TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
-    pairingCodeFirmwareHoldStartsAnUpdate(this);
+TEST_F(IdleStateTests, chooseTeamFirmwareHoldStartsAnUpdate) {
+    chooseTeamFirmwareHoldStartsAnUpdate(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeLeavesTheRadioAlone) {
-    pairingCodeLeavesTheRadioAlone(this);
+TEST_F(IdleStateTests, chooseTeamFirmwareHoldCarriedInDoesNotFire) {
+    chooseTeamFirmwareHoldCarriedInDoesNotFire(this);
 }
 
-TEST_F(IdleStateTests, fetchExitPutsTheRadioBackOnEspNow) {
-    fetchExitPutsTheRadioBackOnEspNow(this);
-}
-
-TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) {
-    aSeedRunTakesTheRadioForEspNow(this);
-}
-
-TEST_F(IdleStateTests, pairingCodeFirmwareHoldCarriedInDoesNotFire) {
-    pairingCodeFirmwareHoldCarriedInDoesNotFire(this);
-}
-
-TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) {
-    pairingCodeTakesUpdatesWhileUp(this);
+TEST_F(IdleStateTests, chooseTeamTakesUpdatesWhileUp) {
+    chooseTeamTakesUpdatesWhileUp(this);
 }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {

@@ -28,7 +28,6 @@
 #include "device/drivers/platform-clock.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
-#include "device/drivers/http-client-interface.hpp"
 #include "device/wireless-manager.hpp"
 #include "utils/simple-timer.hpp"
 #include "id-generator.hpp"
@@ -112,23 +111,6 @@ public:
     }
 };
 
-class StubHttpClient : public HttpClientInterface {
-public:
-    void setWifiConfig(WifiConfig*) override {}
-    bool isConnected() override { return false; }
-    bool queueRequest(HttpRequest&&) override { return false; }
-    void disconnect() override {}
-    void updateConfig(WifiConfig*) override {}
-    void retryConnection() override {}
-    uint8_t* getMacAddress() override { return mac_; }
-    void setHttpClientState(HttpClientState) override {}
-    HttpClientState getHttpClientState() override {
-        return HttpClientState::DISCONNECTED;
-    }
-
-private:
-    uint8_t mac_[6] = {0};
-};
 
 static MatchPacket makeDrawResultPacket(const std::optional<Match>& match, bool senderIsHunter) {
     MatchPacket p = {};
@@ -152,7 +134,6 @@ static void deliver(StubPeerComms& target, const uint8_t mac[6], MatchPacket& pk
 struct DeviceCtx {
     StubPeerComms    peerComms;
     StubStorage      storage;
-    StubHttpClient   httpClient;
     WirelessManager* wirelessMgr = nullptr;
     MatchManager*    matchMgr       = nullptr;
     Player           player;
@@ -163,7 +144,7 @@ struct DeviceCtx {
         player.setUserID(id);
         player.setIsHunter(isHunter);
 
-        wirelessMgr = new WirelessManager(&peerComms, &httpClient);
+        wirelessMgr = new WirelessManager(&peerComms);
         matchMgr = new MatchManager(wirelessMgr);
         matchMgr->initialize(&player, &storage);
     }

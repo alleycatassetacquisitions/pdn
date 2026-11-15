@@ -541,19 +541,14 @@ private:
         }
         auto& dev = devices[targetDevice];
 
-        // Ensure mock HTTP is ready for the new FetchUserData cycle
-        dev.httpClientDriver->setMockServerEnabled(true);
-        dev.httpClientDriver->setConnected(true);
-
         // Clear UI state history
         dev.stateHistory.clear();
         dev.lastStateId = -1;
 
-        dev.playerProvider->setRegistrationPin(dev.deviceId.c_str());
         dev.pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID),
-                              StateId(PlayerFetchStateId::FETCH_USER));
+                              StateId(PlayerFetchStateId::CHOOSE_TEAM));
 
-        result.message = "Rebooted " + dev.deviceId + " -> FetchUserData";
+        result.message = "Rebooted " + dev.deviceId + " -> ChooseTeam";
         return result;
     }
 

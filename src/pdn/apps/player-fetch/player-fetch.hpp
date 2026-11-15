@@ -3,17 +3,16 @@
 #include "state/state-machine.hpp"
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "apps/pdn-app-ids.hpp"
-#include "device/wireless-manager.hpp"
 #include "game/player-provider.hpp"
 
 class FirmwareUpdateManager;
 
-/** Standalone registration app using the protobuf device player API. */
+/** Registration app: the role picker, and the firmware update it can hand off to. */
 class PlayerFetchApp : public StateMachine {
 public:
     /** @p firmwareUpdateManager may be null to skip the hold-to-update state. */
-    PlayerFetchApp(WirelessManager* wirelessManager, FirmwareUpdateManager* firmwareUpdateManager,
-                   PlayerProvider* playerProvider, bool testIdentity);
+    PlayerFetchApp(FirmwareUpdateManager* firmwareUpdateManager, PlayerProvider* playerProvider,
+                   bool testIdentity);
     /** @copydoc StateMachine::~StateMachine */
     ~PlayerFetchApp() override;
 
@@ -21,7 +20,6 @@ public:
     void populateStateMap() override;
 
 private:
-    WirelessManager* wirelessManager = nullptr;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
     PlayerProvider* playerProvider = nullptr;
     bool testIdentity = false;

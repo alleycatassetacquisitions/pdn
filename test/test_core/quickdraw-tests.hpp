@@ -14,7 +14,6 @@
 #include "game/quickdraw-apps.hpp"
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "game/player-provider.hpp"
-#include "device/firmware-update-state.hpp"
 #include "utility-tests.hpp"
 #include "fake-firmware-store.hpp"
 #include "protocol-constants.hpp"
@@ -171,48 +170,49 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     suite->idleState->onStateDismounted(&suite->device);
 }
 
-inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+inline void chooseTeamFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    ChooseTeamState chooseTeam(&playerProvider, false);
+    chooseTeam.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 1000);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS - 1))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
+    chooseTeam.onStateLoop(&suite->device);
+    EXPECT_FALSE(chooseTeam.transitionToFirmwareUpdate());
+    chooseTeam.onStateLoop(&suite->device);
+    EXPECT_TRUE(chooseTeam.transitionToFirmwareUpdate());
+    EXPECT_FALSE(chooseTeam.transitionToHub());
 
-    pinEntry.onStateDismounted(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    chooseTeam.onStateDismounted(&suite->device);
+    EXPECT_FALSE(chooseTeam.transitionToFirmwareUpdate());
 }
 
 // The button's pressed time counts from press-down, so a hold that began before the
 // mount, even one not yet a long press then, is longer than the screen has been up.
-inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+inline void chooseTeamFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    ChooseTeamState chooseTeam(&playerProvider, false);
+    chooseTeam.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS - 500);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    chooseTeam.onStateLoop(&suite->device);
+    EXPECT_FALSE(chooseTeam.transitionToFirmwareUpdate());
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 2000);
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
-    pinEntry.onStateDismounted(&suite->device);
+    chooseTeam.onStateLoop(&suite->device);
+    EXPECT_TRUE(chooseTeam.transitionToFirmwareUpdate());
+    chooseTeam.onStateDismounted(&suite->device);
 }
 
-// The pairing screen takes firmware updates for as long as it is up.
-inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+// The registration screen takes firmware updates for as long as it is up.
+inline void chooseTeamTakesUpdatesWhileUp(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PeerCommsInterface::PacketCallback onFrame;
     EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
         .WillOnce(SaveArg<1>(&onFrame));
@@ -228,43 +228,14 @@ inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
 
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
+    ChooseTeamState chooseTeam(&playerProvider, false);
+    chooseTeam.onStateMounted(&suite->device);
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 1);
 
-    pinEntry.onStateDismounted(&suite->device);
+    chooseTeam.onStateDismounted(&suite->device);
     EXPECT_EQ(store.abortCalls, 1) << "leaving the screen drops the receive";
     suite->device.firmwareUpdateManager = nullptr;
-}
-
-// The pairing screen leaves the radio to whoever switched it to WiFi.
-inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
-    suite->device.wirelessManager->enableWifiMode();
-    PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
-    pinEntry.onStateMounted(&suite->device);
-    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
-    pinEntry.onStateDismounted(&suite->device);
-}
-
-inline void fetchExitPutsTheRadioBackOnEspNow(IdleStateTests* suite) {
-    suite->device.wirelessManager->enableWifiMode();
-    PlayerProvider playerProvider;
-    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
-    fetch.onStateDismounted(&suite->device);
-    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
-}
-
-inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {
-    suite->device.wirelessManager->enableWifiMode();
-    FakeFirmwareStore store;
-    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
-    FirmwareUpdate seedScreen(PlayerFetchStateId::FIRMWARE_UPDATE, &manager);
-    seedScreen.onStateMounted(&suite->device);
-    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
-    seedScreen.onStateDismounted(&suite->device);
 }
 
 // Test: transitionToMatchCountdown stays false while match exists but ACK not yet received

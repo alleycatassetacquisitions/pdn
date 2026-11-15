@@ -14,7 +14,6 @@
 #include "device/drivers/native/native-light-strip-driver.hpp"
 #include "device/drivers/native/native-haptics-driver.hpp"
 #include "device/drivers/native/native-serial-driver.hpp"
-#include "device/drivers/native/native-http-client-driver.hpp"
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
 #include "game/match-manager.hpp"
@@ -34,7 +33,6 @@
 #include "game/quickdraw-states.hpp"
 
 #include "cli/cli-serial-broker.hpp"
-#include "cli/cli-http-server.hpp"
 
 namespace cli {
 
@@ -42,15 +40,12 @@ namespace cli {
  * Human-readable name for a state id shown in the CLI's state history.
  *
  * Ids come from two namespaces that share one numbering: player-fetch owns
- * 0-4 (and 31) and the game owns the rest. Naming the constants rather than the
+ * 2 and 31 and the game owns the rest. Naming the constants rather than the
  * numbers is what keeps this from drifting — a retired state stops compiling here.
  */
 inline const char* getStateName(int stateId) {
     switch (stateId) {
-        case PlayerFetchStateId::PIN_ENTRY: return "PinEntry";
-        case PlayerFetchStateId::FETCH_USER: return "FetchUser";
         case PlayerFetchStateId::CHOOSE_TEAM: return "ChooseTeam";
-        case PlayerFetchStateId::WELCOME: return "WelcomeMessage";
         case PlayerFetchStateId::FIRMWARE_UPDATE: return "FirmwareUpdate";
         case SLEEP: return "Sleep";
         case AWAKEN_SEQUENCE: return "AwakenSequence";
@@ -93,7 +88,6 @@ struct DeviceInstance {
     NativeHapticsDriver* hapticsDriver = nullptr;
     NativeSerialDriver* serialOutDriver = nullptr;
     NativeSerialDriver* serialInDriver = nullptr;
-    NativeHttpClientDriver* httpClientDriver = nullptr;
     NativePeerCommsDriver* peerCommsDriver = nullptr;
     NativePrefsDriver* storageDriver = nullptr;
     
@@ -170,23 +164,10 @@ public:
         instance.hapticsDriver = new NativeHapticsDriver(HAPTICS_DRIVER_NAME + suffix, 0);
         instance.serialOutDriver = new NativeSerialDriver(SERIAL_OUT_DRIVER_NAME + suffix);
         instance.serialInDriver = new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix);
-        instance.httpClientDriver = new NativeHttpClientDriver(HTTP_CLIENT_DRIVER_NAME + suffix);
-        instance.httpClientDriver->setMockServerEnabled(true);  // Enable mock HTTP server
-        instance.httpClientDriver->setConnected(true);  // Simulate WiFi connection
         instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
         instance.storageDriver =
         new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix, {MATCH_RING_PREFS_NAMESPACE});
 
-        // Configure mock HTTP server with this device's player data
-        MockPlayerConfig playerConfig;
-        playerConfig.id = instance.deviceId;
-        playerConfig.name = (isHunter ? "Hunter" : "Bounty") + instance.deviceId;
-        playerConfig.isHunter = isHunter;
-        playerConfig.allegiance = 1;  // RESISTANCE
-        playerConfig.faction = isHunter ? "Guild" : "Rebels";
-        UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", playerConfig.wirePlayerId);
-        MockHttpServer::getInstance().configurePlayer(instance.deviceId, playerConfig);
-        
         // Create driver configuration
         DriverConfig pdnConfig = {
             {DISPLAY_DRIVER_NAME, instance.displayDriver},
@@ -196,7 +177,6 @@ public:
             {HAPTICS_DRIVER_NAME, instance.hapticsDriver},
             {SERIAL_OUT_DRIVER_NAME, instance.serialOutDriver},
             {SERIAL_IN_DRIVER_NAME, instance.serialInDriver},
-            {HTTP_CLIENT_DRIVER_NAME, instance.httpClientDriver},
             {PEER_COMMS_DRIVER_NAME, instance.peerCommsDriver},
             {PLATFORM_CLOCK_DRIVER_NAME, instance.clockDriver},
             {LOGGER_DRIVER_NAME, instance.loggerDriver},
@@ -214,7 +194,6 @@ public:
         instance.player->applyRegistrationProfile(
         Player::testPlayerIdFromMac(instance.peerCommsDriver->getMacAddress()), "Test", team, {});
         instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
-        instance.playerProvider->setRegistrationPin(instance.deviceId.c_str());
 
         instance.symbolWirelessManager = new SymbolWirelessManager(
             instance.pdn->getWirelessManager(),
@@ -227,9 +206,8 @@ public:
             instance.symbolWirelessManager);
 
         GameContext gameContext = instance.gameSession->getContext();
-        instance.playerFetchApp =
-        new PlayerFetchApp(instance.pdn->getWirelessManager(),
-                           instance.pdn->getFirmwareUpdateManager(), instance.playerProvider, true);
+        instance.playerFetchApp = new PlayerFetchApp(instance.pdn->getFirmwareUpdateManager(),
+                                                     instance.playerProvider, true);
         instance.hubApp = new HubApp(gameContext);
         instance.matchApp = new MatchApp(gameContext);
         instance.shootoutApp = new ShootoutApp(gameContext);
@@ -259,9 +237,6 @@ public:
     static void destroyDevice(DeviceInstance& device) {
         // Unregister from SerialCableBroker
         SerialCableBroker::getInstance().unregisterDevice(device.deviceIndex);
-        
-        // Remove player config from mock HTTP server
-        MockHttpServer::getInstance().removePlayer(device.deviceId);
 
         // Apps before the session, which owns the managers their GameContext
         // copies point at. No state destructor dereferences one today, so this is
