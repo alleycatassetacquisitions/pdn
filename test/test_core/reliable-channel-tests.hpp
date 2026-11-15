@@ -151,11 +151,14 @@ TEST(ResenderTest, cancelMatchingDropsOnlyFramesWhosePayloadMatches) {
     resender.send(target, PktType::kDisconnectReport, 1, stale, sizeof(stale), kStream);
     resender.send(target, PktType::kDisconnectReport, 2, live, sizeof(live), kStream);
     resender.send(target, PktType::kDisconnectReport, 3, stale, sizeof(stale), kStream);
+    resender.send(target, PktType::kConnectionAnnounce, 4, stale, sizeof(stale), kStream);
 
     resender.cancelMatching(PktType::kDisconnectReport,
                             [](const uint8_t* payload, size_t) { return payload[0] == 0xAA; });
     EXPECT_EQ(resender.pendingCount(PktType::kDisconnectReport), 1u);
     EXPECT_TRUE(resender.onAck(PktType::kDisconnectReport, 2, target));
+    EXPECT_EQ(resender.pendingCount(PktType::kConnectionAnnounce), 1u)
+    << "cancelMatching reached a frame on another channel";
 }
 
 TEST(ResenderTest, supersedeDropsPriorAndStaleAckDoesNotResurrect) {

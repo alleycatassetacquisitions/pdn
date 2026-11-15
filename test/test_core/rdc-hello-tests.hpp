@@ -2709,6 +2709,17 @@ inline void rdcFdnNeverAdoptsItsPdnsChainHead() {
     MockFdnDevice fdnDevice;
     uint8_t fdnMac[6] = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60};
     wireRadioDefaults(fdnDevice, fdnMac);
+    // The clock reads pre-2025, so the context must carry 0 rather than a bogus time.
+    clock.setUnixTimeMs(1000);
+    std::vector<int64_t> sentUtc;
+    ON_CALL(*fdnDevice.mockPeerComms, sendData(_, PktType::kFdnConnectionContext, _, _))
+    .WillByDefault(testing::DoAll(
+    testing::Invoke([&sentUtc](const uint8_t*, PktType, const uint8_t* data, size_t len) {
+        FdnConnectionContext ctx{};
+        memcpy(&ctx, data, len < sizeof(ctx) ? len : sizeof(ctx));
+        sentUtc.push_back(ctx.fdn.utcUnixMs);
+    }),
+    Return(1)));
     NativeSerialDriver inJack{"fdn-in"};
     fdnDevice.serialManager->setInputJack(&inJack);
     RemoteDeviceCoordinator fdnRdc;
@@ -2727,6 +2738,9 @@ inline void rdcFdnNeverAdoptsItsPdnsChainHead() {
     EXPECT_EQ(fdnRdc.getHeadMac(), nullptr)
     << "the FDN adopted a chain head, so it announces itself into that head's roster";
     EXPECT_EQ(fdnRdc.getChainRole(), ChainRole::STANDALONE);
+    EXPECT_FALSE(sentUtc.empty());
+    for (int64_t utc : sentUtc)
+        EXPECT_EQ(utc, 0) << "an unsynchronized FDN sent its raw clock";
 
     SimpleTimer::setPlatformClock(nullptr);
 }
