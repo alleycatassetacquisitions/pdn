@@ -87,7 +87,8 @@ struct DataPktHdr
     PktType packetType;
 } __attribute__((packed));
 static_assert(sizeof(DataPktHdr) == 1, "older builds parse firmware frames with a one-byte header");
-static_assert(static_cast<uint8_t>(PktType::kFirmwareUpdate) == 16, "event firmware listens for firmware frames on 16");
+static_assert(static_cast<uint8_t>(PktType::kFirmwareUpdate) == 16,
+              "event firmware listens for firmware frames on 16");
 
 struct ChainConfirmPayload
 {

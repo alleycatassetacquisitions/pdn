@@ -15,7 +15,8 @@
 class FakeFirmwareRadio : public PeerCommsInterface {
 public:
     /** Keeps the frame unless refuseSends is set. */
-    int sendData(const uint8_t*, PktType packetType, const uint8_t* data, const size_t length) override {
+    int sendData(const uint8_t*, PktType packetType, const uint8_t* data,
+                 const size_t length) override {
         if (refuseSends) {
             return -1;
         }
@@ -391,9 +392,11 @@ TEST(FirmwareTransportTest, aChunkFrameParsesWithTheEventFirmwareLayout) {
     uint8_t imageId[32] = {};
     f.seedStore.getRunningImageId(imageId);
     EXPECT_TRUE(std::equal(air.begin() + 1, air.begin() + 33, imageId));
-    const uint32_t imageLength = air[33] | (air[34] << 8) | (air[35] << 16) | (static_cast<uint32_t>(air[36]) << 24);
+    const uint32_t imageLength =
+    air[33] | (air[34] << 8) | (air[35] << 16) | (static_cast<uint32_t>(air[36]) << 24);
     EXPECT_EQ(imageLength, FirmwareTransportFixture::IMAGE_LENGTH);
     EXPECT_EQ(air[37] | (air[38] << 8), 0);
     EXPECT_TRUE(std::equal(air.begin() + 39, air.end(), f.image.begin()));
-    EXPECT_NE(PktType::kFdnConnectionContext, PktType::kFirmwareUpdate) << "the FDN context left 16 to firmware";
+    EXPECT_NE(PktType::kFdnConnectionContext, PktType::kFirmwareUpdate)
+    << "the FDN context left 16 to firmware";
 }
