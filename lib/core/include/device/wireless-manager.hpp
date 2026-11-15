@@ -118,9 +118,6 @@ public:
                peerComms->getPeerCommsState() == PeerCommsState::ENABLED;
     }
 
-    /** True while a queued HTTP request has not had its callback. */
-    bool hasQueuedHttpRequests() { return httpClient->hasQueuedRequests(); }
-
     /** Queues an HTTP request, automatically switching to WiFi mode if needed. */
     bool queueHttpRequest(HttpRequest&& request) {
         if (currentMode != WirelessMode::WIFI) {

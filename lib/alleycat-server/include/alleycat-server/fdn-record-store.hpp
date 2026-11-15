@@ -17,7 +17,7 @@ inline constexpr const char FDN_RECORD_STORE_NAMESPACE[] = "fdn_records";
 inline constexpr size_t FDN_MATCH_RECORD_CAPACITY = 32;
 inline constexpr size_t FDN_CRASH_RECORD_CAPACITY = 16;
 
-/// One stored record: the MAC that relayed it, then the frame's kind, number and content.
+/// One stored record: the MAC it came from, then the frame's kind, number and content.
 template <size_t CONTENT_SIZE> struct FdnStoredEntry {
     uint8_t senderMac[6];
     uint8_t kind;
@@ -175,8 +175,9 @@ private:
     HeldKey heldKeys[CAPACITY] = {};
 };
 
-// The FDN's NVS store of records relayed by PDNs over ESP-NOW. It acks a frame
-// only once stored and hands records out oldest first. Call sync() every tick.
+// The FDN's NVS store of records relayed by PDNs over ESP-NOW and of its own
+// crash records. It acks a relayed frame only once stored and hands records
+// out oldest first. Call sync() every tick.
 class FdnRecordStore {
 public:
     using CrashRing = FdnRecordRing<CRASH_RECORD_SIZE, FDN_CRASH_RECORD_CAPACITY>;

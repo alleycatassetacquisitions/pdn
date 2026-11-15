@@ -31,12 +31,11 @@ inline constexpr const char CRASH_LOG_SERIAL_COMMAND[] = "CRASHLOG";
  * Captures and persists crash records across reboots, then reports them.
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
  * storage is initialized and poll serial in loop(). Pending records leave
- * through the RecordSource calls: a PDN's record relay sends them to an FDN,
- * and an FDN copies its own into its record store.
+ * through the RecordSource calls.
  */
 class CrashLogger : public RecordSource<CrashRecordTraits> {
 public:
-    /** Capture only touches storage, so it works before the radio is up. */
+    /** @p prefsDriver must have CRASH_LOG_NAMESPACE registered. */
     explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver)
         : prefsDriver(prefsDriver)
         , hasCaptured(false)
