@@ -117,7 +117,13 @@ inline void matchManagerBoostSubtractedFromHunterReactionTime(MatchManagerTestSu
     parameterizedCallbackFunction callback = suite->matchManager->getMatchButtonPush();
     callback(suite->matchManager);
 
-    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 150u);
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 200u)
+    << "the record keeps the raw time";
+    ASSERT_NE(suite->radioTap.lastFrame(), nullptr);
+    EXPECT_EQ(suite->radioTap.lastFrame()->playerDrawTime, 200);
+    EXPECT_EQ(suite->radioTap.lastFrame()->boostMs, 50u);
+    suite->matchManager->finalizeMatch();
+    EXPECT_EQ(suite->matchManager->getLastMatchDisplay().myTimeMs, 150);
 }
 
 inline void matchManagerResultSnapshotCarriesOnlyThisMatchsPenalty(MatchManagerTestSuite* suite) {
@@ -191,6 +197,7 @@ inline void matchManagerHunterWinsWhenFaster(MatchManager* mm, Player* player) {
     mm->initializeMatch(dummyMac);
     mm->setHunterDrawTime(200);
     mm->setBountyDrawTime(300);
+    mm->setReceivedDrawResult();
 
     EXPECT_TRUE(mm->didWin());
 }
@@ -201,6 +208,7 @@ inline void matchManagerHunterLosesWhenSlower(MatchManager* mm, Player* player) 
     mm->initializeMatch(dummyMac);
     mm->setHunterDrawTime(350);
     mm->setBountyDrawTime(200);
+    mm->setReceivedDrawResult();
 
     EXPECT_FALSE(mm->didWin());
 }
@@ -212,6 +220,7 @@ inline void matchManagerBountyWinsWhenFaster(MatchManager* mm, Player* player) {
     mm->listenForMatchEvents(cmd);
     mm->setHunterDrawTime(400);
     mm->setBountyDrawTime(250);
+    mm->setReceivedDrawResult();
 
     EXPECT_TRUE(mm->didWin());
 }
@@ -223,6 +232,7 @@ inline void matchManagerBountyLosesWhenSlower(MatchManager* mm, Player* player) 
     mm->listenForMatchEvents(cmd);
     mm->setHunterDrawTime(150);
     mm->setBountyDrawTime(300);
+    mm->setReceivedDrawResult();
 
     EXPECT_FALSE(mm->didWin());
 }
@@ -656,4 +666,162 @@ TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
     }
     EXPECT_TRUE(resultRetried)
         << "clearing a finished match stripped the retransmits of its DRAW_RESULT";
+}
+
+// A fast draw behind a big posse goes below zero. The frame carries the raw
+// time and the boost, the record the raw time, the result screen the difference.
+TEST_F(MatchManagerTestSuite, boostPastTheRawTimeGoesNegativeAndStillWins) {
+    static const uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    setupMatchAsHunter();
+    const std::string matchId = matchManager->getCurrentMatch()->getMatchId();
+    matchManager->setBoostProvider([]() -> unsigned long { return 60; });
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(45);
+    matchManager->getMatchButtonPush()(matchManager);
+
+    ASSERT_NE(radioTap.lastFrame(), nullptr);
+    EXPECT_EQ(radioTap.lastFrame()->command, MatchCmd::DRAW_RESULT);
+    EXPECT_EQ(radioTap.lastFrame()->playerDrawTime, 45);
+    EXPECT_EQ(radioTap.lastFrame()->boostMs, 60u);
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 45u);
+
+    // The bounty drew in 10 ms with nobody behind it: faster raw, slower effective.
+    MatchCommand result(opponentMac, MatchCmd::DRAW_RESULT, matchId.c_str(), "bnty", 10, false);
+    matchManager->listenForMatchEvents(result);
+    EXPECT_TRUE(matchManager->didWin());
+
+    ASSERT_TRUE(matchManager->finalizeMatch());
+    EXPECT_EQ(matchManager->getLastMatchDisplay().myTimeMs, -15);
+    EXPECT_EQ(matchManager->getLastMatchDisplay().opponentTimeMs, 10);
+}
+
+// An opponent's boost reaches this device only in its frame, so the frame's
+// boost has to decide the winner here too, and the record's.
+TEST_F(MatchManagerTestSuite, opponentsBoostBeatsAFasterRawDraw) {
+    std::string storedJson;
+    ON_CALL(mockStorage, write(::testing::_, ::testing::_, ::testing::_))
+    .WillByDefault([&storedJson](const std::string&, const std::string&, const std::string& value) {
+        storedJson = value;
+        return value.size();
+    });
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const char* matchId = "71111111-2222-4000-8000-333333333333";
+    setupMatchAsBounty(matchId);
+
+    MatchPacket frame{};
+    frame.command = MatchCmd::DRAW_RESULT;
+    IdGenerator::copyId(frame.matchId, matchId);
+    IdGenerator::copyId(frame.playerId, "hunt");
+    frame.isHunter = 1;
+    frame.playerDrawTime = 45;
+    frame.boostMs = 60;
+    frame.seqId = 9;
+    radioTap.deliverFrameFrom(hunterMac, &frame);
+
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(5);
+    matchManager->getMatchButtonPush()(matchManager);
+    EXPECT_FALSE(matchManager->didWin()) << "5 ms beat 45 ms less a 60 ms boost";
+
+    ASSERT_TRUE(matchManager->finalizeMatch());
+    EXPECT_EQ(matchManager->getLastMatchDisplay().myTimeMs, 5);
+    EXPECT_EQ(matchManager->getLastMatchDisplay().opponentTimeMs, -15);
+    Match stored;
+    stored.fromJson(storedJson);
+    EXPECT_TRUE(stored.isWinnerHunter());
+    EXPECT_EQ(stored.getHunterDrawTime(), 45u);
+    EXPECT_EQ(stored.getBountyDrawTime(), 5u);
+}
+
+// With no opponent time there is nothing to be faster than, however far below
+// zero the local time went.
+TEST_F(MatchManagerTestSuite, negativeTimeDoesNotWinAgainstAResultThatNeverArrived) {
+    std::string storedJson;
+    ON_CALL(mockStorage, write(::testing::_, ::testing::_, ::testing::_))
+    .WillByDefault([&storedJson](const std::string&, const std::string&, const std::string& value) {
+        storedJson = value;
+        return value.size();
+    });
+    setupMatchAsHunter();
+    matchManager->setBoostProvider([]() -> unsigned long { return 60; });
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(45);
+    matchManager->getMatchButtonPush()(matchManager);
+
+    EXPECT_FALSE(matchManager->didWin());
+    // The record is told the same winner the device shows.
+    ASSERT_TRUE(matchManager->finalizeMatch());
+    Match stored;
+    stored.fromJson(storedJson);
+    EXPECT_FALSE(stored.isWinnerHunter());
+}
+
+// A tie is a loss on both screens, and the record names the Bounty.
+TEST_F(MatchManagerTestSuite, tiedEffectiveTimesLoseOnScreenAndRecordTheBounty) {
+    std::string storedJson;
+    ON_CALL(mockStorage, write(::testing::_, ::testing::_, ::testing::_))
+    .WillByDefault([&storedJson](const std::string&, const std::string&, const std::string& value) {
+        storedJson = value;
+        return value.size();
+    });
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const char* matchId = "a2222222-2222-4000-8000-333333333333";
+    setupMatchAsBounty(matchId);
+    MatchCommand result(hunterMac, MatchCmd::DRAW_RESULT, matchId, "hunt", 230, true);
+    result.boostMs = 30;
+    matchManager->listenForMatchEvents(result);
+    matchManager->setBoostProvider([]() -> unsigned long { return 10; });
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(210);
+    matchManager->getMatchButtonPush()(matchManager);
+
+    EXPECT_FALSE(matchManager->didWin());
+    ASSERT_TRUE(matchManager->finalizeMatch());
+    Match stored;
+    stored.fromJson(storedJson);
+    EXPECT_FALSE(stored.isWinnerHunter());
+    EXPECT_EQ(stored.getBountyDrawTime(), 210u);
+}
+
+// No frame earns more than a full posse can give.
+TEST_F(MatchManagerTestSuite, opponentsBoostIsHeldToAFullPosse) {
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const char* matchId = "81111111-2222-4000-8000-333333333333";
+    setupMatchAsBounty(matchId);
+
+    MatchCommand tooFast(hunterMac, MatchCmd::DRAW_RESULT, matchId, "hunt", 300, true);
+    tooFast.boostMs = 100000;
+    matchManager->listenForMatchEvents(tooFast);
+    ASSERT_TRUE(matchManager->finalizeMatch());
+    EXPECT_EQ(PosseManager::getMaxBoostMs(), 270u);
+    EXPECT_EQ(matchManager->getLastMatchDisplay().opponentTimeMs, 300 - 270);
+}
+
+// The sender holds its own boost to the same bound, or the two devices would
+// compare different numbers.
+TEST_F(MatchManagerTestSuite, localBoostIsHeldToAFullPosse) {
+    setupMatchAsHunter();
+    matchManager->setBoostProvider([]() -> unsigned long { return 100000; });
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(300);
+    matchManager->getMatchButtonPush()(matchManager);
+
+    ASSERT_NE(radioTap.lastFrame(), nullptr);
+    EXPECT_EQ(radioTap.lastFrame()->boostMs, 270u);
+    ASSERT_TRUE(matchManager->finalizeMatch());
+    EXPECT_EQ(matchManager->getLastMatchDisplay().myTimeMs, 300 - 270);
+}
+
+// A time below zero is not a reaction time; as an effective time it would
+// beat every honest draw.
+TEST_F(MatchManagerTestSuite, drawResultWithANegativeTimeIsIgnored) {
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const char* matchId = "83333333-2222-4000-8000-333333333333";
+    setupMatchAsBounty(matchId);
+
+    MatchCommand negative(hunterMac, MatchCmd::DRAW_RESULT, matchId, "hunt", -5000, true);
+    matchManager->listenForMatchEvents(negative);
+
+    EXPECT_FALSE(matchManager->getHasReceivedDrawResult());
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 0u);
 }

@@ -93,6 +93,7 @@ inline void matchJsonRoundTripPreservesAllFields() {
     original.setBountyId("bounty-id-12345678-1234-1234-1234-123456789abc");
     original.setHunterDrawTime(250);
     original.setBountyDrawTime(300);
+    original.setWinnerIsHunter(true);
 
     // Serialize to JSON
     std::string json = original.toJson();
@@ -107,29 +108,28 @@ inline void matchJsonRoundTripPreservesAllFields() {
     EXPECT_STREQ(restored.getBountyId(), original.getBountyId());
     EXPECT_EQ(restored.getHunterDrawTime(), 250);
     EXPECT_EQ(restored.getBountyDrawTime(), 300);
+    EXPECT_TRUE(restored.isWinnerHunter());
 }
 
+// The flag is the winner the match was given, not a comparison of the raw
+// times: a posse boost can carry the slower raw draw to the win.
 inline void matchJsonContainsWinnerFlag() {
-    // Hunter wins (faster draw time)
     Match hunterWins("match-1", "hunter-1", true);
     hunterWins.setBountyId("bounty-1");
-    hunterWins.setHunterDrawTime(200);
-    hunterWins.setBountyDrawTime(300);
+    hunterWins.setHunterDrawTime(350);
+    hunterWins.setBountyDrawTime(200);
+    hunterWins.setWinnerIsHunter(true);
 
     std::string json = hunterWins.toJson();
-    
-    // The JSON should indicate hunter won
     EXPECT_NE(json.find("\"winner_is_hunter\":true"), std::string::npos);
 
-    // Bounty wins (faster draw time)
     Match bountyWins("match-2", "hunter-2", true);
     bountyWins.setBountyId("bounty-2");
-    bountyWins.setHunterDrawTime(350);
-    bountyWins.setBountyDrawTime(200);
+    bountyWins.setHunterDrawTime(200);
+    bountyWins.setBountyDrawTime(350);
+    bountyWins.setWinnerIsHunter(false);
 
     json = bountyWins.toJson();
-    
-    // The JSON should indicate bounty won
     EXPECT_NE(json.find("\"winner_is_hunter\":false"), std::string::npos);
 }
 
@@ -214,8 +214,8 @@ inline void matchWithZeroDrawTimes() {
     EXPECT_EQ(match.getBountyDrawTime(), 0);
 
     std::string json = match.toJson();
-    
-    // With equal times (0 == 0), hunter_time < bounty_time is false
+
+    // No winner was set, so the flag stays at its default
     EXPECT_NE(json.find("\"winner_is_hunter\":false"), std::string::npos);
 }
 
@@ -231,7 +231,6 @@ inline void matchWithLargeDrawTimes() {
     EXPECT_EQ(match.getHunterDrawTime(), largeTime);
     EXPECT_EQ(match.getBountyDrawTime(), largeTime - 1);
 
-    // Bounty should win (faster by 1ms)
     std::string json = match.toJson();
-    EXPECT_NE(json.find("\"winner_is_hunter\":false"), std::string::npos);
+    EXPECT_NE(json.find("\"hunter_time\":999999999"), std::string::npos);
 }
