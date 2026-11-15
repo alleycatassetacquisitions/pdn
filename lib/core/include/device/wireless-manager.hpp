@@ -127,6 +127,7 @@ public:
                peerComms->getPeerCommsState() == PeerCommsState::ENABLED;
     }
 
+
     /** Queues an HTTP request, automatically switching to WiFi mode if needed. */
     bool queueHttpRequest(HttpRequest&& request) {
         if (httpClient == nullptr) {
