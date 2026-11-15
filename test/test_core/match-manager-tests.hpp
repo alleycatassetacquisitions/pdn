@@ -825,3 +825,42 @@ TEST_F(MatchManagerTestSuite, drawResultWithANegativeTimeIsIgnored) {
     EXPECT_FALSE(matchManager->getHasReceivedDrawResult());
     EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 0u);
 }
+
+// The opponent reports its own slot; a frame naming this device's slot,
+// result or never-pressed, changes nothing.
+TEST_F(MatchManagerTestSuite, drawResultNamingTheLocalSlotIsIgnored) {
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const char* matchId = "91111111-2222-4000-8000-333333333333";
+    setupMatchAsBounty(matchId);
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(200);
+    matchManager->getMatchButtonPush()(matchManager);
+
+    MatchCommand asBounty(hunterMac, MatchCmd::DRAW_RESULT, matchId, "hunt", 9000, false);
+    matchManager->listenForMatchEvents(asBounty);
+    MatchCommand neverAsBounty(hunterMac, MatchCmd::NEVER_PRESSED, matchId, "hunt", 9000, false);
+    matchManager->listenForMatchEvents(neverAsBounty);
+
+    EXPECT_FALSE(matchManager->getHasReceivedDrawResult());
+    EXPECT_EQ(matchManager->getCurrentMatch()->getBountyDrawTime(), 200u);
+    EXPECT_FALSE(matchManager->matchResultsAreIn());
+}
+
+// In a shootout the draw slot comes from MAC order, not the standing role: a
+// standing Hunter in the Bounty slot takes the Hunter-slot result.
+TEST_F(MatchManagerTestSuite, shootoutSlotNotStandingRoleDecidesTheLocalSlot) {
+    static const uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    uint8_t mac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const char* matchId = "SHT-00000000000000000000000000478";
+    player->setIsHunter(true);
+    matchManager->initializeShootoutMatch(matchId, mac, false);
+
+    MatchCommand asBounty(opponentMac, MatchCmd::DRAW_RESULT, matchId, "hunt", 300, false);
+    matchManager->listenForMatchEvents(asBounty);
+    EXPECT_FALSE(matchManager->getHasReceivedDrawResult());
+
+    MatchCommand asHunter(opponentMac, MatchCmd::DRAW_RESULT, matchId, "hunt", 250, true);
+    matchManager->listenForMatchEvents(asHunter);
+    EXPECT_TRUE(matchManager->getHasReceivedDrawResult());
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 250u);
+}

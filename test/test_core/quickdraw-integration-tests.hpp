@@ -343,8 +343,12 @@ inline void listenForMatchResultsSetsOpponentTimeHunter(PacketParsingTests* suit
 }
 
 inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suite) {
-    // Switch to bounty perspective
+    // The draw slot is fixed when the match is primed, so prime one as bounty.
+    suite->matchManager->clearCurrentMatch();
     suite->player->setIsHunter(false);
+    uint8_t hunterMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->matchManager->receiveMatch("a1111111-2222-4000-8000-333333333333",
+                                      PacketParsingTests::DEFAULT_HUNTER_ID, true, hunterMac);
 
     MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 200, 0);
     suite->processPacket(packet);
