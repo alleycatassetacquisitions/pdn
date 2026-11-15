@@ -316,14 +316,6 @@ uint32_t MatchManager::getCollectedHighWaterMark() {
                     getMatchSequenceNumber());
 }
 
-uint32_t MatchManager::getFirstPendingSequenceNumber() {
-    const uint32_t newest = getMatchSequenceNumber();
-    const uint32_t oldestInRing =
-    newest > MATCH_RING_CAPACITY ? newest - MATCH_RING_CAPACITY + 1 : 1;
-    const uint32_t first = std::max(getCollectedHighWaterMark() + 1, oldestInRing);
-    return first <= newest ? first : 0;
-}
-
 bool MatchManager::readRecord(uint32_t sequenceNumber, MatchRecord& record) {
     const uint32_t newest = getMatchSequenceNumber();
     if (sequenceNumber == 0 || sequenceNumber > newest ||
@@ -346,6 +338,24 @@ bool MatchManager::markCollected(uint32_t sequenceNumber) {
         LOG_E(MATCH_MANAGER_TAG, "Failed to mark match %u collected", sequenceNumber);
         return false;
     }
+    return true;
+}
+
+bool MatchManager::readLowestPending(uint32_t& recordNumber,
+                                     uint8_t (&recordBytes)[MatchRecordTraits::RECORD_SIZE]) {
+    // A scratch copy, so a short read leaves the caller's buffer untouched.
+    MatchRecord record{};
+    if (!findLowestReadableRecord(
+        getCollectedHighWaterMark(), getMatchSequenceNumber(), MATCH_RING_CAPACITY,
+        highestUnreadableReported, recordNumber,
+        [this, &record](uint32_t number) { return readRecord(number, record); },
+        [](uint32_t number) {
+            LOG_W(MATCH_MANAGER_TAG, "Stored match %u cannot be read",
+                  static_cast<unsigned>(number));
+        })) {
+        return false;
+    }
+    memcpy(recordBytes, &record, sizeof(record));
     return true;
 }
 

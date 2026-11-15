@@ -16,6 +16,7 @@
 #include "game/player.hpp"
 #include "wireless/mac-functions.hpp"
 #include "wireless/match-packet.hpp"
+#include "wireless/record-source.hpp"
 #include "wireless/reliable-channel.hpp"
 #include "wireless/resender.hpp"
 #include "device/drivers/storage-interface.hpp"
@@ -62,11 +63,12 @@ struct ActiveMatchState {
     };
 };
 
-class MatchManager {
+class MatchManager : public RecordSource<MatchRecordTraits> {
 public:
     /** Claims the kMatchCommand channel on wirelessManager (may be nullptr in tests). */
     explicit MatchManager(WirelessManager* wirelessManager);
-    ~MatchManager();
+    /** Ends the storage session the manager was initialized with. */
+    ~MatchManager() override;
 
     /** Initializes a match and sends SEND_MATCH_ID to opponentMac. */
     void initializeMatch(uint8_t* opponentMac);
@@ -131,9 +133,6 @@ public:
     /** @return number of the newest record an FDN has collected. */
     uint32_t getCollectedHighWaterMark();
 
-    /** @return number of the oldest record still waiting for collection, or 0 when none waits. */
-    uint32_t getFirstPendingSequenceNumber();
-
     /**
      * Reads record @p sequenceNumber into @p record.
      * @return false when that record is not in the ring or its slot cannot be read.
@@ -145,6 +144,16 @@ public:
      * @return false, changing nothing, when @p sequenceNumber is not a waiting record.
      */
     bool markCollected(uint32_t sequenceNumber);
+
+    /**
+     * The oldest waiting record that can be read. An unreadable one is passed
+     * over and stays uncollected.
+     */
+    bool readLowestPending(uint32_t& recordNumber,
+                           uint8_t (&recordBytes)[MatchRecordTraits::RECORD_SIZE]) override;
+
+    /** markCollected for a record an FDN acknowledged storing. */
+    bool advanceMark(uint32_t recordNumber) override { return markCollected(recordNumber); }
 
     /** Clears the active match and resets all per-match state flags. */
     void clearCurrentMatch();
@@ -216,6 +225,8 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
+    // Each unreadable record is logged once, not on every FDN beacon.
+    uint32_t highestUnreadableReported = 0;
     Resender resender;
     ReliableChannel<MatchPacket> matchChannel;
     /** @return the seqId the frame went out under. */
@@ -244,7 +255,3 @@ private:
     // cable-handshake init and the Shootout MATCH_START init.
     void primeMatch(const char* matchId, const uint8_t* opponentMac, bool localIsHunter);
 };
-
-
-
-

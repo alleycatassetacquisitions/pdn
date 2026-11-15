@@ -30,6 +30,7 @@
 #include "crash-codec-tests.hpp"
 #include "device-player-codec-tests.hpp"
 #include "fdn-record-store-tests.hpp"
+#include "record-relay-tests.hpp"
 #include "player-fetch-tests.hpp"
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"

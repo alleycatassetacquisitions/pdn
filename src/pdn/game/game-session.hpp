@@ -4,6 +4,7 @@
 #include "game/posse-manager.hpp"
 #include "game/match-manager.hpp"
 #include "game/shootout-manager.hpp"
+#include "game/record-relay.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/device.hpp"
 #include "device/remote-device-coordinator.hpp"
@@ -41,6 +42,12 @@ public:
 
     /** Drives the session's retry machines and the periodic retry stats line. */
     void sync();
+
+    /**
+     * Hands the record relay the source of this device's crash records; null
+     * detaches it. Not owned, and it must outlive the session.
+     */
+    void setCrashRecordSource(RecordSource<CrashRecordTraits>* crashRecordSource);
 
     /** The manager bundle every gameplay state is constructed from. */
     GameContext getContext();
@@ -89,6 +96,9 @@ private:
     MatchManager* matchManager = nullptr;
     PosseManager* posseManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
+    // Sends this device's records to FDNs. Deleted before the managers above,
+    // which it reads.
+    RecordRelay* recordRelay = nullptr;
 
     SimpleTimer statsLogTimer;
     static constexpr unsigned long STATS_LOG_INTERVAL_MS = 5000;

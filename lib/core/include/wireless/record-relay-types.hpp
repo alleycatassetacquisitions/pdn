@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "device/crash/crash-record.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include "game/match.hpp"
 
 /// What a record frame carries. The kind byte travels in the frame so the ack
@@ -30,6 +31,22 @@ static_assert(sizeof(CrashRecordFramePacket) == 48, "CrashRecordFramePacket wire
 
 using MatchRecordFramePacket = RecordFramePacket<MATCH_BINARY_SIZE>;
 static_assert(sizeof(MatchRecordFramePacket) == 118, "MatchRecordFramePacket wire size");
+
+// What has to agree for one record kind, so a relay lane or a record source is
+// written against a kind and cannot mix one kind's packet type or size with another's.
+struct CrashRecordTraits {
+    static constexpr RecordKind KIND = RecordKind::CRASH;
+    static constexpr size_t RECORD_SIZE = CRASH_RECORD_SIZE;
+    static constexpr PktType FRAME_PACKET_TYPE = PktType::kCrashRecord;
+    using Frame = CrashRecordFramePacket;
+};
+
+struct MatchRecordTraits {
+    static constexpr RecordKind KIND = RecordKind::MATCH;
+    static constexpr size_t RECORD_SIZE = MATCH_BINARY_SIZE;
+    static constexpr PktType FRAME_PACKET_TYPE = PktType::kMatchRecord;
+    using Frame = MatchRecordFramePacket;
+};
 
 /// FDN-to-PDN over kRecordAck, sent only once the record is in the FDN's NVS.
 /// contentCrc is crc16() over the content and names the exact frame stored; it

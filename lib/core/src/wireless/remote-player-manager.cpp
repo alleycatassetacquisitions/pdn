@@ -7,16 +7,6 @@
 
 #define DEBUG_REMOTE_PLAYER_MANAGER 0
 
-struct PlayerInfoPkt
-{
-    char id[IdGenerator::UUID_BUFFER_SIZE];  // UUID string + null terminator
-    Allegiance allegiance;
-    uint8_t hunter;
-    // A DeviceType; a PDN takes a beacon from an FDN as its cue to relay records.
-    uint8_t senderDeviceType;
-} __attribute__((packed));
-
-
 RemotePlayerManager::RemotePlayerManager(PeerCommsInterface* peerComms) :
     remotePlayerTTL(60000),
     broadcastInterval(5000),

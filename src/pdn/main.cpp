@@ -181,11 +181,12 @@ static void setup() {
     // Register ESP-NOW packet handlers
     setupEspNow(remoteDebugManager, peerCommsDriver);
 
+    // The PDN's crash records go to an FDN through the record relay, not over HTTP.
     crashLogger = new CrashLogger(storageDriver, pdn->getWirelessManager());
     crashLogger->capture(crashedBootUptimeMs);
-    crashLogger->transmitPending();
 
     gameSession = new GameSession(playerProvider->getPlayer(), pdn, symbolWirelessManager);
+    gameSession->setCrashRecordSource(crashLogger);
 
     GameContext gameContext = gameSession->getContext();
     playerFetchApp = new PlayerFetchApp(pdn->getWirelessManager(), pdn->getFirmwareUpdateManager(),
@@ -200,7 +201,6 @@ static void setup() {
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
         render();
-    // Lets a crash upload finish before the output jack's handshake takes the radio back.
     SimpleTimer splashTimer;
     splashTimer.setTimer(SPLASH_HOLD_MS);
     while (!splashTimer.expired()) {
@@ -223,13 +223,8 @@ void loop() {
     if (crashLogger != nullptr) {
         CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
-        crashLogger->restoreEspNowAfterUploads();
     }
     pdn->loop();
-    // After the device loop, so the one offer per boot runs with exec() having
-    // pumped the radio at least once: the channel pin is retried from there, and a
-    // frame sent before it lands goes out where nobody is listening.
-    if (crashLogger != nullptr) crashLogger->transmitPending();
 }
 
 extern "C" void app_main() {

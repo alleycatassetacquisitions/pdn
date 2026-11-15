@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
 #include <optional>
 
 constexpr size_t  TASK_NAME_LENGTH   = 16;
@@ -37,7 +38,11 @@ struct CrashRecord {
     char     commitHash[COMMIT_HASH_LENGTH];
 };
 
-/** A crash record as it travels over ESP-NOW and sits in NVS. */
+/**
+ * A crash record as it travels over ESP-NOW and sits in NVS. It has no presence
+ * flags: an empty task name marks a record without core dump details, and
+ * CRASH_PACKET_NO_EXCEPTION_CAUSE one with details but no exception cause.
+ */
 struct CrashPacket {
     uint32_t crashNumber;
     uint32_t timestamp;
@@ -47,3 +52,22 @@ struct CrashPacket {
     char taskName[TASK_NAME_LENGTH];
     char commitHash[COMMIT_HASH_LENGTH];
 } __attribute__((packed));
+
+// No real exception cause is 0xFFFF; a core dump reports it for a frame it could not read.
+constexpr uint32_t CRASH_PACKET_NO_EXCEPTION_CAUSE = 0xFFFF;
+
+/** @return @p record in the layout it is relayed in. */
+inline CrashPacket toCrashPacket(const CrashRecord& record) {
+    CrashPacket packet{};
+    packet.crashNumber = record.crashNumber;
+    packet.timestamp = record.timestamp;
+    packet.resetReason = record.resetReason;
+    if (record.coreDumpDetails) {
+        packet.programCounter = record.coreDumpDetails->programCounter;
+        packet.exceptionCause =
+        record.coreDumpDetails->exceptionCause.value_or(CRASH_PACKET_NO_EXCEPTION_CAUSE);
+        memcpy(packet.taskName, record.coreDumpDetails->taskName, TASK_NAME_LENGTH);
+    }
+    memcpy(packet.commitHash, record.commitHash, COMMIT_HASH_LENGTH);
+    return packet;
+}
