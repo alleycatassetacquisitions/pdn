@@ -17,6 +17,9 @@ enum class WirelessError {
 struct WirelessErrorInfo {
     WirelessError code;
     std::string message;
+    // The status the server answered with, when the failure is an HTTP error
+    // response; 0 when no response arrived or the failure was local.
+    int httpStatus = 0;
 };
 
 /**

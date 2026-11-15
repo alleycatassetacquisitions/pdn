@@ -71,6 +71,7 @@ void NativeHttpClientDriver::processPendingRequests() {
                 // Use SERVER_ERROR for 5xx, INVALID_RESPONSE for 4xx
                 error.code = (statusCode >= 500) ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
                 error.message = "HTTP " + std::to_string(statusCode);
+                error.httpStatus = statusCode;
                 request.onError(error);
             }
         }

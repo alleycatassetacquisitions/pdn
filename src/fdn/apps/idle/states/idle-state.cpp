@@ -5,17 +5,14 @@
 #define TAG "IDLE_STATE"
 
 IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
-                     HackedPlayersManager* hackedPlayersManager,
                      FDNConnectWirelessManager* fdnConnectWirelessManager,
                      RemoteDeviceCoordinator* remoteDeviceCoordinator)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::IDLE)
     , remotePlayerManager(remotePlayerManager)
-    , hackedPlayersManager(hackedPlayersManager)
     , fdnConnectWirelessManager(fdnConnectWirelessManager) {}
 
 IdleState::~IdleState() {
-    remotePlayerManager       = nullptr;
-    hackedPlayersManager      = nullptr;
+    remotePlayerManager = nullptr;
     fdnConnectWirelessManager = nullptr;
 }
 
@@ -39,8 +36,6 @@ void IdleState::onStateMounted(FDN* fdn) {
             connectionResolved = true;
         });
 
-    uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
-
     fdn->getDisplay()
         ->invalidateScreen()
         ->drawText("ALLEYCAT", centeredTextX("ALLEYCAT"), 32)
@@ -59,7 +54,6 @@ void IdleState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
     (void)fdn;
     fdnConnectWirelessManager->clearCallbacks();
-    uploadTimer.invalidate();
     connectionResolved = false;
 }
 
@@ -67,10 +61,4 @@ bool IdleState::transitionToPlayerDetected() {
     return remotePlayerManager->consumePacketReceived();
 }
 
-bool IdleState::transitionToConnectionDetected() {
-    return connectionResolved;
-}
-
-bool IdleState::transitionToUploadPending() {
-    return uploadTimer.expired() && !hackedPlayersManager->getPendingUploads().empty();
-}
+bool IdleState::transitionToConnectionDetected() { return connectionResolved; }

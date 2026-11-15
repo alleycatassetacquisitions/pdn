@@ -109,3 +109,49 @@ inline void crashCodecOmitsMissingExceptionCause(CrashCodecTestSuite* suite) {
     EXPECT_FALSE(msg.has_exception_cause);
     EXPECT_TRUE(msg.has_task_name);
 }
+
+// A stored packet from a PDN: details, an unterminated task name, the sender's MAC.
+inline void crashCodecEncodesStoredPacketUnderSenderMac(CrashCodecTestSuite* suite) {
+    CrashPacket packet{};
+    packet.crashNumber = 9;
+    packet.timestamp = 4000;
+    packet.resetReason = 4;
+    packet.programCounter = 0x400D1A2C;
+    packet.exceptionCause = 0;
+    memset(packet.taskName, 'T', sizeof(packet.taskName));
+    memcpy(packet.commitHash, "a1b2c3d4", COMMIT_HASH_LENGTH - 1);
+    const uint8_t senderMac[6] = {0x0A, 0x01, 0x02, 0x03, 0x04, 0x05};
+
+    size_t len =
+    CrashCodec::encode(fromCrashPacket(packet), senderMac, suite->buf, sizeof(suite->buf));
+    ASSERT_GT(len, 0u);
+    alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
+
+    EXPECT_STREQ(msg.device_mac, "0a:01:02:03:04:05");
+    EXPECT_EQ(msg.crash_number, 9u);
+    EXPECT_EQ(msg.uptime_ms, 4000u);
+    EXPECT_EQ(msg.reset_reason, 4u);
+    EXPECT_EQ(msg.program_counter, 0x400D1A2Cu);
+    EXPECT_TRUE(msg.has_exception_cause) << "cause 0 is a real cause";
+    EXPECT_EQ(std::string(msg.task_name), std::string(TASK_NAME_LENGTH - 1, 'T'));
+    EXPECT_STREQ(msg.software_version, "a1b2c3d4");
+}
+
+inline void crashCodecStoredPacketWithoutDetailsOmitsThem(CrashCodecTestSuite* suite) {
+    CrashPacket packet{};
+    packet.crashNumber = 2;
+    packet.programCounter = 5;  // with an empty task name it is not a detail
+    size_t len =
+    CrashCodec::encode(fromCrashPacket(packet), suite->mac, suite->buf, sizeof(suite->buf));
+    ASSERT_GT(len, 0u);
+    alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
+    EXPECT_FALSE(msg.has_program_counter);
+    EXPECT_FALSE(msg.has_task_name);
+
+    memcpy(packet.taskName, "loopTask", 8);
+    packet.exceptionCause = CRASH_PACKET_NO_EXCEPTION_CAUSE;
+    len = CrashCodec::encode(fromCrashPacket(packet), suite->mac, suite->buf, sizeof(suite->buf));
+    msg = decodeBytes(suite->buf, len);
+    EXPECT_TRUE(msg.has_program_counter);
+    EXPECT_FALSE(msg.has_exception_cause);
+}

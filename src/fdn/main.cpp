@@ -18,6 +18,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "device/drivers/esp32-s3/ssd1309-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 #include "alleycat-server/fdn-record-store.hpp"
+#include "alleycat-server/fdn-record-uploader.hpp"
 
 #include "fdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -77,6 +78,7 @@ FDNConnectWirelessManager* fdnConnectWirelessManager = nullptr;
 HackedPlayersManager*     hackedPlayersManager     = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
 FdnRecordStore* fdnRecordStore = nullptr;
+FdnRecordUploader* fdnRecordUploader = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
 
@@ -94,6 +96,26 @@ static void setupEspNow(PeerCommsInterface* peerComms) {
             static_cast<FDNConnectWirelessManager*>(arg)->processPacket(src, data, len);
         },
         fdnConnectWirelessManager);
+}
+
+// The FDN's own crash records join the relayed ones in the store under its own
+// MAC, so one upload path serves both. Marked sent only once stored.
+static void storeOwnCrashRecords() {
+    FdnRecordStore::CrashRing::Entry entry{};
+    memcpy(entry.senderMac, fdn->getWirelessManager()->getMacAddress(), sizeof(entry.senderMac));
+    entry.kind = static_cast<uint8_t>(RecordKind::CRASH);
+    uint32_t recordNumber = 0;
+    // Stops when the store refuses or the sent mark does not move (a failed
+    // write would offer the same record again forever).
+    while (crashLogger->readLowestPending(recordNumber, entry.content)) {
+        entry.recordNumber = recordNumber;
+        if (!fdnRecordStore->getCrashRecords().store(entry)) return;
+        if (!crashLogger->advanceMark(recordNumber)) {
+            LOG_E("FDN_UPLOAD", "Crash %u stays pending: its sent mark did not move",
+                  static_cast<unsigned>(recordNumber));
+            return;
+        }
+    }
 }
 
 static void setup() {
@@ -165,25 +187,31 @@ static void setup() {
     symbolWirelessManager = new SymbolWirelessManager(fdn->getWirelessManager(),
                                                       fdn->getRemoteDeviceCoordinator());
     fdnRecordStore = new FdnRecordStore(fdn->getWirelessManager(), storageDriver);
+    RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
+    // CONNECTING counts too: the jack's context exchange runs over ESP-NOW.
+    fdnRecordUploader = new FdnRecordUploader(fdn->getWirelessManager(), fdnRecordStore, [rdc]() {
+        return rdc->getJackStatus(SerialIdentifier::INPUT_JACK) != JackStatus::DISCONNECTED ||
+               rdc->getJackStatus(SerialIdentifier::INPUT_JACK_SECONDARY) !=
+               JackStatus::DISCONNECTED;
+    });
     // From the tick, not an app: the FDN boots into symbol-match, which never
-    // reaches idle, so the beacon and the store must run whatever app is up.
+    // reaches idle, so the beacon, the store and the uploader must run whatever app is up.
     fdn->setTickCallback([]() {
         symbolWirelessManager->sync();
         remotePlayerManager->Update();
         fdnRecordStore->sync();
+        fdnRecordUploader->sync();
     });
 
     setupEspNow(peerCommsDriver);
 
-    crashLogger = new CrashLogger(storageDriver, fdn->getWirelessManager());
+    crashLogger = new CrashLogger(storageDriver);
     crashLogger->capture(crashedBootUptimeMs);
-    crashLogger->transmitPending();
-    // After transmitPending(): a broadcast in flight when ESP-NOW shuts down wedges its send queue.
+    storeOwnCrashRecords();
     remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS,
                                                      DeviceType::FDN);
 
     // Apps
-    RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
     auto* idleApp =
         new IdleApp(remotePlayerManager, hackedPlayersManager, fdnConnectWirelessManager, rdc);
     auto* mainMenuApp = new MainMenuApp(rdc);
@@ -210,13 +238,8 @@ void loop() {
     if (crashLogger != nullptr) {
         CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
-        crashLogger->restoreEspNowAfterUploads();
     }
     fdn->loop();
-    // After the device loop, so the one offer per boot runs with exec() having
-    // pumped the radio at least once: the channel pin is retried from there, and a
-    // frame sent before it lands goes out where nobody is listening.
-    if (crashLogger != nullptr) crashLogger->transmitPending();
 }
 
 extern "C" void app_main() {
