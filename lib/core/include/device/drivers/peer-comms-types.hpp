@@ -29,10 +29,6 @@ enum class PktType : uint8_t {
     // their kFoo spelling rather than splitting the enum across two conventions.
     // NOLINTNEXTLINE(readability-identifier-naming)
     kChainJoin = 20,
-    // Reserved: older builds broadcast crash records on this number.
-    // NOLINTNEXTLINE(readability-identifier-naming)
-    kCrashLog = 21,
-    // Reserved: older comms-rewrite builds sent firmware frames on 22.
     // Record relay, PDN to FDN and the FDN's ack back (wireless/record-relay-types.hpp).
     // NOLINTNEXTLINE(readability-identifier-naming)
     kCrashRecord = 23,
