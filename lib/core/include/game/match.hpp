@@ -52,6 +52,12 @@ public:
     void setBountyDrawTime(unsigned long timeMs);
 
     /**
+     * Records the winning draw slot; raw draw times cannot decide it.
+     * @param hunterWon true if the Hunter slot won
+     */
+    void setWinnerIsHunter(bool hunterWon);
+
+    /**
      * Sets the hunter's ID
      * @param hunterId Hunter player's ID
      */
@@ -99,6 +105,8 @@ public:
     const char* getBountyId() const { return bounty; }
     unsigned long getHunterDrawTime() const { return hunter_draw_time_ms; }
     unsigned long getBountyDrawTime() const { return bounty_draw_time_ms; }
+    /** @return true if the Hunter slot won, as set by setWinnerIsHunter */
+    bool isWinnerHunter() const { return winnerIsHunter; }
 
 private:
     char match_id[IdGenerator::UUID_BUFFER_SIZE] = {};
@@ -106,4 +114,5 @@ private:
     char bounty[5] = {};
     unsigned long hunter_draw_time_ms = 0;
     unsigned long bounty_draw_time_ms = 0;
+    bool winnerIsHunter = false;
 };

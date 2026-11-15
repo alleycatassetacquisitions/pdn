@@ -29,8 +29,9 @@ class ShootoutManager;
 inline constexpr const char MATCHES_PREFS_NAMESPACE[] = "matches";
 
 struct LastMatchDisplay {
-    unsigned long myTimeMs = 0;       // boosted draw time, as used for winner calc
-    unsigned long opponentTimeMs = 0;
+    // Effective draw times (raw minus boost); may be negative.
+    long myTimeMs = 0;
+    long opponentTimeMs = 0;
     unsigned long boostMs = 0;        // boost applied at own button press
     unsigned long penaltyMs = 0;      // early-press penalty applied at own button press
     bool hasData = false;
@@ -47,9 +48,11 @@ struct ActiveMatchState {
     bool opponentNeverPressed = false;
     // Bounty: seqId of the MATCH_ID_ACK whose delivery report is awaited (0 = none).
     uint8_t pendingAckSeqId = 0;
-    // Earned at the local button press; shown on the result screen.
+    // Earned at the local button press; taken off the raw time and shown.
     unsigned long boostMs = 0;
     unsigned long penaltyMs = 0;
+    // The opponent frame's boost, held to PosseManager::getMaxBoostMs().
+    unsigned long opponentBoostMs = 0;
     unsigned long matchLocalStartTime = 0;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
@@ -186,7 +189,7 @@ private:
 
     Player* player;
 
-    std::function<unsigned long()> boostProvider_;
+    std::function<unsigned long()> boostProvider;
     RemoteDeviceCoordinator* rdc_ = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
 
@@ -201,7 +204,12 @@ private:
     ReliableChannel<MatchPacket> matchChannel;
     /** @return the seqId the frame went out under. */
     uint8_t sendCommand(const uint8_t* mac, int command, const char* matchId, long drawTime,
-                        bool isHunter);
+                        unsigned long boostMs, bool isHunter);
+    // The slot's raw draw time minus its player's boost. Needs an active match.
+    long getEffectiveDrawTime(bool hunterSlot) const;
+    // The recorded winner: a side that never pressed or (for the opponent)
+    // never reported loses, else the lower effective time; a tie to the Bounty.
+    bool isHunterWinner() const;
     /**
      * Appends a match to storage
      * @param match Match to save
