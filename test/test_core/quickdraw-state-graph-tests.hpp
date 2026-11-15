@@ -296,8 +296,7 @@ inline void quickdrawCrossAppEdgesAreAppTransitions() {
 }
 
 // The pre-split graph's 48th edge. It used to sit on the PlayerRegistrationApp
-// object; nothing checks a top-level app's own transition list, so it lives on
-// ChooseTeam, registration's first state.
+// object; nothing checks an app's own transition list, so it lives on ChooseTeam.
 inline void registrationHandsOffToHub() {
     QuickdrawAppsForTest apps;
 

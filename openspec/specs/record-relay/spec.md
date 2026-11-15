@@ -1,7 +1,7 @@
 # record-relay Specification
 
 ## Purpose
-TBD - created by archiving change close-comms-rewrite-records. Update Purpose after archive.
+A PDN has no Wi-Fi, so it relays its crash and match records over ESP-NOW to any FDN it hears by beacon, one frame per record. The PDN retires a record only on that FDN's acknowledgement, which the FDN sends after storing it.
 
 ## Requirements
 

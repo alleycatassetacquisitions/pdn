@@ -10,10 +10,7 @@ ChooseTeamState::ChooseTeamState(PlayerProvider* playerProvider,
     , firmwareUpdateManager(firmwareUpdateManager)
     , testIdentity(testIdentity) {}
 
-ChooseTeamState::~ChooseTeamState() {
-    playerProvider = nullptr;
-    firmwareUpdateManager = nullptr;
-}
+ChooseTeamState::~ChooseTeamState() { playerProvider = nullptr; firmwareUpdateManager = nullptr; }
 
 void ChooseTeamState::onStateMounted(PDN* pdn) {
     playerProvider->clear();

@@ -100,7 +100,6 @@ inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
     EXPECT_FALSE(chooseTeam.transitionToHub());
 }
 
-// The firmware hold opens the update screen, which returns to ChooseTeam.
 inline void chooseTeamAndFirmwareUpdateLeadToEachOther(PlayerFetchTestSuite* suite) {
     FakeFirmwareStore store;
     FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
