@@ -7,7 +7,8 @@
 #   pio run -e esp32-s3_pdn_debug   -t multi_flash
 #
 # Per-environment extra flags are configured via custom_multi_flash_args in
-# platformio.ini. To also erase flash, append --erase at runtime:
+# platformio.ini. To also erase flash, append --erase at runtime. It wipes
+# stored matches and crash records; never use it for release images:
 #   $env:MULTI_FLASH_ARGS="--erase"; pio run -e esp32-s3_pdn_release -t multi_flash
 
 Import("env")  # noqa: F821  (PlatformIO injects this)
