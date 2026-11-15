@@ -111,7 +111,6 @@ public:
     }
 };
 
-
 static MatchPacket makeDrawResultPacket(const std::optional<Match>& match, bool senderIsHunter) {
     MatchPacket p = {};
     strncpy(p.matchId,  match->getMatchId(), sizeof(p.matchId) - 1);

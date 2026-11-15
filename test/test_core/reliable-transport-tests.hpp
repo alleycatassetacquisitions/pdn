@@ -530,5 +530,5 @@ TEST(ReliableTransportTest, managerWithoutHttpClientRefusesHttp) {
     WirelessManager wm{&comms};
     EXPECT_FALSE(wm.queueHttpRequest(HttpRequest("/x", "GET", "", "", nullptr, nullptr)));
     wm.enableWifiMode();
-    EXPECT_FALSE(wm.hasQueuedHttpRequests());
+    EXPECT_EQ(wm.getCurrentMode(), WirelessMode::ESPNOW);
 }
