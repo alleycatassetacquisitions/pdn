@@ -3103,7 +3103,7 @@ inline void rdcEmitHelloReadsPublishedSnapshotOnly(RDCHelloTests* suite) {
 
 // A PDN connected to an FDN on a serial jack syncs its UTC wall clock from the
 // FDN's context without disturbing its monotonic millisecond clock, while
-// ignoring unsynchronized (0) timestamps and uncabled senders.
+// ignoring unsynchronized (0) timestamps and senders never cabled.
 inline void rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(RDCHelloTests* suite) {
     const uint8_t fdnMac[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t uncabledMac[6] = {0xEE, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -3112,7 +3112,6 @@ inline void rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(RDCHelloTests* suite
     suite->fakeClock->setTime(5000);
     suite->fakeClock->setUnixTimeMs(0);
 
-    // 1. Uncabled wireless FdnConnectionContext is ignored.
     FdnConnectionContext uncabledCtx{};
     uncabledCtx.seqId = 1;
     uncabledCtx.chainRole = 0;
@@ -3123,7 +3122,6 @@ inline void rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(RDCHelloTests* suite
     suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->fakeClock->unixMilliseconds(), 0);
 
-    // 2. Cabled FDN with valid UTC timestamp updates PDN wall clock, leaving monotonic untouched.
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
 
@@ -3139,7 +3137,7 @@ inline void rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(RDCHelloTests* suite
     EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS);
     EXPECT_EQ(suite->fakeClock->milliseconds(), 5000UL);
 
-    // 3. Subsequent unsynchronized (0) FdnConnectionContext does not overwrite valid PDN clock.
+    // A 0 timestamp must not overwrite a valid clock.
     FdnConnectionContext unsyncedCtx{};
     unsyncedCtx.seqId = 3;
     unsyncedCtx.chainRole = 0;

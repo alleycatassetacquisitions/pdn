@@ -827,7 +827,7 @@ void RemoteDeviceCoordinator::maybeFireChainRoleChange() {
 bool RemoteDeviceCoordinator::isRosterAuthority() const {
     // Only the device currently heading a chain (or a latched ring, its own
     // head) may edit a roster. Gating on role rather than "no head held"
-    // matters for STANDALONE: an ex-head keeps an all-zero head word after its
+    // matters for STANDALONE: an ex-head holds no head after its
     // chain dies, and late Resender retries from members would otherwise seed
     // phantom entries that resurface the next time it heads a chain.
     const ChainRole role = getChainRole();

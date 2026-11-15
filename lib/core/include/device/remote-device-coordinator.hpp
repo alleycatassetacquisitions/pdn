@@ -183,7 +183,8 @@ public:
     /**
      * Hands a received peer context to the game layer opaquely: the jack it
      * arrived on, the peer's device kind, and the raw profile bytes
-     * (PlayerProfile for PDN, FdnProfile for FDN). RDC never interprets them.
+     * (PlayerProfile for PDN, FdnProfile for FDN). RDC reads only
+     * FdnProfile::utcUnixMs, for clock sync; otherwise opaque.
      */
     using ContextReceivedCallback =
         std::function<void(SerialIdentifier jack, DeviceType peerType,
@@ -229,7 +230,7 @@ public:
     /**
      * The peer's opaque profile bytes on `jack`, or nullptr before its context
      * arrives. PlayerProfile for a PDN peer, FdnProfile for an FDN one; which it
-     * is comes from getPeerDeviceType. RDC never interprets them. Held per jack
+     * is comes from getPeerDeviceType. RDC reads only FdnProfile::utcUnixMs. Held per jack
      * rather than only forwarded on arrival, so a state mounting later still gets
      * the peer's identity instead of only whoever was mounted at the time.
      */
