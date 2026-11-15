@@ -61,7 +61,7 @@ The hub app SHALL enter via the awaken sequence before mounting the idle state:
 On every main-loop pass while in the hub idle state, the PDN SHALL evaluate outgoing transitions in strict priority order so that multi-device ring topologies and active matches are never preempted by lower-priority states:
 
 1. **Shootout proposal**: If the shootout subsystem reports that this PDN should enter a shootout proposal (a closed multi-PDN ring has formed with mixed roles), the PDN SHALL transition to the shootout app's proposal state. This transition SHALL take precedence over a 1v1 match or posse supporter transition so a closed ring is never demoted to a 1v1 match.
-2. **1v1 match countdown**: Otherwise, if a 1v1 match has completed its role and player handshake on the player's opponent jack (downstream jack for a Hunter, upstream jack for a Bounty), the PDN SHALL transition to the match app's countdown state. While a Hunter is waiting for a newly initiated downstream-jack match handshake to complete, the PDN SHALL enforce a `1000 ms` initialization timeout before clearing a stalled handshake.
+2. **1v1 match countdown**: Otherwise, if a 1v1 match has completed its role and player handshake on the player's opponent jack (downstream jack for a Hunter, upstream jack for a Bounty), the PDN SHALL transition to the match app's countdown state. While a Hunter is waiting for a newly initiated downstream-jack match handshake to complete, the PDN SHALL enforce a `3250 ms` initialization timeout before clearing a stalled handshake.
 3. **Posse supporter**: Otherwise, if the PDN is currently a chained posse supporter, the PDN SHALL transition to the hub supporter-ready state.
 4. **Shootout aborted**: Otherwise, if a shootout was aborted, the PDN SHALL transition to the shootout app's aborted state.
 5. **FDN symbol match**: Otherwise, if no 1v1 match handshake is in progress and an FDN peer is Connected on the PDN's **downstream jack**, the PDN SHALL transition to the symbol app.
@@ -70,8 +70,8 @@ On every main-loop pass while in the hub idle state, the PDN SHALL evaluate outg
 - **WHEN** a PDN in the hub idle state simultaneously satisfies shootout proposal entry and 1v1 opponent-jack match readiness
 - **THEN** the PDN transitions to the shootout app rather than the 1v1 match app
 
-#### Scenario: Stalled 1v1 match handshake clears after 1000 ms
-- **WHEN** a Hunter PDN in the hub idle state initiates a 1v1 match handshake on its downstream jack and the peer does not complete the handshake within `1000 ms`
+#### Scenario: Stalled 1v1 match handshake clears after 3250 ms
+- **WHEN** a Hunter PDN in the hub idle state initiates a 1v1 match handshake on its downstream jack and the peer does not complete the handshake within `3250 ms`
 - **THEN** the stalled match instance is cleared and the PDN remains in the hub idle state
 
 ### Requirement: Posse supporter event routing and UI lifecycle
