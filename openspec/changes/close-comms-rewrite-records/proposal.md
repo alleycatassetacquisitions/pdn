@@ -19,4 +19,4 @@ This change is test-only and is not flashed to event devices until the registrat
 
 ## Capabilities
 
-New: `record-relay`. Modified: `match-collection`, `crash-reporting`, `fdn-apps`, `player-provisioning`, `firmware-distribution`. Impact: `platformio.ini`, `scripts/multi_flash_target.py`; later PRs touch `src/pdn`, `src/fdn` and `lib/core`.
+New: `record-relay`. Modified: `match-collection`, `crash-reporting`, `fdn-apps`, `player-provisioning`, `firmware-distribution`, `quickdraw-match`. Impact: `platformio.ini`, `scripts/multi_flash_target.py`; later PRs touch `src/pdn`, `src/fdn` and `lib/core`.
