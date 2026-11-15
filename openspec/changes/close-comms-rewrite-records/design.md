@@ -3,7 +3,7 @@
 - **FDN beacon**: `PlayerInfoPkt` gains a trailing `senderDeviceType` byte. The FDN beacons every 12 s from its tick, in every app.
 - **Packet types**: `kCrashRecord` 23, `kMatchRecord` 24, `kRecordAck` 25, after `kFirmwareUpdate` 22. `kCrashLog` 21 stays reserved; its dead handler goes.
 - **Frame**: `{u8 seqId, u8 kind, u32 recordNumber, content}`. Crash, kind 0x01: 42-byte crash packet, 48 B. Match, kind 0x02: 112-byte record, 118 B. No tag.
-- **Ack**: `{u8 seqId, u8 kind, u32 recordNumber, u16 crc16(content)}`, 10 B, sent only after a durable write and re-sent for a duplicate. The CRC names the frame; it is not authentication.
+- **Ack**: `{u8 seqId, u8 kind, u32 recordNumber, u16 crc16(content)}`, 8 B, sent only after a durable write and re-sent for a duplicate. The CRC names the frame; it is not authentication.
 
 ## PDN
 
@@ -22,4 +22,4 @@
 ## Decisions
 
 - **Beacon trigger over cable-only** (owner ruling). Crash records from PDNs never plugged into an FDN still arrive. Without tags, a device posing as an FDN can make PDNs retire records; the gate covers this. An FDN-side direct-peer check is possible later.
-- **Boot-time `nvs_flash_erase`** on `NO_FREE_PAGES`/`NEW_VERSION_FOUND` stays: it is not a flash step, and neither trigger fires with the unchanged table.
+- **Boot-time `nvs_flash_erase`** on `NO_FREE_PAGES`/`NEW_VERSION_FOUND` stays: it is not a flash step, and neither fires with the current IDF and table. A framework bump must re-check it.

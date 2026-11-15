@@ -7,8 +7,7 @@ PDNs do not use Wi-Fi, so crash and match records reach the server only through 
 - PDN→FDN record relay over ESP-NOW (`record-relay`): one frame per record, triggered by any FDN beacon, retired only on the FDN's stored acknowledgement. PDN match ring with player UUIDs in its own namespace; full ring refuses new matches.
 - FDN record store; upload at boot and every 300 s to today's `POST /quickdraw-matches` and `POST /device-logs`, request formats unchanged.
 - Matches stored by older firmware stay in NVS untouched and are not relayed; they wait for a server route. Release flashing never clears NVS.
-- Test-only registration in a test build and the simulator; release builds have none.
-- `Authorization: Bearer` is dropped from the spec text: neither firmware nor server uses it.
+- Test-only registration in a test build and the simulator; release builds have none. `Authorization: Bearer` is dropped from the upload requirements: neither firmware nor server uses it.
 
 ## Non-goals
 

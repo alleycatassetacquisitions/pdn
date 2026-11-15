@@ -30,7 +30,7 @@ A PDN SHALL send record frames by reliable unicast (`wireless-transport`) with a
 
 ### Requirement: Stored acknowledgement retires a record
 
-An FDN's stored acknowledgement SHALL carry the record kind, the record number and a check over the record bytes. A PDN SHALL retire a record only on a stored acknowledgement whose kind, number and check match the frame it last sent, from the FDN it sent it to. A radio delivery report SHALL NOT retire a record.
+An FDN's stored acknowledgement SHALL carry the record kind, the record number and a check over the record bytes. A PDN SHALL retire a record only on a stored acknowledgement whose kind, number and check match the frame it last sent, from the FDN it sent it to. A radio delivery report SHALL NOT retire a record. The check names the frame; it does not authenticate the sender.
 
 #### Scenario: A delivered frame with no stored acknowledgement stays pending
 - **WHEN** the radio reports a record frame delivered but no stored acknowledgement arrives
