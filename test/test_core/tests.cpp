@@ -638,9 +638,7 @@ TEST(QuickdrawStateGraph, crossAppEdgesAreAppTransitions) {
     quickdrawCrossAppEdgesAreAppTransitions();
 }
 
-TEST(QuickdrawStateGraph, registrationHandsOffFromWelcomeMessage) {
-    registrationHandsOffFromWelcomeMessage();
-}
+TEST(QuickdrawStateGraph, registrationHandsOffToHub) { registrationHandsOffToHub(); }
 
 // ============================================
 // SERIAL TESTS
@@ -668,6 +666,10 @@ TEST_F(PlayerTestSuite, roleChangeFiresOnlyOnFlip) {
 
 TEST_F(PlayerTestSuite, profileCarriesRoleAndIdentity) {
     playerProfileCarriesRoleAndIdentity(player);
+}
+
+TEST_F(PlayerTestSuite, testPlayerIdFromMacIsDistinctAndNeverV4) {
+    testPlayerIdFromMacIsDistinctAndNeverV4();
 }
 
 TEST_F(PlayerTestSuite, statsIncrementCorrectly) {
@@ -1105,8 +1107,12 @@ TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
     fetchUserFailureReturnsToPinAfterPageTimeout(this);
 }
 
-TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
-    chooseTeamConfirmReachesDemoStub(this);
+TEST_F(PlayerFetchTestSuite, chooseTeamTestIdentityRegistersMacPlayerAndEntersHub) {
+    chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(this);
+}
+
+TEST_F(PlayerFetchTestSuite, chooseTeamDemoKeepsNilPlayerId) {
+    chooseTeamDemoKeepsNilPlayerId(this);
 }
 
 // ============================================

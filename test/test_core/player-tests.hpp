@@ -182,3 +182,20 @@ inline void playerProfileCarriesRoleAndIdentity(Player* player) {
     player->setIsHunter(false);
     EXPECT_EQ(player->toProfile().gameRole, 0);
 }
+
+// Test ids must differ per PDN, stay stable per MAC and never look like a v4 server UUID.
+inline void testPlayerIdFromMacIsDistinctAndNeverV4() {
+    const uint8_t first[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
+    const uint8_t second[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x08};
+    UUIDBytes firstId = Player::testPlayerIdFromMac(first);
+
+    EXPECT_FALSE(firstId.isZero());
+    EXPECT_NE(firstId, Player::testPlayerIdFromMac(second));
+    EXPECT_EQ(firstId, Player::testPlayerIdFromMac(first));
+    const uint8_t expected[UUIDBytes::SIZE] = {0x07, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
+                                               0x7e, 0x57, 0x7e, 0x57, 0x7e, 0x57, 0x7e, 0x57};
+    for (size_t index = 0; index < UUIDBytes::SIZE; index++) {
+        EXPECT_EQ(firstId.bytes[index], expected[index]) << "byte " << index;
+    }
+    EXPECT_EQ(firstId.bytes[6] >> 4, 0);
+}

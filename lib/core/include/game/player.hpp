@@ -137,6 +137,9 @@ public:
     /** Clears registration fields only; does not reset match stats or legacy fields. */
     void clearRegistrationProfile();
 
+    /** Test-build id: @p mac reversed, then a `7e57` tail; version nibble 0, never a server id. */
+    static UUIDBytes testPlayerIdFromMac(const uint8_t* mac);
+
 private:
     // Sole write path for `hunter`, so every flip notifies exactly once no
     // matter which public setter produced it.

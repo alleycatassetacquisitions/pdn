@@ -1,5 +1,6 @@
 #include "game/player.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -257,6 +258,14 @@ void Player::clearRegistrationProfile() {
     registrationTeam = Team();
     registrationAffiliations.clear();
     registrationProfileStored = false;
+}
+
+UUIDBytes Player::testPlayerIdFromMac(const uint8_t* mac) {
+    // Byte 6 stays 0 (version nibble 0), so it never equals a server-issued (v4) UUID.
+    UUIDBytes id;
+    std::reverse_copy(mac, mac + 6, id.bytes);
+    std::memcpy(id.bytes + 6, "\x00\x00\x7e\x57\x7e\x57\x7e\x57\x7e\x57", UUIDBytes::SIZE - 6);
+    return id;
 }
 
 void Player::syncLegacyFieldsFromRegistration() {

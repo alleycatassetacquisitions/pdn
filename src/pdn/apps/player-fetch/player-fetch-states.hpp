@@ -13,7 +13,6 @@ namespace PlayerFetchStateId {
 constexpr int PIN_ENTRY = 0;
 constexpr int FETCH_USER = 1;
 constexpr int CHOOSE_TEAM = 2;
-constexpr int DEMO_STUB = 3;
 constexpr int WELCOME = 4;
 constexpr int FIRMWARE_UPDATE = 31;
 }  // namespace PlayerFetchStateId
@@ -94,8 +93,8 @@ private:
 
 class ChooseTeamState : public TypedState<PDN> {
 public:
-    /** Demo Hunter/Bounty picker for @ref DEMO_PIN. */
-    explicit ChooseTeamState(PlayerProvider* playerProvider);
+    /** Role picker: MAC test UUID and "Test" if @p testIdentity, else nil UUID and "Demo". */
+    ChooseTeamState(PlayerProvider* playerProvider, bool testIdentity);
     /** @copydoc TypedState::~TypedState */
     ~ChooseTeamState() override;
 
@@ -105,36 +104,18 @@ public:
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
-    /** @return true when demo team selection should mount the stub state. */
-    bool transitionToDemoStub() const;
+    /** @return true once a role is confirmed and the hub should launch. */
+    bool transitionToHub() const;
 
 private:
     void renderUi(PDN* pdn) const;
 
     PlayerProvider* playerProvider = nullptr;
-    bool transitionToDemoStubState = false;
+    const uint8_t* macAddress = nullptr;
+    bool testIdentity = false;
+    bool transitionToHubState = false;
     bool displayIsDirty = false;
     bool hunterSelected = true;
-};
-
-class DemoStubState : public TypedState<PDN> {
-public:
-    /** Placeholder demo mode after choose-team. */
-    DemoStubState();
-    /** @copydoc TypedState::~TypedState */
-    ~DemoStubState() override;
-
-    /** @copydoc TypedState::onStateMounted */
-    void onStateMounted(PDN* pdn) override;
-    /** @copydoc TypedState::onStateLoop */
-    void onStateLoop(PDN* pdn) override;
-    /** @copydoc TypedState::onStateDismounted */
-    void onStateDismounted(PDN* pdn) override;
-    /** @return true when the stub should return to pin entry. */
-    bool transitionToPinEntry() const;
-
-private:
-    bool transitionToPinEntryState = false;
 };
 
 class PlayerFetchWelcome : public TypedState<PDN> {

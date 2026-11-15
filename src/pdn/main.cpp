@@ -48,6 +48,15 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #error "BASE_URL not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
 #endif
 
+#ifdef PDN_TEST_PLAYER
+#ifdef PDN_RELEASE_BUILD
+#error "PDN_TEST_PLAYER must never reach a release build"
+#endif
+constexpr bool TEST_PLAYER_IDENTITY = true;
+#else
+constexpr bool TEST_PLAYER_IDENTITY = false;
+#endif
+
 WifiConfig* wifiConfig = nullptr;
 
 CrashLogger* crashLogger = nullptr;
@@ -178,8 +187,8 @@ static void setup() {
     gameSession = new GameSession(playerProvider->getPlayer(), pdn, symbolWirelessManager);
 
     GameContext gameContext = gameSession->getContext();
-    playerFetchApp = new PlayerFetchApp(pdn->getWirelessManager(),
-                                        pdn->getFirmwareUpdateManager(), playerProvider);
+    playerFetchApp = new PlayerFetchApp(pdn->getWirelessManager(), pdn->getFirmwareUpdateManager(),
+                                        playerProvider, TEST_PLAYER_IDENTITY);
     hubApp = new HubApp(gameContext);
     matchApp = new MatchApp(gameContext);
     shootoutApp = new ShootoutApp(gameContext);
