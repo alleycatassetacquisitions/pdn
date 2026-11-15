@@ -127,9 +127,8 @@ private:
     bool isAuxRequired() override;
 
     SimpleTimer matchInitializationTimer;
-    // The hunter must outlast the whole handshake: its SEND_MATCH_ID and the bounty's
-    // MATCH_ID_ACK can each take a full retransmit span to land, and a bounty whose
-    // ack lands after the hunter gave up would count down alone.
+    // Two retransmit spans (the hunter's SEND_MATCH_ID, then the bounty's ack) plus
+    // 250 ms margin: a bounty whose ack lands after the hunter gave up counts down alone.
     static constexpr int MATCH_INITIALIZATION_TIMEOUT =
     2 * static_cast<int>(Resender::RETRANSMIT_SPAN_MS) + 250;
 
@@ -186,8 +185,7 @@ inline bool matchReturnsToIdle(ConnectState<PDN>& matchState, ShootoutManager* s
     return matchState.isPersistentlyDisconnected();
 }
 
-/** Draws the stats card over a Win or Lose screen: own time, boost and penalty if any, opponent
- * time. */
+/** Draws the last match's stats card over a Win or Lose screen. */
 inline void renderLastMatchStats(Display* display, const LastMatchDisplay& stats) {
     if (!stats.hasData) return;
     const bool hasBoost = stats.boostMs > 0;
@@ -335,9 +333,7 @@ private:
     Player* player;
     MatchManager* matchManager;
     SimpleTimer gracePeriodTimer;
-    // Covers the opponent's 750ms BUTTON_PUSH_GRACE_PERIOD in MatchReceivedResult,
-    // a 1500ms reliable-send retry budget for their NEVER_PRESSED, and 250ms of
-    // entry/schedule margin.
+    // Opponent's 750ms BUTTON_PUSH_GRACE_PERIOD + 1500ms NEVER_PRESSED retry span + 250ms margin.
     static constexpr int MATCH_RESULT_GRACE_PERIOD = 2500;
 };
 

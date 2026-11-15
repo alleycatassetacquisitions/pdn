@@ -817,9 +817,8 @@ void ShootoutManager::onMatchResultReceived(
     // and a unicast takes a slot in the radio's 20-entry peer table, evicting
     // whatever sat there longest.
     if (!containsMac(bracket, fromMac)) return;
-    // A result names a match, and none has started during the bracket reveal.
-    // Ignored without an ack, so the sender keeps retrying. The bracket check
-    // above already turns away every phase that has no bracket.
+    // No match has started during the reveal, so a result then is a stray: dropped
+    // unacked. Phases without a bracket were turned away above.
     if (phase == Phase::BRACKET_REVEAL) return;
     // Always ack so the sender stops retrying, even when this is a duplicate.
     sendShootoutAck(ShootoutCmd::MATCH_RESULT, seqId, fromMac);

@@ -23,10 +23,9 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
                              p.isHunter);
         listenForMatchEvents(command);
     });
-    // The bounty readies on the radio's SEND_SUCCESS for its MATCH_ID_ACK, not on
-    // sending it, so a lost ack no longer starts its countdown ahead of the hunter's.
+    // Ready only on SEND_SUCCESS for the ack: the hunter's radio has then taken it.
     matchChannel.setOnDelivered([this](uint8_t seqId, const uint8_t*) {
-        if (activeMatchState.pendingAckSeqId == 0 || seqId != activeMatchState.pendingAckSeqId) {
+        if (seqId != activeMatchState.pendingAckSeqId) {
             return;
         }
         activeMatchState.pendingAckSeqId = 0;
@@ -36,7 +35,7 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     // count down against a hunter that may never have heard the ack.
     resender.setAbandonCallback(
     [this](PktType, uint8_t seqId, const uint8_t*, const uint8_t*, size_t) {
-        if (activeMatchState.pendingAckSeqId == 0 || seqId != activeMatchState.pendingAckSeqId) {
+        if (seqId != activeMatchState.pendingAckSeqId) {
             return;
         }
         clearCurrentMatch();
