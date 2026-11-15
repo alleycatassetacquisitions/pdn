@@ -17,6 +17,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1309-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "alleycat-server/fdn-record-store.hpp"
 
 #include "fdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -75,6 +76,7 @@ RemotePlayerManager*      remotePlayerManager      = nullptr;
 FDNConnectWirelessManager* fdnConnectWirelessManager = nullptr;
 HackedPlayersManager*     hackedPlayersManager     = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
+FdnRecordStore* fdnRecordStore = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
 
@@ -130,7 +132,8 @@ static void setup() {
     wifiConfig    = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
-    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_PREF_NAMESPACE, CRASH_LOG_NAMESPACE});
+    storageDriver = new Esp32S3PrefsDriver(
+    STORAGE_DRIVER_NAME, {FDN_PREF_NAMESPACE, CRASH_LOG_NAMESPACE, FDN_RECORD_STORE_NAMESPACE});
 
     DriverConfig fdnConfig = {
         {DISPLAY_DRIVER_NAME,              displayDriver},
@@ -161,7 +164,14 @@ static void setup() {
 
     symbolWirelessManager = new SymbolWirelessManager(fdn->getWirelessManager(),
                                                       fdn->getRemoteDeviceCoordinator());
-    fdn->setTickCallback([]() { symbolWirelessManager->sync(); });
+    fdnRecordStore = new FdnRecordStore(fdn->getWirelessManager(), storageDriver);
+    // From the tick, not an app: the FDN boots into symbol-match, which never
+    // reaches idle, so the beacon and the store must run whatever app is up.
+    fdn->setTickCallback([]() {
+        symbolWirelessManager->sync();
+        remotePlayerManager->Update();
+        fdnRecordStore->sync();
+    });
 
     setupEspNow(peerCommsDriver);
 
@@ -169,7 +179,8 @@ static void setup() {
     crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
     // After transmitPending(): a broadcast in flight when ESP-NOW shuts down wedges its send queue.
-    remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
+    remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS,
+                                                     DeviceType::FDN);
 
     // Apps
     RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();

@@ -12,6 +12,8 @@ struct PlayerInfoPkt
     char id[IdGenerator::UUID_BUFFER_SIZE];  // UUID string + null terminator
     Allegiance allegiance;
     uint8_t hunter;
+    // A DeviceType; a PDN takes a beacon from an FDN as its cue to relay records.
+    uint8_t senderDeviceType;
 } __attribute__((packed));
 
 
@@ -47,6 +49,7 @@ int RemotePlayerManager::BroadcastPlayerInfo()
     IdGenerator::copyId(broadcastPkt.id, localPlayerInfo->getUserID().c_str());
     broadcastPkt.allegiance = localPlayerInfo->getAllegiance();
     broadcastPkt.hunter = localPlayerInfo->isHunter();
+    broadcastPkt.senderDeviceType = static_cast<uint8_t>(localDeviceType);
 
 #if DEBUG_REMOTE_PLAYER_MANAGER
     LOG_D("RPM", "Broadcasting player info. ID: %s Allegiance: %u %s (pktsize: %lu)\n",
@@ -64,9 +67,11 @@ int RemotePlayerManager::BroadcastPlayerInfo()
     return ret;
 }
 
-void RemotePlayerManager::StartBroadcastingPlayerInfo(Player *playerInfo, unsigned long broadcastIntervalMillis)
-{
+void RemotePlayerManager::StartBroadcastingPlayerInfo(Player* playerInfo,
+                                                      unsigned long broadcastIntervalMillis,
+                                                      DeviceType senderDeviceType) {
     localPlayerInfo = playerInfo;
+    localDeviceType = senderDeviceType;
     broadcastInterval = broadcastIntervalMillis;
     BroadcastPlayerInfo();
 }
