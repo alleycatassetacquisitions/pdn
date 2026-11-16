@@ -40,13 +40,15 @@ namespace cli {
  * Human-readable name for a state id shown in the CLI's state history.
  *
  * Ids come from two namespaces that share one numbering: player-fetch owns
- * 0, 2 and 31 and the game owns the rest. Naming the constants rather than the
+ * 0-4 (and 31) and the game owns the rest. Naming the constants rather than the
  * numbers is what keeps this from drifting — a retired state stops compiling here.
  */
 inline const char* getStateName(int stateId) {
     switch (stateId) {
         case PlayerFetchStateId::PIN_ENTRY: return "PinEntry";
+        case PlayerFetchStateId::FETCH_USER: return "FetchUser";
         case PlayerFetchStateId::CHOOSE_TEAM: return "ChooseTeam";
+        case PlayerFetchStateId::WELCOME: return "WelcomeMessage";
         case PlayerFetchStateId::FIRMWARE_UPDATE: return "FirmwareUpdate";
         case SLEEP: return "Sleep";
         case AWAKEN_SEQUENCE: return "AwakenSequence";

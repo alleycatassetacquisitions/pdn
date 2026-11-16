@@ -16,17 +16,21 @@ PlayerFetchApp::~PlayerFetchApp() {
 void PlayerFetchApp::populateStateMap() {
     PinEntryState* pinEntry = new PinEntryState(playerProvider, firmwareUpdateManager);
     ChooseTeamState* chooseTeam = new ChooseTeamState(playerProvider, testIdentity);
+    PlayerFetchWelcome* welcome = new PlayerFetchWelcome(playerProvider);
 
     pinEntry->addTransition(
     new StateTransition([pinEntry]() { return pinEntry->transitionToChooseTeam(); }, chooseTeam));
+    chooseTeam->addTransition(
+    new StateTransition([chooseTeam]() { return chooseTeam->transitionToWelcome(); }, welcome));
 
     // Nothing checks a top-level app's own transition list, so registration's
     // hand-off to gameplay lives on the state that triggers it.
-    chooseTeam->addAppTransition([chooseTeam]() { return chooseTeam->transitionToHub(); },
-                                 StateId(HUB_APP_ID));
+    welcome->addAppTransition([welcome]() { return welcome->transitionToAwaken(); },
+                              StateId(HUB_APP_ID));
 
     stateMap.push_back(pinEntry);
     stateMap.push_back(chooseTeam);
+    stateMap.push_back(welcome);
 
     if (firmwareUpdateManager != nullptr) {
         FirmwareUpdate* firmwareUpdate =

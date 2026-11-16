@@ -24,6 +24,8 @@ public:
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
+        // Lets a test expect one specific line of text among the others a screen draws.
+        EXPECT_CALL(*device.mockDisplay, drawText(_, _, _)).Times(testing::AnyNumber());
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, renderGlyph(_, _, _))
         .WillByDefault(Return(device.mockDisplay));
@@ -100,7 +102,7 @@ inline void confirmChooseTeam(PlayerFetchTestSuite* suite, ChooseTeamState* choo
     if (pickBounty) {
         primaryPress(primaryCtx);
     }
-    EXPECT_FALSE(chooseTeam->transitionToHub());
+    EXPECT_FALSE(chooseTeam->transitionToWelcome());
     secondaryPress(secondaryCtx);
 }
 
@@ -110,7 +112,7 @@ inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(PlayerFetchTest
     confirmChooseTeam(suite, &chooseTeam, mac, true);
 
     Player* player = suite->playerProvider.getPlayer();
-    EXPECT_TRUE(chooseTeam.transitionToHub());
+    EXPECT_TRUE(chooseTeam.transitionToWelcome());
     EXPECT_TRUE(player->hasRegistrationProfile());
     EXPECT_EQ(player->getServerPlayerId(), Player::testPlayerIdFromMac(mac));
     EXPECT_FALSE(player->isHunter());
@@ -118,7 +120,7 @@ inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(PlayerFetchTest
     EXPECT_FALSE(player->hasTeam());
 
     dismountState(&chooseTeam, &suite->device);
-    EXPECT_FALSE(chooseTeam.transitionToHub());
+    EXPECT_FALSE(chooseTeam.transitionToWelcome());
 }
 
 inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
@@ -127,13 +129,13 @@ inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
     confirmChooseTeam(suite, &chooseTeam, mac, false);
 
     Player* player = suite->playerProvider.getPlayer();
-    EXPECT_TRUE(chooseTeam.transitionToHub());
+    EXPECT_TRUE(chooseTeam.transitionToWelcome());
     EXPECT_TRUE(player->getServerPlayerId().isZero());
     EXPECT_TRUE(player->isHunter());
     EXPECT_STREQ(player->getServerPlayerName(), "Demo");
 
     dismountState(&chooseTeam, &suite->device);
-    EXPECT_FALSE(chooseTeam.transitionToHub());
+    EXPECT_FALSE(chooseTeam.transitionToWelcome());
 }
 
 inline void pinEntryAndFirmwareUpdateLeadToEachOther(PlayerFetchTestSuite* suite) {
@@ -141,8 +143,74 @@ inline void pinEntryAndFirmwareUpdateLeadToEachOther(PlayerFetchTestSuite* suite
     FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
     PlayerFetchApp app(&manager, &suite->playerProvider, false);
     app.populateStateMap();
-    ASSERT_EQ(app.getStateMap().size(), 3u);
+    ASSERT_EQ(app.getStateMap().size(), 4u);
     State* pinEntry = app.getStateMap()[0];
-    EXPECT_EQ(pinEntry->getTransitions()[1]->getNextState(), app.getStateMap()[2]);
-    EXPECT_EQ(app.getStateMap()[2]->getTransitions()[0]->getNextState(), pinEntry);
+    EXPECT_EQ(pinEntry->getTransitions()[1]->getNextState(), app.getStateMap()[3]);
+    EXPECT_EQ(app.getStateMap()[3]->getTransitions()[0]->getNextState(), pinEntry);
+}
+
+inline void welcomeShowsPlayerNameThenHandsOff(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.getPlayer()->applyRegistrationProfile(UUIDBytes(), "Demo", Team(), {});
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Welcome"), _, _));
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Demo"), _, _));
+    PlayerFetchWelcome welcome(&suite->playerProvider);
+    mountState(&welcome, &suite->device);
+    suite->fakeClock->advance(WELCOME_MESSAGE_TIMEOUT_MS);
+    welcome.onStateLoop(&suite->device);
+    EXPECT_FALSE(welcome.transitionToAwaken());
+    suite->fakeClock->advance(1);
+    welcome.onStateLoop(&suite->device);
+    EXPECT_TRUE(welcome.transitionToAwaken());
+    dismountState(&welcome, &suite->device);
+    EXPECT_FALSE(welcome.transitionToAwaken());
+}
+
+// Mounted with the PIN stored, as PIN entry leaves it; the FDN answer events come from #485.
+inline void mountFetchUser(PlayerFetchTestSuite* suite, FetchUserState* fetch) {
+    suite->playerProvider.setRegistrationPin("0007");
+    mountState(fetch, &suite->device);
+}
+
+inline void fetchUserFoundPlayerLeadsToWelcome(PlayerFetchTestSuite* suite) {
+    FetchUserState fetch(&suite->playerProvider);
+    mountFetchUser(suite, &fetch);
+    EXPECT_FALSE(fetch.transitionToWelcome());
+    fetch.onPlayerFound();
+    EXPECT_TRUE(fetch.transitionToWelcome());
+    EXPECT_FALSE(fetch.transitionToPinEntry());
+    dismountState(&fetch, &suite->device);
+    EXPECT_FALSE(fetch.transitionToWelcome());
+    fetch.onPlayerFound();
+    EXPECT_FALSE(fetch.transitionToWelcome()) << "no lookup is outstanding after dismount";
+}
+
+// Shows "Unable to / Locate Asset" for the failure-page time, then returns to PIN entry.
+inline void expectFailurePageThenPinEntry(PlayerFetchTestSuite* suite, FetchUserState* fetch) {
+    fetch->onStateLoop(&suite->device);
+    EXPECT_FALSE(fetch->transitionToPinEntry());
+    fetch->onPlayerFound();
+    EXPECT_FALSE(fetch->transitionToWelcome()) << "a late answer is ignored";
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    fetch->onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch->transitionToPinEntry());
+    dismountState(fetch, &suite->device);
+    EXPECT_FALSE(fetch->transitionToPinEntry());
+}
+
+inline void fetchUserFailedLookupShowsFailurePage(PlayerFetchTestSuite* suite) {
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Unable to"), _, _));
+    FetchUserState fetch(&suite->playerProvider);
+    mountFetchUser(suite, &fetch);
+    fetch.onPlayerLookupFailed();
+    expectFailurePageThenPinEntry(suite, &fetch);
+}
+
+inline void fetchUserTimeoutShowsFailurePage(PlayerFetchTestSuite* suite) {
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Unable to"), _, _));
+    FetchUserState fetch(&suite->playerProvider);
+    mountFetchUser(suite, &fetch);
+    suite->fakeClock->advance(USER_DATA_FETCH_TIMEOUT_MS);
+    fetch.onStateLoop(&suite->device);
+    suite->fakeClock->advance(1);
+    expectFailurePageThenPinEntry(suite, &fetch);
 }
