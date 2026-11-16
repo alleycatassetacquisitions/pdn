@@ -88,7 +88,6 @@ public:
 
     /**
      * Finalizes the active match and clears active match state. A standalone match
-     * between two different registered players whose winner both devices agree on
      * is appended to the ring, unless 32 records already wait there.
      */
     bool finalizeMatch();
