@@ -1080,32 +1080,42 @@ TEST(PlayerRegistrationShim, formatsServerIdAsUserId) { playerLegacyShimFormatsS
 // PLAYER FETCH APP TESTS
 // ============================================
 
-TEST_F(PlayerFetchTestSuite, pinEntryRoutesNonDemoPinToFetch) {
-    pinEntryRoutesNonDemoPinToFetch(this);
-}
-
 TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
-    pinEntryRoutesDemoPinToChooseTeam(this);
+    const int digits[4] = {0, 0, 0, 0};
+    pinEntryRoutesPinToChooseTeam(this, digits, "0000");
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserQueuesDevicePlayerLookup) {
-    fetchUserQueuesDevicePlayerLookup(this);
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesAnyOtherPinToChooseTeam) {
+    const int digits[4] = {0, 0, 0, 7};
+    pinEntryRoutesPinToChooseTeam(this, digits, "0007");
 }
 
-TEST_F(PlayerFetchTestSuite, fetchUserStoresDevicePlayerOnSuccess) {
-    fetchUserStoresDevicePlayerOnSuccess(this);
-}
-
-TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
-    fetchUserFailureReturnsToPinAfterPageTimeout(this);
-}
-
-TEST_F(PlayerFetchTestSuite, chooseTeamTestIdentityRegistersMacPlayerAndEntersHub) {
-    chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(this);
+TEST_F(PlayerFetchTestSuite, chooseTeamTestIdentityRegistersMacPlayerAndEntersWelcome) {
+    chooseTeamTestIdentityRegistersMacPlayerAndEntersWelcome(this);
 }
 
 TEST_F(PlayerFetchTestSuite, chooseTeamDemoKeepsNilPlayerId) {
     chooseTeamDemoKeepsNilPlayerId(this);
+}
+
+TEST_F(PlayerFetchTestSuite, pinEntryAndFirmwareUpdateLeadToEachOther) {
+    pinEntryAndFirmwareUpdateLeadToEachOther(this);
+}
+
+TEST_F(PlayerFetchTestSuite, welcomeShowsPlayerNameThenHandsOff) {
+    welcomeShowsPlayerNameThenHandsOff(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserFoundPlayerLeadsToWelcome) {
+    fetchUserFoundPlayerLeadsToWelcome(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserFailedLookupShowsFailurePage) {
+    fetchUserFailedLookupShowsFailurePage(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserTimeoutShowsFailurePage) {
+    fetchUserTimeoutShowsFailurePage(this);
 }
 
 // ============================================
@@ -1216,25 +1226,11 @@ TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
     pairingCodeFirmwareHoldStartsAnUpdate(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeLeavesTheRadioAlone) {
-    pairingCodeLeavesTheRadioAlone(this);
-}
-
-TEST_F(IdleStateTests, fetchExitPutsTheRadioBackOnEspNow) {
-    fetchExitPutsTheRadioBackOnEspNow(this);
-}
-
-TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) {
-    aSeedRunTakesTheRadioForEspNow(this);
-}
-
 TEST_F(IdleStateTests, pairingCodeFirmwareHoldCarriedInDoesNotFire) {
     pairingCodeFirmwareHoldCarriedInDoesNotFire(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) {
-    pairingCodeTakesUpdatesWhileUp(this);
-}
+TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) { pairingCodeTakesUpdatesWhileUp(this); }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);

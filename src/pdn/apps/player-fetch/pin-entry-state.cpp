@@ -5,20 +5,23 @@
 #include "device/firmware-update-manager.hpp"
 
 #include <cstdio>
-#include <cstring>
 
 static const char TAG[] = "PinEntryState";
 
-PinEntryState::PinEntryState(PlayerProvider* playerProvider)
+PinEntryState::PinEntryState(PlayerProvider* playerProvider,
+                             FirmwareUpdateManager* firmwareUpdateManager)
     : TypedState<PDN>(PlayerFetchStateId::PIN_ENTRY)
+    , firmwareUpdateManager(firmwareUpdateManager)
     , playerProvider(playerProvider) {}
 
-PinEntryState::~PinEntryState() { playerProvider = nullptr; }
+PinEntryState::~PinEntryState() {
+    playerProvider = nullptr;
+    firmwareUpdateManager = nullptr;
+}
 
 void PinEntryState::onStateMounted(PDN* pdn) {
     playerProvider->clear();
     sinceMount.setTimer(0);
-    firmwareUpdateManager = pdn->getFirmwareUpdateManager();
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->setEligible(true);
     }
@@ -56,11 +59,8 @@ void PinEntryState::onStateMounted(PDN* pdn) {
             LOG_I(TAG, "Pairing complete - PIN: %s", playerId);
             pinEntry->playerProvider->setRegistrationPin(playerId);
             pinEntry->playerProvider->applyRngSeedFromRegistrationPin();
-            if (std::strcmp(playerId, DEMO_PIN) == 0) {
-                pinEntry->transitionToChooseTeamState = true;
-            } else {
-                pinEntry->transitionToFetchUserState = true;
-            }
+            // Until an FDN looks the PIN up (#485), every PIN leads to the role picker.
+            pinEntry->transitionToChooseTeamState = true;
         } else {
             pinEntry->shouldRender = true;
         }
@@ -123,15 +123,12 @@ void PinEntryState::onStateDismounted(PDN* pdn) {
     pdn->getSecondaryButton()->removeButtonCallbacks();
     currentDigitIndex = 0;
     currentDigit = 0;
-    transitionToFetchUserState = false;
     transitionToChooseTeamState = false;
     transitionToFirmwareUpdateState = false;
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->setEligible(false);
     }
 }
-
-bool PinEntryState::transitionToFetchUser() const { return transitionToFetchUserState; }
 
 bool PinEntryState::transitionToChooseTeam() const { return transitionToChooseTeamState; }
 

@@ -524,3 +524,11 @@ TEST(ReliableTransportTest, backgroundEspNowSendDoesNotPreemptWifiMode) {
     EXPECT_EQ(wm.getCurrentMode(), WirelessMode::WIFI);
     EXPECT_EQ(httpState, HttpClientState::CONNECTED);
 }
+
+TEST(ReliableTransportTest, managerWithoutHttpClientRefusesHttp) {
+    ::testing::NiceMock<MockPeerComms> comms;
+    WirelessManager wm{&comms};
+    EXPECT_FALSE(wm.queueHttpRequest(HttpRequest("/x", "GET", "", "", nullptr, nullptr)));
+    wm.enableWifiMode();
+    EXPECT_EQ(wm.getCurrentMode(), WirelessMode::ESPNOW);
+}

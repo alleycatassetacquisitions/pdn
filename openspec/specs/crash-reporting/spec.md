@@ -69,22 +69,22 @@ Captured crash records SHALL be persisted in non-volatile storage under a dedica
 
 ### Requirement: PDN-to-FDN crash collection and FDN server upload
 
-Unreported crash records SHALL be collected from PDNs by FDNs over peer-to-peer wireless and uploaded by FDNs to the central server over authenticated HTTPS (`Authorization: Bearer <token>`):
+Unreported crash records SHALL be relayed from PDNs to FDNs over peer-to-peer wireless and uploaded by FDNs to the central server over HTTPS:
 
-- **PDN peer-to-peer reporting to a Connected FDN**:
-  - A PDN SHALL transfer its retained pending crash records sequentially in ascending crash-number order (from `max(sent_high_water_mark + 1, crash_sequence_number - 9)` to `crash_sequence_number`) over unicast on the crash-log packet type to an FDN Connected on a serial jack, including the PDN's 6-byte `device_mac` and the record's `crash_number`.
-  - The PDN SHALL advance its persisted `sent_high_water_mark` to a record's crash number only when the Connected FDN confirms ingestion of that record (stopping on the first unconfirmed record so earlier records are never skipped).
+- **PDN relay to an FDN**:
+  - A PDN SHALL send its retained pending crash records in ascending crash-number order (from `max(sent_high_water_mark + 1, crash_sequence_number - 9)` to `crash_sequence_number`) as crash record frames to any FDN it hears by beacon, Connected on a jack or not (`record-relay`).
+  - The PDN SHALL advance its persisted `sent_high_water_mark` to a record's crash number only on that FDN's stored acknowledgement for it (`record-relay`), so earlier records are never skipped, or past a record that is no longer retained, without sending it.
 - **FDN server reporting**:
-  - An FDN SHALL stage crash records collected from PDNs in a bounded relay queue (preserving each originating PDN's `device_mac` and `crash_number` separately from the FDN's own local 10-slot crash ring buffer).
-  - When an FDN has pending local crash records or queued PDN crash records, the FDN SHALL upload them sequentially within a `15,000 ms` upload timeout window.
-  - Each record SHALL be encoded via the crash protobuf codec as a device-log protobuf payload containing the originating device's lowercase colon-separated MAC address (`aa:bb:cc:dd:ee:ff`), `crash_number`, `uptime_ms`, `software_version`, `reset_reason`, and (when present) `program_counter`, `exception_cause`, and `task_name`, and sent via HTTP `POST` to `/device-logs` with content type `application/protobuf`.
-  - Upon each successful response for an FDN's own crash record, the FDN SHALL advance its local `sent_high_water_mark` to that record's crash number; upon each successful response for a relayed PDN crash record, the FDN SHALL retire that record from its relay queue and queue the next pending record.
-  - Upon an encode or HTTP error, the FDN SHALL stop uploading further records on the current cycle and leave the failed record (and any subsequent records) pending.
+  - An FDN SHALL store relayed crash records, up to `16`, with each sender's MAC address and crash number, separately from its own local 10-slot crash ring buffer.
+  - At boot and every `300,000 ms` while its own or relayed crash records wait, and not while a jack is Connected, the FDN SHALL upload them sequentially, after its match batch, within a `15,000 ms` upload timeout window.
+  - Each record SHALL be encoded via the crash protobuf codec as a device-log protobuf payload containing the originating device's lowercase colon-separated MAC address (`aa:bb:cc:dd:ee:ff`; the sender's MAC for a relayed record), `crash_number`, `uptime_ms`, `software_version`, `reset_reason`, and (when present) `program_counter`, `exception_cause`, and `task_name`, and sent via HTTP `POST` to `/device-logs` with content type `application/protobuf`.
+  - Upon each successful response for an FDN's own crash record, the FDN SHALL advance its local `sent_high_water_mark` to that record's crash number; upon each successful response for a relayed crash record, the FDN SHALL retire it from its store and upload the next.
+  - Upon a `400`, `413` or `415` response the FDN SHALL retire that record and continue. Upon any other encode or HTTP error, the FDN SHALL stop uploading further records on the current cycle and leave the failed record (and any subsequent records) pending.
   - Once all queued HTTP requests have completed, or when the `15,000 ms` upload timeout expires, the FDN SHALL re-enable the peer-to-peer radio.
 
 #### Scenario: PDN transfers pending crash records to Connected FDN and advances watermark on confirmation
-- **WHEN** a PDN with pending crash records `1` and `2` connects to an FDN on a serial jack and the FDN confirms ingestion of both records
-- **THEN** the PDN transmits record `1` followed by record `2` over peer-to-peer wireless with its own `device_mac` and advances its `sent_high_water_mark` to `2`
+- **WHEN** a PDN with pending crash records `1` and `2` hears the beacon of an FDN, Connected on its jack or not, and the FDN stores and acknowledges both records
+- **THEN** the PDN sends record `1`, then record `2` after the first stored acknowledgement, and advances its `sent_high_water_mark` to `2`
 
 #### Scenario: FDN sequential server upload advances high-water mark and restores peer-to-peer radio
 - **WHEN** an FDN has local crash records `1` and `2` pending upload and the server responds with HTTP 204 to both `POST /device-logs` requests within `15,000 ms`

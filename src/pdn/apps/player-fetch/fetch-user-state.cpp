@@ -1,30 +1,25 @@
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "device/device.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "alleycat-server/player-api.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char TAG[] = "FetchUserState";
 
-FetchUserState::FetchUserState(WirelessManager* wirelessManager, PlayerProvider* playerProvider)
+FetchUserState::FetchUserState(PlayerProvider* playerProvider)
     : TypedState<PDN>(PlayerFetchStateId::FETCH_USER)
-    , wirelessManager(wirelessManager)
     , playerProvider(playerProvider) {}
 
-FetchUserState::~FetchUserState() {
-    wirelessManager = nullptr;
-    playerProvider = nullptr;
-}
+FetchUserState::~FetchUserState() { playerProvider = nullptr; }
 
 void FetchUserState::onStateMounted(PDN* pdn) {
-    LOG_I(TAG, "State mounted - fetching device player for PIN %s",
+    LOG_I(TAG, "State mounted - waiting for the FDN lookup of PIN %s",
           playerProvider->getRegistrationPin());
     showingFailurePage = false;
     failurePagePending = false;
     transitionToWelcomeState = false;
     transitionToPinEntryState = false;
     showLoadingGlyphs(pdn);
-    fetchDevicePlayer();
+    fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
 }
 
 void FetchUserState::onStateLoop(PDN* pdn) {
@@ -53,7 +48,6 @@ void FetchUserState::onStateLoop(PDN* pdn) {
 }
 
 void FetchUserState::onStateDismounted(PDN* pdn) {
-    pdn->getWirelessManager()->enablePeerCommsMode();
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     showingFailurePage = false;
     failurePagePending = false;
@@ -63,22 +57,27 @@ void FetchUserState::onStateDismounted(PDN* pdn) {
     failurePageTimer.invalidate();
 }
 
-void FetchUserState::fetchDevicePlayer() {
-    fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
-    Player* player = playerProvider->getPlayer();
-    PlayerApi::getDevicePlayerByPin(
-    wirelessManager, playerProvider->getRegistrationPin(), player,
-    [this, player](Player&) {
-        LOG_I(TAG, "Fetched device player: %s", player->getServerPlayerName());
-        fetchTimer.invalidate();
-        transitionToWelcomeState = true;
-    },
-    [this](const WirelessErrorInfo& error) {
-        LOG_E(TAG, "Device player fetch failed: %s (code: %d)", error.message.c_str(),
-              static_cast<int>(error.code));
-        fetchTimer.invalidate();
-        failurePagePending = true;
-    });
+void FetchUserState::onPlayerFound(const Player& found) {
+    if (!fetchTimer.isRunning()) {
+        LOG_W(TAG, "Player found with no lookup in flight - ignored");
+        return;
+    }
+    LOG_I(TAG, "Found player: %s", found.getServerPlayerName());
+    playerProvider->getPlayer()->applyRegistrationProfile(
+    found.getServerPlayerId(), found.getServerPlayerName(), found.getRegistrationTeam(),
+    found.getRegistrationAffiliations());
+    fetchTimer.invalidate();
+    transitionToWelcomeState = true;
+}
+
+void FetchUserState::onPlayerLookupFailed() {
+    if (!fetchTimer.isRunning()) {
+        LOG_W(TAG, "Lookup failure with no lookup in flight - ignored");
+        return;
+    }
+    LOG_E(TAG, "Player lookup failed");
+    fetchTimer.invalidate();
+    failurePagePending = true;
 }
 
 void FetchUserState::beginFailurePage(PDN* pdn) {

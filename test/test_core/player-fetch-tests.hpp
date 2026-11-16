@@ -3,10 +3,10 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
-#include "alleycat-protobuf-test-helpers.hpp"
-#include "apps/player-fetch/player-fetch-states.hpp"
+#include "apps/player-fetch/player-fetch.hpp"
+#include "device/firmware-update-manager.hpp"
+#include "fake-firmware-store.hpp"
 #include "connect-state-callback-tests.hpp"
-#include "device-player-codec-tests.hpp"
 #include "utility-tests.hpp"
 #include "game/player-provider.hpp"
 
@@ -22,14 +22,10 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(0);
 
-        ON_CALL(*device.mockHttpClient, queueRequest(testing::_))
-        .WillByDefault(Invoke([this](HttpRequest&& request) {
-            queuedRequests.push_back(std::move(request));
-            return true;
-        }));
-
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
+        // Lets a test expect one specific line of text among the others a screen draws.
+        EXPECT_CALL(*device.mockDisplay, drawText(_, _, _)).Times(testing::AnyNumber());
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, renderGlyph(_, _, _))
         .WillByDefault(Return(device.mockDisplay));
@@ -37,9 +33,8 @@ public:
         ON_CALL(*device.mockDisplay, render()).WillByDefault(Return());
     }
 
-    /** Tears down heap fixtures and clears queued HTTP requests. */
+    /** Restores the platform clock. */
     void TearDown() override {
-        queuedRequests.clear();
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
@@ -47,118 +42,40 @@ public:
     FakePlatformClock* fakeClock = nullptr;
     PlayerProvider playerProvider;
     MockDevice device;
-    std::vector<HttpRequest> queuedRequests;
 };
 
-inline void completePinOnEntry(PDN* pdn, PinEntryState* pinEntry,
-                               parameterizedCallbackFunction& primaryPress,
-                               parameterizedCallbackFunction& secondaryPress, void*& ctx,
-                               const int digits[4]) {
-    pinEntry->onStateMounted(pdn);
-    ASSERT_NE(primaryPress, nullptr);
+// Until an FDN looks a PIN up (#485), every completed PIN, demo or not, leads to ChooseTeam.
+inline void pinEntryRoutesPinToChooseTeam(PlayerFetchTestSuite* suite, const int digits[4],
+                                          const char* pin) {
+    parameterizedCallbackFunction primaryPress = nullptr;
+    parameterizedCallbackFunction secondaryPress = nullptr;
+    void* ctx = nullptr;
+    ON_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
+    .WillByDefault(
+    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
+        primaryPress = fn;
+        ctx = buttonCtx;
+    }));
+    ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
+    .WillByDefault(
+    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
+        secondaryPress = fn;
+        ctx = buttonCtx;
+    }));
+    PinEntryState pinEntry(&suite->playerProvider, nullptr);
+    mountState(&pinEntry, &suite->device);
     ASSERT_NE(secondaryPress, nullptr);
     for (int index = 0; index < 4; index++) {
         for (int press = 0; press < digits[index]; press++) {
             primaryPress(ctx);
         }
+        EXPECT_FALSE(pinEntry.transitionToChooseTeam());
         secondaryPress(ctx);
     }
-}
-
-inline void pinEntryRoutesNonDemoPinToFetch(PlayerFetchTestSuite* suite) {
-    parameterizedCallbackFunction primaryPress = nullptr;
-    parameterizedCallbackFunction secondaryPress = nullptr;
-    void* ctx = nullptr;
-    ON_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
-    .WillByDefault(
-    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
-        primaryPress = fn;
-        ctx = buttonCtx;
-    }));
-    ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
-    .WillByDefault(
-    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
-        secondaryPress = fn;
-        ctx = buttonCtx;
-    }));
-
-    PinEntryState pinEntry(&suite->playerProvider);
-    const int digits[4] = {0, 0, 0, 7};
-    completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
-    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "0007");
-    EXPECT_TRUE(pinEntry.transitionToFetchUser());
-    EXPECT_FALSE(pinEntry.transitionToChooseTeam());
-    pinEntry.onStateDismounted(&suite->device);
-}
-
-inline void pinEntryRoutesDemoPinToChooseTeam(PlayerFetchTestSuite* suite) {
-    parameterizedCallbackFunction primaryPress = nullptr;
-    parameterizedCallbackFunction secondaryPress = nullptr;
-    void* ctx = nullptr;
-    ON_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
-    .WillByDefault(
-    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
-        primaryPress = fn;
-        ctx = buttonCtx;
-    }));
-    ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
-    .WillByDefault(
-    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
-        secondaryPress = fn;
-        ctx = buttonCtx;
-    }));
-
-    PinEntryState pinEntry(&suite->playerProvider);
-    const int digits[4] = {0, 0, 0, 0};
-    completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
-    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), DEMO_PIN);
+    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), pin);
     EXPECT_TRUE(pinEntry.transitionToChooseTeam());
-    EXPECT_FALSE(pinEntry.transitionToFetchUser());
-    pinEntry.onStateDismounted(&suite->device);
-}
-
-inline void fetchUserQueuesDevicePlayerLookup(PlayerFetchTestSuite* suite) {
-    suite->playerProvider.setRegistrationPin("1234");
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
-    fetch.onStateMounted(&suite->device);
-    ASSERT_EQ(suite->queuedRequests.size(), 1u);
-    EXPECT_EQ(suite->queuedRequests[0].path, "/device/players/by-pin/1234");
-    EXPECT_TRUE(suite->queuedRequests[0].payload.empty());
-    suite->queuedRequests.clear();
-    fetch.onStateDismounted(&suite->device);
-}
-
-inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
-    suite->playerProvider.setRegistrationPin("0007");
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
-    fetch.onStateMounted(&suite->device);
-    ASSERT_EQ(suite->queuedRequests.size(), 1u);
-
-    suite->queuedRequests[0].onSuccess(
-        encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada"));
-
-    fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(suite->playerProvider.hasPlayer());
-    EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
-    EXPECT_TRUE(fetch.transitionToWelcome());
-    suite->queuedRequests.clear();
-    fetch.onStateDismounted(&suite->device);
-}
-
-inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* suite) {
-    suite->playerProvider.setRegistrationPin("9999");
-    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
-    fetch.onStateMounted(&suite->device);
-    suite->queuedRequests[0].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404"});
-
-    fetch.onStateLoop(&suite->device);
-    EXPECT_FALSE(fetch.transitionToPinEntry());
-
-    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
-    fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(fetch.transitionToPinEntry());
-    suite->queuedRequests.clear();
-    fetch.onStateDismounted(&suite->device);
+    dismountState(&pinEntry, &suite->device);
+    EXPECT_FALSE(pinEntry.transitionToChooseTeam());
 }
 
 // Returns with ChooseTeam still mounted so callers can check its flags before dismounting.
@@ -185,17 +102,17 @@ inline void confirmChooseTeam(PlayerFetchTestSuite* suite, ChooseTeamState* choo
     if (pickBounty) {
         primaryPress(primaryCtx);
     }
-    EXPECT_FALSE(chooseTeam->transitionToHub());
+    EXPECT_FALSE(chooseTeam->transitionToWelcome());
     secondaryPress(secondaryCtx);
 }
 
-inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(PlayerFetchTestSuite* suite) {
+inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersWelcome(PlayerFetchTestSuite* suite) {
     uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
     ChooseTeamState chooseTeam(&suite->playerProvider, true);
     confirmChooseTeam(suite, &chooseTeam, mac, true);
 
     Player* player = suite->playerProvider.getPlayer();
-    EXPECT_TRUE(chooseTeam.transitionToHub());
+    EXPECT_TRUE(chooseTeam.transitionToWelcome());
     EXPECT_TRUE(player->hasRegistrationProfile());
     EXPECT_EQ(player->getServerPlayerId(), Player::testPlayerIdFromMac(mac));
     EXPECT_FALSE(player->isHunter());
@@ -203,7 +120,7 @@ inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(PlayerFetchTest
     EXPECT_FALSE(player->hasTeam());
 
     dismountState(&chooseTeam, &suite->device);
-    EXPECT_FALSE(chooseTeam.transitionToHub());
+    EXPECT_FALSE(chooseTeam.transitionToWelcome());
 }
 
 inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
@@ -212,11 +129,100 @@ inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
     confirmChooseTeam(suite, &chooseTeam, mac, false);
 
     Player* player = suite->playerProvider.getPlayer();
-    EXPECT_TRUE(chooseTeam.transitionToHub());
+    EXPECT_TRUE(chooseTeam.transitionToWelcome());
     EXPECT_TRUE(player->getServerPlayerId().isZero());
     EXPECT_TRUE(player->isHunter());
     EXPECT_STREQ(player->getServerPlayerName(), "Demo");
 
     dismountState(&chooseTeam, &suite->device);
-    EXPECT_FALSE(chooseTeam.transitionToHub());
+    EXPECT_FALSE(chooseTeam.transitionToWelcome());
+}
+
+inline void pinEntryAndFirmwareUpdateLeadToEachOther(PlayerFetchTestSuite* suite) {
+    FakeFirmwareStore store;
+    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
+    PlayerFetchApp app(&manager, &suite->playerProvider, false);
+    app.populateStateMap();
+    ASSERT_EQ(app.getStateMap().size(), 4u);
+    State* pinEntry = app.getStateMap()[0];
+    EXPECT_EQ(pinEntry->getTransitions()[1]->getNextState(), app.getStateMap()[3]);
+    EXPECT_EQ(app.getStateMap()[3]->getTransitions()[0]->getNextState(), pinEntry);
+}
+
+inline void welcomeShowsPlayerNameThenHandsOff(PlayerFetchTestSuite* suite) {
+    suite->playerProvider.getPlayer()->applyRegistrationProfile(UUIDBytes(), "Demo", Team(), {});
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Welcome"), _, _));
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Demo"), _, _));
+    PlayerFetchWelcome welcome(&suite->playerProvider);
+    mountState(&welcome, &suite->device);
+    suite->fakeClock->advance(WELCOME_MESSAGE_TIMEOUT_MS);
+    welcome.onStateLoop(&suite->device);
+    EXPECT_FALSE(welcome.transitionToAwaken());
+    suite->fakeClock->advance(1);
+    welcome.onStateLoop(&suite->device);
+    EXPECT_TRUE(welcome.transitionToAwaken());
+    dismountState(&welcome, &suite->device);
+    EXPECT_FALSE(welcome.transitionToAwaken());
+}
+
+// Mounted with the PIN stored, as PIN entry leaves it; the FDN answer events come from #485.
+inline void mountFetchUser(PlayerFetchTestSuite* suite, FetchUserState* fetch) {
+    suite->playerProvider.setRegistrationPin("0007");
+    mountState(fetch, &suite->device);
+}
+
+inline void fetchUserFoundPlayerLeadsToWelcome(PlayerFetchTestSuite* suite) {
+    Player ada;
+    ada.applyRegistrationProfile(UUIDBytes(), "Ada", Team(), {});
+    FetchUserState fetch(&suite->playerProvider);
+    mountFetchUser(suite, &fetch);
+    EXPECT_FALSE(fetch.transitionToWelcome());
+    fetch.onPlayerFound(ada);
+    EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
+    EXPECT_TRUE(fetch.transitionToWelcome());
+    fetch.onPlayerLookupFailed();
+    fetch.onStateLoop(&suite->device);
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_FALSE(fetch.transitionToPinEntry()) << "a failure after the answer is ignored";
+    dismountState(&fetch, &suite->device);
+    EXPECT_FALSE(fetch.transitionToWelcome());
+    suite->playerProvider.clear();
+    fetch.onPlayerFound(ada);
+    EXPECT_FALSE(fetch.transitionToWelcome()) << "no lookup is outstanding after dismount";
+    EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "an ignored answer writes nothing";
+}
+
+// Shows "Unable to / Locate Asset" for the failure-page time, then returns to PIN entry.
+inline void expectFailurePageThenPinEntry(PlayerFetchTestSuite* suite, FetchUserState* fetch) {
+    fetch->onStateLoop(&suite->device);
+    EXPECT_FALSE(fetch->transitionToPinEntry());
+    fetch->onPlayerFound(Player());
+    EXPECT_FALSE(fetch->transitionToWelcome()) << "a late answer is ignored";
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS);
+    fetch->onStateLoop(&suite->device);
+    EXPECT_FALSE(fetch->transitionToPinEntry());
+    suite->fakeClock->advance(1);
+    fetch->onStateLoop(&suite->device);
+    EXPECT_TRUE(fetch->transitionToPinEntry());
+    dismountState(fetch, &suite->device);
+    EXPECT_FALSE(fetch->transitionToPinEntry());
+}
+
+inline void fetchUserFailedLookupShowsFailurePage(PlayerFetchTestSuite* suite) {
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Unable to"), _, _));
+    FetchUserState fetch(&suite->playerProvider);
+    mountFetchUser(suite, &fetch);
+    fetch.onPlayerLookupFailed();
+    expectFailurePageThenPinEntry(suite, &fetch);
+}
+
+inline void fetchUserTimeoutShowsFailurePage(PlayerFetchTestSuite* suite) {
+    EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Unable to"), _, _));
+    FetchUserState fetch(&suite->playerProvider);
+    mountFetchUser(suite, &fetch);
+    suite->fakeClock->advance(USER_DATA_FETCH_TIMEOUT_MS);
+    fetch.onStateLoop(&suite->device);
+    suite->fakeClock->advance(1);
+    expectFailurePageThenPinEntry(suite, &fetch);
 }

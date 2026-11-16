@@ -17,15 +17,19 @@ Terms used throughout:
 
 ### Requirement: Unprovisioned PDN state and prohibition of offline or PDN Wi-Fi registration
 
-An unprovisioned PDN SHALL wait for FDN-delivered registration without using Wi-Fi or offering offline fallback paths:
+An unprovisioned PDN SHALL wait for registration without using Wi-Fi or offering offline registration:
 
-- On boot, a PDN SHALL initialize with no registered profile and a nil 16-byte player UUID (never generating a random player ID at boot that could masquerade as a provisioned profile). After the boot splash hold, an unprovisioned PDN SHALL remain in the provisioning app waiting to be connected to an FDN.
-- A PDN SHALL NOT enable Wi-Fi station mode, SHALL NOT issue HTTP player-lookup requests directly, and SHALL NOT offer offline registration, PIN entry, or manual role selection.
+- On boot, a PDN SHALL initialize with no registered profile and a nil 16-byte player UUID (never generating a random player ID at boot that could masquerade as a provisioned profile). After the boot splash hold, an unprovisioned PDN SHALL remain in the provisioning app until registered or a role is chosen.
+- A PDN SHALL NOT enable Wi-Fi station mode, SHALL NOT issue HTTP player-lookup requests directly, and a release build SHALL NOT offer offline registration. The PDN's first provisioning screen SHALL be PIN entry. Until the FDN lookup exists (#485), any entered PIN SHALL lead to role selection with the build's identity: a test build applies its MAC test identity (Test-only registration), a release build keeps the nil player UUID as "Demo", and its matches are stored with it (`match-collection`). The PDN never looks a PIN up itself.
 - While waiting on the provisioning screen, the PDN SHALL remain eligible to receive peer-to-peer firmware distribution images and SHALL start seeding its running firmware image when the secondary button is released and held for `5000 ms` (`firmware-distribution`).
 
 #### Scenario: Unprovisioned PDN waits for FDN without Wi-Fi or offline fallback
-- **WHEN** a PDN boots with no provisioned profile and no FDN connected
-- **THEN** the PDN has a nil player UUID, stays on the provisioning screen with the peer-to-peer radio enabled, and never offers offline registration or manual role selection
+- **WHEN** a release-build PDN boots with no provisioned profile and no FDN connected
+- **THEN** the PDN has a nil player UUID, stays in the provisioning app on PIN entry with the peer-to-peer radio enabled, and never offers offline registration or looks a PIN up itself
+
+#### Scenario: Any PIN leads to role selection
+- **WHEN** a user completes PIN entry with any four digits, `0000` included
+- **THEN** the PDN shows role selection, and confirming a role applies the build's identity, shows `"Welcome"` and the player's name for `5000 ms`, and enters the hub
 
 #### Scenario: Holding secondary button for 5 seconds on provisioning screen starts firmware seeding
 - **WHEN** a user releases and holds the secondary button for `5000 ms` on the PDN provisioning screen
@@ -86,3 +90,11 @@ When an unprovisioned PDN in the provisioning app receives a resolved player pro
 #### Scenario: Lookup failure from cabled FDN displays asset error for 3000 ms and returns to provisioning screen
 - **WHEN** a player lookup at the Connected FDN fails or times out while the PDN is waiting in the provisioning app
 - **THEN** the PDN displays `"Unable to"` / `"Locate Asset"` for `3000 ms` and returns to the provisioning screen
+
+### Requirement: Test-only registration
+
+A PDN built as a test build, and a simulated PDN, SHALL register itself with a test player UUID derived from its MAC address, which never equals a server-issued player UUID, so its matches are stored and relayed. A release build SHALL contain no such path. Test builds SHALL NOT be flashed to event devices.
+
+#### Scenario: Two test PDNs record a match naming both
+- **WHEN** two test-build PDNs with different MAC addresses finish a match
+- **THEN** each stores a match record naming both test player UUIDs

@@ -64,11 +64,11 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    platformio upgrade
    ```
 
-4. Configure WiFi credentials (for ESP32-S3 builds):
+4. Configure WiFi credentials (for FDN builds):
    ```bash
    cp wifi_credentials.ini.example wifi_credentials.ini
    ```
-   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL, and for an FDN, its symbol-match codeword. This file is excluded from version control for security.
+   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL, and the FDN's symbol-match codeword. Only FDN builds need the file and only FDN images embed its values: a PDN has no Wi-Fi. This file is excluded from version control for security.
 
 5. Build the project using PlatformIO:
    ```bash
@@ -112,9 +112,9 @@ pio run -e esp32-s3_pdn_release
 
 ## Usage
 
-1. **Power on the PDN**: Once powered, the PDN will ask for your player registration code. This is a 4 digit code that is transmitted to the server to fetch player details. The **top button** cycles through digits, 0 through 9, while the **bottom button** functions as a confirm operation.
+1. **Power on the PDN**: Once powered, the PDN asks for a 4-digit pairing code. The **top button** cycles through digits, 0 through 9, while the **bottom button** confirms each digit.
 
-2. **Log in to Device**: After entering the code, the device will attempt to fetch data from the server. If there is no server running, it will default to offline mode. You will need to **confirm the player code**, **select a role - Hunter/Bounty** and then confirm. The device will launch into the idle state and you will then be able to practice quickdraw duels with another device.
+2. **Choose a role**: Until FDN registration lands (#485), any code leads to role selection: **select a role - Hunter/Bounty** and then confirm. The device shows Welcome with its player name, then launches into the idle state and you will then be able to practice quickdraw duels with another device.
 
 3. **For Simulated Development**: See CLI_README.md for development without a hardware device.
 

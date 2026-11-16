@@ -31,7 +31,7 @@ void ChooseTeamState::onStateMounted(PDN* pdn) {
                                          ? Player::testPlayerIdFromMac(chooseTeamState->macAddress)
                                          : UUIDBytes(),
                                          chooseTeamState->testIdentity ? "Test" : "Demo", team, {});
-        chooseTeamState->transitionToHubState = true;
+        chooseTeamState->transitionToWelcomeState = true;
     },
     this, ButtonInteraction::CLICK);
 }
@@ -46,13 +46,13 @@ void ChooseTeamState::onStateLoop(PDN* pdn) {
 void ChooseTeamState::onStateDismounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
-    transitionToHubState = false;
+    transitionToWelcomeState = false;
     macAddress = nullptr;
     displayIsDirty = false;
     hunterSelected = true;
 }
 
-bool ChooseTeamState::transitionToHub() const { return transitionToHubState; }
+bool ChooseTeamState::transitionToWelcome() const { return transitionToWelcomeState; }
 
 void ChooseTeamState::renderUi(PDN* pdn) const {
     pdn->getDisplay()->invalidateScreen();

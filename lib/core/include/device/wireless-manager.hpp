@@ -38,7 +38,9 @@ static const char* WM_TAG = "WirelessManager";
  */
 class WirelessManager {
 public:
-    WirelessManager(PeerCommsInterface* peerComms, HttpClientInterface* httpClient)
+    /** A null @p httpClient keeps the manager on ESP-NOW and refuses every HTTP request. */
+    explicit WirelessManager(PeerCommsInterface* peerComms,
+                             HttpClientInterface* httpClient = nullptr)
         : peerComms(peerComms)
         , httpClient(httpClient)
         , currentMode(WirelessMode::ESPNOW) {  // Start in ESP-NOW mode (safer default)
@@ -50,15 +52,21 @@ public:
     void initialize() {
         LOG_I(WM_TAG, "Initializing wireless manager...");
 
-        httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
+        if (httpClient != nullptr) {
+            httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
+        }
         peerComms->setPeerCommsState(PeerCommsState::ENABLED);
         currentMode = WirelessMode::ESPNOW;
 
         LOG_I(WM_TAG, "Wireless manager initialized in ESP-NOW mode");
     }
 
-    /** Disables ESP-NOW and connects the HTTP client over WiFi. */
+    /** Disables ESP-NOW and connects the HTTP client over WiFi; does nothing without one. */
     void enableWifiMode() {
+        if (httpClient == nullptr) {
+            LOG_E(WM_TAG, "Cannot enable WiFi mode - no HTTP client");
+            return;
+        }
         if (currentMode == WirelessMode::WIFI &&
             httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
             LOG_D(WM_TAG, "Already in WiFi mode");
@@ -94,7 +102,8 @@ public:
 
         LOG_I(WM_TAG, "Switching to ESP-NOW mode...");
 
-        if (httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
+        if (httpClient != nullptr &&
+            httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
             LOG_D(WM_TAG, "Disconnecting HTTP client...");
             httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
         }
@@ -120,6 +129,10 @@ public:
 
     /** Queues an HTTP request, automatically switching to WiFi mode if needed. */
     bool queueHttpRequest(HttpRequest&& request) {
+        if (httpClient == nullptr) {
+            LOG_E(WM_TAG, "Cannot queue HTTP request - no HTTP client");
+            return false;
+        }
         if (currentMode != WirelessMode::WIFI) {
             LOG_I(WM_TAG, "Auto-switching to WiFi mode for HTTP request");
             enableWifiMode();

@@ -49,7 +49,6 @@ Type commands at the prompt and press Enter:
 | `peer <src> <dst> <type> [hex]` | Send ESP-NOW packet between devices |
 | `inject <dst> <type> [hex]` | Inject ESP-NOW packet from external source |
 | `state` | Show all device states |
-| `http [online\|offline]` | Toggle mock HTTP server state |
 
 ## UI Panel
 
@@ -61,7 +60,6 @@ The selected device displays a detailed panel showing:
 - **LEDs**: Left/Right light strips with RGB values
 - **Serial Jacks**: Buffer sizes, connection status, TX/RX history
 - **ESP-NOW**: Connection state, MAC address, packet history
-- **HTTP**: Mock server status, request history
 - **Errors**: Recent LOG_E messages
 
 ## Serial Cable Simulation
@@ -76,14 +74,6 @@ Example workflow:
 cable 0 1          # Connect hunter (0) to bounty (1)
 disconnect 0       # Disconnect device 0's cable
 ```
-
-## Mock HTTP Server
-
-The simulator includes a mock HTTP server that handles:
-
-- `GET /api/players/{id}` - Returns player data
-
-Use `http offline` to simulate network failures.
 
 ## Example Session
 
@@ -106,7 +96,6 @@ The CLI simulator reuses the core PDN game logic with native driver implementati
 
 - `NativeSerialDriver` - Buffered serial with cable broker integration
 - `NativePeerCommsDriver` - ESP-NOW simulation via `NativePeerBroker`
-- `NativeHttpClientDriver` - Mock HTTP via `MockHttpServer`
 - `NativeDisplayDriver` - Text-based display capture
 - `NativeLightStripDriver` - LED state tracking
 - `NativeButtonDriver` - Callback-based button simulation
