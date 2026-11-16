@@ -1102,6 +1102,22 @@ TEST_F(PlayerFetchTestSuite, pinEntryAndFirmwareUpdateLeadToEachOther) {
     pinEntryAndFirmwareUpdateLeadToEachOther(this);
 }
 
+TEST_F(PlayerFetchTestSuite, welcomeShowsPlayerNameThenHandsOff) {
+    welcomeShowsPlayerNameThenHandsOff(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserFoundPlayerLeadsToWelcome) {
+    fetchUserFoundPlayerLeadsToWelcome(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserFailedLookupShowsFailurePage) {
+    fetchUserFailedLookupShowsFailurePage(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserTimeoutShowsFailurePage) {
+    fetchUserTimeoutShowsFailurePage(this);
+}
+
 // ============================================
 // QUICKDRAW MATCH UPLOAD (PROTOBUF) TESTS
 // ============================================

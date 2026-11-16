@@ -296,20 +296,25 @@ inline void quickdrawCrossAppEdgesAreAppTransitions() {
 }
 
 // The pre-split graph's 48th edge. It used to sit on the PlayerRegistrationApp
-// object; nothing checks an app's own transition list, so it lives on ChooseTeam.
+// object; nothing checks an app's own transition list, so it lives on WelcomeMessage,
+// the end of PinEntry -> ChooseTeam -> WelcomeMessage.
 inline void registrationHandsOffToHub() {
     QuickdrawAppsForTest apps;
 
-    ASSERT_EQ(apps.playerFetch->getStateMap().size(), 2u);
+    ASSERT_EQ(apps.playerFetch->getStateMap().size(), 3u);
     State* pinEntry = apps.playerFetch->getStateMap()[0];
     State* chooseTeam = apps.playerFetch->getStateMap()[1];
+    State* welcome = apps.playerFetch->getStateMap()[2];
     EXPECT_EQ(pinEntry->getStateId(), PlayerFetchStateId::PIN_ENTRY);
     ASSERT_EQ(pinEntry->getTransitions().size(), 1u);
     EXPECT_EQ(pinEntry->getTransitions()[0]->getNextState(), chooseTeam);
     EXPECT_EQ(chooseTeam->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
     ASSERT_EQ(chooseTeam->getTransitions().size(), 1u);
+    EXPECT_EQ(chooseTeam->getTransitions()[0]->getNextState(), welcome);
+    EXPECT_EQ(welcome->getStateId(), PlayerFetchStateId::WELCOME);
+    ASSERT_EQ(welcome->getTransitions().size(), 1u);
 
-    const StateTransition* edge = chooseTeam->getTransitions()[0];
+    const StateTransition* edge = welcome->getTransitions()[0];
     EXPECT_EQ(edge->getNextState(), nullptr);
     EXPECT_EQ(edge->getTargetAppId().id, HUB_APP_ID);
     // Registration names no entry state: it hands control to the hub and the hub

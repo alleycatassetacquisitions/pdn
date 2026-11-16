@@ -10,11 +10,16 @@ class FirmwareUpdateManager;
 
 namespace PlayerFetchStateId {
 constexpr int PIN_ENTRY = 0;
+constexpr int FETCH_USER = 1;
 constexpr int CHOOSE_TEAM = 2;
+constexpr int WELCOME = 4;
 constexpr int FIRMWARE_UPDATE = 31;
 }  // namespace PlayerFetchStateId
 
 constexpr unsigned long PLAYER_FETCH_FIRMWARE_HOLD_MS = 5000;
+constexpr int USER_DATA_FETCH_TIMEOUT_MS = 10000;
+constexpr int FETCH_FAILURE_PAGE_TIMEOUT_MS = 3000;
+constexpr int WELCOME_MESSAGE_TIMEOUT_MS = 5000;
 
 class PinEntryState : public TypedState<PDN> {
 public:
@@ -47,6 +52,52 @@ private:
     int inputId[DIGIT_COUNT] = {0, 0, 0, 0};
 };
 
+/**
+ * Waits for an FDN to look the entered PIN up. Not in the PlayerFetch flow yet: the
+ * registration project (#485) wires it in and calls the two lookup events below.
+ */
+class FetchUserState : public TypedState<PDN> {
+public:
+    /** Loading screen while the FDN lookup for the stored PIN is outstanding. */
+    explicit FetchUserState(PlayerProvider* playerProvider);
+    /** @copydoc TypedState::~TypedState */
+    ~FetchUserState() override;
+
+    /**
+     * The FDN found the player; call after its profile is applied to the provider's player.
+     * Leads to Welcome. Ignored when no lookup is outstanding (timed out or already answered).
+     */
+    void onPlayerFound();
+    /**
+     * The FDN could not find the player. Shows the failure page, then returns to PIN entry.
+     * Ignored when no lookup is outstanding (timed out or already answered).
+     */
+    void onPlayerLookupFailed();
+    /** @return true when the found player's profile is stored and welcome should mount. */
+    bool transitionToWelcome() const;
+    /** @return true when the lookup failed or timed out and the failure page finished. */
+    bool transitionToPinEntry() const;
+    /** @copydoc TypedState::onStateMounted */
+    void onStateMounted(PDN* pdn) override;
+    /** @copydoc TypedState::onStateLoop */
+    void onStateLoop(PDN* pdn) override;
+    /** @copydoc TypedState::onStateDismounted */
+    void onStateDismounted(PDN* pdn) override;
+
+private:
+    void showLoadingGlyphs(PDN* pdn);
+    void showAssetNotFoundPage(PDN* pdn);
+    void beginFailurePage(PDN* pdn);
+
+    PlayerProvider* playerProvider = nullptr;
+    SimpleTimer fetchTimer;
+    SimpleTimer failurePageTimer;
+    bool transitionToWelcomeState = false;
+    bool transitionToPinEntryState = false;
+    bool showingFailurePage = false;
+    bool failurePagePending = false;
+};
+
 class ChooseTeamState : public TypedState<PDN> {
 public:
     /** Role picker: MAC test UUID and "Test" if @p testIdentity, else nil UUID and "Demo". */
@@ -60,8 +111,8 @@ public:
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
-    /** @return true once a role is confirmed and the hub should launch. */
-    bool transitionToHub() const;
+    /** @return true once a role is confirmed and the welcome screen should mount. */
+    bool transitionToWelcome() const;
 
 private:
     void renderUi(PDN* pdn) const;
@@ -69,7 +120,29 @@ private:
     PlayerProvider* playerProvider = nullptr;
     const uint8_t* macAddress = nullptr;
     bool testIdentity = false;
-    bool transitionToHubState = false;
+    bool transitionToWelcomeState = false;
     bool displayIsDirty = false;
     bool hunterSelected = true;
+};
+
+class PlayerFetchWelcome : public TypedState<PDN> {
+public:
+    /** Short welcome screen with the player's name before the hub. */
+    explicit PlayerFetchWelcome(PlayerProvider* playerProvider);
+    /** @copydoc TypedState::~TypedState */
+    ~PlayerFetchWelcome() override;
+
+    /** @copydoc TypedState::onStateMounted */
+    void onStateMounted(PDN* pdn) override;
+    /** @copydoc TypedState::onStateLoop */
+    void onStateLoop(PDN* pdn) override;
+    /** @copydoc TypedState::onStateDismounted */
+    void onStateDismounted(PDN* pdn) override;
+    /** @return true when the welcome timer expires. */
+    bool transitionToAwaken() const;
+
+private:
+    PlayerProvider* playerProvider = nullptr;
+    SimpleTimer welcomeMessageTimer;
+    bool transitionToAwakenState = false;
 };
