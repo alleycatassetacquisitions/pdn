@@ -938,7 +938,7 @@ TEST_F(MatchManagerTestSuite, matchNeitherSidePressedIsStored) {
     EXPECT_EQ(storedMatch(1).getWinnerPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
 }
 
-// A side that never pressed loses on both devices, so that record is kept.
+// A side that never pressed loses on both devices.
 TEST_F(MatchManagerTestSuite, matchTheOpponentNeverPressedIsStored) {
     setupAckedMatchAsHunter();
     matchManager->setHunterDrawTime(250);
