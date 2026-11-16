@@ -12,12 +12,11 @@
 #include "utils/simple-timer.hpp"
 
 enum IdleStateId {
-    IDLE                = 0,
-    PLAYER_DETECTED     = 1,
-    AUTHORIZED_PDN      = 2,
-    UNAUTHORIZED_PDN    = 3,
+    IDLE = 0,
+    PLAYER_DETECTED = 1,
+    AUTHORIZED_PDN = 2,
+    UNAUTHORIZED_PDN = 3,
     CONNECTION_DETECTED = 4,
-    UPLOAD_PENDING      = 5,
 };
 
 // ---------------------------------------------------------------------------
@@ -26,7 +25,6 @@ enum IdleStateId {
 class IdleState : public FDNConnectState {
 public:
     IdleState(RemotePlayerManager* remotePlayerManager,
-              HackedPlayersManager* hackedPlayersManager,
               FDNConnectWirelessManager* fdnConnectWirelessManager,
               RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~IdleState();
@@ -39,20 +37,15 @@ public:
 
     bool transitionToPlayerDetected();
     bool transitionToConnectionDetected();
-    bool transitionToUploadPending();
 
 private:
     RemotePlayerManager* remotePlayerManager;
-    HackedPlayersManager* hackedPlayersManager;
     FDNConnectWirelessManager* fdnConnectWirelessManager;
 
     std::function<void(const std::string&, const uint8_t*)> connectionHandler;
 
-    SimpleTimer uploadTimer;
     bool connectionResolved = false;
-    bool wasConnected       = false;
-
-    static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+    bool wasConnected = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -182,34 +175,4 @@ private:
 
     static constexpr int SWITCH_DELAY_MS = 5000;
     const char* ACCESS_DENIED_MESSAGE[2] = {"ACCESS", "DENIED"};
-};
-
-// ---------------------------------------------------------------------------
-// UploadPendingHacksState  (no connection required, so uses plain State)
-// ---------------------------------------------------------------------------
-class UploadPendingHacksState : public TypedState<FDN> {
-public:
-    explicit UploadPendingHacksState(HackedPlayersManager* hackedPlayersManager);
-    ~UploadPendingHacksState();
-
-    void onStateMounted(FDN* fdn) override;
-    void onStateLoop(FDN* fdn) override;
-    void onStateDismounted(FDN* fdn) override;
-
-    bool transitionToIdle();
-
-private:
-    HackedPlayersManager* hackedPlayersManager;
-
-    SimpleTimer glyphTimer;
-    SimpleTimer fallbackTimer;
-    SimpleTimer failureTimer;
-    bool contentReady = false;
-    bool showingFailure = false;
-    int pendingCount = 0;
-    int  completedCount = 0;
-    int failedCount = 0;
-
-    static constexpr int FALLBACK_TIMEOUT_MS = 15000;
-    static constexpr int FAILURE_DISPLAY_MS = 2000;
 };

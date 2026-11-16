@@ -181,8 +181,8 @@ static void setup() {
     // Register ESP-NOW packet handlers
     setupEspNow(remoteDebugManager, peerCommsDriver);
 
-    // The PDN's crash records go to an FDN through the record relay, not over HTTP.
-    crashLogger = new CrashLogger(storageDriver, pdn->getWirelessManager());
+    // The PDN's crash records go to an FDN through the record relay.
+    crashLogger = new CrashLogger(storageDriver);
     crashLogger->capture(crashedBootUptimeMs);
 
     gameSession = new GameSession(playerProvider->getPlayer(), pdn, symbolWirelessManager);

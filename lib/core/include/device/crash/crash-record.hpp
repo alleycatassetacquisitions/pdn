@@ -71,3 +71,27 @@ inline CrashPacket toCrashPacket(const CrashRecord& record) {
     memcpy(packet.commitHash, record.commitHash, COMMIT_HASH_LENGTH);
     return packet;
 }
+
+/**
+ * @return The record @p packet carries. A packet comes off the radio from any
+ * PDN, so a string with no terminator is cut at its last byte.
+ */
+inline CrashRecord fromCrashPacket(const CrashPacket& packet) {
+    CrashRecord record{};
+    record.crashNumber = packet.crashNumber;
+    record.timestamp = packet.timestamp;
+    record.resetReason = packet.resetReason;
+    // An empty task name marks a record without core dump details.
+    if (packet.taskName[0] != '\0') {
+        CoreDumpDetails& details = record.coreDumpDetails.emplace();
+        details.programCounter = packet.programCounter;
+        if (packet.exceptionCause != CRASH_PACKET_NO_EXCEPTION_CAUSE) {
+            details.exceptionCause = packet.exceptionCause;
+        }
+        memcpy(details.taskName, packet.taskName, TASK_NAME_LENGTH - 1);
+        details.taskName[TASK_NAME_LENGTH - 1] = '\0';
+    }
+    memcpy(record.commitHash, packet.commitHash, COMMIT_HASH_LENGTH - 1);
+    record.commitHash[COMMIT_HASH_LENGTH - 1] = '\0';
+    return record;
+}

@@ -30,6 +30,7 @@
 #include "crash-codec-tests.hpp"
 #include "device-player-codec-tests.hpp"
 #include "fdn-record-store-tests.hpp"
+#include "fdn-record-uploader-tests.hpp"
 #include "record-relay-tests.hpp"
 #include "player-fetch-tests.hpp"
 #include "player-provider-tests.hpp"
@@ -1011,6 +1012,14 @@ TEST_F(CrashCodecTestSuite, keepsExceptionCauseZero) { crashCodecKeepsExceptionC
 
 TEST_F(CrashCodecTestSuite, omitsMissingExceptionCause) {
     crashCodecOmitsMissingExceptionCause(this);
+}
+
+TEST_F(CrashCodecTestSuite, encodesStoredPacketUnderSenderMac) {
+    crashCodecEncodesStoredPacketUnderSenderMac(this);
+}
+
+TEST_F(CrashCodecTestSuite, storedPacketWithoutDetailsOmitsThem) {
+    crashCodecStoredPacketWithoutDetailsOmitsThem(this);
 }
 
 TEST_F(CrashCodecTestSuite, returnsZeroWhenBufferTooSmall) {

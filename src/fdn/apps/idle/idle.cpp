@@ -13,17 +13,15 @@ IdleApp::IdleApp(RemotePlayerManager* remotePlayerManager,
     , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
 
 void IdleApp::populateStateMap() {
-    auto* idleState = new IdleState(
-        remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager, remoteDeviceCoordinator);
+    auto* idleState =
+    new IdleState(remotePlayerManager, fdnConnectWirelessManager, remoteDeviceCoordinator);
     auto* playerDetectedState = new PlayerDetectedState(
         remotePlayerManager, hackedPlayersManager,
         fdnConnectWirelessManager, remoteDeviceCoordinator);
     auto* authDetectedState         = new AuthDetectedState(remoteDeviceCoordinator, fdnConnectWirelessManager);
     auto* unauthorizedDetectedState = new UnauthorizedDetectedState(remoteDeviceCoordinator);
-    auto* connectionDetectedState   = new ConnectionDetectedState(
-        hackedPlayersManager, fdnConnectWirelessManager, remoteDeviceCoordinator);
-    auto* uploadPendingState = new UploadPendingHacksState(hackedPlayersManager);
+    auto* connectionDetectedState = new ConnectionDetectedState(
+    hackedPlayersManager, fdnConnectWirelessManager, remoteDeviceCoordinator);
 
     // Shared connect handler: forwards the player ID to ConnectionDetectedState.
     auto connectHandler = [connectionDetectedState](
@@ -36,9 +34,7 @@ void IdleApp::populateStateMap() {
     idleState->addTransition(new StateTransition(
         std::bind(&IdleState::transitionToPlayerDetected, idleState), playerDetectedState));
     idleState->addTransition(new StateTransition(
-        std::bind(&IdleState::transitionToConnectionDetected, idleState), connectionDetectedState));
-    idleState->addTransition(new StateTransition(
-        std::bind(&IdleState::transitionToUploadPending, idleState), uploadPendingState));
+    std::bind(&IdleState::transitionToConnectionDetected, idleState), connectionDetectedState));
 
     playerDetectedState->addTransition(new StateTransition(
         std::bind(&PlayerDetectedState::transitionToIdle, playerDetectedState), idleState));
@@ -67,13 +63,9 @@ void IdleApp::populateStateMap() {
         std::bind(&UnauthorizedDetectedState::transitionToHacking, unauthorizedDetectedState),
         StateId(HACKING_APP_ID));
 
-    uploadPendingState->addTransition(new StateTransition(
-        std::bind(&UploadPendingHacksState::transitionToIdle, uploadPendingState), idleState));
-
     stateMap.push_back(idleState);                 // [0] IDLE
     stateMap.push_back(playerDetectedState);        // [1] PLAYER_DETECTED
     stateMap.push_back(authDetectedState);          // [2] AUTHORIZED_PDN
     stateMap.push_back(unauthorizedDetectedState);  // [3] UNAUTHORIZED_PDN
     stateMap.push_back(connectionDetectedState);    // [4] CONNECTION_DETECTED
-    stateMap.push_back(uploadPendingState);         // [5] UPLOAD_PENDING
 }

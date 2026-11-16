@@ -19,27 +19,27 @@ bool appendToPayload(pb_ostream_t* stream, const pb_byte_t* buffer, size_t count
     return true;
 }
 
-alleycat_device_QuickdrawMatch toMessage(const QuickdrawMatchRecord& record) {
+alleycat_device_QuickdrawMatch toMessage(const MatchRecord& record) {
     alleycat_device_QuickdrawMatch message = alleycat_device_QuickdrawMatch_init_zero;
-    record.matchId.format(message.id);
-    record.playerAId.format(message.player_a_id);
-    record.playerBId.format(message.player_b_id);
+    record.matchUuid.format(message.id);
+    record.hunterPlayerId.format(message.player_a_id);
+    record.bountyPlayerId.format(message.player_b_id);
     record.winnerPlayerId.format(message.winner_player_id);
 
-    if (!record.playerATeamId.isZero()) {
-        record.playerATeamId.format(message.player_a_team_id);
+    if (!record.hunterTeamId.isZero()) {
+        record.hunterTeamId.format(message.player_a_team_id);
         message.has_player_a_team_id = true;
     }
-    if (!record.playerBTeamId.isZero()) {
-        record.playerBTeamId.format(message.player_b_team_id);
+    if (!record.bountyTeamId.isZero()) {
+        record.bountyTeamId.format(message.player_b_team_id);
         message.has_player_b_team_id = true;
     }
 
     // Zero is a valid measurement, but the server rejects an absent one.
     message.has_player_a_draw_time_ms = true;
-    message.player_a_draw_time_ms = record.playerADrawTimeMs;
+    message.player_a_draw_time_ms = record.hunterDrawTimeMs;
     message.has_player_b_draw_time_ms = true;
-    message.player_b_draw_time_ms = record.playerBDrawTimeMs;
+    message.player_b_draw_time_ms = record.bountyDrawTimeMs;
     message.has_occurred_at_unix_ms = true;
     message.occurred_at_unix_ms = record.occurredAtUnixMs;
     return message;
@@ -48,7 +48,7 @@ alleycat_device_QuickdrawMatch toMessage(const QuickdrawMatchRecord& record) {
 bool encodeMatches(pb_ostream_t* stream, const pb_field_t* field, void* const* arg) {
     const MatchBatch* batch = static_cast<const MatchBatch*>(*arg);
     for (size_t index = 0; index < batch->matchCount; index++) {
-        QuickdrawMatchRecord record;
+        MatchRecord record;
         if (!(*batch->source)(index, record)) {
             return false;
         }

@@ -90,9 +90,6 @@ public:
         }
     }
 
-    /** True until every queued request has had its callback. */
-    bool hasQueuedRequests() override { return !httpQueue.empty(); }
-
     void disconnect() override {
         cleanupHttpClient();
         // Every request still queued, whether in flight, waiting out a retry
@@ -516,7 +513,7 @@ private:
         snprintf(errorMsg, sizeof(errorMsg), "HTTP Error: %d", statusCode);
         const WirelessError errorType =
             statusCode >= 500 ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
-        completeFront(false, {errorType, errorMsg});
+        completeFront(false, {errorType, errorMsg, statusCode});
     }
 
     void checkOngoingRequests() {

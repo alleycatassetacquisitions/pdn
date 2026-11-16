@@ -15,8 +15,8 @@ constexpr const char POST_QUICKDRAW_MATCHES_ENDPOINT[] = "/quickdraw-matches";
 /**
  * POST /quickdraw-matches — uploads @p matchCount matches pulled from @p source as
  * protobuf. @p onRejection receives each rejected match, then @p onSuccess receives
- * the totals; an error leaves the outcome unknown, and retrying the same match IDs
- * is safe.
+ * the totals; an error other than 400/413/415 leaves the outcome unknown, and
+ * retrying the same match IDs is safe.
  *
  * @param matchCount  1 to QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH; otherwise
  *                    @p onError fires with INVALID_STATE and nothing is queued.
