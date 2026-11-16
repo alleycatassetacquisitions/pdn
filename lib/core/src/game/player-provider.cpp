@@ -30,8 +30,6 @@ void PlayerProvider::setRegistrationPin(const char* pin) {
     pinStored = registrationPin[0] != '\0';
 }
 
-bool PlayerProvider::hasRegistrationPin() const { return pinStored; }
-
 const char* PlayerProvider::getRegistrationPin() const {
     if (!pinStored) {
         LOG_E(TAG, "getRegistrationPin called with no stored PIN");

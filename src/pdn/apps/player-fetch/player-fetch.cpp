@@ -14,7 +14,7 @@ PlayerFetchApp::~PlayerFetchApp() {
 }
 
 void PlayerFetchApp::populateStateMap() {
-    PinEntryState* pinEntry = new PinEntryState(playerProvider);
+    PinEntryState* pinEntry = new PinEntryState(playerProvider, firmwareUpdateManager);
     ChooseTeamState* chooseTeam = new ChooseTeamState(playerProvider, testIdentity);
 
     pinEntry->addTransition(

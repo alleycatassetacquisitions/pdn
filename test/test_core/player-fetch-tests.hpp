@@ -60,7 +60,7 @@ inline void pinEntryRoutesPinToChooseTeam(PlayerFetchTestSuite* suite, const int
         secondaryPress = fn;
         ctx = buttonCtx;
     }));
-    PinEntryState pinEntry(&suite->playerProvider);
+    PinEntryState pinEntry(&suite->playerProvider, nullptr);
     mountState(&pinEntry, &suite->device);
     ASSERT_NE(secondaryPress, nullptr);
     for (int index = 0; index < 4; index++) {
