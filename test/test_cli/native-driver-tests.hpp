@@ -15,6 +15,8 @@
 #include "game/quickdraw-states.hpp"
 #include "apps/player-fetch/player-fetch.hpp"
 #include "apps/player-fetch/player-fetch-states.hpp"
+#include "alleycat-server/fdn-record-store.hpp"
+#include "wireless/remote-player-manager.hpp"
 
 // ============================================
 // NATIVE SERIAL DRIVER TEST SUITE
@@ -1152,6 +1154,32 @@ void cliDuelStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
     }
     EXPECT_EQ(records[0].matchUuid, records[1].matchUuid);
     EXPECT_EQ(records[0].winnerPlayerId, records[1].winnerPlayerId);
+}
+
+// Test: after the duel, one FDN beacon in the simulator takes both PDNs' records into a real store
+void cliFdnBeaconCollectsBothDuelRecords(CliSimulationTestSuite* suite) {
+    cliDuelStoresOneRecordOnEachPdn(suite);
+    NativePeerCommsDriver fdnRadio("cli-fdn-radio");
+    fdnRadio.initialize();
+    fdnRadio.enable();
+    WirelessManager fdnWireless(&fdnRadio, nullptr);
+    NativePrefsDriver fdnStorage("cli-fdn-prefs", {FDN_RECORD_STORE_NAMESPACE});
+    FdnRecordStore store(&fdnWireless, &fdnStorage);
+    RemotePlayerManager beacon(&fdnRadio);
+    Player fdnPlayer;
+
+    beacon.StartBroadcastingPlayerInfo(&fdnPlayer, 12000, DeviceType::FDN);
+    for (int tick = 0; tick < 50; tick++) {
+        cli::advanceSimulation(suite->devices);
+        fdnRadio.exec();
+        store.sync();
+    }
+
+    ASSERT_EQ(store.getMatchRecords().getStoredCount(), 2u);
+    for (cli::DeviceInstance& device : suite->devices) {
+        EXPECT_EQ(device.gameSession->getContext().matchManager->getCollectedHighWaterMark(), 1u);
+    }
+    NativePeerBroker::getInstance().deliverPackets();
 }
 
 // Test: role command shows selected device's role

@@ -18,9 +18,7 @@ const std::array<GameSession::PacketRoute, 4>& GameSession::packetRoutes() {
 
 // The initializer list is in declaration order, which is also dependency order:
 // both managers read the two device-owned managers pulled off the PDN above them.
-GameSession::GameSession(Player* player,
-                         Device* pdn,
-                         SymbolWirelessManager* symbolWirelessManager)
+GameSession::GameSession(Player* player, Device* pdn, SymbolWirelessManager* symbolWirelessManager)
     : player(player)
     , pdn(pdn)
     , wirelessManager(pdn->getWirelessManager())
@@ -28,7 +26,8 @@ GameSession::GameSession(Player* player,
     , symbolWirelessManager(symbolWirelessManager)
     , matchManager(new MatchManager(wirelessManager))
     , posseManager(new PosseManager(player, wirelessManager, remoteDeviceCoordinator))
-    , shootoutManager(new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator)) {
+    , shootoutManager(new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator))
+    , recordRelay(new RecordRelay(wirelessManager, matchManager, shootoutManager)) {
     this->shootoutManager->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager);
 
@@ -75,6 +74,9 @@ GameSession::~GameSession() {
         wirelessManager->clearEspNowPacketHandler(route.type);
     }
     symbolWirelessManager = nullptr;
+    // First of the owned objects: it reads the match and shootout managers.
+    delete recordRelay;
+    recordRelay = nullptr;
     // Managers before matchManager: shootoutManager holds a raw MatchManager*
     // and dereferences it when priming a bracket match.
     delete posseManager;
@@ -123,8 +125,13 @@ void GameSession::sync() {
     // match.
     if (shootoutManager) shootoutManager->sync();
     if (symbolWirelessManager) symbolWirelessManager->sync();
+    if (recordRelay) recordRelay->sync();
 
     logRetryStats();
+}
+
+void GameSession::setCrashRecordSource(RecordSource<CrashRecordTraits>* crashRecordSource) {
+    recordRelay->setCrashRecordSource(crashRecordSource);
 }
 
 void GameSession::logRetryStats() {

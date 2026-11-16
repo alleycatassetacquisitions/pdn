@@ -976,20 +976,24 @@ TEST_F(MatchManagerTestSuite, fullRingRefusesTheNextMatch) {
 }
 
 TEST_F(MatchManagerTestSuite, markCollectedMovesTheFirstPendingRecord) {
-    EXPECT_EQ(matchManager->getFirstPendingSequenceNumber(), 0u);
+    uint32_t pending = 0;
+    uint8_t record[sizeof(MatchRecord)];
+    EXPECT_FALSE(matchManager->readLowestPending(pending, record));
     for (int i = 0; i < 3; i++) {
         ASSERT_TRUE(playHunterWin());
     }
-    EXPECT_EQ(matchManager->getFirstPendingSequenceNumber(), 1u);
+    ASSERT_TRUE(matchManager->readLowestPending(pending, record));
+    EXPECT_EQ(pending, 1u);
 
     EXPECT_TRUE(matchManager->markCollected(2));
     EXPECT_EQ(matchManager->getCollectedHighWaterMark(), 2u);
-    EXPECT_EQ(matchManager->getFirstPendingSequenceNumber(), 3u);
+    ASSERT_TRUE(matchManager->readLowestPending(pending, record));
+    EXPECT_EQ(pending, 3u);
     EXPECT_FALSE(matchManager->markCollected(2)) << "already collected";
     EXPECT_FALSE(matchManager->markCollected(4)) << "never stored";
 
     EXPECT_TRUE(matchManager->markCollected(3));
-    EXPECT_EQ(matchManager->getFirstPendingSequenceNumber(), 0u);
+    EXPECT_FALSE(matchManager->readLowestPending(pending, record));
 }
 
 // Matches stored by older firmware stay byte for byte.

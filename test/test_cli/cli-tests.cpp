@@ -431,6 +431,10 @@ TEST_F(CliSimulationTestSuite, DuelStoresOneRecordOnEachPdn) {
     cliDuelStoresOneRecordOnEachPdn(this);
 }
 
+TEST_F(CliSimulationTestSuite, FdnBeaconCollectsBothDuelRecords) {
+    cliFdnBeaconCollectsBothDuelRecords(this);
+}
+
 // ============================================
 // MAIN
 // ============================================
