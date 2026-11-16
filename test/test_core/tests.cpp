@@ -1090,8 +1090,8 @@ TEST_F(PlayerFetchTestSuite, pinEntryRoutesAnyOtherPinToChooseTeam) {
     pinEntryRoutesPinToChooseTeam(this, digits, "0007");
 }
 
-TEST_F(PlayerFetchTestSuite, chooseTeamTestIdentityRegistersMacPlayerAndEntersHub) {
-    chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(this);
+TEST_F(PlayerFetchTestSuite, chooseTeamTestIdentityRegistersMacPlayerAndEntersWelcome) {
+    chooseTeamTestIdentityRegistersMacPlayerAndEntersWelcome(this);
 }
 
 TEST_F(PlayerFetchTestSuite, chooseTeamDemoKeepsNilPlayerId) {
