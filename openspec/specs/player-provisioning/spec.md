@@ -20,12 +20,16 @@ Terms used throughout:
 An unprovisioned PDN SHALL wait for registration without using Wi-Fi or offering offline registration:
 
 - On boot, a PDN SHALL initialize with no registered profile and a nil 16-byte player UUID (never generating a random player ID at boot that could masquerade as a provisioned profile). After the boot splash hold, an unprovisioned PDN SHALL remain in the provisioning app until registered or a role is chosen.
-- A PDN SHALL NOT enable Wi-Fi station mode, SHALL NOT issue HTTP player-lookup requests directly, and a release build SHALL NOT offer offline registration or PIN entry. It MAY offer role selection; the player keeps the nil player UUID, and its matches are stored with it (`match-collection`).
+- A PDN SHALL NOT enable Wi-Fi station mode, SHALL NOT issue HTTP player-lookup requests directly, and a release build SHALL NOT offer offline registration. The PDN's first provisioning screen SHALL be PIN entry. Until the FDN lookup exists (#485), any entered PIN SHALL lead to role selection with the build's identity: a test build applies its MAC test identity (Test-only registration), a release build keeps the nil player UUID as "Demo", and its matches are stored with it (`match-collection`). The PDN never looks a PIN up itself.
 - While waiting on the provisioning screen, the PDN SHALL remain eligible to receive peer-to-peer firmware distribution images and SHALL start seeding its running firmware image when the secondary button is released and held for `5000 ms` (`firmware-distribution`).
 
 #### Scenario: Unprovisioned PDN waits for FDN without Wi-Fi or offline fallback
 - **WHEN** a release-build PDN boots with no provisioned profile and no FDN connected
-- **THEN** the PDN has a nil player UUID, stays in the provisioning app with the peer-to-peer radio enabled, and never offers offline registration or PIN entry
+- **THEN** the PDN has a nil player UUID, stays in the provisioning app on PIN entry with the peer-to-peer radio enabled, and never offers offline registration or looks a PIN up itself
+
+#### Scenario: Any PIN leads to role selection
+- **WHEN** a user completes PIN entry with any four digits, `0000` included
+- **THEN** the PDN shows role selection, and confirming a role applies the build's identity and enters the hub
 
 #### Scenario: Holding secondary button for 5 seconds on provisioning screen starts firmware seeding
 - **WHEN** a user releases and holds the secondary button for `5000 ms` on the PDN provisioning screen

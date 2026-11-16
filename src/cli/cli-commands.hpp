@@ -545,10 +545,9 @@ private:
         dev.stateHistory.clear();
         dev.lastStateId = -1;
 
-        dev.pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID),
-                              StateId(PlayerFetchStateId::CHOOSE_TEAM));
+        dev.pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID), StateId(PlayerFetchStateId::PIN_ENTRY));
 
-        result.message = "Rebooted " + dev.deviceId + " -> ChooseTeam";
+        result.message = "Rebooted " + dev.deviceId + " -> PinEntry";
         return result;
     }
 

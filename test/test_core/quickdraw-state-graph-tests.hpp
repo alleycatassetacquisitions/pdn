@@ -296,12 +296,17 @@ inline void quickdrawCrossAppEdgesAreAppTransitions() {
 }
 
 // The pre-split graph's 48th edge. It used to sit on the PlayerRegistrationApp
-// object; nothing checks an app's own transition list, so it lives on ChooseTeam.
+// object; nothing checks an app's own transition list, so it lives on ChooseTeam,
+// which PinEntry, registration's first state, leads to.
 inline void registrationHandsOffToHub() {
     QuickdrawAppsForTest apps;
 
-    ASSERT_EQ(apps.playerFetch->getStateMap().size(), 1u);
-    State* chooseTeam = apps.playerFetch->getStateMap()[0];
+    ASSERT_EQ(apps.playerFetch->getStateMap().size(), 2u);
+    State* pinEntry = apps.playerFetch->getStateMap()[0];
+    State* chooseTeam = apps.playerFetch->getStateMap()[1];
+    EXPECT_EQ(pinEntry->getStateId(), PlayerFetchStateId::PIN_ENTRY);
+    ASSERT_EQ(pinEntry->getTransitions().size(), 1u);
+    EXPECT_EQ(pinEntry->getTransitions()[0]->getNextState(), chooseTeam);
     EXPECT_EQ(chooseTeam->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
     ASSERT_EQ(chooseTeam->getTransitions().size(), 1u);
 

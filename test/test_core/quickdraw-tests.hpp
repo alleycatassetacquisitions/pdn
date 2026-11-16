@@ -97,7 +97,6 @@ public:
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(*device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(device.mockDisplay));
     }
 
     void TearDown() override {
@@ -171,50 +170,54 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     suite->idleState->onStateDismounted(&suite->device);
 }
 
-inline void chooseTeamFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
+inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
-    ChooseTeamState chooseTeam(&playerProvider, nullptr, false);
-    chooseTeam.onStateMounted(&suite->device);
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 1000);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS - 1))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    chooseTeam.onStateLoop(&suite->device);
-    EXPECT_FALSE(chooseTeam.transitionToFirmwareUpdate());
-    chooseTeam.onStateLoop(&suite->device);
-    EXPECT_TRUE(chooseTeam.transitionToFirmwareUpdate());
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
 
-    chooseTeam.onStateDismounted(&suite->device);
-    EXPECT_FALSE(chooseTeam.transitionToFirmwareUpdate());
+    pinEntry.onStateDismounted(&suite->device);
+    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
 }
 
 // The button's pressed time counts from press-down, so a hold that began before the
 // mount, even one not yet a long press then, is longer than the screen has been up.
-inline void chooseTeamFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
+inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
-    ChooseTeamState chooseTeam(&playerProvider, nullptr, false);
-    chooseTeam.onStateMounted(&suite->device);
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS - 500);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    chooseTeam.onStateLoop(&suite->device);
-    EXPECT_FALSE(chooseTeam.transitionToFirmwareUpdate());
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 2000);
-    chooseTeam.onStateLoop(&suite->device);
-    EXPECT_TRUE(chooseTeam.transitionToFirmwareUpdate());
-    chooseTeam.onStateDismounted(&suite->device);
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
+    pinEntry.onStateDismounted(&suite->device);
 }
 
-// The registration screen takes firmware updates for as long as it is up.
-inline void chooseTeamTakesUpdatesWhileUp(IdleStateTests* suite) {
+// The pairing screen takes firmware updates for as long as it is up.
+inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PeerCommsInterface::PacketCallback onFrame;
     EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
         .WillOnce(SaveArg<1>(&onFrame));
     FakeFirmwareStore store;
     FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
+    suite->device.firmwareUpdateManager = &manager;
     std::vector<uint8_t> chunkZero(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE, 0);
     FirmwareChunkHeader header{};
     header.imageLength = 2 * FIRMWARE_CHUNK_SIZE;
@@ -224,13 +227,14 @@ inline void chooseTeamTakesUpdatesWhileUp(IdleStateTests* suite) {
     EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
 
     PlayerProvider playerProvider;
-    ChooseTeamState chooseTeam(&playerProvider, &manager, false);
-    chooseTeam.onStateMounted(&suite->device);
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 1);
 
-    chooseTeam.onStateDismounted(&suite->device);
+    pinEntry.onStateDismounted(&suite->device);
     EXPECT_EQ(store.abortCalls, 1) << "leaving the screen drops the receive";
+    suite->device.firmwareUpdateManager = nullptr;
 }
 
 // Test: transitionToMatchCountdown stays false while match exists but ACK not yet received

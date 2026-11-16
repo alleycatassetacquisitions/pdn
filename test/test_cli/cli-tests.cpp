@@ -340,7 +340,7 @@ TEST_F(CliRoleCommandTestSuite, NoDevices) {
 // CLI COMMAND / REBOOT TESTS
 // ============================================
 
-TEST(CliCommandTest, RebootEntersChooseTeam) { cliCommandRebootEntersChooseTeam(); }
+TEST(CliCommandTest, RebootEntersPinEntry) { cliCommandRebootEntersPinEntry(); }
 
 TEST_F(CliSimulationTestSuite, DevicesStartWithDistinctTestIdentities) {
     cliDevicesStartWithDistinctTestIdentities(this);
