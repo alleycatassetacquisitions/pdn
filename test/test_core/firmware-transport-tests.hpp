@@ -15,11 +15,13 @@
 class FakeFirmwareRadio : public PeerCommsInterface {
 public:
     /** Keeps the frame unless refuseSends is set. */
-    int sendData(const uint8_t*, PktType, const uint8_t* data, const size_t length) override {
+    int sendData(const uint8_t*, PktType packetType, const uint8_t* data,
+                 const size_t length) override {
         if (refuseSends) {
             return -1;
         }
         sent.emplace_back(data, data + length);
+        sentTypes.push_back(packetType);
         return 0;
     }
     /** Remembers the handler deliver() calls. */
@@ -52,6 +54,7 @@ public:
     }
 
     std::vector<std::vector<uint8_t>> sent;
+    std::vector<PktType> sentTypes;
     bool queueEmpty = true;
     bool refuseSends = false;
 
@@ -370,4 +373,30 @@ TEST(FirmwareTransportTest, anUnreadableImageIsNotSeeded) {
 
     EXPECT_FALSE(f.seed->beginSeeding());
     EXPECT_FALSE(f.seed->isSeeding());
+}
+
+// Event firmware (tag event-firmware-2026-11b) reads a firmware frame as one type byte,
+// a 32-byte image id, a 4-byte image length and a 2-byte index, then the chunk.
+// Read at fixed offsets, so a layout change or a renumber without the static_assert fails here.
+TEST(FirmwareTransportTest, aChunkFrameParsesWithTheEventFirmwareLayout) {
+    FirmwareTransportFixture f;
+    f.deliverFirstFrames(1);
+    ASSERT_FALSE(f.seedRadio.sent.empty());
+
+    // The ESP-NOW driver puts the one-byte DataPktHdr in front of what sendData is given.
+    std::vector<uint8_t> air{static_cast<uint8_t>(f.seedRadio.sentTypes[0])};
+    air.insert(air.end(), f.seedRadio.sent[0].begin(), f.seedRadio.sent[0].end());
+
+    ASSERT_EQ(air.size(), 1 + 32 + 4 + 2 + 1400);
+    EXPECT_EQ(air[0], 0x10) << "event firmware listens for firmware frames on 16";
+    uint8_t imageId[32] = {};
+    f.seedStore.getRunningImageId(imageId);
+    EXPECT_TRUE(std::equal(air.begin() + 1, air.begin() + 33, imageId));
+    const uint32_t imageLength =
+    air[33] | (air[34] << 8) | (air[35] << 16) | (static_cast<uint32_t>(air[36]) << 24);
+    EXPECT_EQ(imageLength, FirmwareTransportFixture::IMAGE_LENGTH);
+    EXPECT_EQ(air[37] | (air[38] << 8), 0);
+    EXPECT_TRUE(std::equal(air.begin() + 39, air.end(), f.image.begin()));
+    EXPECT_NE(PktType::kFdnConnectionContext, PktType::kFirmwareUpdate)
+    << "the FDN context left 16 to firmware";
 }
