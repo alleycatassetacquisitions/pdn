@@ -8,16 +8,20 @@
 
 static const char TAG[] = "PinEntryState";
 
-PinEntryState::PinEntryState(PlayerProvider* playerProvider)
+PinEntryState::PinEntryState(PlayerProvider* playerProvider,
+                             FirmwareUpdateManager* firmwareUpdateManager)
     : TypedState<PDN>(PlayerFetchStateId::PIN_ENTRY)
+    , firmwareUpdateManager(firmwareUpdateManager)
     , playerProvider(playerProvider) {}
 
-PinEntryState::~PinEntryState() { playerProvider = nullptr; }
+PinEntryState::~PinEntryState() {
+    playerProvider = nullptr;
+    firmwareUpdateManager = nullptr;
+}
 
 void PinEntryState::onStateMounted(PDN* pdn) {
     playerProvider->clear();
     sinceMount.setTimer(0);
-    firmwareUpdateManager = pdn->getFirmwareUpdateManager();
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->setEligible(true);
     }

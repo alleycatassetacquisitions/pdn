@@ -2,7 +2,7 @@
 
 #include "game/player.hpp"
 
-/** Owns the session `Player` and registration PIN for fetch / gameplay handoff. */
+/** Owns the session `Player` and the PIN entered on PIN entry. */
 class PlayerProvider {
 public:
     static constexpr size_t REGISTRATION_PIN_BUFFER_SIZE = 5;
@@ -19,11 +19,8 @@ public:
     /** Clears registration profile on the owned player and drops the registration PIN. */
     void clear();
 
-    /** Stores the four-digit pairing PIN entered before fetch. */
+    /** Stores the four-digit PIN entered on PIN entry. */
     void setRegistrationPin(const char* pin);
-
-    /** @return true when a registration PIN is stored. */
-    bool hasRegistrationPin() const;
 
     /** @return the stored registration PIN, or an empty string when none is stored. */
     const char* getRegistrationPin() const;

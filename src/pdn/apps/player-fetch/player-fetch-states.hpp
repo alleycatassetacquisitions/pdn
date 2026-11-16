@@ -18,8 +18,8 @@ constexpr unsigned long PLAYER_FETCH_FIRMWARE_HOLD_MS = 5000;
 
 class PinEntryState : public TypedState<PDN> {
 public:
-    /** Pairing-code entry for PlayerFetch. */
-    explicit PinEntryState(PlayerProvider* playerProvider);
+    /** Pairing-code entry; while it is up, @p firmwareUpdateManager (may be null) takes updates. */
+    PinEntryState(PlayerProvider* playerProvider, FirmwareUpdateManager* firmwareUpdateManager);
     /** @copydoc TypedState::~TypedState */
     ~PinEntryState() override;
 
