@@ -48,8 +48,6 @@ void IdleState::onStateMounted(FDN* fdn) {
 }
 
 void IdleState::onStateLoop(FDN* fdn) {
-    remotePlayerManager->Update();
-
     bool nowConnected = isConnected();
     if (nowConnected && !wasConnected) {
         connectionResolved = true;

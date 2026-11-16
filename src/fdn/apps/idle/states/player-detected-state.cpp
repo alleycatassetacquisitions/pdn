@@ -72,8 +72,6 @@ void PlayerDetectedState::onStateMounted(FDN* fdn) {
 
 void PlayerDetectedState::onStateLoop(FDN* fdn) {
     (void)fdn;
-    remotePlayerManager->Update();
-
     bool nowConnected = isConnected();
     if (nowConnected && !wasConnected) {
         connectionResolved = true;

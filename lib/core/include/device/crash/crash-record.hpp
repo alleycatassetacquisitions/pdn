@@ -36,3 +36,14 @@ struct CrashRecord {
     std::optional<CoreDumpDetails> coreDumpDetails;
     char     commitHash[COMMIT_HASH_LENGTH];
 };
+
+/** A crash record as it travels over ESP-NOW and sits in NVS. */
+struct CrashPacket {
+    uint32_t crashNumber;
+    uint32_t timestamp;
+    uint8_t resetReason;
+    uint32_t programCounter;
+    uint32_t exceptionCause;
+    char taskName[TASK_NAME_LENGTH];
+    char commitHash[COMMIT_HASH_LENGTH];
+} __attribute__((packed));

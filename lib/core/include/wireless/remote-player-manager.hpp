@@ -4,6 +4,7 @@
 #include <cstring>  // For memcpy
 #include <string>
 
+#include "device/device-type.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "game/player.hpp"
 #include "wireless/remote-player.hpp"
@@ -15,8 +16,10 @@ public:
 
     void Update();
 
-    void StartBroadcastingPlayerInfo(Player* playerInfo, unsigned long broadcastIntervalMillis);
-    
+    /** Broadcasts now and every interval after; each beacon carries senderDeviceType. */
+    void StartBroadcastingPlayerInfo(  // NOLINT(readability-identifier-naming)
+    Player* playerInfo, unsigned long broadcastIntervalMillis, DeviceType senderDeviceType);
+
     void SetRemotePlayerTTL(unsigned long ttl);
     unsigned long GetRemotePlayerTTL();
 
@@ -30,6 +33,7 @@ protected:
     int BroadcastPlayerInfo();
     PeerCommsInterface* peerComms;
     Player* localPlayerInfo;
+    DeviceType localDeviceType = DeviceType::UNKNOWN;
     std::vector<RemotePlayer> remotePlayers;
     unsigned long remotePlayerTTL;
     unsigned long broadcastInterval;

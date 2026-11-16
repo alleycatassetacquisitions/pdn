@@ -151,7 +151,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     matchManager.initialize(&player, &storage);
     matchManager.setRemoteDeviceCoordinator(&rdc);
-    remotePlayerManager.StartBroadcastingPlayerInfo(&player, 5000);
+    remotePlayerManager.StartBroadcastingPlayerInfo(&player, 5000, DeviceType::PDN);
     wirelessManager.setEspNowPacketHandler(
         PktType::kPlayerInfoBroadcast,
         [](const uint8_t* srcMac, const uint8_t* pktData, const size_t pktLen, void* ctx) {

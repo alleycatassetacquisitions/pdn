@@ -34,6 +34,13 @@ enum class PktType : uint8_t {
     kCrashLog = 21,
     // NOLINTNEXTLINE(readability-identifier-naming)
     kFirmwareUpdate = 22,
+    // Record relay, PDN to FDN and the FDN's ack back (wireless/record-relay-types.hpp).
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kCrashRecord = 23,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kMatchRecord = 24,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kRecordAck = 25,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
