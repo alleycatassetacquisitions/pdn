@@ -176,6 +176,16 @@ void Player::setUserID(char* newId) {
     symbol.updateFromUserIdString(id);
 }
 
+void Player::applyRngSeedFromDecimalString(const char* decimalString) {
+    if (decimalString == nullptr || decimalString[0] == '\0') {
+        return;
+    }
+    const unsigned int seed =
+        static_cast<unsigned int>(std::strtoul(decimalString, nullptr, 10));
+    std::srand(seed);
+    symbol.setRandomSymbol();
+}
+
 std::string Player::getUserID() const { return id; }
 
 unsigned long Player::getLastReactionTime() const { return lastReactionTime; }

@@ -25,6 +25,8 @@ public:
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, renderGlyph(_, _, _))
+        .WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawButton(_, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, render()).WillByDefault(Return());
     }
@@ -39,6 +41,40 @@ public:
     PlayerProvider playerProvider;
     MockDevice device;
 };
+
+// Until an FDN looks a PIN up (#485), every completed PIN, demo or not, leads to ChooseTeam.
+inline void pinEntryRoutesPinToChooseTeam(PlayerFetchTestSuite* suite, const int digits[4],
+                                          const char* pin) {
+    parameterizedCallbackFunction primaryPress = nullptr;
+    parameterizedCallbackFunction secondaryPress = nullptr;
+    void* ctx = nullptr;
+    ON_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
+    .WillByDefault(
+    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
+        primaryPress = fn;
+        ctx = buttonCtx;
+    }));
+    ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
+    .WillByDefault(
+    Invoke([&](parameterizedCallbackFunction fn, void* buttonCtx, ButtonInteraction) {
+        secondaryPress = fn;
+        ctx = buttonCtx;
+    }));
+    PinEntryState pinEntry(&suite->playerProvider);
+    mountState(&pinEntry, &suite->device);
+    ASSERT_NE(secondaryPress, nullptr);
+    for (int index = 0; index < 4; index++) {
+        for (int press = 0; press < digits[index]; press++) {
+            primaryPress(ctx);
+        }
+        EXPECT_FALSE(pinEntry.transitionToChooseTeam());
+        secondaryPress(ctx);
+    }
+    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), pin);
+    EXPECT_TRUE(pinEntry.transitionToChooseTeam());
+    dismountState(&pinEntry, &suite->device);
+    EXPECT_FALSE(pinEntry.transitionToChooseTeam());
+}
 
 // Returns with ChooseTeam still mounted so callers can check its flags before dismounting.
 inline void confirmChooseTeam(PlayerFetchTestSuite* suite, ChooseTeamState* chooseTeam,
@@ -70,7 +106,7 @@ inline void confirmChooseTeam(PlayerFetchTestSuite* suite, ChooseTeamState* choo
 
 inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(PlayerFetchTestSuite* suite) {
     uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
-    ChooseTeamState chooseTeam(&suite->playerProvider, nullptr, true);
+    ChooseTeamState chooseTeam(&suite->playerProvider, true);
     confirmChooseTeam(suite, &chooseTeam, mac, true);
 
     Player* player = suite->playerProvider.getPlayer();
@@ -87,7 +123,7 @@ inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(PlayerFetchTest
 
 inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
     uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
-    ChooseTeamState chooseTeam(&suite->playerProvider, nullptr, false);
+    ChooseTeamState chooseTeam(&suite->playerProvider, false);
     confirmChooseTeam(suite, &chooseTeam, mac, false);
 
     Player* player = suite->playerProvider.getPlayer();
@@ -100,13 +136,13 @@ inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
     EXPECT_FALSE(chooseTeam.transitionToHub());
 }
 
-inline void chooseTeamAndFirmwareUpdateLeadToEachOther(PlayerFetchTestSuite* suite) {
+inline void pinEntryAndFirmwareUpdateLeadToEachOther(PlayerFetchTestSuite* suite) {
     FakeFirmwareStore store;
     FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
     PlayerFetchApp app(&manager, &suite->playerProvider, false);
     app.populateStateMap();
-    ASSERT_EQ(app.getStateMap().size(), 2u);
-    State* chooseTeam = app.getStateMap()[0];
-    EXPECT_EQ(chooseTeam->getTransitions()[1]->getNextState(), app.getStateMap()[1]);
-    EXPECT_EQ(app.getStateMap()[1]->getTransitions()[0]->getNextState(), chooseTeam);
+    ASSERT_EQ(app.getStateMap().size(), 3u);
+    State* pinEntry = app.getStateMap()[0];
+    EXPECT_EQ(pinEntry->getTransitions()[1]->getNextState(), app.getStateMap()[2]);
+    EXPECT_EQ(app.getStateMap()[2]->getTransitions()[0]->getNextState(), pinEntry);
 }

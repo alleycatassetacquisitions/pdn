@@ -1080,6 +1080,16 @@ TEST(PlayerRegistrationShim, formatsServerIdAsUserId) { playerLegacyShimFormatsS
 // PLAYER FETCH APP TESTS
 // ============================================
 
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
+    const int digits[4] = {0, 0, 0, 0};
+    pinEntryRoutesPinToChooseTeam(this, digits, "0000");
+}
+
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesAnyOtherPinToChooseTeam) {
+    const int digits[4] = {0, 0, 0, 7};
+    pinEntryRoutesPinToChooseTeam(this, digits, "0007");
+}
+
 TEST_F(PlayerFetchTestSuite, chooseTeamTestIdentityRegistersMacPlayerAndEntersHub) {
     chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(this);
 }
@@ -1088,8 +1098,8 @@ TEST_F(PlayerFetchTestSuite, chooseTeamDemoKeepsNilPlayerId) {
     chooseTeamDemoKeepsNilPlayerId(this);
 }
 
-TEST_F(PlayerFetchTestSuite, chooseTeamAndFirmwareUpdateLeadToEachOther) {
-    chooseTeamAndFirmwareUpdateLeadToEachOther(this);
+TEST_F(PlayerFetchTestSuite, pinEntryAndFirmwareUpdateLeadToEachOther) {
+    pinEntryAndFirmwareUpdateLeadToEachOther(this);
 }
 
 // ============================================
@@ -1196,15 +1206,15 @@ TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
 }
 
-TEST_F(IdleStateTests, chooseTeamFirmwareHoldStartsAnUpdate) {
-    chooseTeamFirmwareHoldStartsAnUpdate(this);
+TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
+    pairingCodeFirmwareHoldStartsAnUpdate(this);
 }
 
-TEST_F(IdleStateTests, chooseTeamFirmwareHoldCarriedInDoesNotFire) {
-    chooseTeamFirmwareHoldCarriedInDoesNotFire(this);
+TEST_F(IdleStateTests, pairingCodeFirmwareHoldCarriedInDoesNotFire) {
+    pairingCodeFirmwareHoldCarriedInDoesNotFire(this);
 }
 
-TEST_F(IdleStateTests, chooseTeamTakesUpdatesWhileUp) { chooseTeamTakesUpdatesWhileUp(this); }
+TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) { pairingCodeTakesUpdatesWhileUp(this); }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);
