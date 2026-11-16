@@ -62,7 +62,7 @@ SYMBOL_MATCHED,
 // Per-state transition targets, in the order they were added. 47 edges — the
 // pre-split graph's 48 less PlayerRegistration -> AwakenSequence, which moved off
 // the app object onto the state that triggered it (see
-// registrationHandsOffFromWelcomeMessage below).
+// registrationHandsOffToHub below).
 inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_EDGES = {
 {AWAKEN_SEQUENCE, {IDLE}},
 {IDLE, {SHOOTOUT_PROPOSAL, MATCH_COUNTDOWN, SUPPORTER_READY, SHOOTOUT_ABORTED, SYMBOL}},
@@ -135,7 +135,7 @@ struct QuickdrawAppsForTest {
     /** Constructs and populates the five apps without mounting any of them. */
     QuickdrawAppsForTest() {
         GameContext context;
-        playerFetch = new PlayerFetchApp(nullptr, nullptr, nullptr);
+        playerFetch = new PlayerFetchApp(nullptr, nullptr, nullptr, false);
         hub = new HubApp(context);
         match = new MatchApp(context);
         shootout = new ShootoutApp(context);
@@ -299,14 +299,17 @@ inline void quickdrawCrossAppEdgesAreAppTransitions() {
 // The pre-split graph's 48th edge. It used to sit on the PlayerRegistrationApp
 // object, guarded by "the current state is WelcomeMessage and it wants
 // gameplay"; nothing checks a top-level app's own transition list, so it moved
-// onto WelcomeMessage, which was its only trigger.
-inline void registrationHandsOffFromWelcomeMessage() {
+// onto WelcomeMessage, which was its only trigger. ChooseTeam hands off the same way.
+inline void registrationHandsOffToHub() {
     QuickdrawAppsForTest apps;
 
     State* welcomeMessage = nullptr;
+    State* chooseTeam = nullptr;
     for (State* state : apps.playerFetch->getStateMap()) {
         if (state->getStateId() == PlayerFetchStateId::WELCOME) {
             welcomeMessage = state;
+        } else if (state->getStateId() == PlayerFetchStateId::CHOOSE_TEAM) {
+            chooseTeam = state;
         }
     }
     ASSERT_NE(welcomeMessage, nullptr);
@@ -320,4 +323,8 @@ inline void registrationHandsOffFromWelcomeMessage() {
     // registration app, which is the coupling the two apps do not otherwise have.
     EXPECT_LT(edge->getEntryStateId().id, 0);
     EXPECT_EQ(apps.hub->getStateMap()[0]->getStateId(), AWAKEN_SEQUENCE);
+
+    ASSERT_NE(chooseTeam, nullptr);
+    ASSERT_EQ(chooseTeam->getTransitions().size(), 1u);
+    EXPECT_EQ(chooseTeam->getTransitions()[0]->getTargetAppId().id, HUB_APP_ID);
 }

@@ -2,13 +2,15 @@
 #include "device/device.hpp"
 #include "id-generator.hpp"
 
-ChooseTeamState::ChooseTeamState(PlayerProvider* playerProvider)
+ChooseTeamState::ChooseTeamState(PlayerProvider* playerProvider, bool testIdentity)
     : TypedState<PDN>(PlayerFetchStateId::CHOOSE_TEAM)
-    , playerProvider(playerProvider) {}
+    , playerProvider(playerProvider)
+    , testIdentity(testIdentity) {}
 
 ChooseTeamState::~ChooseTeamState() { playerProvider = nullptr; }
 
 void ChooseTeamState::onStateMounted(PDN* pdn) {
+    macAddress = pdn->getWirelessManager()->getMacAddress();
     renderUi(pdn);
 
     pdn->getPrimaryButton()->setButtonPress(
@@ -25,8 +27,11 @@ void ChooseTeamState::onStateMounted(PDN* pdn) {
         Player* player = chooseTeamState->playerProvider->getPlayer();
         Team team;
         IdGenerator::copyId(team.name, chooseTeamState->hunterSelected ? "Hunter" : "Bounty");
-        player->applyRegistrationProfile(UUIDBytes(), "Demo", team, {});
-        chooseTeamState->transitionToDemoStubState = true;
+        player->applyRegistrationProfile(chooseTeamState->testIdentity
+                                         ? Player::testPlayerIdFromMac(chooseTeamState->macAddress)
+                                         : UUIDBytes(),
+                                         chooseTeamState->testIdentity ? "Test" : "Demo", team, {});
+        chooseTeamState->transitionToHubState = true;
     },
     this, ButtonInteraction::CLICK);
 }
@@ -41,12 +46,13 @@ void ChooseTeamState::onStateLoop(PDN* pdn) {
 void ChooseTeamState::onStateDismounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
-    transitionToDemoStubState = false;
+    transitionToHubState = false;
+    macAddress = nullptr;
     displayIsDirty = false;
     hunterSelected = true;
 }
 
-bool ChooseTeamState::transitionToDemoStub() const { return transitionToDemoStubState; }
+bool ChooseTeamState::transitionToHub() const { return transitionToHubState; }
 
 void ChooseTeamState::renderUi(PDN* pdn) const {
     pdn->getDisplay()->invalidateScreen();

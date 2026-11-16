@@ -13,7 +13,7 @@ class PlayerFetchApp : public StateMachine {
 public:
     /** @p firmwareUpdateManager may be null to skip the hold-to-update state. */
     PlayerFetchApp(WirelessManager* wirelessManager, FirmwareUpdateManager* firmwareUpdateManager,
-                   PlayerProvider* playerProvider);
+                   PlayerProvider* playerProvider, bool testIdentity);
     /** @copydoc StateMachine::~StateMachine */
     ~PlayerFetchApp() override;
 
@@ -24,4 +24,5 @@ private:
     WirelessManager* wirelessManager = nullptr;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
     PlayerProvider* playerProvider = nullptr;
+    bool testIdentity = false;
 };

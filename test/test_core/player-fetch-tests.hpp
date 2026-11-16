@@ -5,6 +5,7 @@
 
 #include "alleycat-protobuf-test-helpers.hpp"
 #include "apps/player-fetch/player-fetch-states.hpp"
+#include "connect-state-callback-tests.hpp"
 #include "device-player-codec-tests.hpp"
 #include "utility-tests.hpp"
 #include "game/player-provider.hpp"
@@ -160,18 +161,62 @@ inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* s
     fetch.onStateDismounted(&suite->device);
 }
 
-inline void chooseTeamConfirmReachesDemoStub(PlayerFetchTestSuite* suite) {
-    ChooseTeamState chooseTeam(&suite->playerProvider);
+// Returns with ChooseTeam still mounted so callers can check its flags before dismounting.
+inline void confirmChooseTeam(PlayerFetchTestSuite* suite, ChooseTeamState* chooseTeam,
+                              uint8_t* mac, bool pickBounty) {
+    parameterizedCallbackFunction primaryPress = nullptr;
+    void* primaryCtx = nullptr;
     parameterizedCallbackFunction secondaryPress = nullptr;
     void* secondaryCtx = nullptr;
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress()).WillByDefault(Return(mac));
+    ON_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
+    .WillByDefault(Invoke([&](parameterizedCallbackFunction fn, void* ctx, ButtonInteraction) {
+        primaryPress = fn;
+        primaryCtx = ctx;
+    }));
     ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
     .WillByDefault(Invoke([&](parameterizedCallbackFunction fn, void* ctx, ButtonInteraction) {
         secondaryPress = fn;
         secondaryCtx = ctx;
     }));
-    chooseTeam.onStateMounted(&suite->device);
+    mountState(chooseTeam, &suite->device);
+    ASSERT_NE(primaryPress, nullptr);
     ASSERT_NE(secondaryPress, nullptr);
+    if (pickBounty) {
+        primaryPress(primaryCtx);
+    }
+    EXPECT_FALSE(chooseTeam->transitionToHub());
     secondaryPress(secondaryCtx);
-    EXPECT_TRUE(chooseTeam.transitionToDemoStub());
-    chooseTeam.onStateDismounted(&suite->device);
+}
+
+inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(PlayerFetchTestSuite* suite) {
+    uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
+    ChooseTeamState chooseTeam(&suite->playerProvider, true);
+    confirmChooseTeam(suite, &chooseTeam, mac, true);
+
+    Player* player = suite->playerProvider.getPlayer();
+    EXPECT_TRUE(chooseTeam.transitionToHub());
+    EXPECT_TRUE(player->hasRegistrationProfile());
+    EXPECT_EQ(player->getServerPlayerId(), Player::testPlayerIdFromMac(mac));
+    EXPECT_FALSE(player->isHunter());
+    EXPECT_STREQ(player->getServerPlayerName(), "Test");
+    EXPECT_FALSE(player->hasTeam());
+
+    dismountState(&chooseTeam, &suite->device);
+    EXPECT_FALSE(chooseTeam.transitionToHub());
+}
+
+inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
+    uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
+    ChooseTeamState chooseTeam(&suite->playerProvider, false);
+    confirmChooseTeam(suite, &chooseTeam, mac, false);
+
+    Player* player = suite->playerProvider.getPlayer();
+    EXPECT_TRUE(chooseTeam.transitionToHub());
+    EXPECT_TRUE(player->getServerPlayerId().isZero());
+    EXPECT_TRUE(player->isHunter());
+    EXPECT_STREQ(player->getServerPlayerName(), "Demo");
+
+    dismountState(&chooseTeam, &suite->device);
+    EXPECT_FALSE(chooseTeam.transitionToHub());
 }

@@ -1051,6 +1051,59 @@ public:
     NativeLoggerDriver* globalLogger_;
 };
 
+class CliSimulationTestSuite : public testing::Test {
+public:
+    /** A hunter and a bounty on a real clock, uncabled. */
+    void SetUp() override {
+        globalLogger.setSuppressOutput(true);
+        g_logger = &globalLogger;
+        SimpleTimer::setPlatformClock(&globalClock);
+        devices.push_back(cli::DeviceFactory::createDevice(0, true));
+        devices.push_back(cli::DeviceFactory::createDevice(1, false));
+    }
+
+    /** Drains the radio broker so no packet reaches a later test. */
+    void TearDown() override {
+        NativePeerBroker::getInstance().deliverPackets();
+        for (cli::DeviceInstance& device : devices) {
+            cli::DeviceFactory::destroyDevice(device);
+        }
+        SimpleTimer::setPlatformClock(nullptr);
+        g_logger = nullptr;
+    }
+
+    std::vector<cli::DeviceInstance> devices;
+    NativeClockDriver globalClock{"test_sim_clock"};
+    NativeLoggerDriver globalLogger{"test_sim_logger"};
+};
+
+// Test: every simulated PDN boots into the hub with its own MAC test identity
+void cliDevicesStartWithDistinctTestIdentities(CliSimulationTestSuite* suite) {
+    for (cli::DeviceInstance& device : suite->devices) {
+        ASSERT_EQ(device.pdn->getActiveApp(), device.hubApp);
+        ASSERT_TRUE(device.player->hasRegistrationProfile());
+        ASSERT_FALSE(device.player->getServerPlayerId().isZero());
+        ASSERT_EQ(device.player->getServerPlayerId(),
+                  Player::testPlayerIdFromMac(device.peerCommsDriver->getMacAddress()));
+    }
+    ASSERT_NE(suite->devices[0].player->getServerPlayerId(),
+              suite->devices[1].player->getServerPlayerId());
+    ASSERT_TRUE(suite->devices[0].player->isHunter());
+    ASSERT_FALSE(suite->devices[1].player->isHunter());
+}
+
+// Test: a cabled hunter and bounty link through the simulator's own tick (HELLO + loop)
+void cliSimulationCabledDevicesConnect(CliSimulationTestSuite* suite) {
+    ASSERT_TRUE(cli::SerialCableBroker::getInstance().connect(0, 1));
+    RemoteDeviceCoordinator* hunter = suite->devices[0].pdn->getRemoteDeviceCoordinator();
+    RemoteDeviceCoordinator* bounty = suite->devices[1].pdn->getRemoteDeviceCoordinator();
+    for (int tick = 0; tick < 200; tick++) {
+        cli::advanceSimulation(suite->devices);
+    }
+    ASSERT_EQ(hunter->getJackStatus(SerialIdentifier::OUTPUT_JACK), JackStatus::CONNECTED);
+    ASSERT_EQ(bounty->getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
+}
+
 // Test: role command shows selected device's role
 void cliRoleCommandShowsSelectedDevice(CliRoleCommandTestSuite* suite) {
     // Selected device is 0 (hunter)

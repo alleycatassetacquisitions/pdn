@@ -50,7 +50,6 @@ inline const char* getStateName(int stateId) {
         case PlayerFetchStateId::PIN_ENTRY: return "PinEntry";
         case PlayerFetchStateId::FETCH_USER: return "FetchUser";
         case PlayerFetchStateId::CHOOSE_TEAM: return "ChooseTeam";
-        case PlayerFetchStateId::DEMO_STUB: return "DemoStub";
         case PlayerFetchStateId::WELCOME: return "WelcomeMessage";
         case PlayerFetchStateId::FIRMWARE_UPDATE: return "FirmwareUpdate";
         case SLEEP: return "Sleep";
@@ -210,10 +209,10 @@ public:
 
         instance.playerProvider = new PlayerProvider();
         instance.player = instance.playerProvider->getPlayer();
-        char* idPtr = new char[5];
-        strcpy(idPtr, instance.deviceId.c_str());
-        instance.player->setUserID(idPtr);
-        instance.player->setIsHunter(isHunter);
+        Team team;
+        std::strncpy(team.name, isHunter ? "Hunter" : "Bounty", sizeof(team.name) - 1);
+        instance.player->applyRegistrationProfile(
+        Player::testPlayerIdFromMac(instance.peerCommsDriver->getMacAddress()), "Test", team, {});
         instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
         instance.playerProvider->setRegistrationPin(instance.deviceId.c_str());
 
@@ -228,10 +227,9 @@ public:
             instance.symbolWirelessManager);
 
         GameContext gameContext = instance.gameSession->getContext();
-        instance.playerFetchApp = new PlayerFetchApp(
-            instance.pdn->getWirelessManager(),
-            instance.pdn->getFirmwareUpdateManager(),
-            instance.playerProvider);
+        instance.playerFetchApp =
+        new PlayerFetchApp(instance.pdn->getWirelessManager(),
+                           instance.pdn->getFirmwareUpdateManager(), instance.playerProvider, true);
         instance.hubApp = new HubApp(gameContext);
         instance.matchApp = new MatchApp(gameContext);
         instance.shootoutApp = new ShootoutApp(gameContext);
@@ -280,6 +278,16 @@ public:
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted
     }
 };
+
+/** One simulator tick. HELLO goes out here: native builds spawn no FreeRTOS emit task. */
+inline void advanceSimulation(std::vector<DeviceInstance>& devices) {
+    NativePeerBroker::getInstance().deliverPackets();
+    SerialCableBroker::getInstance().transferData();
+    for (DeviceInstance& device : devices) {
+        device.pdn->getRemoteDeviceCoordinator()->emitHello();
+        device.pdn->loop();
+    }
+}
 
 } // namespace cli
 

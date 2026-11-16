@@ -425,6 +425,12 @@ TEST_F(CliCommandTestSuite, RebootClearsHistory) {
     cliCommandRebootClearsHistory(this);
 }
 
+TEST_F(CliSimulationTestSuite, DevicesStartWithDistinctTestIdentities) {
+    cliDevicesStartWithDistinctTestIdentities(this);
+}
+
+TEST_F(CliSimulationTestSuite, CabledDevicesConnect) { cliSimulationCabledDevicesConnect(this); }
+
 // ============================================
 // MAIN
 // ============================================
