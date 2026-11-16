@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstring>
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 #include "device/drivers/driver-interface.hpp"
 #include "device/drivers/unknown-storage-namespace-exception.hpp"
 
@@ -22,7 +24,7 @@ public:
         }
     }
 
-    /** Nothing owned: both maps clean themselves up. */
+    /** Nothing owned: maps clean themselves up. */
     ~NativePrefsDriver() override = default;
 
     /** Always succeeds; there is no backing store to open. */
@@ -44,33 +46,6 @@ public:
         return it != stringStorage.end() ? it->second : defaultValue;
     }
 
-    /** Drops both the string and byte entries for one key. */
-    bool remove(const std::string& ns, const std::string& key) override {
-        requireRegisteredNamespace(ns);
-        const std::string composite = compositeKey(ns, key);
-        bool removed = false;
-        if (stringStorage.erase(composite) > 0) {
-            removed = true;
-        }
-        if (ucharStorage.erase(composite) > 0) {
-            removed = true;
-        }
-        return removed;
-    }
-
-    /** Drops every entry in one namespace. */
-    bool clear(const std::string& ns) override {
-        requireRegisteredNamespace(ns);
-        const std::string prefix = ns + "/";
-        for (auto it = stringStorage.begin(); it != stringStorage.end(); ) {
-            it = it->first.rfind(prefix, 0) == 0 ? stringStorage.erase(it) : ++it;
-        }
-        for (auto it = ucharStorage.begin(); it != ucharStorage.end(); ) {
-            it = it->first.rfind(prefix, 0) == 0 ? ucharStorage.erase(it) : ++it;
-        }
-        return true;
-    }
-
     /** No backing store to flush or close. */
     void end() override {}
 
@@ -88,6 +63,47 @@ public:
         return 1;
     }
 
+    /** Reads a 32-bit unsigned integer back, or `defaultValue` when the key is unset. */
+    uint32_t readUInt(const std::string& ns, const std::string& key,
+                      uint32_t defaultValue) override {
+        requireRegisteredNamespace(ns);
+        auto it = uintStorage.find(compositeKey(ns, key));
+        return it != uintStorage.end() ? it->second : defaultValue;
+    }
+
+    /** Stores a 32-bit unsigned integer under a registered namespace. */
+    size_t writeUInt(const std::string& ns, const std::string& key, uint32_t value) override {
+        requireRegisteredNamespace(ns);
+        uintStorage[compositeKey(ns, key)] = value;
+        return sizeof(value);
+    }
+
+    /** Stores `length` raw bytes under a registered namespace. */
+    size_t writeBytes(const std::string& ns, const std::string& key, const uint8_t* data,
+                      size_t length) override {
+        requireRegisteredNamespace(ns);
+        if (data == nullptr || length == 0) {
+            return 0;
+        }
+        blobStorage[compositeKey(ns, key)].assign(data, data + length);
+        return length;
+    }
+
+    /** Reads up to `maxLength` raw bytes into `buffer`; returns bytes read or 0. */
+    size_t readBytes(const std::string& ns, const std::string& key, uint8_t* buffer,
+                     size_t maxLength) override {
+        requireRegisteredNamespace(ns);
+        if (buffer == nullptr || maxLength == 0) {
+            return 0;
+        }
+        auto it = blobStorage.find(compositeKey(ns, key));
+        if (it == blobStorage.end() || it->second.empty() || it->second.size() > maxLength) {
+            return 0;
+        }
+        std::memcpy(buffer, it->second.data(), it->second.size());
+        return it->second.size();
+    }
+
 private:
     static std::string compositeKey(const std::string& ns, const std::string& key) {
         return ns + "/" + key;
@@ -102,4 +118,6 @@ private:
     std::set<std::string> registeredNamespaces;
     std::map<std::string, std::string> stringStorage;
     std::map<std::string, uint8_t> ucharStorage;
+    std::map<std::string, uint32_t> uintStorage;
+    std::map<std::string, std::vector<uint8_t>> blobStorage;
 };

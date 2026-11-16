@@ -99,11 +99,17 @@ class StubStorage : public StorageInterface {
 public:
     size_t write(const std::string&, const std::string&, const std::string&) override { return 0; }
     std::string read(const std::string&, const std::string&, const std::string& def) override { return def; }
-    bool remove(const std::string&, const std::string&) override { return true; }
-    bool clear(const std::string&) override { return true; }
     void end() override {}
     uint8_t readUChar(const std::string&, const std::string&, uint8_t def) override { return def; }
     size_t writeUChar(const std::string&, const std::string&, uint8_t) override { return 0; }
+    uint32_t readUInt(const std::string&, const std::string&, uint32_t def) override { return def; }
+    size_t writeUInt(const std::string&, const std::string&, uint32_t) override { return 0; }
+    size_t writeBytes(const std::string&, const std::string&, const uint8_t*, size_t) override {
+        return 0;
+    }
+    size_t readBytes(const std::string&, const std::string&, uint8_t*, size_t) override {
+        return 0;
+    }
 };
 
 class StubHttpClient : public HttpClientInterface {
@@ -125,11 +131,9 @@ private:
     uint8_t mac_[6] = {0};
 };
 
-static MatchPacket makeDrawResultPacket(const std::optional<Match>& match, bool senderIsHunter,
-                                        const char* senderId) {
+static MatchPacket makeDrawResultPacket(const std::optional<Match>& match, bool senderIsHunter) {
     MatchPacket p = {};
     strncpy(p.matchId,  match->getMatchId(), sizeof(p.matchId) - 1);
-    strncpy(p.playerId, senderId,            sizeof(p.playerId) - 1);
     p.isHunter       = senderIsHunter;
     p.playerDrawTime = senderIsHunter ? match->getHunterDrawTime()
                                       : match->getBountyDrawTime();
@@ -221,10 +225,10 @@ int main(int argc, char** argv) {
 
         // Bypass listenForMatchEvents(SEND_MATCH_ID), which requires a non-null RDC.
         const char* matchId = hunter.matchMgr->getCurrentMatch()->getMatchId();
-        bounty.matchMgr->receiveMatch(matchId, "hunt", true,
+        bounty.matchMgr->receiveMatch(matchId, UUIDBytes{}, UUIDBytes{}, true,
                                       const_cast<uint8_t*>(kHunterMac));
 
-        MatchCommand ackCmd(kBountyMac, MatchCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
+        MatchCommand ackCmd(kBountyMac, MatchCmd::MATCH_ID_ACK, matchId, 0, false);
         hunter.matchMgr->listenForMatchEvents(ackCmd);
 
         hunter.matchMgr->setMatchLocalStartTime(matchStart);
@@ -239,10 +243,8 @@ int main(int argc, char** argv) {
         clock.set(matchStart + bountyPress);
         bounty.matchMgr->getMatchButtonPush()(bounty.matchMgr);
 
-        MatchPacket hunterPkt =
-        makeDrawResultPacket(hunter.matchMgr->getCurrentMatch(), true, "hunt");
-        MatchPacket bountyPkt =
-        makeDrawResultPacket(bounty.matchMgr->getCurrentMatch(), false, "boun");
+        MatchPacket hunterPkt = makeDrawResultPacket(hunter.matchMgr->getCurrentMatch(), true);
+        MatchPacket bountyPkt = makeDrawResultPacket(bounty.matchMgr->getCurrentMatch(), false);
 
         deliver(bounty.peerComms, kHunterMac, hunterPkt);
         deliver(hunter.peerComms, kBountyMac, bountyPkt);

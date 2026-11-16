@@ -91,7 +91,6 @@ void MatchApp::populateStateMap() {
     MatchResult* matchResult = new MatchResult(context);
     Win* win = new Win(context);
     Lose* lose = new Lose(context);
-    UploadMatchesState* uploadMatches = new UploadMatchesState(context);
 
     ShootoutManager* shootoutManager = context.shootoutManager;
 
@@ -161,17 +160,11 @@ void MatchApp::populateStateMap() {
     [matchResult]() { return matchResult->transitionToShootoutEliminated(); },
     StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ELIMINATED));
 
-    win->addTransition(
-        [win]() { return win->resetGame(); },
-        uploadMatches);
+    win->addAppTransition([win]() { return win->resetGame(); }, StateId(HUB_APP_ID),
+                          StateId(SLEEP));
 
-    lose->addTransition(
-        [lose]() { return lose->resetGame(); },
-        uploadMatches);
-
-    uploadMatches->addAppTransition(
-        [uploadMatches]() { return uploadMatches->transitionToSleep(); },
-        StateId(HUB_APP_ID), StateId(SLEEP));
+    lose->addAppTransition([lose]() { return lose->resetGame(); }, StateId(HUB_APP_ID),
+                           StateId(SLEEP));
 
     stateMap.push_back(matchCountdown);
     stateMap.push_back(matchState);
@@ -180,7 +173,6 @@ void MatchApp::populateStateMap() {
     stateMap.push_back(matchResult);
     stateMap.push_back(win);
     stateMap.push_back(lose);
-    stateMap.push_back(uploadMatches);
 }
 
 ShootoutApp::ShootoutApp(const GameContext& context)

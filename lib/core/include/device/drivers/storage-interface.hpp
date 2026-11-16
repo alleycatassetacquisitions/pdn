@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 class StorageInterface {
@@ -10,14 +12,22 @@ public:
     virtual size_t write(const std::string& ns, const std::string& key, const std::string& value) = 0;
     /** Reads a string back, or `defaultValue` when the key is unset. */
     virtual std::string read(const std::string& ns, const std::string& key, const std::string& defaultValue) = 0;
-    /** Drops one key from `ns`. True when something was removed. */
-    virtual bool remove(const std::string& ns, const std::string& key) = 0;
-    /** Drops every key in `ns`. */
-    virtual bool clear(const std::string& ns) = 0;
     /** Flushes and closes the backing store. */
     virtual void end() = 0;
     /** Reads one byte back, or `defaultValue` when the key is unset. */
     virtual uint8_t readUChar(const std::string& ns, const std::string& key, uint8_t defaultValue) = 0;
     /** Stores one byte under `ns`. */
     virtual size_t writeUChar(const std::string& ns, const std::string& key, uint8_t value) = 0;
+    /** Reads a 32-bit unsigned integer back, or `defaultValue` when the key is unset. */
+    virtual uint32_t readUInt(const std::string& ns, const std::string& key,
+                              uint32_t defaultValue) = 0;
+    /** Stores a 32-bit unsigned integer under `ns`. */
+    virtual size_t writeUInt(const std::string& ns, const std::string& key, uint32_t value) = 0;
+    /** Stores `length` raw bytes under `ns`; returns `length` on success or 0 on failure. */
+    virtual size_t writeBytes(const std::string& ns, const std::string& key, const uint8_t* data,
+                              size_t length) = 0;
+    /** Reads up to `maxLength` raw bytes into `buffer`; returns bytes read or 0 when unset or
+     * larger than `maxLength`. */
+    virtual size_t readBytes(const std::string& ns, const std::string& key, uint8_t* buffer,
+                             size_t maxLength) = 0;
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include "game/match.hpp"
@@ -12,9 +13,14 @@ protected:
     }
 };
 
-// ============================================
-// JSON Serialization Tests
-// ============================================
+// A UUID whose bytes are all `fill` except two zero bytes, which a string copy would stop at.
+inline UUIDBytes uuidWithZeroBytes(uint8_t fill) {
+    UUIDBytes id;
+    memset(id.bytes, fill, sizeof(id.bytes));
+    id.bytes[0] = 0;
+    id.bytes[7] = 0;
+    return id;
+}
 
 // Match() is defaulted, so the member initializers are the only thing that
 // empties a fresh match. Nothing else in the suite reads that state.
@@ -22,10 +28,12 @@ inline void matchDefaultConstructionIsEmpty() {
     Match match;
 
     EXPECT_STREQ(match.getMatchId(), "");
-    EXPECT_STREQ(match.getHunterId(), "");
-    EXPECT_STREQ(match.getBountyId(), "");
+    EXPECT_TRUE(match.getHunterPlayerId().isZero());
+    EXPECT_TRUE(match.getBountyPlayerId().isZero());
+    EXPECT_TRUE(match.getWinnerPlayerId().isZero());
     EXPECT_EQ(match.getHunterDrawTime(), 0UL);
     EXPECT_EQ(match.getBountyDrawTime(), 0UL);
+    EXPECT_EQ(match.getOccurredAtUnixMs(), 0);
 }
 
 // A shootout id is "SHT-" then 32 digits: 36 characters with one hyphen where a
@@ -51,130 +59,41 @@ inline void matchShootoutIdConversionStaysInBounds() {
     }
 }
 
-// The wire field is 4 raw bytes with no terminator, so bytes after an early NUL
-// are whatever the sender left there. Reading one must not strand it in the field
-// — the setters guarantee a cleared tail and deserialize has to agree with them.
-inline void matchDeserializeClearsPlayerIdTail() {
-    uint8_t buffer[MATCH_BINARY_SIZE] = {};
-    uint8_t* hunterField = buffer + IdGenerator::UUID_BINARY_SIZE;
-    hunterField[0] = 'a';
-    hunterField[1] = 'b';
-    hunterField[2] = '\0';
-    hunterField[3] = 0x7F;
-
-    Match match;
-    match.deserialize(buffer);
-
-    EXPECT_STREQ(match.getHunterId(), "ab");
-    EXPECT_EQ(match.getHunterId()[3], '\0') << "stale wire byte survived past the terminator";
-}
-
-// Pins copyId's zero-fill: overwriting with a shorter id must not leave the
-// previous id's bytes in the tail. EXPECT_STREQ cannot see this, because strcmp
-// stops at the terminator. Index 3 discriminates; index 2 holds a terminator
-// whether the tail was cleared or not.
-inline void matchShorterIdOverwriteClearsTheTail() {
-    Match match("m", "abcd", true);
-    match.setBountyId("wxyz");
-
-    match.setHunterId("ab");
-    match.setBountyId("wx");
-
-    EXPECT_EQ(match.getHunterId()[3], '\0') << "hunter field tail was not cleared";
-    EXPECT_EQ(match.getBountyId()[3], '\0') << "bounty field tail was not cleared";
-    EXPECT_STREQ(match.getHunterId(), "ab");
-    EXPECT_STREQ(match.getBountyId(), "wx");
-}
-
-inline void matchJsonRoundTripPreservesAllFields() {
-    // Create a match with all fields
-    Match original("match-id-12345678-1234-1234-1234-123456789abc",
-                   "hunter-id-12345678-1234-1234-1234-123456789abc", true);
-    original.setBountyId("bounty-id-12345678-1234-1234-1234-123456789abc");
-    original.setHunterDrawTime(250);
-    original.setBountyDrawTime(300);
-    original.setWinnerIsHunter(true);
-
-    // Serialize to JSON
-    std::string json = original.toJson();
-
-    // Deserialize into new match
-    Match restored;
-    restored.fromJson(json);
-
-    // Verify all fields preserved
-    EXPECT_STREQ(restored.getMatchId(), original.getMatchId());
-    EXPECT_STREQ(restored.getHunterId(), original.getHunterId());
-    EXPECT_STREQ(restored.getBountyId(), original.getBountyId());
-    EXPECT_EQ(restored.getHunterDrawTime(), 250);
-    EXPECT_EQ(restored.getBountyDrawTime(), 300);
-    EXPECT_TRUE(restored.isWinnerHunter());
-}
-
-// The flag is the winner the match was given, not a comparison of the raw
-// times: a posse boost can carry the slower raw draw to the win.
-inline void matchJsonContainsWinnerFlag() {
-    Match hunterWins("match-1", "hunter-1", true);
-    hunterWins.setBountyId("bounty-1");
-    hunterWins.setHunterDrawTime(350);
-    hunterWins.setBountyDrawTime(200);
-    hunterWins.setWinnerIsHunter(true);
-
-    std::string json = hunterWins.toJson();
-    EXPECT_NE(json.find("\"winner_is_hunter\":true"), std::string::npos);
-
-    Match bountyWins("match-2", "hunter-2", true);
-    bountyWins.setBountyId("bounty-2");
-    bountyWins.setHunterDrawTime(200);
-    bountyWins.setBountyDrawTime(350);
-    bountyWins.setWinnerIsHunter(false);
-
-    json = bountyWins.toJson();
-    EXPECT_NE(json.find("\"winner_is_hunter\":false"), std::string::npos);
-}
-
-// ============================================
-// Binary Serialization Tests
-// ============================================
-
+// Every field, including UUIDs with zero bytes, survives serialize/deserialize.
 inline void matchBinaryRoundTripPreservesAllFields() {
-    // Create a match with valid UUID format strings
-    Match original("12345678-1234-1234-1234-123456789abc",
-                   "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", true);
-    original.setBountyId("11111111-2222-3333-4444-555555555555");
+    Match original("12345678-1234-1234-1234-123456789abc");
+    original.setPlayer(true, uuidWithZeroBytes(0x11), uuidWithZeroBytes(0x33));
+    original.setPlayer(false, uuidWithZeroBytes(0x22), uuidWithZeroBytes(0x44));
+    original.setWinnerPlayerId(uuidWithZeroBytes(0x22));
     original.setHunterDrawTime(150);
     original.setBountyDrawTime(275);
+    original.setOccurredAtUnixMs(1763200000123LL);
 
-    // Serialize to binary
     uint8_t buffer[MATCH_BINARY_SIZE];
-    size_t bytesWritten = original.serialize(buffer);
+    ASSERT_EQ(original.serialize(buffer), MATCH_BINARY_SIZE);
 
-    EXPECT_EQ(bytesWritten, MATCH_BINARY_SIZE);
-
-    // Deserialize into new match
     Match restored;
-    size_t bytesRead = restored.deserialize(buffer);
+    ASSERT_EQ(restored.deserialize(buffer), MATCH_BINARY_SIZE);
 
-    EXPECT_EQ(bytesRead, MATCH_BINARY_SIZE);
-
-    // Verify all fields preserved
-    EXPECT_STREQ(restored.getMatchId(), original.getMatchId());
-    EXPECT_STREQ(restored.getHunterId(), original.getHunterId());
-    EXPECT_STREQ(restored.getBountyId(), original.getBountyId());
-    EXPECT_EQ(restored.getHunterDrawTime(), 150);
-    EXPECT_EQ(restored.getBountyDrawTime(), 275);
+    EXPECT_STREQ(restored.getMatchId(), "12345678-1234-1234-1234-123456789abc");
+    EXPECT_EQ(restored.getHunterPlayerId(), uuidWithZeroBytes(0x11));
+    EXPECT_EQ(restored.getBountyPlayerId(), uuidWithZeroBytes(0x22));
+    EXPECT_EQ(restored.getHunterTeamId(), uuidWithZeroBytes(0x33));
+    EXPECT_EQ(restored.getBountyTeamId(), uuidWithZeroBytes(0x44));
+    EXPECT_EQ(restored.getWinnerPlayerId(), uuidWithZeroBytes(0x22));
+    EXPECT_EQ(restored.getHunterDrawTime(), 150UL);
+    EXPECT_EQ(restored.getBountyDrawTime(), 275UL);
+    EXPECT_EQ(restored.getOccurredAtUnixMs(), 1763200000123LL);
 }
 
-inline void matchBinarySizeIsCorrect() {
-    // Verify the binary size constant matches expected
-    // 1 UUID match_id (16 bytes) + 2 player IDs (4 bytes each) + 2 unsigned longs
-    size_t expectedSize = 16 + (2 * PLAYER_ID_BINARY_SIZE) + (2 * sizeof(unsigned long));
-    EXPECT_EQ(Match::binarySize(), expectedSize);
+// The record is the packed 112-byte layout NVS stores.
+inline void matchRecordLayoutIs112Bytes() {
+    EXPECT_EQ(sizeof(MatchRecord), 112u);
+    EXPECT_EQ(offsetof(MatchRecord, hunterDrawTimeMs), 16u);
+    EXPECT_EQ(offsetof(MatchRecord, hunterPlayerId), 24u);
+    EXPECT_EQ(offsetof(MatchRecord, winnerPlayerId), 88u);
+    EXPECT_EQ(offsetof(MatchRecord, occurredAtUnixMs), 104u);
 }
-
-// ============================================
-// Draw Time & Winner Tests
-// ============================================
 
 inline void matchSetupClearsDrawTimes() {
     Match match;
@@ -182,8 +101,7 @@ inline void matchSetupClearsDrawTimes() {
     match.setBountyDrawTime(600);
 
     // Re-creating the match should reset draw times
-    match = Match("new-match", "new-hunter", true);
-    match.setBountyId("new-bounty");
+    match = Match("new-match");
 
     EXPECT_EQ(match.getHunterDrawTime(), 0);
     EXPECT_EQ(match.getBountyDrawTime(), 0);
@@ -191,8 +109,7 @@ inline void matchSetupClearsDrawTimes() {
 }
 
 inline void matchDrawTimesSetCorrectly() {
-    Match match("match", "hunter", true);
-    match.setBountyId("bounty");
+    Match match("match");
 
     match.setHunterDrawTime(123);
     EXPECT_EQ(match.getHunterDrawTime(), 123);
@@ -201,36 +118,18 @@ inline void matchDrawTimesSetCorrectly() {
     EXPECT_EQ(match.getBountyDrawTime(), 456);
 }
 
-// ============================================
-// Edge Cases
-// ============================================
-
-inline void matchWithZeroDrawTimes() {
-    Match match("match", "hunter", true);
-    match.setBountyId("bounty");
-
-    // Both times at 0 - edge case for tie
-    EXPECT_EQ(match.getHunterDrawTime(), 0);
-    EXPECT_EQ(match.getBountyDrawTime(), 0);
-
-    std::string json = match.toJson();
-
-    // No winner was set, so the flag stays at its default
-    EXPECT_NE(json.find("\"winner_is_hunter\":false"), std::string::npos);
-}
-
 inline void matchWithLargeDrawTimes() {
-    Match match("match", "hunter", true);
-    match.setBountyId("bounty");
+    Match match("match");
 
-    // Test with large values
     unsigned long largeTime = 999999999UL;
     match.setHunterDrawTime(largeTime);
     match.setBountyDrawTime(largeTime - 1);
 
-    EXPECT_EQ(match.getHunterDrawTime(), largeTime);
-    EXPECT_EQ(match.getBountyDrawTime(), largeTime - 1);
+    uint8_t buffer[MATCH_BINARY_SIZE];
+    match.serialize(buffer);
+    Match restored;
+    restored.deserialize(buffer);
 
-    std::string json = match.toJson();
-    EXPECT_NE(json.find("\"hunter_time\":999999999"), std::string::npos);
+    EXPECT_EQ(restored.getHunterDrawTime(), largeTime);
+    EXPECT_EQ(restored.getBountyDrawTime(), largeTime - 1);
 }

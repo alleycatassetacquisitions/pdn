@@ -18,7 +18,7 @@
  * UnknownStorageNamespaceException.
  *
  * Usage:
- *   new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE})
+ *   new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCH_RING_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE})
  */
 class Esp32S3PrefsDriver : public StorageDriverInterface {
 public:
@@ -81,24 +81,6 @@ public:
         return std::string(buffer.data());
     }
 
-    /** Drops one key from `ns`. */
-    bool remove(const std::string& ns, const std::string& key) override {
-        nvs_handle_t handle = requireHandle(ns);
-        if (nvs_erase_key(handle, key.c_str()) != ESP_OK) {
-            return false;
-        }
-        return nvs_commit(handle) == ESP_OK;
-    }
-
-    /** Drops every key in `ns`. */
-    bool clear(const std::string& ns) override {
-        nvs_handle_t handle = requireHandle(ns);
-        if (nvs_erase_all(handle) != ESP_OK) {
-            return false;
-        }
-        return nvs_commit(handle) == ESP_OK;
-    }
-
     /** Closes every namespace handle; the driver is unusable afterwards. */
     void end() override {
         endAllNamespaces();
@@ -124,6 +106,63 @@ public:
             return 0;
         }
         return sizeof(value);
+    }
+
+    /** Reads a 32-bit unsigned integer back, or `defaultValue` when the key is unset. */
+    uint32_t readUInt(const std::string& ns, const std::string& key,
+                      uint32_t defaultValue) override {
+        nvs_handle_t handle = requireHandle(ns);
+        uint32_t value = 0;
+        if (nvs_get_u32(handle, key.c_str(), &value) != ESP_OK) {
+            return defaultValue;
+        }
+        return value;
+    }
+
+    /** Stores a 32-bit unsigned integer under `ns`. */
+    size_t writeUInt(const std::string& ns, const std::string& key, uint32_t value) override {
+        nvs_handle_t handle = requireHandle(ns);
+        if (nvs_set_u32(handle, key.c_str(), value) != ESP_OK) {
+            return 0;
+        }
+        if (nvs_commit(handle) != ESP_OK) {
+            return 0;
+        }
+        return sizeof(value);
+    }
+
+    /** Stores `length` raw bytes under `ns`; returns `length` on success or 0 on failure. */
+    size_t writeBytes(const std::string& ns, const std::string& key, const uint8_t* data,
+                      size_t length) override {
+        nvs_handle_t handle = requireHandle(ns);
+        if (data == nullptr || length == 0) {
+            return 0;
+        }
+        if (nvs_set_blob(handle, key.c_str(), data, length) != ESP_OK) {
+            return 0;
+        }
+        if (nvs_commit(handle) != ESP_OK) {
+            return 0;
+        }
+        return length;
+    }
+
+    /** Reads up to `maxLength` raw bytes into `buffer`; returns bytes read or 0. */
+    size_t readBytes(const std::string& ns, const std::string& key, uint8_t* buffer,
+                     size_t maxLength) override {
+        nvs_handle_t handle = requireHandle(ns);
+        if (buffer == nullptr || maxLength == 0) {
+            return 0;
+        }
+        size_t length = 0;
+        if (nvs_get_blob(handle, key.c_str(), nullptr, &length) != ESP_OK || length == 0 ||
+            length > maxLength) {
+            return 0;
+        }
+        if (nvs_get_blob(handle, key.c_str(), buffer, &length) != ESP_OK) {
+            return 0;
+        }
+        return length;
     }
 
 private:

@@ -291,7 +291,7 @@ inline void idleTransitionsToMatchCountdownWhenMatchIsReady(IdleStateTests* suit
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     const char* matchId = suite->matchManager->getCurrentMatch()->getMatchId();
-    MatchCommand ack(dummyMac, MatchCmd::MATCH_ID_ACK, matchId, "boun", 0, false);
+    MatchCommand ack(dummyMac, MatchCmd::MATCH_ID_ACK, matchId, 0, false);
     suite->matchManager->listenForMatchEvents(ack);
 
     EXPECT_TRUE(suite->idleState->transitionToMatchCountdown());
@@ -1098,7 +1098,7 @@ inline void resultBountyWinsWithFasterTime(MatchResultTests* suite) {
     // Use the fixture's stubbed RDC peer MAC so the SEND_MATCH_ID gate accepts it.
     uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     MatchCommand sendMatchCmd(hunterMac, MatchCmd::SEND_MATCH_ID, "test-match-id-000000000000000",
-                              "5678", 0, true);
+                              0, true);
     suite->matchManager->listenForMatchEvents(sendMatchCmd);
     suite->matchManager->setHunterDrawTime(250);
     suite->matchManager->setBountyDrawTime(150);
@@ -1219,13 +1219,6 @@ inline void resultPlayerStatsUpdatedOnLoss(MatchResultTests* suite) {
 // Test: Match finalized on result
 inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
     suite->player->setIsHunter(true);
-    
-    EXPECT_CALL(suite->storage, write(_, _, _))
-        .Times(testing::AtLeast(1))
-        .WillRepeatedly(Return(100));
-    EXPECT_CALL(suite->storage, writeUChar(_, _, _))
-        .Times(testing::AtLeast(1))
-        .WillRepeatedly(Return(1));
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setHunterDrawTime(200);
@@ -1235,10 +1228,9 @@ inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
 
     MatchResult resultState(suite->ctx);
     resultState.onStateMounted(&suite->device);
-    
-    // Match should be finalized (saved to storage)
-    // We verify this by checking the mock was called
-    SUCCEED();
+
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_TRUE(suite->matchManager->getLastMatchDisplay().hasData);
 }
 
 // The ordinary press-and-lose path, with no timeout involved. The winner's
@@ -1511,6 +1503,21 @@ inline void cleanupMatchResultResetsStateOnDismount(StateCleanupTests* suite) {
     // Transition flags should be reset
     EXPECT_FALSE(resultState.transitionToWin());
     EXPECT_FALSE(resultState.transitionToLose());
+}
+
+// Win and Lose loop their animation; Sleep, which comes next, starts none of its own.
+inline void cleanupWinAndLoseStopTheirAnimation(StateCleanupTests* suite) {
+    Win win(suite->ctx);
+    win.onStateMounted(&suite->device);
+    ASSERT_TRUE(suite->device.getLightManager()->isAnimating());
+    win.onStateDismounted(&suite->device);
+    EXPECT_FALSE(suite->device.getLightManager()->isAnimating());
+
+    Lose lose(suite->ctx);
+    lose.onStateMounted(&suite->device);
+    ASSERT_TRUE(suite->device.getLightManager()->isAnimating());
+    lose.onStateDismounted(&suite->device);
+    EXPECT_FALSE(suite->device.getLightManager()->isAnimating());
 }
 
 // Test: Match manager clears current match properly

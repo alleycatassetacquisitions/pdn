@@ -1104,6 +1104,56 @@ void cliSimulationCabledDevicesConnect(CliSimulationTestSuite* suite) {
     ASSERT_EQ(bounty->getJackStatus(SerialIdentifier::INPUT_JACK), JackStatus::CONNECTED);
 }
 
+// Steps time by hand, so a whole duel runs in a few thousand simulator ticks.
+class SteppedClock : public PlatformClock {
+public:
+    /** Milliseconds since an arbitrary origin, moved only by the test. */
+    unsigned long milliseconds() override { return now; }
+    /** UTC milliseconds, moving with milliseconds(). */
+    int64_t unixMilliseconds() override { return 1763200000000LL + now; }
+    unsigned long now = 1000;
+};
+
+// Test: a cabled duel between two test identities leaves one record on each PDN naming both
+void cliDuelStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
+    // cli-main seeds this at boot; the hunter draws the match id from it.
+    IdGenerator::initialize(42);
+    ASSERT_TRUE(cli::SerialCableBroker::getInstance().connect(0, 1));
+    SteppedClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+
+    MatchManager* matchManagers[2] = {suite->devices[0].gameSession->getContext().matchManager,
+                                      suite->devices[1].gameSession->getContext().matchManager};
+    for (int tick = 0; tick < 20000; tick++) {
+        if (matchManagers[0]->getMatchSequenceNumber() == 1 &&
+            matchManagers[1]->getMatchSequenceNumber() == 1) {
+            break;
+        }
+        clock.now += 5;
+        cli::advanceSimulation(suite->devices);
+        for (int i = 0; i < 2; i++) {
+            State* state = suite->devices[i].pdn->getActiveApp()->getCurrentState();
+            if (state->getStateId() == MATCH && !matchManagers[i]->getHasPressedButton()) {
+                suite->devices[i].primaryButtonDriver->execCallback(ButtonInteraction::PRESS);
+            }
+        }
+    }
+    SimpleTimer::setPlatformClock(&suite->globalClock);
+
+    const UUIDBytes& hunterId = suite->devices[0].player->getServerPlayerId();
+    const UUIDBytes& bountyId = suite->devices[1].player->getServerPlayerId();
+    MatchRecord records[2] = {};
+    for (int i = 0; i < 2; i++) {
+        ASSERT_EQ(matchManagers[i]->getMatchSequenceNumber(), 1u) << "device " << i;
+        ASSERT_TRUE(matchManagers[i]->readRecord(1, records[i]));
+        EXPECT_EQ(records[i].hunterPlayerId, hunterId);
+        EXPECT_EQ(records[i].bountyPlayerId, bountyId);
+        EXPECT_TRUE(records[i].winnerPlayerId == hunterId || records[i].winnerPlayerId == bountyId);
+    }
+    EXPECT_EQ(records[0].matchUuid, records[1].matchUuid);
+    EXPECT_EQ(records[0].winnerPlayerId, records[1].winnerPlayerId);
+}
+
 // Test: role command shows selected device's role
 void cliRoleCommandShowsSelectedDevice(CliRoleCommandTestSuite* suite) {
     // Selected device is 0 (hunter)
