@@ -248,8 +248,8 @@ def main():
         default=os.path.join(".pio", "build", "esp32-s3_pdn_release"),
         help="Directory containing built .bin files",
     )
-    parser.add_argument("--erase", action="store_true", help="Erase entire flash before writing")
-    parser.add_argument("--clear-nvs", action="store_true", help="Wipe NVS partition after each flash")
+    parser.add_argument("--erase", action="store_true", help="Erase entire flash, wiping stored records")
+    parser.add_argument("--clear-nvs", action="store_true", help="Wipe NVS (stored matches and crash records)")
     parser.add_argument("--esptool", help="Path to esptool.py (the multi_flash target passes the platform's)")
     args = parser.parse_args()
 
