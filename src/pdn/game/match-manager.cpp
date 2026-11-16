@@ -210,18 +210,6 @@ bool MatchManager::isHunterWinner() const {
     return getEffectiveDrawTime(true) < getEffectiveDrawTime(false);
 }
 
-bool MatchManager::isWinnerAgreed() const {
-    const bool localNeverPressed = activeMatchState.gracePeriodExpiredNoResult;
-    const bool opponentNeverPressed = activeMatchState.opponentNeverPressed;
-    // A side that never pressed loses on both devices; when both never pressed,
-    // each device names itself the winner.
-    if (localNeverPressed != opponentNeverPressed) return true;
-    if (localNeverPressed) return false;
-    // Without the opponent's result this device names it the winner unseen,
-    // while the opponent compares the two times.
-    return activeMatchState.hasReceivedDrawResult;
-}
-
 bool MatchManager::finalizeMatch() {
     if (!activeMatchState.match) {
         LOG_E(MATCH_MANAGER_TAG, "Cannot finalize match - no active match or ID mismatch\n");
@@ -245,12 +233,10 @@ bool MatchManager::finalizeMatch() {
     lastMatchDisplay.penaltyMs = activeMatchState.penaltyMs;
     lastMatchDisplay.hasData = true;
 
-    // Shootout matches are local-ephemeral. The server needs two different
-    // registered players and a winner, so a record naming a nil or repeated
-    // player, or a winner the opponent's record could contradict, is not kept.
-    if (currentMatchIsShootout() || match.getHunterPlayerId().isZero() ||
-        match.getBountyPlayerId().isZero() ||
-        match.getHunterPlayerId() == match.getBountyPlayerId() || !isWinnerAgreed()) {
+    // Shootout matches are local-ephemeral and their IDs are not UUIDs, so the
+    // server cannot take them. Every other record is kept as computed; the
+    // server rejects or flags a nil or repeated player or a disputed winner.
+    if (currentMatchIsShootout()) {
         clearCurrentMatch();
         return true;
     }
