@@ -11,7 +11,7 @@
 - A record retires only on an ack matching kind, number, CRC and the FDN MAC it was sent to. A delivery report never retires.
 - One frame per kind in flight; none during a match or shootout; crash and match lanes independent.
 - Older-firmware JSON matches (namespace `matches`) are kept untouched: no path reads them for relay, writes or erases them. They wait for a server route.
-- Test-only identity: `esp32-s3_pdn_test` (`-DPDN_TEST_PLAYER`) and the simulator stamp a MAC-derived UUID: the MAC reversed plus tail `0000-7e57-7e577e577e57`, version nibble 0, never a server id. Release builds: ChooseTeam with a nil UUID; matches are not stored.
+- Test-only identity: `esp32-s3_pdn_test` (`-DPDN_TEST_PLAYER`) and the simulator stamp a MAC-derived UUID: the MAC reversed plus tail `0000-7e57-7e577e577e57`, version nibble 0, never a server id. Release builds: ChooseTeam with a nil UUID; matches are stored with the nil UUID and the server rejects them.
 
 ## FDN
 

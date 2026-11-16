@@ -771,10 +771,10 @@ TEST_F(MatchManagerTestSuite, negativeTimeDoesNotWinAgainstAResultThatNeverArriv
     matchManager->getMatchButtonPush()(matchManager);
 
     EXPECT_FALSE(matchManager->didWin());
-    // The opponent compares its own two times and may name another winner, so
-    // no record is kept.
+    // The opponent may name another winner; the record keeps this device's.
     ASSERT_TRUE(matchManager->finalizeMatch());
-    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u);
+    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
+    EXPECT_EQ(storedMatch(1).getWinnerPlayerId(), makeTestUuid(OPPONENT_PLAYER_UUID));
 }
 
 // A tie is a loss on both screens, and the record names the Bounty.
@@ -894,26 +894,39 @@ TEST_F(MatchManagerTestSuite, shootoutMatchIsNotStored) {
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u);
 }
 
-TEST_F(MatchManagerTestSuite, nilOpponentIsNotStored) {
+// The server rejects or flags these records; the PDN keeps them as computed.
+TEST_F(MatchManagerTestSuite, nilOpponentIsStored) {
     ASSERT_TRUE(playHunterWin(UUIDBytes{}));
-    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u);
+    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
+    Match stored = storedMatch(1);
+    EXPECT_EQ(stored.getHunterPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
+    EXPECT_TRUE(stored.getBountyPlayerId().isZero());
+    EXPECT_EQ(stored.getWinnerPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
 }
 
-TEST_F(MatchManagerTestSuite, unregisteredLocalPlayerIsNotStored) {
+TEST_F(MatchManagerTestSuite, unregisteredLocalPlayerIsStored) {
     Player unregistered;
     matchManager->initialize(&unregistered, &storage);
     ASSERT_TRUE(playHunterWin());
-    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u);
+    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
+    Match stored = storedMatch(1);
+    EXPECT_TRUE(stored.getHunterPlayerId().isZero());
+    EXPECT_EQ(stored.getBountyPlayerId(), makeTestUuid(OPPONENT_PLAYER_UUID));
+    EXPECT_TRUE(stored.getWinnerPlayerId().isZero());
     matchManager->initialize(player, &storage);
 }
 
-TEST_F(MatchManagerTestSuite, samePlayerOnBothSidesIsNotStored) {
+TEST_F(MatchManagerTestSuite, samePlayerOnBothSidesIsStored) {
     ASSERT_TRUE(playHunterWin(makeTestUuid(LOCAL_PLAYER_UUID)));
-    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u);
+    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
+    Match stored = storedMatch(1);
+    EXPECT_EQ(stored.getHunterPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
+    EXPECT_EQ(stored.getBountyPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
+    EXPECT_EQ(stored.getWinnerPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
 }
 
 // Each device names itself the winner when neither pressed.
-TEST_F(MatchManagerTestSuite, matchNeitherSidePressedIsNotStored) {
+TEST_F(MatchManagerTestSuite, matchNeitherSidePressedIsStored) {
     setupAckedMatchAsHunter();
     matchManager->sendNeverPressed(4000);
     static const uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -921,7 +934,8 @@ TEST_F(MatchManagerTestSuite, matchNeitherSidePressedIsNotStored) {
                               matchManager->getCurrentMatch()->getMatchId(), 4000, false);
     matchManager->listenForMatchEvents(neverPressed);
     ASSERT_TRUE(matchManager->finalizeMatch());
-    EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u);
+    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
+    EXPECT_EQ(storedMatch(1).getWinnerPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
 }
 
 // A side that never pressed loses on both devices, so that record is kept.
