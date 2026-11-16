@@ -226,9 +226,6 @@ private:
     // The recorded winner: a side that never pressed or (for the opponent)
     // never reported loses, else the lower effective time; a tie to the Bounty.
     bool isHunterWinner() const;
-    // True when the opponent's device arrives at the same winner as this one,
-    // so the record may name it.
-    bool isWinnerAgreed() const;
     bool appendRecordToStorage(const Match& match);
 
     // Returns true when `command` belongs to the currently-active match and
