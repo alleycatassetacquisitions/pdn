@@ -14,7 +14,7 @@ An unprovisioned PDN SHALL wait for registration without using Wi-Fi or offering
 
 #### Scenario: Any PIN leads to role selection
 - **WHEN** a user completes PIN entry with any four digits, `0000` included
-- **THEN** the PDN shows role selection, and confirming a role applies the build's identity and enters the hub
+- **THEN** the PDN shows role selection, and confirming a role applies the build's identity, shows `"Welcome"` and the player's name for `5000 ms`, and enters the hub
 
 #### Scenario: Holding secondary button for 5 seconds on provisioning screen starts firmware seeding
 - **WHEN** a user releases and holds the secondary button for `5000 ms` on the PDN provisioning screen

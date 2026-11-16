@@ -57,12 +57,15 @@ void FetchUserState::onStateDismounted(PDN* pdn) {
     failurePageTimer.invalidate();
 }
 
-void FetchUserState::onPlayerFound() {
+void FetchUserState::onPlayerFound(const Player& found) {
     if (!fetchTimer.isRunning()) {
         LOG_W(TAG, "Player found with no lookup in flight - ignored");
         return;
     }
-    LOG_I(TAG, "Found player: %s", playerProvider->getPlayer()->getServerPlayerName());
+    LOG_I(TAG, "Found player: %s", found.getServerPlayerName());
+    playerProvider->getPlayer()->applyRegistrationProfile(
+    found.getServerPlayerId(), found.getServerPlayerName(), found.getRegistrationTeam(),
+    found.getRegistrationAffiliations());
     fetchTimer.invalidate();
     transitionToWelcomeState = true;
 }

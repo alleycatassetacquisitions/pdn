@@ -106,7 +106,7 @@ inline void confirmChooseTeam(PlayerFetchTestSuite* suite, ChooseTeamState* choo
     secondaryPress(secondaryCtx);
 }
 
-inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersHub(PlayerFetchTestSuite* suite) {
+inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersWelcome(PlayerFetchTestSuite* suite) {
     uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
     ChooseTeamState chooseTeam(&suite->playerProvider, true);
     confirmChooseTeam(suite, &chooseTeam, mac, true);
@@ -172,25 +172,37 @@ inline void mountFetchUser(PlayerFetchTestSuite* suite, FetchUserState* fetch) {
 }
 
 inline void fetchUserFoundPlayerLeadsToWelcome(PlayerFetchTestSuite* suite) {
+    Player ada;
+    ada.applyRegistrationProfile(UUIDBytes(), "Ada", Team(), {});
     FetchUserState fetch(&suite->playerProvider);
     mountFetchUser(suite, &fetch);
     EXPECT_FALSE(fetch.transitionToWelcome());
-    fetch.onPlayerFound();
+    fetch.onPlayerFound(ada);
+    EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
     EXPECT_TRUE(fetch.transitionToWelcome());
-    EXPECT_FALSE(fetch.transitionToPinEntry());
+    fetch.onPlayerLookupFailed();
+    fetch.onStateLoop(&suite->device);
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    fetch.onStateLoop(&suite->device);
+    EXPECT_FALSE(fetch.transitionToPinEntry()) << "a failure after the answer is ignored";
     dismountState(&fetch, &suite->device);
     EXPECT_FALSE(fetch.transitionToWelcome());
-    fetch.onPlayerFound();
+    suite->playerProvider.clear();
+    fetch.onPlayerFound(ada);
     EXPECT_FALSE(fetch.transitionToWelcome()) << "no lookup is outstanding after dismount";
+    EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "an ignored answer writes nothing";
 }
 
 // Shows "Unable to / Locate Asset" for the failure-page time, then returns to PIN entry.
 inline void expectFailurePageThenPinEntry(PlayerFetchTestSuite* suite, FetchUserState* fetch) {
     fetch->onStateLoop(&suite->device);
     EXPECT_FALSE(fetch->transitionToPinEntry());
-    fetch->onPlayerFound();
+    fetch->onPlayerFound(Player());
     EXPECT_FALSE(fetch->transitionToWelcome()) << "a late answer is ignored";
-    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 1);
+    suite->fakeClock->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS);
+    fetch->onStateLoop(&suite->device);
+    EXPECT_FALSE(fetch->transitionToPinEntry());
+    suite->fakeClock->advance(1);
     fetch->onStateLoop(&suite->device);
     EXPECT_TRUE(fetch->transitionToPinEntry());
     dismountState(fetch, &suite->device);

@@ -40,7 +40,7 @@ namespace cli {
  * Human-readable name for a state id shown in the CLI's state history.
  *
  * Ids come from two namespaces that share one numbering: player-fetch owns
- * 0-4 (and 31) and the game owns the rest. Naming the constants rather than the
+ * 0, 1, 2, 4 and 31 and the game owns the rest. Naming the constants rather than the
  * numbers is what keeps this from drifting — a retired state stops compiling here.
  */
 inline const char* getStateName(int stateId) {

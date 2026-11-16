@@ -114,7 +114,7 @@ pio run -e esp32-s3_pdn_release
 
 1. **Power on the PDN**: Once powered, the PDN asks for a 4-digit pairing code. The **top button** cycles through digits, 0 through 9, while the **bottom button** confirms each digit.
 
-2. **Choose a role**: Until FDN registration lands (#485), any code leads to role selection: **select a role - Hunter/Bounty** and then confirm. The device will launch into the idle state and you will then be able to practice quickdraw duels with another device.
+2. **Choose a role**: Until FDN registration lands (#485), any code leads to role selection: **select a role - Hunter/Bounty** and then confirm. The device shows Welcome with its player name, then launches into the idle state and you will then be able to practice quickdraw duels with another device.
 
 3. **For Simulated Development**: See CLI_README.md for development without a hardware device.
 
