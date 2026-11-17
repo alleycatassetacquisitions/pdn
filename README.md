@@ -42,7 +42,7 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
 ### Prerequisites
 
 - **PlatformIO Core**: Ensure you have PlatformIO installed as it is used for development and flashing the firmware.
-- **pioarduino Platform**: This project uses [pioarduino](https://github.com/pioarduino/platform-espressif32), a community fork of the Espressif32 platform with support for newer ESP-IDF and Arduino framework versions.
+- **Espressif32 Platform**: The firmware builds on PlatformIO's [espressif32](https://github.com/platformio/platform-espressif32) platform with `framework = espidf`. Installing it brings the whole device toolchain with it, so no separate CMake, Ninja, xtensa or esptool install is needed.
 - **Unix Style Terminal**: Required for the CLI simulator tool. Windows users should use WSL (Windows Subsystem for Linux).
 
 ### Steps
@@ -68,7 +68,7 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    ```bash
    cp wifi_credentials.ini.example wifi_credentials.ini
    ```
-   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL. This file is excluded from version control for security.
+   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL, and for an FDN, its symbol-match codeword. This file is excluded from version control for security.
 
 5. Build the project using PlatformIO:
    ```bash
@@ -84,20 +84,24 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    platformio run --target upload
    ```
 
-### Migration from Standard PlatformIO Espressif32
+### IDE extensions
 
-This project recently migrated from the standard PlatformIO Espressif32 platform to **pioarduino** for access to newer ESP-IDF versions and improved Arduino framework support.
+Builds always use **PlatformIO Core** and PlatformIO's official [espressif32](https://github.com/platformio/platform-espressif32) platform (see `platformio.ini`). You can build and flash from the terminal without any extension.
 
-Uninstall PlatformIO from your IDE.
-Install pioarduino.
-Restart your IDE.
+For in-editor integration, either extension (PlatformIO/pioarduino) is fine; pick based on your editor:
 
-If you're experiencing build issues after pulling recent changes, perform a clean install:
+- **Microsoft VS Code**: [PlatformIO IDE](https://platformio.org/install/ide?install=vscode).
+- **Other VS Code–compatible editors** (Cursor, VSCodium, etc.): PlatformIO IDE is unavailable there because it depends on Microsoft's C/C++ IntelliSense. Use the [pioarduino IDE](https://github.com/pioarduino/pioarduino-vscode-ide) extension instead—it still drives PlatformIO Core against this repo's `platformio.ini`.
+
+### Cleaning up after the pioarduino platform
+
+If you previously built with the pioarduino *platform* package, it and the official platform install into the same directories. Remove the old packages once:
 
 ```bash
 # Remove old platform packages
 rm -rf ~/.platformio/platforms/espressif32*
 rm -rf ~/.platformio/packages/framework-arduinoespressif32*
+rm -rf ~/.platformio/packages/tool-esptoolpy*
 
 # Clean the project build cache
 rm -rf .pio/
@@ -133,6 +137,13 @@ If you want to contribute to the PDN Project, follow these steps to set up your 
    pio test -e native          # Core unit tests
    pio test -e native_cli_test # CLI-specific tests
    ```
+   CI also gates on the core suite under sanitizers. Run those binaries directly:
+   a default `pio test` prints only lines its googletest parser recognizes, so a
+   sanitizer report is dropped.
+   ```bash
+   pio test -e native_asan --without-testing && ./.pio/build/native_asan/program
+   pio test -e native_tsan --without-testing && ./.pio/build/native_tsan/program
+   ```
 5. **Commit and push your changes**:
    ```bash
    git commit -m "Add New Feature"
@@ -142,10 +153,18 @@ If you want to contribute to the PDN Project, follow these steps to set up your 
 
 ### Code Structure
 
-- `include/device/`: This is the hardware abstraction layer that hides all the hardware implementation.
-- `include/device/drivers/`: Provides the concrete implementation of hardware peripherals. The native drivers are used for running the CLI tool. 
-- `include/game/`: Contains code for game experiences.
-- `include/state/`: The core plumbing of the State Machine, the core class that powers games.
+#### `libraries`
+- `core/`: Fundamental architecture for Alleycat embedded devices. This library is platform agnostic.
+- `esp32-drivers/`: drivers for the esp32-s3 family of chips. Relies on `core/device/drivers/`
+- `native-drivers/`: drivers that simulate the hardware of the pdn for our testing and simulator platform.
+- `alleycat-server/`: api's for the alleycat-rs backend.
+
+#### `src`
+- `cli`: `core/` + `native-drivers` TUI app for simulating up to 16 pdn's.
+- `fdn`: `core/` + `esp32-drivers` Game & Application Logic for the Alleycat Fixed Data Node.
+- `pdn`: `core/` + `esp32-drivers` Game & Application Logic for the Alleycat Portable Data Node.
+
+#### other
 - `test/`: Unit testing files for ensuring code stability.
 - `platformio.ini`: Project configuration file for PlatformIO, defining build environments and dependencies.
 

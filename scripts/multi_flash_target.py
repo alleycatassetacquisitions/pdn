@@ -44,7 +44,10 @@ def multi_flash(source, target, env):
 
     extra_args = ini_args + runtime_args
 
-    cmd = [sys.executable, script, "--build-dir", build_dir] + extra_args
+    # The platform's esptool, as `pio run -t upload` uses: it is not importable.
+    esptool = os.path.join(env.PioPlatform().get_package_dir("tool-esptoolpy") or "", "esptool.py")
+
+    cmd = [sys.executable, script, "--build-dir", build_dir, "--esptool", esptool] + extra_args
 
     print(f"\nLaunching multi-device flasher (build dir: {build_dir})")
     print(f"Command: {' '.join(cmd)}\n")

@@ -17,9 +17,8 @@
  * StateMachine initialized -> populates the state map, sets the current state and invokes
  * the first state's onStateMounted method.
  *
- * stateMachine.loop() must be invoked within the arduino loop function, which means
- * the statemachine loop will be invoked on every tick of the microcontroller.
- * (this hooks into the device loop())
+ * The device's loop() drives the active app's onStateLoop on every pass of the
+ * main loop.
  *
  *
  * From there, the current state's onStateLoop function is invoked.
@@ -37,11 +36,15 @@
  * Lifecycle dispatch goes through StateLifecycle* so that the bridge methods
  * (mount/loop/dismount) remain private to state implementers while still being
  * reachable via virtual dispatch from StateMachine.
-*/
+ */
 
-class StateMachine : public State {
+class StateMachine : public TypedState<Device> {
 public:
-    explicit StateMachine(int stateId) : State(stateId) {}
+    /**
+     * @param stateId This app's id, the same value as its AppConfig key.
+     */
+    explicit StateMachine(int stateId)
+        : TypedState<Device>(stateId) {}
 
     ~StateMachine() override {
         for (auto state: stateMap) {

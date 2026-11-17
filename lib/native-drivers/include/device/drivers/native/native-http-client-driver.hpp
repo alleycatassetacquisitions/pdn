@@ -8,7 +8,7 @@
 // Forward declaration - the mock server is only used in CLI builds
 #ifdef NATIVE_BUILD
 namespace cli {
-    class MockHttpServer;
+class MockHttpServer;
 }
 #endif
 
@@ -26,13 +26,15 @@ struct HttpRequestHistoryEntry {
 
 class NativeHttpClientDriver : public HttpClientDriverInterface {
 public:
-    explicit NativeHttpClientDriver(const std::string& name) : HttpClientDriverInterface(name) {
+    /** @p name is passed through to the driver interface base. */
+    explicit NativeHttpClientDriver(const std::string& name)
+        : HttpClientDriverInterface(name) {
         // Generate a fake MAC address for this instance
         for (int i = 0; i < 6; i++) {
             macAddress[i] = static_cast<uint8_t>(rand() % 256);
         }
         // Set local MAC prefix
-        macAddress[0] = 0x02; // Locally administered
+        macAddress[0] = 0x02;  // Locally administered
     }
 
     ~NativeHttpClientDriver() override = default;
@@ -56,15 +58,28 @@ public:
         return connected && httpClientState == HttpClientState::CONNECTED;
     }
 
-    bool queueRequest(HttpRequest& request) override {
+    /** True until every queued request has had its callback. */
+    bool hasQueuedRequests() override { return !pendingRequests.empty(); }
+
+    /** Takes ownership of @p request; a large payload is moved, not copied. */
+    bool queueRequest(HttpRequest&& request) override {
         // Queue the request for processing in exec()
-        pendingRequests_.push(request);
+        pendingRequests.push(std::move(request));
         return true;
     }
 
     void disconnect() override {
         connected = false;
         httpClientState = HttpClientState::DISCONNECTED;
+        // As the ESP32 driver does: every request still queued belongs to the
+        // WiFi trip that is ending.
+        while (!pendingRequests.empty()) {
+            HttpRequest request = std::move(pendingRequests.front());
+            pendingRequests.pop();
+            if (request.onError) {
+                request.onError({WirelessError::CONNECTION_FAILED, "Disconnected before an answer"});
+            }
+        }
     }
 
     void updateConfig(WifiConfig* config) override {
@@ -98,14 +113,15 @@ public:
     }
 
     // Test helper methods
-    void setConnected(bool isConnected) { 
+    /** Simulates WiFi/HTTP connectivity for unit tests and CLI. */
+    void setConnected(bool isConnected) {
         connected = isConnected;
         if (isConnected) {
             httpClientState = HttpClientState::CONNECTED;
         }
     }
     uint8_t getCurrentChannel() const { return currentChannel; }
-    
+
     /**
      * Enable or disable mock server mode.
      * When enabled, requests are processed through the CLI MockHttpServer.
@@ -114,23 +130,23 @@ public:
     void setMockServerEnabled(bool enabled) {
         mockServerEnabled_ = enabled;
     }
-    
+
     bool isMockServerEnabled() const {
         return mockServerEnabled_;
     }
-    
+
     /**
      * Get request/response history for CLI display.
      */
     const std::deque<HttpRequestHistoryEntry>& getRequestHistory() const {
         return requestHistory_;
     }
-    
+
     /**
      * Get the number of pending requests.
      */
     size_t getPendingRequestCount() const {
-        return pendingRequests_.size();
+        return pendingRequests.size();
     }
 
 private:
@@ -139,19 +155,19 @@ private:
     uint8_t currentChannel = 0;
     uint8_t macAddress[6];
     HttpClientState httpClientState = HttpClientState::DISCONNECTED;
-    
-    std::queue<HttpRequest> pendingRequests_;
+
+    std::queue<HttpRequest> pendingRequests;
     std::deque<HttpRequestHistoryEntry> requestHistory_;
     static constexpr size_t MAX_HISTORY = 5;
     bool mockServerEnabled_ = false;
-    
+
     void addToHistory(const HttpRequestHistoryEntry& entry) {
         requestHistory_.push_back(entry);
         while (requestHistory_.size() > MAX_HISTORY) {
             requestHistory_.pop_front();
         }
     }
-    
+
     /**
      * Process all pending HTTP requests.
      */

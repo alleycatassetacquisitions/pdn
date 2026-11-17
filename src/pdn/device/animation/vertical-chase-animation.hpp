@@ -47,10 +47,6 @@ protected:
         // Increment progress for fade in/out and interpolation.
         progress = std::min(progress + 20, 255);  // Adjust speed as needed
 
-        if(progress > 255) {
-            progress = 255;
-        }
-
         int currentBezierValue = getEasingValue(progress, config_.curve);
         
         switch(currentIndex_) {

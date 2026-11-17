@@ -72,7 +72,7 @@ private:
 class AwakenSequence : public TypedState<PDN> {
 public:
     explicit AwakenSequence(Player* player);
-    ~AwakenSequence();
+    ~AwakenSequence() override;
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
@@ -84,7 +84,7 @@ private:
     int activateMotorCount = 0;
     bool activateMotor = false;
     const int activationStepDuration = 100;
-    Player* player;
+    Player* player = nullptr;
 };
 
 class Idle : public ConnectState<PDN> {

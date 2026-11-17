@@ -7,7 +7,14 @@
 
 #define TAG "OUTPUT_IDLE_STATE"
 
-OutputIdleState::OutputIdleState(HandshakeWirelessManager* handshakeWirelessManager) : State(HandshakeStateId::OUTPUT_IDLE_STATE) {
+namespace {
+
+bool isDigit(char c) { return c >= '0' && c <= '9'; }
+
+}  // namespace
+
+OutputIdleState::OutputIdleState(HandshakeWirelessManager* handshakeWirelessManager)
+    : TypedState<Device>(HandshakeStateId::OUTPUT_IDLE_STATE) {
     this->handshakeWirelessManager = handshakeWirelessManager;
 }
 
@@ -34,12 +41,20 @@ void OutputIdleState::onStateDismounted(Device *PDN) {
 void OutputIdleState::onConnectionStarted(std::string remoteMac) {
     if(remoteMac.rfind(SEND_MAC_ADDRESS, 0) == 0) {
         std::string payload = remoteMac.substr(SEND_MAC_ADDRESS.length());
-        size_t portSeparatorIndex = payload.rfind('#');
-        size_t deviceTypeSeparatorIndex = payload.rfind('t');
+        size_t portSeparatorIndex = payload.rfind(PORT_SEPARATOR);
+        size_t deviceTypeSeparatorIndex = payload.rfind(DEVICE_TYPE_SEPARATOR);
+        // A cable bounce can cut the frame anywhere, so both one-digit fields must be present.
+        if (portSeparatorIndex == std::string::npos ||
+            deviceTypeSeparatorIndex != portSeparatorIndex + 2 ||
+            payload.size() != deviceTypeSeparatorIndex + 2 ||
+            !isDigit(payload[portSeparatorIndex + 1]) ||
+            !isDigit(payload[deviceTypeSeparatorIndex + 1])) {
+            LOG_E(TAG, "Dropping malformed handshake frame: %s", remoteMac.c_str());
+            return;
+        }
 
-        char portChar = payload[portSeparatorIndex + 1];
-        int portNumber = portChar - '0';
-        int deviceType = std::stoi(payload.substr(deviceTypeSeparatorIndex + 1));
+        int portNumber = payload[portSeparatorIndex + 1] - '0';
+        int deviceType = payload[deviceTypeSeparatorIndex + 1] - '0';
 
         SerialIdentifier serialPort = static_cast<SerialIdentifier>(portNumber);
         std::string mac = payload.substr(0, portSeparatorIndex);

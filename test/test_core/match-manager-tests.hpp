@@ -73,6 +73,17 @@ public:
     FakePlatformClock* fakeClock;
 };
 
+// initializeMatch hands primeMatch the generator's own buffer rather than a copy,
+// so this pins that the id survives as far as the Match. Nothing else in the suite
+// reads the generated id — every other test supplies one.
+inline void matchManagerInitializeStoresGeneratedMatchId(MatchManagerTestSuite* suite) {
+    suite->setupMatchAsHunter();
+
+    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_EQ(strlen(suite->matchManager->getCurrentMatch()->getMatchId()),
+              IdGenerator::UUID_STRING_LENGTH);
+}
+
 // ============================================
 // Boost (chain duel support)
 // ============================================

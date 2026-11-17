@@ -34,8 +34,6 @@ protected:
     }
 
     LEDState onAnimate() override {
-        uint32_t currentTime = SimpleTimer::getPlatformClock()->milliseconds();
-        
         // Decay all LED brightnesses by 5%
         for (int i = 0; i < 9; i++) {
             LEDState::SingleLEDState& leftState = currentState_.leftLights[i];

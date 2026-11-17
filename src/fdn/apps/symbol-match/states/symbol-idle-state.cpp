@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include "apps/symbol-match/symbol-match-states.hpp"
 #include "device/fdn-light-manager.hpp"
@@ -155,7 +156,6 @@ void SymbolIdle::onStateLoop(FDN* fdn) {
 
 void SymbolIdle::onStateDismounted(FDN* fdn) {
     transitionToSelectionState = false;
-    transitionToMainMenuApp    = false;
     mountedFdn                 = nullptr;
     lastTimeRendered           = 0;
     symbolSentLeft             = false;
@@ -164,14 +164,6 @@ void SymbolIdle::onStateDismounted(FDN* fdn) {
     symbolWirelessManager->clearCallback();
     symbolManager->setMatched(SerialIdentifier::INPUT_JACK, false);
     symbolManager->setMatched(SerialIdentifier::INPUT_JACK_SECONDARY, false);
-
-    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
-        if (peerMac) {
-            symbolWirelessManager->setMacPeer(peerMac);
-            symbolWirelessManager->sendPacket(SMCommand::SYMBOLS_REFRESHED, SymbolId::SYMBOL_A, port);
-        }
-    }
 
     fdn->getLightManager()->stopAnimation();
     LOG_W(TAG, "Dismounted");
@@ -209,8 +201,10 @@ void SymbolIdle::renderSymbolScreen(FDN* fdn) {
 
     d->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
 
-    int timeLeft = symbolManager->getTimeLeftToRefresh();
-    int minutes  = timeLeft / 60000;
+    // Elapsed can pass the interval before the refresh fires, so floor at zero.
+    // The 99 cap bounds %02d for -Wformat-truncation; the interval is far shorter.
+    int timeLeft = std::max(0, symbolManager->getTimeLeftToRefresh());
+    int minutes = std::min(timeLeft / 60000, 99);
     int seconds  = (timeLeft % 60000) / 1000;
     char buf[6];
     snprintf(buf, sizeof(buf), "%02d:%02d", minutes, seconds);
@@ -227,8 +221,4 @@ bool SymbolIdle::transitionToMatchSuccess() {
     return symbolManager->isMatched(SerialIdentifier::INPUT_JACK)
         && symbolManager->isMatched(SerialIdentifier::INPUT_JACK_SECONDARY)
         && symbolSentLeft && symbolSentRight;
-}
-
-bool SymbolIdle::transitionToMainMenu() {
-    return transitionToMainMenuApp;
 }

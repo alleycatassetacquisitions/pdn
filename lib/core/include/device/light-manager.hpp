@@ -7,8 +7,6 @@
     - setting brightness - brightness values should always be clamped between 0 and 255.
     - any other led management functions.
 
-    This class relies on the FastLED library.
-
     When loading an animation, we should be able to load a color palette and a bezier curve.
     The bezier should be optional, and if no bezier is provided, a linear animation should be used.
 */

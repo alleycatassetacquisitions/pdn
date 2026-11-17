@@ -1,19 +1,29 @@
 #pragma once
 
-#include <algorithm>
 #include <vector>
 #include <queue>
 #include <unordered_map>
-#include <Arduino.h>
-#include <WiFi.h>
+#include <esp_event.h>
+#include <esp_heap_caps.h>
+#include <esp_mac.h>
+#include <esp_netif.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
-#include <esp_mac.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include "device/drivers/logger.hpp"
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/mac-functions.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "esp32-driver-constants.hpp"
+
+// sendData allocates every outbound packet with MALLOC_CAP_SPIRAM, so a build
+// without PSRAM support fails here rather than at every send. A board whose PSRAM
+// fails at boot still boots (SPIRAM_IGNORE_NOTFOUND), and then every send fails
+// its allocation.
+#if !defined(CONFIG_SPIRAM)
+#error "esp-now-driver allocates with MALLOC_CAP_SPIRAM; CONFIG_SPIRAM must be enabled"
+#endif
 
 #define DEBUG_PRINT_ESP_NOW 0
 
@@ -27,7 +37,9 @@
 //Use this mac address in order to reach all nearby devices
 constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN - sizeof(DataPktHdr);
+constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN_V2 - sizeof(DataPktHdr);
+static_assert(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE <= MAX_PKT_DATA_SIZE,
+              "a firmware chunk must fit one ESP-NOW v2 frame");
 
 //Singleton class that handles communication over ESP-NOW protocol.
 class EspNowDriver : public PeerCommsDriverInterface
@@ -46,9 +58,16 @@ public:
 
     void exec() override {
         std::queue<DeferredPacket> pending;
-        xSemaphoreTake(recvMutex_, portMAX_DELAY);
-        std::swap(pending, recvQueue_);
-        xSemaphoreGive(recvMutex_);
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
+        std::swap(pending, recvQueue);
+        recvQueueBytes = 0;
+        const uint32_t dropped = droppedRecvPackets;
+        droppedRecvPackets = 0;
+        xSemaphoreGive(recvMutex);
+        if (dropped > 0) {
+            LOG_W("ENC", "Dropped %lu received packets: receive queue over %u bytes",
+                  static_cast<unsigned long>(dropped), static_cast<unsigned>(RECV_QUEUE_MAX_BYTES));
+        }
 
         while (!pending.empty()) {
             auto& pkt = pending.front();
@@ -62,27 +81,71 @@ public:
     }
 
     void connect() override {
-        // Set WiFi to station mode
-        WiFi.mode(WIFI_STA);
-        
-        // Disconnect from any AP but keep WiFi radio ON (false = keep radio running)
-        // ESP-NOW requires the WiFi radio to be active!
-        WiFi.disconnect(false);
-        
-        // Small delay to let WiFi stabilize after mode change
-        delay(100);
+        // The STA netif must exist before esp_wifi_start(): esp_netif_start() runs
+        // only off WIFI_EVENT_STA_START, so a netif created after that event has
+        // been posted never starts, never gets an MTU, and DHCP refuses it.
+        // ESP-NOW needs no netif; the HTTP driver's WiFi excursion does. This
+        // runs first on every boot, but connect() re-runs on each return to
+        // ESP-NOW mode, so the steps are guarded rather than assumed-once.
+        wifi_mode_t currentMode;
+        if (esp_wifi_get_mode(&currentMode) == ESP_ERR_WIFI_NOT_INIT) {
+            // Both are checked because esp_netif_create_default_wifi_sta below
+            // aborts through ESP_ERROR_CHECK rather than returning, so a failure
+            // here would panic on the boot path instead of leaving a dead radio.
+            // Already-created is the normal case when something else got here
+            // first, and is not an error.
+            const esp_err_t netifErr = esp_netif_init();
+            const esp_err_t loopErr = esp_event_loop_create_default();
+            if (netifErr != ESP_OK && netifErr != ESP_ERR_INVALID_STATE) {
+                LOG_E("ENC", "esp_netif_init failed: %s", esp_err_to_name(netifErr));
+                return;
+            }
+            if (loopErr != ESP_OK && loopErr != ESP_ERR_INVALID_STATE) {
+                LOG_E("ENC", "esp_event_loop_create_default failed: %s", esp_err_to_name(loopErr));
+                return;
+            }
+            wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
+            esp_err_t initErr = esp_wifi_init(&config);
+            if (initErr != ESP_OK) {
+                LOG_E("ENC", "esp_wifi_init failed: %s", esp_err_to_name(initErr));
+                return;
+            }
+            // RAM rather than flash, so radio config is not rewritten to NVS on
+            // every change.
+            esp_wifi_set_storage(WIFI_STORAGE_RAM);
+        }
+        esp_wifi_set_mode(WIFI_MODE_STA);
+        // Same ifkey guard the HTTP driver uses, so whichever arrives first
+        // creates it once. Creating it also installs IDF's default STA event
+        // handlers, which is what makes esp_netif_start() fire below.
+        if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == nullptr) {
+            esp_netif_create_default_wifi_sta();
+        }
+        esp_wifi_start();
+
+        // Drops the AP association without stopping the radio, which ESP-NOW needs
+        // left running.
+        esp_wifi_disconnect();
+
+        // Settle between the mode change and the channel pin: esp_wifi_set_channel
+        // fails while a connect or scan is in flight.
+        static constexpr uint32_t WIFI_SETTLE_MS = 100;
+        vTaskDelay(pdMS_TO_TICKS(WIFI_SETTLE_MS));
         
         // Set the channel using ESP-IDF API for reliability
         esp_err_t err = esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
         if (err != ESP_OK) {
             LOG_E("ENC", "Failed to set channel %d: %s", ESPNOW_CHANNEL, esp_err_to_name(err));
         }
-        
-        // Verify the channel was set correctly
+
         uint8_t primary_channel;
         wifi_second_chan_t secondary_channel;
         esp_wifi_get_channel(&primary_channel, &secondary_channel);
-        LOG_I("ENC", "WiFi channel set to: %d (requested: %d)", primary_channel, ESPNOW_CHANNEL);
+        if (primary_channel != ESPNOW_CHANNEL) {
+            LOG_E("ENC", "Channel pin did not take: on %d, wanted %d", primary_channel, ESPNOW_CHANNEL);
+        } else {
+            LOG_I("ENC", "WiFi channel set to: %d", primary_channel);
+        }
 
         initializeEspNow();
         peerCommsState = PeerCommsState::CONNECTED;
@@ -94,6 +157,9 @@ public:
             LOG_E("ENC", "ESPNOW Error deinitializing: 0x%X\n", err);
             return;
         }
+
+        // Deinit drops pending send reports; a stale claimed head would block every later send.
+        clearSendQueue();
 
         peerCommsState = PeerCommsState::DISCONNECTED;
     }
@@ -113,78 +179,37 @@ public:
 
     //Queues up data for sending, may not send right away
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
-        if(length > (255 * MAX_PKT_DATA_SIZE))
-        {
+        if (length > MAX_PKT_DATA_SIZE) {
             LOG_W("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
-                length, 
-                255 * MAX_PKT_DATA_SIZE);
+                  length,
+                  MAX_PKT_DATA_SIZE);
             return -1;
         }
 
-        //Calculate the total number of ESP_NOW_MAX_DATA_LEN (250) byte packets we'll 
-        //need to send the whole buffer
-        uint8_t numInCluster = length / MAX_PKT_DATA_SIZE + 
-                               (length % MAX_PKT_DATA_SIZE == 0 ? 0 : 1);
-        
-        //Allocate entire send buffer up front so we don't fail an allocation part way through
-        //the cluster
-        //We'll use alloca for tracking the buffers while we set them up since this should
-        //require a very small amount of memory making the risk of stack overflow very small
-        //This will also be much faster than malloc/free which would be wasteful for such a
-        //small allocation
-        auto sendBuffers = static_cast<uint8_t**>(alloca(sizeof(uint8_t*) * numInCluster));
-        size_t bytesLeft = length;
-        for(int i = 0; i < numInCluster; ++i)
-        {
-            size_t thisBuffer = std::min(bytesLeft, MAX_PKT_DATA_SIZE);
-            sendBuffers[i] = (uint8_t*)ps_malloc(sizeof(DataPktHdr) + thisBuffer);
-            if(!sendBuffers[i])
-            {
-                //free anything we already allocated
-                for(int j = 0; j < i; ++j)
-                    free(sendBuffers[j]);
-
-                //TODO: Return better error code once we have them
-                LOG_E("ENC", "Failed to allocate buffers for ESP-NOW send queue");
-                LOG_E("ENC", "Needed to allocate a total of %lu bytes\n", length);
-                return -1;
-            }
-            bytesLeft -= thisBuffer;
+        auto* sendBuffer = static_cast<uint8_t*>(
+            heap_caps_malloc(sizeof(DataPktHdr) + length, MALLOC_CAP_SPIRAM));
+        if (!sendBuffer) {
+            // TODO: Return better error code once we have them
+            LOG_E("ENC", "Failed to allocate buffer for ESP-NOW send queue");
+            LOG_E("ENC", "Needed to allocate a total of %lu bytes\n", length);
+            return -1;
         }
 
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        DataPktHdr* hdr = reinterpret_cast<DataPktHdr*>(sendBuffer);
+        hdr->packetType = packetType;
+
+        memcpy(sendBuffer + sizeof(DataPktHdr), data, length);
+
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
         bool willNeedToStartSend = m_sendQueue.empty();
 
-        //Build up each packet
-        bytesLeft = length;
-        for(int pktIdx = 0; pktIdx < numInCluster; ++pktIdx)
-        {
-            size_t thisBuffer = std::min(bytesLeft, MAX_PKT_DATA_SIZE);
-#if DEBUG_PRINT_ESP_NOW
-            ESP_LOGD("ENC", "ESPNOW SendData pktIdx: %i thisBuffer: %u\n", pktIdx, thisBuffer);
-#endif
+        DataSendBuffer buffer;
+        memcpy(buffer.dstMac, dst, ESP_NOW_ETH_ALEN);
+        buffer.ptr = sendBuffer;
+        buffer.len = sizeof(DataPktHdr) + length;
+        m_sendQueue.push(buffer);
 
-            //Each packet needs a header, build it directly in the send buffer
-            auto* hdr = reinterpret_cast<DataPktHdr*>(sendBuffers[pktIdx]);
-            hdr->idxInCluster = pktIdx;
-            hdr->numPktsInCluster = numInCluster;
-            hdr->pktLen = sizeof(DataPktHdr) + thisBuffer;
-            hdr->packetType = packetType;
-
-            //Copy the actual data into the send buffer following the header
-            size_t dataOffset = pktIdx * MAX_PKT_DATA_SIZE;
-            memcpy(sendBuffers[pktIdx] + sizeof(DataPktHdr), data + dataOffset, thisBuffer);
-
-            //Now add it to the send queue
-            DataSendBuffer buffer;
-            memcpy(buffer.dstMac, dst, ESP_NOW_ETH_ALEN);
-            buffer.ptr = sendBuffers[pktIdx];
-            buffer.len = hdr->pktLen;
-            m_sendQueue.push(buffer);
-
-            bytesLeft -= thisBuffer;
-        }
-        xSemaphoreGive(sendMutex_);
+        xSemaphoreGive(sendMutex);
 
         if(willNeedToStartSend)
         {
@@ -207,6 +232,14 @@ public:
     //Unregister packet handler for specified packet type
     void clearPacketHandler(PktType packetType) override {
         m_pktHandlerCallbacks[(int)packetType].first = nullptr;
+    }
+
+    /** True when no frame is queued or awaiting its send report. */
+    bool isSendQueueEmpty() override {
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        const bool empty = m_sendQueue.empty();
+        xSemaphoreGive(sendMutex);
+        return empty;
     }
 
     // Called by DriverManager at startup - we don't initialize ESP-NOW here
@@ -257,21 +290,13 @@ private:
         size_t len;
     };
 
-    struct DataRecvBuffer
-    {
-        uint8_t* data;
-        unsigned long mostRecentRecvPktTime;
-        uint8_t expectedNextIdx;
-    };
-
-    explicit EspNowDriver(const std::string& name) :
-        PeerCommsDriverInterface(name),
-        m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
-        m_maxRetries(5),
-        m_curRetries(0),
-        recvMutex_(xSemaphoreCreateMutex()),
-        sendMutex_(xSemaphoreCreateMutex())
-    {
+    explicit EspNowDriver(const std::string& name)
+        : PeerCommsDriverInterface(name)
+        , recvMutex(xSemaphoreCreateMutex())
+        , sendMutex(xSemaphoreCreateMutex())
+        , m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
+        , m_maxRetries(5)
+        , m_curRetries(0) {
 
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
@@ -362,96 +387,8 @@ private:
         ESP_LOGD("ENC", "Packet Type: %i\n", pktHdr->packetType);
 #endif
 
-        if(pktHdr->numPktsInCluster > 1) {
-            manager->handleMultiPacketCluster(esp_now_info->src_addr, data, pktHdr);
-        } else {
-            manager->handleSinglePacket(esp_now_info->src_addr, data, pktHdr);
-        }
-    }
-
-    // Helper methods for packet reception
-    void handleSinglePacket(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr) {
-        HandlePktCallback(pktHdr->packetType, mac_addr, data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
-    }
-
-    void handleMultiPacketCluster(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr) {
-        uint64_t macAddr64 = MacToUInt64(mac_addr);
-        
-        if(pktHdr->idxInCluster == 0) {
-            handleFirstPacketInCluster(macAddr64, pktHdr);
-        }
-        
-        handleSubsequentPacket(mac_addr, data, pktHdr, macAddr64);
-    }
-
-    void handleFirstPacketInCluster(uint64_t macAddr64, const DataPktHdr* pktHdr) {
-        // If there's an existing cluster for this mac address, release it
-        // as that means we lost a packet somewhere
-        auto existingBuffer = m_recvBuffers.find(macAddr64);
-        if(existingBuffer != m_recvBuffers.end()) {
-            free(existingBuffer->second.data);
-            m_recvBuffers.erase(existingBuffer);
-        }
-
-        DataRecvBuffer newBuffer;
-        newBuffer.data = (uint8_t*)ps_malloc(pktHdr->numPktsInCluster * MAX_PKT_DATA_SIZE);
-        newBuffer.expectedNextIdx = 1;
-        m_recvBuffers[macAddr64] = newBuffer;
-    }
-
-    void handleSubsequentPacket(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr, uint64_t macAddr64) {
-        auto existingBuffer = m_recvBuffers.find(macAddr64);
-        
-        // If no buffer exists, we missed the start packet
-        if(existingBuffer == m_recvBuffers.end()) {
-            LOG_W("ENC", "No recv buffer for mid cluster pkt. We must have missed first pkt.");
-            return;
-        }
-
-        DataRecvBuffer& recvBuffer = existingBuffer->second;
-        
-        if(!validatePacketSequence(pktHdr, recvBuffer, existingBuffer)) {
-            return;
-        }
-
-        copyPacketData(data, pktHdr, recvBuffer);
-        ++existingBuffer->second.expectedNextIdx;
-        
-        if(isClusterComplete(existingBuffer->second, pktHdr)) {
-            finalizeCluster(mac_addr, pktHdr, recvBuffer, existingBuffer);
-        }
-    }
-
-    bool validatePacketSequence(const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer, 
-                                std::unordered_map<uint64_t, DataRecvBuffer>::iterator& existingBuffer) {
-        if(pktHdr->idxInCluster != recvBuffer.expectedNextIdx) {
-            LOG_W("ENC", "Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
-                  recvBuffer.expectedNextIdx, pktHdr->idxInCluster);
-            free(recvBuffer.data);
-            m_recvBuffers.erase(existingBuffer);
-            return false;
-        }
-        return true;
-    }
-
-    void copyPacketData(const uint8_t* data, const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer) {
-        size_t bufferOffset = pktHdr->idxInCluster * MAX_PKT_DATA_SIZE;
-        memcpy(recvBuffer.data + bufferOffset, data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
-    }
-
-    bool isClusterComplete(const DataRecvBuffer& recvBuffer, const DataPktHdr* pktHdr) {
-        return recvBuffer.expectedNextIdx == pktHdr->numPktsInCluster;
-    }
-
-    void finalizeCluster(const uint8_t* mac_addr, const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer,
-                         std::unordered_map<uint64_t, DataRecvBuffer>::iterator& existingBuffer) {
-        size_t totalClusterSize = (pktHdr->numPktsInCluster - 1) * MAX_PKT_DATA_SIZE;
-        totalClusterSize += pktHdr->pktLen - sizeof(DataPktHdr);
-        
-        HandlePktCallback(pktHdr->packetType, mac_addr, recvBuffer.data, totalClusterSize);
-        
-        free(recvBuffer.data);
-        m_recvBuffers.erase(existingBuffer);
+        manager->HandlePktCallback(pktHdr->packetType, esp_now_info->src_addr,
+                                   data + sizeof(DataPktHdr), data_len - sizeof(DataPktHdr));
     }
 
     static void EspNowSendCallback(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
@@ -482,23 +419,22 @@ private:
             }
         }
 
-        //TODO: Catch error and do reporting and push to next pkt
+        manager->releaseTransmissionClaim();
         manager->SendFrontPkt();
     }
 
     //Attempt to send the next packet in send queue
     int SendFrontPkt() {
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
-        if(m_sendQueue.empty()) {
-            xSemaphoreGive(sendMutex_);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        if (m_sendQueue.empty() || transmissionClaimed) {
+            xSemaphoreGive(sendMutex);
             return 0;
         }
-        auto buffer = m_sendQueue.front();
-        xSemaphoreGive(sendMutex_);
+        transmissionClaimed = true;
+        DataSendBuffer buffer = m_sendQueue.front();
+        xSemaphoreGive(sendMutex);
 
-        //If this is the first packet in cluster, make sure the peer is registered
-        auto* hdr = reinterpret_cast<DataPktHdr*>(buffer.ptr);
-        if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0))
+        if (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
             EnsurePeerIsRegistered(buffer.dstMac);
 
         esp_err_t err;
@@ -511,8 +447,8 @@ private:
                 if(m_curRetries >= m_maxRetries)
                 {
                     LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
-                    //TODO: Pop all packets in the current cluster?
                     MoveToNextSendPkt();
+                    releaseTransmissionClaim();
                     SendFrontPkt();
                     //TODO: Return correct error code
                     return -1;
@@ -525,12 +461,29 @@ private:
 
     //Free front packet in send queue and pop it from queue
     void MoveToNextSendPkt() {
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
         if (!m_sendQueue.empty()) {
             free(m_sendQueue.front().ptr);
             m_sendQueue.pop();
         }
-        xSemaphoreGive(sendMutex_);
+        xSemaphoreGive(sendMutex);
+        m_curRetries = 0;
+    }
+
+    void releaseTransmissionClaim() {
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        transmissionClaimed = false;
+        xSemaphoreGive(sendMutex);
+    }
+
+    void clearSendQueue() {
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        while (!m_sendQueue.empty()) {
+            free(m_sendQueue.front().ptr);
+            m_sendQueue.pop();
+        }
+        transmissionClaimed = false;
+        xSemaphoreGive(sendMutex);
         m_curRetries = 0;
     }
 
@@ -566,10 +519,15 @@ private:
         return 0;
     }
 
-    SemaphoreHandle_t recvMutex_;
-    std::queue<DeferredPacket> recvQueue_;
+    SemaphoreHandle_t recvMutex;
+    std::queue<DeferredPacket> recvQueue;
+    // Queued buffers are under SPIRAM_MALLOC_ALWAYSINTERNAL, so internal RAM; a seed's
+    // chunks during setup's splash hold, before the first exec(), would exhaust it.
+    size_t recvQueueBytes = 0;
+    uint32_t droppedRecvPackets = 0;
+    static constexpr size_t RECV_QUEUE_MAX_BYTES = 16384;
 
-    SemaphoreHandle_t sendMutex_;
+    SemaphoreHandle_t sendMutex;
 
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks;
@@ -581,14 +539,18 @@ private:
             return;
         }
 
-        DeferredPacket pkt;
-        pkt.type = packetType;
-        memcpy(pkt.srcMac, srcMacAddr, 6);
-        pkt.data.assign(pktData, pktData + pktLen);
-
-        xSemaphoreTake(recvMutex_, portMAX_DELAY);
-        recvQueue_.push(std::move(pkt));
-        xSemaphoreGive(recvMutex_);
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
+        if (recvQueueBytes + pktLen > RECV_QUEUE_MAX_BYTES) {
+            droppedRecvPackets++;
+        } else {
+            recvQueueBytes += pktLen;
+            DeferredPacket pkt;
+            pkt.type = packetType;
+            memcpy(pkt.srcMac, srcMacAddr, 6);
+            pkt.data.assign(pktData, pktData + pktLen);
+            recvQueue.push(std::move(pkt));
+        }
+        xSemaphoreGive(recvMutex);
     }
 
     uint8_t* getMacAddress() override {
@@ -629,8 +591,9 @@ private:
     //Packet send queue
     std::queue<DataSendBuffer> m_sendQueue;
 
-    //Receive buffer tracking for multi-packet clusters
-    std::unordered_map<uint64_t, DataRecvBuffer> m_recvBuffers;
+    // Guarded by sendMutex: the main loop and the WiFi task both reach SendFrontPkt,
+    // and without the claim both can transmit the same entry.
+    bool transmissionClaimed = false;
 
     //Storage for rssi, which is captured by wifi promiscuous callback
     std::unordered_map<uint64_t, int> m_rssiTracker;

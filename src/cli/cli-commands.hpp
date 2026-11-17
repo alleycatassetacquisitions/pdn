@@ -547,9 +547,13 @@ private:
         dev.stateHistory.clear();
         dev.lastStateId = -1;
 
-        // skipToState(1) calls onStateDismounted on current state,
-        // then onStateMounted on FetchUserData — same as initial boot
-        dev.game->skipToState(dev.pdn, 1);
+        dev.game->skipToState(dev.pdn, 0);
+        State* state = dev.game->getCurrentState();
+        if (state && state->getStateId() == PLAYER_FETCH_APP_ID) {
+            dev.playerProvider->setRegistrationPin(dev.deviceId.c_str());
+            static_cast<PlayerFetchApp*>(state)->skipToState(dev.pdn,
+                                                             PlayerFetchStateId::FETCH_USER);
+        }
 
         result.message = "Rebooted " + dev.deviceId + " -> FetchUserData";
         return result;

@@ -1,8 +1,6 @@
 #include "device/light-manager.hpp"
 #include <algorithm> // For std::min
 
-static const char* TAG = "LightManager";
-
 LightManager::LightManager(LightStrip& pdnLights)
     : pdnLights(pdnLights)
     , currentAnimation(nullptr) {

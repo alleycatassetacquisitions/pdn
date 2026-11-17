@@ -4,35 +4,21 @@
 #include <ArduinoJson.h>
 #include <cstring>
 
-Match::Match(const char* mid, const char* player_id, bool isHunter)
-    : hunter_draw_time_ms(0), bounty_draw_time_ms(0) {
-    memcpy(match_id, mid, IdGenerator::UUID_BUFFER_SIZE - 1);
-    match_id[IdGenerator::UUID_BUFFER_SIZE - 1] = '\0';
-    if(isHunter) {
-        memcpy(hunter, player_id, 4);
-        hunter[4] = '\0';
+Match::Match(const char* mid, const char* playerId, bool isHunter) {
+    IdGenerator::copyId(match_id, mid);
+    if (isHunter) {
+        IdGenerator::copyId(hunter, playerId);
     } else {
-        memcpy(bounty, player_id, 4);
-        bounty[4] = '\0';
+        IdGenerator::copyId(bounty, playerId);
     }
 }
 
-Match::Match(){
-    match_id[0] = '\0';
-    hunter[0]   = '\0';
-    bounty[0]   = '\0';
-    hunter_draw_time_ms = 0;
-    bounty_draw_time_ms = 0;
+void Match::setHunterId(const char* hunterId) {
+    IdGenerator::copyId(hunter, hunterId);
 }
 
-void Match::setHunterId(const char* hunter_id) {
-    memcpy(hunter, hunter_id, 4);
-    hunter[4] = '\0';
-}
-
-void Match::setBountyId(const char* bounty_id) {
-    memcpy(bounty, bounty_id, 4);
-    bounty[4] = '\0';
+void Match::setBountyId(const char* bountyId) {
+    IdGenerator::copyId(bounty, bountyId);
 }
 
 void Match::setHunterDrawTime(unsigned long timeMs) {
@@ -75,18 +61,15 @@ void Match::fromJson(const std::string &json) {
     if (!error) {
         if (doc[JSON_KEY_MATCH_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_MATCH_ID].as<const char*>();
-            strncpy(match_id, v ? v : "", IdGenerator::UUID_BUFFER_SIZE - 1);
-            match_id[IdGenerator::UUID_BUFFER_SIZE - 1] = '\0';
+            IdGenerator::copyId(match_id, v);
         }
         if (doc[JSON_KEY_HUNTER_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_HUNTER_ID].as<const char*>();
-            strncpy(hunter, v ? v : "", 4);
-            hunter[4] = '\0';
+            IdGenerator::copyId(hunter, v);
         }
         if (doc[JSON_KEY_BOUNTY_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_BOUNTY_ID].as<const char*>();
-            strncpy(bounty, v ? v : "", 4);
-            bounty[4] = '\0';
+            IdGenerator::copyId(bounty, v);
         }
         if (doc[JSON_KEY_HUNTER_TIME].is<unsigned long>()) {
             hunter_draw_time_ms = doc[JSON_KEY_HUNTER_TIME].as<unsigned long>();
@@ -131,27 +114,22 @@ size_t Match::serialize(uint8_t* buffer) const {
 size_t Match::deserialize(const uint8_t* buffer) {
     size_t currentPos = 0;
     uint8_t uuidBytes[IdGenerator::UUID_BINARY_SIZE];
-    uint8_t playerIdBytes[PLAYER_ID_BINARY_SIZE];
 
     // Deserialize match_id
     memcpy(uuidBytes, buffer + currentPos, IdGenerator::UUID_BINARY_SIZE);
     {
         std::string tmp = IdGenerator::uuidBytesToString(uuidBytes);
-        strncpy(match_id, tmp.c_str(), IdGenerator::UUID_BUFFER_SIZE - 1);
-        match_id[IdGenerator::UUID_BUFFER_SIZE - 1] = '\0';
+        IdGenerator::copyId(match_id, tmp.c_str());
     }
     currentPos += IdGenerator::UUID_BINARY_SIZE;
 
-    // Deserialize hunter id (4 raw bytes)
-    memcpy(playerIdBytes, buffer + currentPos, PLAYER_ID_BINARY_SIZE);
-    memcpy(hunter, playerIdBytes, PLAYER_ID_BINARY_SIZE);
-    hunter[PLAYER_ID_BINARY_SIZE] = '\0';
+    // The wire field carries no terminator, so bound the read by the destination
+    // the same way every other id copy does. copyId also clears the tail, which a
+    // raw memcpy of the field would not.
+    IdGenerator::copyId(hunter, reinterpret_cast<const char*>(buffer + currentPos));
     currentPos += PLAYER_ID_BINARY_SIZE;
 
-    // Deserialize bounty id (4 raw bytes)
-    memcpy(playerIdBytes, buffer + currentPos, PLAYER_ID_BINARY_SIZE);
-    memcpy(bounty, playerIdBytes, PLAYER_ID_BINARY_SIZE);
-    bounty[PLAYER_ID_BINARY_SIZE] = '\0';
+    IdGenerator::copyId(bounty, reinterpret_cast<const char*>(buffer + currentPos));
     currentPos += PLAYER_ID_BINARY_SIZE;
 
     // Deserialize draw times

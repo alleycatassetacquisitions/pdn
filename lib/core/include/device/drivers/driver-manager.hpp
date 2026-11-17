@@ -1,6 +1,7 @@
 #pragma once
 
 #include "driver-interface.hpp"
+#include "logger.hpp"
 #include <map>
 #include <utility>
 #include <functional>
@@ -13,14 +14,19 @@ class DriverManager {
 
     ~DriverManager() = default;
 
-    int initialize() {
+    /**
+     * Initializes every registered driver, logging the ones that fail.
+     *
+     * driverConfig is a map, so init order is alphabetical. Every driver is given
+     * its chance regardless of what failed before it: a dead peripheral must not
+     * silently take its neighbours with it.
+     */
+    void initialize() {
         for(auto& driver : driverConfig) {
             if(driver.second->initialize() != 0) {
-                return 990 + static_cast<int>(driver.second->type); //Return 990 + driver type to indicate failure
+                LOG_E("DRV", "%s failed to initialize", driver.first.c_str());
             }
         }
-
-        return 0;
     }
 
     void execDrivers() {

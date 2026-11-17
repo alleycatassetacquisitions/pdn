@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include "id-generator.hpp"
 #include "wireless/mac-functions.hpp"
+#include "utils/http-date.hpp"
 #include "utils/simple-timer.hpp"
 #include "device/drivers/platform-clock.hpp"
 
@@ -18,6 +19,16 @@ public:
         return currentTime;
     }
 
+    /** Returns simulated UTC milliseconds. */
+    int64_t unixMilliseconds() override {
+        return unixTimeMs;
+    }
+
+    /** Sets simulated UTC milliseconds. */
+    void setUnixTimeMs(int64_t timeMs) {
+        unixTimeMs = timeMs;
+    }
+
     void setTime(unsigned long time) {
         currentTime = time;
     }
@@ -28,6 +39,7 @@ public:
 
 private:
     unsigned long currentTime;
+    int64_t unixTimeMs = 0;
 };
 
 // ============================================
@@ -273,4 +285,54 @@ inline void timerWithNullClockHandlesGracefully() {
     timer.setTimer(1000);
     EXPECT_EQ(timer.now, 0);
     EXPECT_EQ(timer.getElapsedTime(), 0);
+}
+
+inline void timerUnaffectedByWallClockJump(FakePlatformClock* fakeClock) {
+    SimpleTimer timer;
+
+    fakeClock->setTime(5000);
+    fakeClock->setUnixTimeMs(5000);
+    timer.setTimer(15000);
+
+    fakeClock->setUnixTimeMs(1792359000000LL);
+    fakeClock->advance(100);
+
+    EXPECT_EQ(fakeClock->unixMilliseconds(), 1792359000000LL);
+    EXPECT_EQ(fakeClock->milliseconds(), 5100UL);
+    EXPECT_FALSE(timer.expired());
+    EXPECT_EQ(timer.getElapsedTime(), 100UL);
+}
+
+inline void httpDateParsesValidImfFixdate() {
+    const std::optional<int64_t> parsed = parseHttpDate("Sun, 18 Oct 2026 21:30:00 GMT");
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_EQ(*parsed, 1792359000LL);
+}
+
+inline void httpDateHandlesLeapYearsCorrectly() {
+    const std::optional<int64_t> leapValid = parseHttpDate("Tue, 29 Feb 2028 00:00:00 GMT");
+    ASSERT_TRUE(leapValid.has_value());
+    EXPECT_EQ(*leapValid, 1835395200LL);
+
+    EXPECT_FALSE(parseHttpDate("Sun, 29 Feb 2026 00:00:00 GMT").has_value());
+    EXPECT_FALSE(parseHttpDate("Mon, 29 Feb 2100 00:00:00 GMT").has_value());
+    EXPECT_TRUE(parseHttpDate("Tue, 29 Feb 2400 12:34:56 GMT").has_value());
+}
+
+inline void httpDateRejectsPre2025AndMalformedStrings() {
+    EXPECT_FALSE(parseHttpDate(nullptr).has_value());
+    EXPECT_FALSE(parseHttpDate("").has_value());
+    EXPECT_FALSE(parseHttpDate("invalid-date").has_value());
+    EXPECT_FALSE(parseHttpDate("Thu, 01 Jan 1970 00:00:00 GMT").has_value());
+    EXPECT_FALSE(parseHttpDate("Tue, 31 Dec 2024 23:59:59 GMT").has_value());
+    EXPECT_TRUE(parseHttpDate("Wed, 01 Jan 2025 00:00:00 GMT").has_value());
+    EXPECT_TRUE(parseHttpDate("Fri, 31 Dec 9999 23:59:59 GMT").has_value());
+    EXPECT_FALSE(parseHttpDate("Sun, 31 Apr 2026 21:30:00 GMT").has_value());
+    EXPECT_FALSE(parseHttpDate("Sun, 00 Oct 2026 21:30:00 GMT").has_value());
+    EXPECT_FALSE(parseHttpDate("Sun, 18 Foo 2026 21:30:00 GMT").has_value());
+    EXPECT_FALSE(parseHttpDate("Foo, 18 Oct 2026 21:30:00 GMT").has_value());
+    EXPECT_FALSE(parseHttpDate("Sun, 18 Oct 2026 24:00:00 GMT").has_value());
+    EXPECT_FALSE(parseHttpDate("Sun, 18 Oct 2026 21:60:00 GMT").has_value());
+    EXPECT_FALSE(parseHttpDate("Sun, 18 Oct 2026 21:30:61 GMT").has_value());
+    EXPECT_FALSE(parseHttpDate("Sun, 18 Oct 2026 21:30:00 UTC").has_value());
 }

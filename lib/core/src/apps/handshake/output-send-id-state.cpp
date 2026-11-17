@@ -3,7 +3,8 @@
 
 #define TAG "OUTPUT_SEND_ID_STATE"
 
-OutputSendIdState::OutputSendIdState(HandshakeWirelessManager* handshakeWirelessManager) : State(HandshakeStateId::OUTPUT_SEND_ID_STATE) {
+OutputSendIdState::OutputSendIdState(HandshakeWirelessManager* handshakeWirelessManager)
+    : TypedState<Device>(HandshakeStateId::OUTPUT_SEND_ID_STATE) {
     this->handshakeWirelessManager = handshakeWirelessManager;
 }
 

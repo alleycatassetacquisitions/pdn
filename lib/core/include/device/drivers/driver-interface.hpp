@@ -11,6 +11,7 @@
 #include "platform-clock.hpp"
 #include "storage-interface.hpp"
 #include "mqtt-interface.hpp"
+#include "firmware-store-interface.hpp"
 
 enum class DriverType {
     SCREEN = 0,
@@ -23,7 +24,8 @@ enum class DriverType {
     PLATFORM_CLOCK = 7,
     LOGGER = 8,
     STORAGE = 9,
-    MQTT = 10,
+    FIRMWARE_STORE = 10,
+    MQTT = 11,
 };
 
 class DriverInterface {
@@ -109,6 +111,17 @@ public:
     explicit StorageDriverInterface(const std::string& name) : DriverInterface(DriverType::STORAGE, name) {}
     ~StorageDriverInterface() override = default;
     void* abstractSelf() override { return static_cast<StorageInterface*>(this); }
+};
+
+class FirmwareStoreDriverInterface : public DriverInterface, public FirmwareStoreInterface {
+public:
+    /** Registers under `name`, as every driver does. */
+    explicit FirmwareStoreDriverInterface(const std::string& name)
+        : DriverInterface(DriverType::FIRMWARE_STORE, name) {}
+    /** Lets a derived store clean up through this base pointer. */
+    ~FirmwareStoreDriverInterface() override = default;
+    /** The FirmwareStoreInterface side, for Device::getPeripheral. */
+    void* abstractSelf() override { return static_cast<FirmwareStoreInterface*>(this); }
 };
 
 class MQTTDriverInterface : public DriverInterface, public MQTTInterface {

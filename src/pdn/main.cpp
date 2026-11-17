@@ -1,24 +1,27 @@
-#include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_log.h>
+#include <nvs_flash.h>
 
-#include <WiFi.h>
-#include <FastLED.h>
-#include <Preferences.h>
+// How long the splash screen stays up before the first app mounts.
+constexpr unsigned long SPLASH_HOLD_MS = 3000;
 
 #include "device/drivers/esp32-s3/esp32-s3-logger-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-clock-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-1-button-driver.hpp"
-#include "device/drivers/esp32-s3/ws2812b-fastled-driver.hpp"
+#include "device/drivers/esp32-s3/ws2812b-led-strip-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-haptics-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-serial-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
 #include "device/crash/crash-logger.hpp"
 
 #include "pdn-constants.hpp"
 #include "utils/simple-timer.hpp"
-#include "game/player.hpp"
+#include "game/player-provider.hpp"
 #include "state/state-machine.hpp"
 #include "device/pdn.hpp"
 #include "game/quickdraw.hpp"
@@ -47,14 +50,14 @@
 WifiConfig* wifiConfig = nullptr;
 
 CrashLogger* crashLogger = nullptr;
-
+Esp32S3FirmwareStore* firmwareStore = nullptr;
 
 // ESP32-s3 Drivers (declare as pointers, construct in setup())
 Esp32S3Clock* clockDriver = nullptr;
 SSD1306U8G2Driver* displayDriver = nullptr;
 Esp32S31ButtonDriver* primaryButtonDriver = nullptr;
 Esp32S31ButtonDriver* secondaryButtonDriver = nullptr;
-WS2812BFastLEDDriver<displayLightsPin, gripLightsPin>* lightDriver = nullptr;
+WS2812BLedStripDriver* lightDriver = nullptr;
 Esp32S3HapticsDriver* hapticsDriver = nullptr;
 Esp32s3SerialOut* serialOutDriver = nullptr;
 Esp32s3SerialIn* serialInDriver = nullptr;
@@ -65,7 +68,7 @@ Esp32S3PrefsDriver* storageDriver = nullptr;
 
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
-Player* player = nullptr;
+PlayerProvider* playerProvider = nullptr;
 
 // Game instance
 Quickdraw* game = nullptr;
@@ -106,9 +109,19 @@ void setupEspNow(
     );
 }
 
-void setup() {
-    Serial.begin(115200);
-    // Do not block on Serial — USB CDC may have no host in the field; setup must run anyway.
+static void setup() {
+    const uint32_t crashedBootUptimeMs = CrashLogger::takeCrashedBootUptime();
+    // Before any driver, because two of them need it and neither can bring it
+    // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
+    // and the preferences driver cannot open a namespace.
+    esp_err_t nvsStatus = nvs_flash_init();
+    if (nvsStatus == ESP_ERR_NVS_NO_FREE_PAGES || nvsStatus == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        nvsStatus = nvs_flash_init();
+    }
+    if (nvsStatus != ESP_OK) {
+        ESP_LOGE("PDN", "nvs_flash_init failed: %s", esp_err_to_name(nvsStatus));
+    }
 
     // Construct drivers FIRST (before anything that might use logging or timers)
     loggerDriver = new Esp32S3Logger(LOGGER_DRIVER_NAME);
@@ -117,13 +130,15 @@ void setup() {
     // Initialize platform abstractions immediately after constructing them
     g_logger = loggerDriver;
     SimpleTimer::setPlatformClock(clockDriver);
-    esp_log_level_set("*", ESP_LOG_VERBOSE);
+    // Next, so its watchdog covers the rest of setup() on an unconfirmed image.
+    firmwareStore = new Esp32S3FirmwareStore(FIRMWARE_STORE_DRIVER_NAME);
 
     // Now construct remaining drivers (safe to use logging and timers now)
     displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME, displayCS, displayDC, displayRST);
     primaryButtonDriver = new Esp32S31ButtonDriver(PRIMARY_BUTTON_DRIVER_NAME, primaryButtonPin);
     secondaryButtonDriver = new Esp32S31ButtonDriver(SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonPin);
-    lightDriver = new WS2812BFastLEDDriver<displayLightsPin, gripLightsPin>(LIGHT_DRIVER_NAME, numDisplayLights, numGripLights);
+    lightDriver = new WS2812BLedStripDriver(LIGHT_DRIVER_NAME, displayLightsPin, gripLightsPin,
+                                           numDisplayLights, numGripLights);
     hapticsDriver = new Esp32S3HapticsDriver(HAPTICS_DRIVER_NAME, motorPin);
     serialOutDriver = new Esp32s3SerialOut(SERIAL_OUT_DRIVER_NAME, TXt, TXr);
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, RXt, RXr);
@@ -148,14 +163,15 @@ void setup() {
         {PLATFORM_CLOCK_DRIVER_NAME, clockDriver},
         {LOGGER_DRIVER_NAME, loggerDriver},
         {STORAGE_DRIVER_NAME, storageDriver},
+        {FIRMWARE_STORE_DRIVER_NAME, firmwareStore},
     };
 
     // Create core game objects
     pdn = PDN::createPDN(pdnConfig);
     
     IdGenerator::initialize(clockDriver->milliseconds());
-    player = new Player();
-    player->setUserID(IdGenerator::getInstance().generateId());
+    playerProvider = new PlayerProvider();
+    playerProvider->getPlayer()->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
     // Create wireless managers
     LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
@@ -168,24 +184,30 @@ void setup() {
     // WiFi credentials are compile-time constants from build flags
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
-    quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
+    quickdrawWirelessManager->initialize(playerProvider->getPlayer(), pdn->getWirelessManager(), 1000);
     symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
     
     // Register ESP-NOW packet handlers
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
 
-    crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
-    crashLogger->capture();
+    crashLogger = new CrashLogger(storageDriver, pdn->getWirelessManager());
+    crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
 
-    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
-    
+    game = new Quickdraw(playerProvider, pdn, quickdrawWirelessManager, remoteDebugManager,
+                         symbolWirelessManager);
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
         render();
-    delay(3000);
+    // Lets a crash upload finish before the output jack's handshake takes the radio back.
+    SimpleTimer splashTimer;
+    splashTimer.setTimer(SPLASH_HOLD_MS);
+    while (!splashTimer.expired()) {
+        httpClientDriver->exec();
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
@@ -196,7 +218,16 @@ void setup() {
 
 void loop() {
     if (crashLogger != nullptr) {
+        CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
+        crashLogger->restoreEspNowAfterUploads();
     }
     pdn->loop();
+}
+
+extern "C" void app_main() {
+    setup();
+    for (;;) {
+        loop();
+    }
 }

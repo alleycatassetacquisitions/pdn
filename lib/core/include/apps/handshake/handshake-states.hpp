@@ -14,8 +14,8 @@ enum HandshakeStateId {
     INPUT_SEND_ID_STATE = 84, // Input Port second state. Sends ACK and player id over esp-now to received MAC.
     INPUT_CONNECTED_STATE = 85 // sends hb over serial every 50 ms. if receive disconnect message, transition to INPUT_IDLE_STATE.
 };
-    
-class OutputIdleState : public State {
+
+class OutputIdleState : public TypedState<Device> {
 public:
     explicit OutputIdleState(HandshakeWirelessManager* handshakeWirelessManager);
     ~OutputIdleState();
@@ -32,7 +32,7 @@ private:
     HandshakeWirelessManager* handshakeWirelessManager;
 };
 
-class OutputSendIdState : public State {
+class OutputSendIdState : public TypedState<Device> {
 public:
     OutputSendIdState(HandshakeWirelessManager* handshakeWirelessManager);
     ~OutputSendIdState();
@@ -49,7 +49,7 @@ private:
     bool transitionToConnectionSuccessfulState = false;
 };
 
-class HandshakeConnectedState : public State {
+class HandshakeConnectedState : public TypedState<Device> {
 public:
     HandshakeConnectedState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack, int stateId);
     ~HandshakeConnectedState();
@@ -75,7 +75,7 @@ private:
     bool transitionToIdleState = false;
 };
 
-class InputIdleState : public State {
+class InputIdleState : public TypedState<Device> {
 public:
     InputIdleState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack);
     ~InputIdleState();
@@ -95,7 +95,7 @@ private:
     bool transitionToSendIdState = false;
 };
 
-class InputSendIdState : public State {
+class InputSendIdState : public TypedState<Device> {
 public:
     InputSendIdState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack);
     ~InputSendIdState();

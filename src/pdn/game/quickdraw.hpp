@@ -6,7 +6,8 @@
 #include "state/state-machine.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "apps/player-registration/player-registration.hpp"
+#include "apps/player-fetch/player-fetch.hpp"
+#include "game/player-provider.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
@@ -14,13 +15,17 @@
 #include "game/shootout-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
+class FirmwareUpdateManager;
+
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
 constexpr int QUICKDRAW_APP_ID = 1;
 
 class Quickdraw : public StateMachine {
 public:
-    Quickdraw(Player *player, Device *PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
+    /** Builds the game managers and registers their packet handlers. */
+    Quickdraw(PlayerProvider* playerProvider, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager,
+              RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
     ~Quickdraw();
 
     void populateStateMap() override;
@@ -43,7 +48,8 @@ private:
     std::vector<Match> matches;
     int numMatches = 0;
     MatchManager* matchManager;
-    Player *player;
+    Player* player;
+    PlayerProvider* playerProvider = nullptr;
     WirelessManager* wirelessManager;
     StorageInterface* storageManager;
     PeerCommsInterface* peerComms;
@@ -54,6 +60,7 @@ private:
     SupporterReady* supporterReadyState = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
+    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
 
     // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
     // counters from both RDC and CDM. Intended for venue deployment: `cat`ing

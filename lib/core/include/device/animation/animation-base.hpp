@@ -37,7 +37,6 @@ public:
             frameTimer_.setTimer(config_.speed);  // Reset timer for next frame
             
             // Update the current state directly and get it back
-            LEDState prevState = currentState_;
             currentState_ = onAnimate();
             currentState_.timestamp = SimpleTimer::getPlatformClock()->milliseconds();
         }
