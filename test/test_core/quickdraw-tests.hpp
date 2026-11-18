@@ -205,13 +205,14 @@ inline void registerIdlePlayerName(IdleStateTests* suite, const char* name) {
 inline void idleFirstScreenShowsThePlayerName(IdleStateTests* suite) {
     std::vector<std::string> drawnTexts;
     recordIdleDrawnTexts(suite, &drawnTexts);
-    registerIdlePlayerName(suite, "Wilhelmina Vanderbilt");
+    registerIdlePlayerName(suite, "Maximiliana Fitzwilliam van Dyk");
     EXPECT_CALL(*suite->device.mockDisplay, drawImage(_)).Times(0);
 
     suite->idleState->onStateMounted(&suite->device);
     suite->idleState->onStateLoop(&suite->device);
 
-    EXPECT_THAT(drawnTexts, testing::ElementsAre("Player", "Wilhelmina", "Vanderbilt"));
+    EXPECT_THAT(drawnTexts,
+                testing::ElementsAre("Player", "Maximiliana", "Fitzwilliam", "van Dyk"));
 }
 
 inline void idleNameScreenWithoutANameShowsTheLabelAlone(IdleStateTests* suite) {
