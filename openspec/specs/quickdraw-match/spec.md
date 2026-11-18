@@ -42,8 +42,8 @@ The match protocol SHALL remain correct under the following conditions, and no r
 At most one match SHALL be active on a device at any time. Every match SHALL have a match ID shared by both paired players (a 16-byte UUID for standalone matches, or the deterministic tournament match identity for shootout matches) and a local match draw slot (Hunter slot or Bounty slot) fixed when the match is primed:
 
 - **Standalone match initiation**:
-  - Only a provisioned Hunter challenger (with a non-nil player UUID) that is idle, not on a ring, and has a Connected Bounty PDN on its downstream (opponent) jack SHALL initiate a standalone match, minting a fresh 16-byte UUID match ID and sending a match-initiation frame (carrying the match UUID, the Hunter's 16-byte player UUID, 16-byte team UUID, 6-byte MAC address, and the Hunter role) to that Bounty peer.
-  - A device receiving a match-initiation frame SHALL ignore it unless no match is already active, the receiver is provisioned with a non-nil player UUID distinct from the sender's player UUID, the sender's player UUID is non-nil, and the sender is a currently Connected PDN on the receiver's opponent jack.
+  - A Hunter challenger that is idle, not on a ring, and has a Connected Bounty PDN on its downstream (opponent) jack SHALL initiate a standalone match whatever either player UUID is, nil included, minting a fresh 16-byte UUID match ID and sending a match-initiation frame (carrying the match UUID, the Hunter's 16-byte player UUID, 16-byte team UUID, 6-byte MAC address, and the Hunter role) to that Bounty peer.
+  - A device receiving a match-initiation frame SHALL ignore it unless no match is already active and the sender is a currently Connected PDN on the receiver's opponent jack. Player UUIDs do not gate initiation; they decide whether the match is scored (Practice matches).
   - If the receiver is not in a shootout and has the same standing role as the sender (an attempted same-role showdown), the receiver SHALL reject the initiation by replying with a role-mismatch frame carrying that match UUID; the initiator receiving a role-mismatch reply for its active match SHALL clear the pending match.
   - Otherwise, if the receiver is an idle Bounty challenger (not on a ring and not a posse supporter), the receiver SHALL prime its active match with the received match UUID, record the opponent's player UUID, team UUID, and MAC address in the opponent's draw slot, and send a reliable match-acknowledgement frame carrying the match UUID and its own 16-byte player UUID, 16-byte team UUID, and 6-byte MAC address.
   - To synchronize countdown entry within a single wireless frame propagation delay (~1–2 ms) even when retransmissions occur, the responding Bounty SHALL transition into the match countdown upon confirmed link-layer delivery of its match-acknowledgement frame (and SHALL clear the primed match if delivery of the match acknowledgement is abandoned), while the initiating Hunter SHALL record the Bounty's player UUID, team UUID, and MAC address, stop retransmitting the match initiation, and transition into the match countdown immediately upon receiving the matching match acknowledgement.
@@ -142,14 +142,14 @@ When a match resolves with a win or loss outcome:
 
 - The device SHALL increment the player's total matches played, and either increment wins and win streak (on a win) or increment losses and reset win streak to 0 (on a loss).
 - **Standalone match**:
-  - The finalized match record (storing the winner player UUID decided by effective draw time alongside both players' raw reaction times) SHALL be appended to the 32-slot non-volatile match ring buffer for subsequent FDN collection, subject to `match-collection`'s rules: it is stored as recorded, including a nil or repeated player UUID or a winner the devices disagree on, unless 32 records are pending.
+  - The finalized record of a scored match (storing the winner player UUID decided by effective draw time alongside both players' raw reaction times) SHALL be appended to the 32-slot non-volatile match ring buffer for subsequent FDN collection, subject to `match-collection`'s rules: it is stored as recorded, including a winner the devices disagree on, unless 32 records are pending. A practice match is not stored (Practice matches).
   - The device SHALL display the win or loss result screen for **8000 ms**, showing the player's effective draw time, the opponent's effective draw time, the number of posse supporter boosts applied, and any early-press countdown penalty incurred by the player, while broadcasting a posse win or loss event to its posse supporters.
   - After 8000 ms on the win or loss screen, the device SHALL pass through the dormant sleep and awaken screens before returning to idle.
 - **Shootout match**:
   - The match SHALL NOT be written to non-volatile match storage and SHALL NOT trigger sleep; the winner reports the match result to the tournament and enters the between-matches spectator screen, and the loser enters the eliminated screen.
 
 #### Scenario: Standalone win saves match for FDN collection, notifies posse, and sleeps
-- **WHEN** a challenger wins a standalone match and fewer than 32 records are pending
+- **WHEN** a challenger wins a scored standalone match and fewer than 32 records are pending
 - **THEN** the finalized match record is saved to the 32-slot non-volatile match ring buffer for FDN collection, a posse win event is broadcast to its posse supporters, the win screen displays for 8 seconds, and the device proceeds through sleep and awaken before returning to idle
 
 #### Scenario: Result screen surfaces early-press countdown penalties alongside posse boosts
@@ -159,3 +159,39 @@ When a match resolves with a win or loss outcome:
 #### Scenario: Shootout match skips storage and sleep
 - **WHEN** a paired player wins or loses a shootout match
 - **THEN** no match record is written to non-volatile storage and the player transitions directly to the shootout spectator or eliminated state
+
+### Requirement: Practice matches
+
+A standalone match SHALL be scored, and stored for relay and upload, only when both player UUIDs are non-nil and distinct. Any other standalone match is a practice match: it is played and its result shown, but it SHALL NOT be stored. Each PDN SHALL decide from its own player UUID and the one the handshake gave it, and SHALL show `PRACTICE` and `NOT SCORED` on the countdown and `PRACTICE` on the result screen. A shootout match is never a practice match and shows neither.
+
+#### Scenario: Nil local player UUID makes a practice match
+- **WHEN** a PDN with a nil player UUID plays a standalone match against a PDN with a non-nil player UUID
+- **THEN** the match runs to a result, both PDNs show the practice label on the countdown and the result screen, and neither stores a match record
+
+#### Scenario: Nil opponent player UUID makes a practice match
+- **WHEN** a PDN with a non-nil player UUID plays a standalone match against an opponent whose handshake carried a nil player UUID
+- **THEN** the PDN shows the practice label on the countdown and the result screen and stores no match record
+
+#### Scenario: Same player UUID on both sides makes a practice match
+- **WHEN** two PDNs carrying the same non-nil player UUID play a standalone match
+- **THEN** both show the practice label on the countdown and the result screen, and neither stores a match record
+
+#### Scenario: Distinct non-nil player UUIDs make a scored match
+- **WHEN** two PDNs with distinct non-nil player UUIDs play a standalone match
+- **THEN** neither shows the practice label, and each stores the match record
+
+#### Scenario: Shootout match is neither stored nor labelled
+- **WHEN** two paired players finish a shootout match, whatever their player UUIDs
+- **THEN** no match record is stored and neither PDN shows the practice label
+
+### Requirement: Unregistered idle indicator
+
+A PDN whose player UUID is nil SHALL show `UNREGISTERED` on its idle screen; a PDN with a non-nil player UUID SHALL NOT. A test build's MAC test identity is non-nil, so it shows no label. A release build keeps the nil "Demo" identity until the FDN lookup exists (#485), so it shows the label and every match it plays is a practice match.
+
+#### Scenario: Idle screen shows UNREGISTERED with a nil player UUID
+- **WHEN** a PDN with a nil player UUID enters the idle screen
+- **THEN** the idle screen shows `UNREGISTERED`
+
+#### Scenario: Idle screen shows no label with a non-nil player UUID
+- **WHEN** a PDN with a non-nil player UUID, a test build's MAC test identity included, enters the idle screen
+- **THEN** the idle screen never shows `UNREGISTERED`

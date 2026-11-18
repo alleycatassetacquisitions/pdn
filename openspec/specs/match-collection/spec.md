@@ -16,12 +16,12 @@ Terms used throughout:
 
 ### Requirement: Bounded persistent match ring buffer and collection watermark on PDN
 
-Every completed standalone 1v1 match SHALL be persisted on the PDN in a bounded non-volatile ring buffer in binary form, in its own storage area, alongside a monotonic sequence counter and collection watermark:
+Every completed scored standalone 1v1 match (`quickdraw-match`) SHALL be persisted on the PDN in a bounded non-volatile ring buffer in binary form, in its own storage area, alongside a monotonic sequence counter and collection watermark:
 
 - Each persisted match SHALL increment the persisted `match_sequence_number` by `1` (starting at `1`) and write the binary match record, which names both player UUIDs, into a `32`-slot circular buffer indexed by `(match_sequence_number - 1) mod 32`.
 - Binary match records containing raw 16-byte UUIDs (which may include `0x00` bytes) SHALL round-trip through non-volatile storage without null-byte truncation.
 - While `32` matches are pending, the PDN SHALL NOT persist a new match and SHALL log the refusal; a pending match is never overwritten, and gameplay is not blocked.
-- A shootout match SHALL NOT be persisted. Every other finalized match SHALL be persisted as recorded, including one with a nil player UUID, the same player UUID on both sides, or no agreed winner; the server rejects or flags those.
+- A shootout match SHALL NOT be persisted, nor SHALL a practice match: one with a nil player UUID or the same player UUID on both sides (`quickdraw-match`). Every other finalized match SHALL be persisted as recorded, including one with no agreed winner; the server flags it.
 - The PDN SHALL persist a separate `collected_high_water_mark` (`0` initially), clamped to `match_sequence_number` if larger. Match `N` is pending whenever `N > collected_high_water_mark` and `N > match_sequence_number - 32`. Advancing the mark to `M` marks matches `<= M` as collected and leaves newer matches pending.
 
 #### Scenario: 33rd match overwrites oldest slot without losing newer uncollected matches
