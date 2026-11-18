@@ -330,26 +330,33 @@ inline void connectStateClearedHandlerStopsReceiving(RDCHelloTests* suite) {
     EXPECT_EQ(state.events.size(), 1u) << "a cleared handler still fired";
 }
 
-// The peer's kind comes from the context channel that decoded it, not the HELLO
-// deviceType byte. The two travel over different transports and can disagree, and
-// a consumer casting the profile bytes needs the kind that produced them. A swap
+// The HELLO on the cable names the peer's kind; the jack reports it only once a
+// context of that kind lands, because a consumer casting the profile bytes needs
+// the kind that produced them. A context of the other kind is refused. A swap
 // leaves the jack UNKNOWN until the new peer's own context lands.
-inline void rdcHelloPeerDeviceTypeComesFromContextChannel(RDCHelloTests* suite) {
+inline void rdcHelloPeerDeviceTypeIsTheCablesKind(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
-    HelloPayload lying{};
-    memcpy(lying.source, peer, 6);
-    lying.deviceType = static_cast<uint8_t>(DeviceType::FDN);
-    suite->deliverHello(suite->outJack, encodeFramed(lying));
+    HelloPayload fdnHello{};
+    memcpy(fdnHello.source, peer, 6);
+    fdnHello.deviceType = static_cast<uint8_t>(DeviceType::FDN);
+    suite->deliverHello(suite->outJack, encodeFramed(fdnHello));
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN)
-        << "the HELLO byte set the kind";
+        << "the HELLO alone set the kind";
 
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/4, /*userId=*/1234, /*seqId=*/9);
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
-    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN)
-        << "the kind did not come from the channel that decoded the context";
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN)
+        << "a PDN context typed a jack whose HELLO said FDN";
+
+    FdnConnectionContext fdnCtx{};
+    fdnCtx.seqId = 10;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, peer,
+                                        reinterpret_cast<const uint8_t*>(&fdnCtx), sizeof(fdnCtx));
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::FDN);
 
     HelloPayload swapped{};
     swapped.source[0] = 0xB1;

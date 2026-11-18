@@ -1607,8 +1607,8 @@ TEST_F(ConnectStateTests, clearedHandlerStopsReceiving) {
     connectStateClearedHandlerStopsReceiving(this);
 }
 
-TEST_F(ConnectStateTests, peerDeviceTypeComesFromContextChannel) {
-    rdcHelloPeerDeviceTypeComesFromContextChannel(this);
+TEST_F(ConnectStateTests, peerDeviceTypeIsTheCablesKind) {
+    rdcHelloPeerDeviceTypeIsTheCablesKind(this);
 }
 
 TEST_F(ConnectStateTests, connectCarriesPeerContext) {
@@ -1746,6 +1746,15 @@ TEST_F(RDCHelloTests, headTransferCarriesFullCapRoster) {
 }
 TEST_F(RDCHelloTests, fdnContextSyncsPdnWallClockOnlyFromCabledFdn) {
     rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(this);
+}
+TEST_F(RDCHelloTests, forgedFdnContextNeitherTypesACabledPdnNorSetsTheClock) {
+    rdcForgedFdnContextNeitherTypesACabledPdnNorSetsTheClock(this);
+}
+TEST_F(RDCHelloTests, forgedContextCannotEvictTheBufferedRealOne) {
+    rdcForgedContextCannotEvictTheBufferedRealOne(this);
+}
+TEST_F(RDCHelloTests, fdnClockAppliesOnceTheJackIsConnected) {
+    rdcFdnClockAppliesOnceTheJackIsConnected(this);
 }
 TEST_F(RDCHelloTests, staleTransferDoesNotReforkClaimedUpstream) {
     rdcStaleTransferDoesNotReforkClaimedUpstream(this);

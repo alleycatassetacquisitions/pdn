@@ -301,6 +301,8 @@ private:
     void notifyChainChange();
     void recordJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
                            uint16_t peerUserId, const uint8_t* profile, size_t len);
+    // Sets this PDN's UTC wall clock from the FDN profile recorded on `jack`.
+    void applyFdnClock(SerialIdentifier jack);
 
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
@@ -316,6 +318,9 @@ private:
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
         // Recorded from the peer's received context; consumed by the chain SM.
         uint8_t peerChainRole = 0;
+        // The kind the arming HELLO declared over the cable; a context of any
+        // other kind is refused for this jack.
+        DeviceType helloDeviceType = DeviceType::UNKNOWN;
         // Which context channel the peer's context arrived on, so the kind and the
         // profile bytes below always describe the same peer and the same moment.
         DeviceType peerDeviceType = DeviceType::UNKNOWN;

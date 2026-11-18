@@ -87,8 +87,8 @@ public:
         delete fakeClock;
     }
 
-    /** A HELLO frame whose source MAC starts with firstByte (rest fixed). */
-    std::vector<uint8_t> helloFrame(uint8_t firstByte) {
+    /** A HELLO frame from a `type` peer whose source MAC starts with firstByte (rest fixed). */
+    std::vector<uint8_t> helloFrame(uint8_t firstByte, DeviceType type = DeviceType::PDN) {
         HelloPayload hello{};
         hello.source[0] = firstByte;
         hello.source[1] = 0x02;
@@ -96,7 +96,7 @@ public:
         hello.source[3] = 0x04;
         hello.source[4] = 0x05;
         hello.source[5] = 0x06;
-        hello.deviceType = static_cast<uint8_t>(DeviceType::PDN);
+        hello.deviceType = static_cast<uint8_t>(type);
         return encodeFramed(hello);
     }
 
@@ -2504,7 +2504,7 @@ inline void rdcPeerUserIdLiftedFromContext(RDCHelloTests* suite) {
 inline void rdcPeerUserIdAbsentForFdnContext(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1, DeviceType::FDN));
     suite->rdc.sync(&suite->device);
 
     FdnConnectionContext fdn{};
@@ -3136,7 +3136,7 @@ inline void rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(RDCHelloTests* suite
     suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->fakeClock->unixMilliseconds(), 0);
 
-    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1, DeviceType::FDN));
     suite->rdc.sync(&suite->device);
 
     FdnConnectionContext cabledCtx{};
@@ -3161,5 +3161,96 @@ inline void rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(RDCHelloTests* suite
                                         sizeof(unsyncedCtx));
     suite->rdc.sync(&suite->device);
 
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS);
+}
+
+inline void deliverFdnContext(RDCHelloTests* suite, const uint8_t* fromMac, int64_t utcUnixMs,
+                              uint8_t seqId) {
+    FdnConnectionContext ctx{};
+    ctx.seqId = seqId;
+    ctx.fdn.utcUnixMs = utcUnixMs;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, fromMac,
+                                        reinterpret_cast<const uint8_t*>(&ctx), sizeof(ctx));
+}
+
+// `profileHead` fills the profile's first bytes, which read as a UTC stamp if
+// the profile were taken for an FdnProfile.
+inline void deliverPdnContext(RDCHelloTests* suite, const uint8_t* fromMac,
+                              int64_t profileHead = 0) {
+    PdnConnectionContext ctx{};
+    ctx.seqId = 50;
+    memcpy(&ctx.player, &profileHead, sizeof(profileHead));
+    suite->transport()->deliverIncoming(PktType::kPdnConnectionContext, fromMac,
+                                        reinterpret_cast<const uint8_t*>(&ctx), sizeof(ctx));
+}
+
+// #473: a radio posing as an FDN under a cabled PDN's MAC, ahead of the real
+// context, either buffered or while the jack is Connecting. The cable said PDN,
+// so the jack waits for a PDN context and the clock stays unset.
+inline void rdcForgedFdnContextNeitherTypesACabledPdnNorSetsTheClock(RDCHelloTests* suite) {
+    const uint8_t pdn[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    constexpr int64_t FORGED_UTC_MS = 1792359000000LL;
+    suite->fakeClock->setUnixTimeMs(0);
+
+    deliverFdnContext(suite, pdn, FORGED_UTC_MS, 1);
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING)
+    << "a buffered context of the wrong kind completed the jack";
+
+    deliverFdnContext(suite, pdn, FORGED_UTC_MS, 2);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING)
+    << "a live context of the wrong kind completed the jack";
+
+    deliverPdnContext(suite, pdn, FORGED_UTC_MS);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    // A HELLO cannot retype a live link either.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1, DeviceType::FDN));
+    deliverFdnContext(suite, pdn, FORGED_UTC_MS, 3);
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), 0) << "a context not from a cabled FDN set the clock";
+}
+
+// The context buffer holds one entry per MAC and kind, so a forged frame of the
+// other kind cannot overwrite the real context that beat the HELLO.
+inline void rdcForgedContextCannotEvictTheBufferedRealOne(RDCHelloTests* suite) {
+    const uint8_t pdn[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    deliverPdnContext(suite, pdn);
+    deliverFdnContext(suite, pdn, 0, 1);
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);
+    suite->rdc.sync(&suite->device);
+
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
+}
+
+// http-date-clock-sync: the clock is taken from an FDN Connected on a jack, so
+// not while the exchange is still completing.
+inline void rdcFdnClockAppliesOnceTheJackIsConnected(RDCHelloTests* suite) {
+    const uint8_t fdn[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    constexpr int64_t SYNCED_UTC_MS = 1792359000000LL;
+    suite->fakeClock->setUnixTimeMs(0);
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1, DeviceType::FDN));
+    suite->rdc.sync(&suite->device);
+
+    deliverFdnContext(suite, fdn, SYNCED_UTC_MS, 1);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), 0);
+
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
     EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS);
 }
