@@ -9,6 +9,7 @@
 // CLI-specific test headers
 #include "cli-broker-tests.hpp"
 #include "native-driver-tests.hpp"
+#include "idle-handshake-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
