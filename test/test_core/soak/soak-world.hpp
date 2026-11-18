@@ -722,6 +722,11 @@ private:
             slot.matchStart = matchManager->getMatchLocalStartTime();
             TruthMatch& match = truth[slot.matchId];
             match.shootout = slot.matchId.rfind(kShootoutMatchIdPrefix, 0) == 0;
+            if (match.shootout) {
+                UUIDBytes stored;
+                IdGenerator::uuidStringToBytes(slot.matchId, stored.bytes);
+                shootoutIds.insert(formatUuid(stored));
+            }
             (slot.identity.hunter ? match.hunter : match.bounty).slot = index;
             if (now < medium.burstUntil && match.disturbed.empty()) match.disturbed = "burst";
             if (slot.rebootDelay >= 0)
@@ -730,6 +735,11 @@ private:
         } else if (state == MATCH_RESULT && !slot.matchId.empty()) {
             onFinalize(index);
         }
+    }
+
+    std::string describe(const std::string& id) const {
+        if (shootoutIds.count(id) != 0) return " (shootout)";
+        return legacyIds.count(id) != 0 ? " (older firmware)" : "";
     }
 
     void recordPress(int index, uint32_t raw) {
@@ -843,8 +853,10 @@ private:
 
     void checkCommit(const Commit& commit) {
         const std::string where = "pdn " + std::to_string(commit.slot) + " record " + commit.id;
-        if (commit.id.rfind(kShootoutMatchIdPrefix, 0) == 0)
+        if (shootoutIds.count(commit.id) != 0) {
             fail(where + ": shootout match stored");
+            return;
+        }
         std::map<std::string, TruthMatch>::const_iterator found = truth.find(commit.id);
         if (found == truth.end()) {
             fail(where + ": no duel had this id");
@@ -922,10 +934,8 @@ private:
         for (const ServerRow& row : rows) {
             if (byId.count(row.id)) fail("server holds " + row.id + " twice");
             byId[row.id] = &row;
-            if (copies.count(row.id) == 0) {
-                fail("server row " + row.id +
-                     (legacyIds.count(row.id) ? " is an older-firmware record"
-                                              : " matches no stored record"));
+            if (copies.count(row.id) == 0 || shootoutIds.count(row.id) != 0) {
+                fail("server row " + row.id + describe(row.id) + " matches no stored duel");
             }
         }
         for (const std::pair<const std::string, std::vector<const Commit*>>& entry : copies) {
@@ -942,9 +952,9 @@ private:
             if (extra > 0) counts["extraReports"] += static_cast<uint64_t>(extra);
         }
         for (const std::string& id : airIds) {
-            if (copies.count(id) == 0)
-                fail("relayed " + id + (legacyIds.count(id) ? " (older firmware)" : "") +
-                     " was never stored");
+            if (copies.count(id) == 0 || shootoutIds.count(id) != 0) {
+                fail("relayed " + id + describe(id) + " was never stored as a duel");
+            }
         }
         counts["serverRows"] = rows.size();
         counts["storedMatches"] = copies.size();
@@ -1006,6 +1016,15 @@ private:
         RunResult result;
         result.passed = failures.empty();
         result.failures = failures;
+        // On failure, each device's last warnings and errors follow the event log.
+        for (size_t i = 0; i < pdns.size() && !failures.empty(); i++) {
+            for (const std::string& line : pdns[i].logger.lines)
+                note("pdn=" + std::to_string(i) + " " + line);
+        }
+        for (size_t i = 0; i < fdns.size() && !failures.empty(); i++) {
+            for (const std::string& line : fdns[i].logger.lines)
+                note("fdn=" + std::to_string(i) + " " + line);
+        }
         result.log = log;
         result.logHash = fnv1a(log);
         result.counts = counts;
@@ -1037,6 +1056,8 @@ private:
     std::vector<Commit> commits;
     std::set<std::string> airIds;
     std::set<std::string> legacyIds;
+    // Shootout ids as a stored record would carry them (uuidStringToBytes of "SHT-...").
+    std::set<std::string> shootoutIds;
     std::vector<std::string> failures;
     std::map<std::string, uint64_t> counts;
     std::string log;
