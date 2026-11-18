@@ -23,7 +23,7 @@
 // both PDNs, never stored. Each PDN decides from the identities the real
 // handshake exchanged, so these run the handshake rather than priming a match.
 
-/** Every string a mock display was asked to draw. */
+/** Every string a mock display was asked to draw, and the glyph mode it was left in. */
 class ScreenText {
 public:
     explicit ScreenText(MockDevice& device) {
@@ -31,7 +31,10 @@ public:
         ON_CALL(*display, invalidateScreen()).WillByDefault(Return(display));
         ON_CALL(*display, drawImage(_)).WillByDefault(Return(display));
         ON_CALL(*display, drawImage(_, _, _)).WillByDefault(Return(display));
-        ON_CALL(*display, setGlyphMode(_)).WillByDefault(Return(display));
+        ON_CALL(*display, setGlyphMode(_)).WillByDefault(Invoke([this, display](FontMode mode) {
+            glyphMode = mode;
+            return display;
+        }));
         ON_CALL(*display, whiteScreenLeftHalf()).WillByDefault(Return(display));
         ON_CALL(*display, renderGlyph(_, _, _)).WillByDefault(Return(display));
         ON_CALL(*display, drawText(_, _, _))
@@ -47,8 +50,11 @@ public:
 
     void clear() { lines.clear(); }
 
+    FontMode getGlyphMode() const { return glyphMode; }
+
 private:
     std::vector<std::string> lines;
+    FontMode glyphMode = FontMode::TEXT;
 };
 
 class PracticeMatchTests : public TwoDeviceTestFixture {
@@ -148,6 +154,9 @@ inline void expectPracticeOnBothPdns(PracticeMatchTests* suite) {
     EXPECT_TRUE(suite->hunterScreen.shows("SCORED")) << "hunter countdown";
     EXPECT_TRUE(suite->bountyScreen.shows("PRACTICE")) << "bounty countdown";
     EXPECT_TRUE(suite->bountyScreen.shows("SCORED")) << "bounty countdown";
+    // The label's small font draws by XOR; left set, it garbles the DRAW image next.
+    EXPECT_EQ(suite->hunterScreen.getGlyphMode(), FontMode::TEXT);
+    EXPECT_EQ(suite->bountyScreen.getGlyphMode(), FontMode::TEXT);
 
     suite->hunterScreen.clear();
     suite->bountyScreen.clear();

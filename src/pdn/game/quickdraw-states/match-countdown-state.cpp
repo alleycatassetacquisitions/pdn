@@ -22,7 +22,6 @@ void MatchCountdown::onStateMounted(PDN* pdn) {
     // match is starting so they can arm their confirmation window.
     posseManager->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
 
-    matchIsPractice = matchManager->isPracticeMatch();
     renderStep(pdn, countdownQueue[currentStepIndex].step);
 
     pdn->getLightManager()->startAnimation(new CountdownAnimation(),
@@ -80,7 +79,7 @@ void MatchCountdown::renderStep(PDN* pdn, CountdownStep step) {
     Display* display = pdn->getDisplay();
     display->invalidateScreen()->drawImage(
     getImageForAllegiance(player->getAllegiance(), getImageIdForStep(step)));
-    if (matchIsPractice) {
+    if (matchManager->isPracticeMatch()) {
         // Text over the art is unreadable on every allegiance, so the label
         // takes the left half. "NOT SCORED" is wider than that half.
         display->whiteScreenLeftHalf();
@@ -88,6 +87,9 @@ void MatchCountdown::renderStep(PDN* pdn, CountdownStep step) {
         display->drawText("PRACTICE", 5, 24);
         display->drawText("NOT", 22, 38);
         display->drawText("SCORED", 11, 52);
+        // The small font draws by XOR; left set, it would garble the next
+        // step's art and MatchState's DRAW image.
+        display->setGlyphMode(FontMode::TEXT);
     }
     display->render();
 }
@@ -102,7 +104,6 @@ void MatchCountdown::onStateDismounted(PDN* pdn) {
     }
 
     doBattle = false;
-    matchIsPractice = false;
     currentStepIndex = 0;
     countdownTimer.invalidate();
     pdn->getPrimaryButton()->removeButtonCallbacks();

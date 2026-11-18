@@ -232,13 +232,11 @@ bool MatchManager::finalizeMatch() {
     lastMatchDisplay.boostMs = activeMatchState.boostMs;
     lastMatchDisplay.penaltyMs = activeMatchState.penaltyMs;
     lastMatchDisplay.hasData = true;
-    // One read decides both the label and storage, so they cannot disagree.
     lastMatchDisplay.isPractice = isPracticeMatch();
 
-    // Shootout matches are scored by the tournament, and their IDs are not
-    // UUIDs, so the server cannot take them. A practice match has no two
-    // distinct players to score. Every other record is kept as computed; the
-    // server flags a disputed winner.
+    // Shootout matches are scored by the tournament and their IDs are not UUIDs;
+    // a practice match has no two distinct players. The server takes neither.
+    // Every other record is kept as computed; the server flags a disputed winner.
     if (currentMatchIsShootout() || lastMatchDisplay.isPractice) {
         clearCurrentMatch();
         return true;

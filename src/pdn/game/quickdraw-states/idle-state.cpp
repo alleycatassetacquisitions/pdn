@@ -50,7 +50,7 @@ void Idle::onStateMounted(PDN* pdn) {
         Idle* idle = (Idle*)ctx;
         idle->statsIndex++;
         if (idle->statsIndex > idle->statsCount) {
-            idle->statsIndex = idle->playerIsUnregistered ? UNREGISTERED_PAGE : 0;
+            idle->statsIndex = idle->getFirstStatsPage();
         }
         idle->displayIsDirty = true;
     };
@@ -58,8 +58,7 @@ void Idle::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
 
-    playerIsUnregistered = player->getServerPlayerId().isZero();
-    statsIndex = playerIsUnregistered ? UNREGISTERED_PAGE : 0;
+    statsIndex = getFirstStatsPage();
     displayIsDirty = true;
 }
 
@@ -96,7 +95,6 @@ void Idle::onStateDismounted(PDN* pdn) {
         matchManager->clearCurrentMatch();
     }
     statsIndex = 0;
-    playerIsUnregistered = false;
     matchInitializationTimer.invalidate();
     matchInitialized = false;
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
@@ -146,6 +144,10 @@ void Idle::renderStats(PDN* pdn) {
     }
 
     pdn->getDisplay()->render();
+}
+
+int Idle::getFirstStatsPage() const {
+    return player->getServerPlayerId().isZero() ? UNREGISTERED_PAGE : 0;
 }
 
 bool Idle::isPrimaryRequired() {

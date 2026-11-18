@@ -93,7 +93,7 @@ When an unprovisioned PDN in the provisioning app receives a resolved player pro
 
 ### Requirement: Test-only registration
 
-A PDN built as a test build, and a simulated PDN, SHALL register itself with a test player UUID derived from its MAC address, which never equals a server-issued player UUID, so its matches are stored and relayed. A release build SHALL contain no such path. Test builds SHALL NOT be flashed to event devices.
+A PDN built as a test build, and a simulated PDN, SHALL register itself with a test player UUID derived from its MAC address, which never equals a server-issued player UUID, so its matches against another registered PDN are scored, stored and relayed (`quickdraw-match`). A release build SHALL contain no such path. Test builds SHALL NOT be flashed to event devices.
 
 #### Scenario: Two test PDNs record a match naming both
 - **WHEN** two test-build PDNs with different MAC addresses finish a match

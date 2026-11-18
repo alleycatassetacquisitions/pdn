@@ -118,9 +118,9 @@ private:
     bool displayIsDirty = false;
     int statsIndex = 0;
     int statsCount = 7;
-    // A nil player UUID, read at mount: the stats cycle opens on the UNREGISTERED page.
-    bool playerIsUnregistered = false;
+    // A nil player UUID opens the stats cycle on this page, and the cycle wraps to it.
     static constexpr int UNREGISTERED_PAGE = -1;
+    int getFirstStatsPage() const;
     size_t lastPosseCount = 0;
 
     bool isPrimaryRequired() override;
@@ -260,7 +260,7 @@ private:
     };
 
     ImageType getImageIdForStep(CountdownStep step);
-    /** Draws one countdown step, with the practice label over the art for a practice match. */
+    /** Draws one countdown step; a practice match blanks the art's left half for its label. */
     void renderStep(PDN* pdn, CountdownStep step);
 
     Player* player;
@@ -269,8 +269,6 @@ private:
     const int HAPTIC_DURATION = 75;
     const int HAPTIC_INTENSITY = 255;
     bool doBattle = false;
-    // Read at mount: the handshake has named both players before the countdown starts.
-    bool matchIsPractice = false;
     const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2000);
     const CountdownStage TWO = CountdownStage(CountdownStep::TWO, 2000);
     const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 2000);

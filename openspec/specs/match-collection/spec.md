@@ -2,7 +2,7 @@
 
 ## Purpose
 
-PDNs do not connect to Wi-Fi and cannot upload completed 1v1 Quickdraw matches directly to the central server. Instead, each PDN persists its completed standalone matches in a bounded non-volatile ring buffer with a persistent collection watermark, transfers uncollected match records over the peer-to-peer radio when Connected to an FDN on a serial jack, and relies on the FDN to batch-upload collected matches to the server via the protobuf match endpoint (`POST /quickdraw-matches`). The `match-collection` capability defines the match record schema, bounded PDN ring buffer and watermark, PDN-to-FDN match transfer, bounded FDN spool, FDN protobuf batch upload, and per-entry rejection handling.
+PDNs do not connect to Wi-Fi and cannot upload completed 1v1 Quickdraw matches directly to the central server. Instead, each PDN persists its completed scored standalone matches in a bounded non-volatile ring buffer with a persistent collection watermark, transfers uncollected match records over the peer-to-peer radio when Connected to an FDN on a serial jack, and relies on the FDN to batch-upload collected matches to the server via the protobuf match endpoint (`POST /quickdraw-matches`). The `match-collection` capability defines the match record schema, bounded PDN ring buffer and watermark, PDN-to-FDN match transfer, bounded FDN spool, FDN protobuf batch upload, and per-entry rejection handling.
 
 This specification states the required outcomes, invariants, and environmental constraints of match storage, collection, and server upload.
 
