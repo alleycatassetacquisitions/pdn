@@ -51,6 +51,9 @@ public:
         synced = true;
     }
 
+    /** Virtual milliseconds since the wall clock was last set. */
+    uint64_t millisecondsSinceSync() const { return worldNow - syncedAt; }
+
     /** Restarts millis; @p powerLost also drops the wall clock. */
     void boot(bool powerLost) {
         bootAt = worldNow;
@@ -81,6 +84,8 @@ struct MediumConfig {
     double reorder = 0.02;
     uint32_t minDelayMs = 1;
     uint32_t maxDelayMs = 6;
+    // A reordered frame waits 10 ms up to this much longer.
+    uint32_t maxReorderDelayMs = 40;
 };
 
 class SimRadio;
@@ -141,6 +146,8 @@ public:
     // Loss probability while a burst runs, and the virtual time it ends.
     double burstLoss = 0;
     uint64_t burstUntil = 0;
+    // Until then every record ack is lost: the FDN stored, the PDN never hears so.
+    uint64_t dropAcksUntil = 0;
     AirObserver onAir;
     uint64_t framesSent = 0;
     uint64_t framesLost = 0;
@@ -340,7 +347,8 @@ inline void VirtualMedium::schedule(const SimRadio& from, const uint8_t* dst, Pk
     Frame* frame = new Frame();
     uint32_t delay =
     std::uniform_int_distribution<uint32_t>(config.minDelayMs, config.maxDelayMs)(rng);
-    if (chance(config.reorder)) delay += std::uniform_int_distribution<uint32_t>(10, 40)(rng);
+    if (chance(config.reorder))
+        delay += std::uniform_int_distribution<uint32_t>(10, config.maxReorderDelayMs)(rng);
     frame->at = worldNow + delay;
     frame->order = ++order;
     memcpy(frame->src, const_cast<SimRadio&>(from).getMacAddress(), 6);
@@ -348,7 +356,8 @@ inline void VirtualMedium::schedule(const SimRadio& from, const uint8_t* dst, Pk
     frame->type = type;
     frame->data.assign(data, data + length);
     const double loss = worldNow < burstUntil ? burstLoss : config.loss;
-    frame->lost = chance(loss) || isMuted(frame->src);
+    frame->lost = chance(loss) || isMuted(frame->src) ||
+                  (type == PktType::kRecordAck && worldNow < dropAcksUntil);
     frame->ackLost = chance(config.ackLoss);
     frame->wantsStatus = wantsStatus;
     frame->senderInstance = from.getInstance();

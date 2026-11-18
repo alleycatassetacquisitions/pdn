@@ -14,7 +14,19 @@ namespace soak {
 // ticks (it waits for the PDNs to be idle and presses relative to the draw), so
 // dropping actions from a list still leaves a runnable list: that is what lets a
 // failing seed shrink.
-enum class ActionType { DUEL, RING, VISIT, REBOOT, CUT, FDN_OFF, FDN_REBOOT, BURST, NO_EVENT };
+enum class ActionType {
+    DUEL,
+    RING,
+    VISIT,
+    REBOOT,
+    CUT,
+    FDN_OFF,
+    FDN_REBOOT,
+    BURST,
+    NO_EVENT,
+    HTTP_ERROR,
+    ACK_LOSS
+};
 
 struct Action {
     uint64_t at = 0;
@@ -22,7 +34,7 @@ struct Action {
     // DUEL: challenger hunter then its supporters, nearest first. RING: members.
     // VISIT, REBOOT, CUT: the PDN.
     std::vector<int> a;
-    // DUEL: bounty then its supporters. VISIT, FDN_OFF, FDN_REBOOT: the FDN.
+    // DUEL: bounty then its supporters. VISIT, FDN_OFF, FDN_REBOOT, HTTP_ERROR: the FDN.
     std::vector<int> b;
     std::map<std::string, int64_t> params;
 
@@ -33,8 +45,10 @@ struct Action {
     }
 };
 
-inline const char* const ACTION_NAMES[] = {"duel",   "ring",      "visit", "reboot", "cut",
-                                           "fdnoff", "fdnreboot", "burst", "noevent"};
+inline const char* const ACTION_NAMES[] = {"duel",    "ring",    "visit",     "reboot",
+                                           "cut",     "fdnoff",  "fdnreboot", "burst",
+                                           "noevent", "httperr", "ackloss"};
+inline constexpr int ACTION_TYPE_COUNT = sizeof(ACTION_NAMES) / sizeof(ACTION_NAMES[0]);
 
 inline std::string formatList(const std::vector<int>& list) {
     std::string out;
@@ -62,7 +76,7 @@ inline bool parseAction(const std::string& line, Action& action) {
     while (words >> word) {
         const size_t eq = word.find('=');
         if (eq == std::string::npos) {
-            for (int i = 0; i < 9; i++) {
+            for (int i = 0; i < ACTION_TYPE_COUNT; i++) {
                 if (word == ACTION_NAMES[i]) {
                     action.type = static_cast<ActionType>(i);
                     typed = true;
@@ -101,6 +115,11 @@ struct ScheduleConfig {
     double burstsPerHour = 20;
     // The fake server between events: uploads answer 409 and are kept.
     double noEventPerHour = 2;
+    // Per FDN: a window where every upload answers 503 or fails in transport.
+    double httpErrorsPerHour = 3;
+    // A window where every FDN record ack is lost on the air: the PDNs resend
+    // records an FDN already holds.
+    double ackLossPerHour = 10;
 };
 
 // Seeded generator of an action list. It keeps a rough busy-until per device so
@@ -246,10 +265,22 @@ private:
                             {"torn", uniform(0, 1)}};
             actions.push_back(fault);
         }
+        if (chance(perStep(config.httpErrorsPerHour, config.fdns))) {
+            fault.type = ActionType::HTTP_ERROR;
+            fault.b = {static_cast<int>(uniform(0, config.fdns - 1))};
+            // 1: 503 on every request; 2: every request fails in transport.
+            fault.params = {{"dur", uniform(20000, 400000)}, {"mode", uniform(1, 2)}};
+            actions.push_back(fault);
+        }
         fault.b.clear();
         if (chance(perStep(config.noEventPerHour, 1))) {
             fault.type = ActionType::NO_EVENT;
             fault.params = {{"dur", uniform(60000, 600000)}};
+            actions.push_back(fault);
+        }
+        if (chance(perStep(config.ackLossPerHour, 1))) {
+            fault.type = ActionType::ACK_LOSS;
+            fault.params = {{"dur", uniform(3000, 30000)}};
             actions.push_back(fault);
         }
     }

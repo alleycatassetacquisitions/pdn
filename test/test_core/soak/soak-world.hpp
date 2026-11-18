@@ -25,10 +25,10 @@ inline constexpr uint64_t HELLO_CADENCE_MS = 20;
 // The event's wall clock at virtual time zero (2026-11-18).
 inline constexpr int64_t EVENT_EPOCH_MS = 1795000000000LL;
 // A synced PDN stamps occurred-at from a clock set by an FDN context that crossed
-// the medium: off by at most that frame's delay plus the context resend span, then
-// by its drift since. A cabled PDN sees its context within the 500 ms exchange
-// timeout, retried once, so 1500 ms plus 100 ppm of the time since sync.
-inline constexpr int64_t OCCURRED_AT_BOUND_MS = 1500;
+// the medium. The context carries the FDN's time when it was first sent; the
+// Resender retransmits that same payload for up to RETRANSMIT_SPAN_MS, the medium
+// adds its delay and reorder, and the PDN reads it on its next tick. From the sync
+// on, the PDN's drift (at most MAX_DRIFT_PPM) accrues. The FDN's own clock is exact.
 inline constexpr int32_t MAX_DRIFT_PPM = 100;
 inline constexpr uint32_t PITY_FLOOR_MS = 750;
 
@@ -160,6 +160,7 @@ private:
         uint64_t upAt = 0;
         uint64_t mutedUntil = 0;
         uint64_t offlineUntil = 0;
+        uint64_t httpErrorUntil = 0;
     };
     struct CableOp {
         uint64_t at;
@@ -388,6 +389,11 @@ private:
                 slot.offlineUntil = 0;
                 slot.faults.offline = config.http.offline;
             }
+            if (slot.httpErrorUntil != 0 && now >= slot.httpErrorUntil) {
+                slot.httpErrorUntil = 0;
+                slot.faults.serverError = config.http.serverError;
+                slot.faults.transportFail = config.http.transportFail;
+            }
             enter(slot.clock, &slot.logger);
             if (hello) slot.device->fdn->getRemoteDeviceCoordinator()->emitHello();
             slot.device->fdn->loop();
@@ -535,6 +541,17 @@ private:
                 noEventUntil =
                 std::max(noEventUntil, now + static_cast<uint64_t>(action.get("dur")));
                 return 1;
+            case ActionType::HTTP_ERROR: {
+                FdnSlot& slot = fdns[static_cast<size_t>(action.b[0])];
+                slot.httpErrorUntil =
+                std::max(slot.httpErrorUntil, now + static_cast<uint64_t>(action.get("dur")));
+                (action.get("mode") == 2 ? slot.faults.transportFail : slot.faults.serverError) = 1;
+                return 1;
+            }
+            case ActionType::ACK_LOSS:
+                medium.dropAcksUntil =
+                std::max(medium.dropAcksUntil, now + static_cast<uint64_t>(action.get("dur")));
+                return 1;
         }
         return 1;
     }
@@ -659,9 +676,11 @@ private:
             bool allSettled = now >= activity.deadline - 240000 + 30000;
             for (int pdn : action.a) {
                 const int state = pdns[static_cast<size_t>(pdn)].state;
+                // Final standings wait for the ring to open: the players unplug.
                 allSettled =
-                allSettled && (state == SLEEP || state == IDLE || state == AWAKEN_SEQUENCE ||
-                               pdns[static_cast<size_t>(pdn)].down);
+                allSettled &&
+                (state == SLEEP || state == IDLE || state == AWAKEN_SEQUENCE ||
+                 state == SHOOTOUT_FINAL_STANDINGS || pdns[static_cast<size_t>(pdn)].down);
             }
             over = over || allSettled;
         }
@@ -824,6 +843,7 @@ private:
         memcpy(&commit.record, bytes.data(), sizeof(MatchRecord));
         commit.id = formatUuid(commit.record.matchUuid);
         commit.synced = slot.clock->synced;
+        commit.sinceSyncMs = slot.clock->millisecondsSinceSync();
         commit.trueUnixMs = EVENT_EPOCH_MS + static_cast<int64_t>(now);
         commits.push_back(commit);
         slot.committedThisTick = commit.id;
@@ -836,11 +856,11 @@ private:
     void startDrain() {
         note("drain");
         draining = true;
-        medium.burstUntil = 0;
+        medium.burstUntil = medium.dropAcksUntil = 0;
         if (fake != nullptr) fake->eventActive = true;
         noEventUntil = 0;
         for (FdnSlot& slot : fdns) {
-            slot.mutedUntil = slot.offlineUntil = 0;
+            slot.mutedUntil = slot.offlineUntil = slot.httpErrorUntil = 0;
             // Online, but the server still errs: the uploader must keep and retry.
             slot.faults = config.http;
             slot.faults.offline = false;
@@ -926,10 +946,17 @@ private:
         }
         if (!commit.synced) {
             counts["knownUnsyncedStamp518"]++;
-        } else if (std::llabs(record.occurredAtUnixMs - commit.trueUnixMs) >
-                   OCCURRED_AT_BOUND_MS + static_cast<int64_t>(now / 1000 * MAX_DRIFT_PPM / 1000)) {
+            return;
+        }
+        counts["syncedStampsChecked"]++;
+        const int64_t bound =
+        static_cast<int64_t>(Resender::RETRANSMIT_SPAN_MS + config.medium.maxDelayMs +
+                             config.medium.maxReorderDelayMs + TICK_MS) +
+        static_cast<int64_t>(commit.sinceSyncMs) * MAX_DRIFT_PPM / 1000000;
+        if (std::llabs(record.occurredAtUnixMs - commit.trueUnixMs) > bound) {
             fail(where + ": occurred-at off by " +
-                 std::to_string(record.occurredAtUnixMs - commit.trueUnixMs) + " ms");
+                 std::to_string(record.occurredAtUnixMs - commit.trueUnixMs) + " ms (bound " +
+                 std::to_string(bound) + ")");
         }
     }
 
@@ -991,6 +1018,7 @@ private:
             const uint32_t collected =
             slot.nvs.getUInt(MATCH_RING_PREFS_NAMESPACE, "collectedSeq", 0);
             highestSeq = std::max(highestSeq, seq);
+            if (seq > MatchManager::MATCH_RING_CAPACITY) counts["pdnRingsWrapped"]++;
             if (collected > seq || seq - collected > MatchManager::MATCH_RING_CAPACITY) {
                 fail("pdn " + std::to_string(i) + " ring marks seq=" + std::to_string(seq) +
                      " collected=" + std::to_string(collected));
@@ -1008,6 +1036,7 @@ private:
             const uint32_t head = fdns[i].nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_head", 0);
             const uint32_t tail = fdns[i].nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_tail", 0);
             highestTail = std::max(highestTail, tail);
+            if (tail > FDN_MATCH_RECORD_CAPACITY) counts["fdnStoresWrapped"]++;
             if (head > tail || tail - head > FDN_MATCH_RECORD_CAPACITY) {
                 fail("fdn " + std::to_string(i) + " store head=" + std::to_string(head) +
                      " tail=" + std::to_string(tail));
@@ -1026,6 +1055,12 @@ private:
             checkServer();
             checkInvariants(drained);
             if (!drained) fail("drain did not quiesce within the cap");
+        }
+        // Printed even when zero: the #518 class and the wrap evidence are read per seed.
+        for (const char* key :
+             {"knownUnsyncedStamp518", "syncedStampsChecked", "pdnRingsWrapped", "fdnStoresWrapped",
+              "allowedRingFull", "allowedCutBeforeCommit", "storedMatches", "serverRows"}) {
+            counts[key] += 0;
         }
         counts["commits"] = commits.size();
         counts["framesSent"] = medium.framesSent;
@@ -1051,12 +1086,14 @@ private:
         result.log = log;
         result.logHash = fnv1a(log);
         result.counts = counts;
-        char head[160];
+        char head[192];
         snprintf(head, sizeof(head),
-                 "seed=%llu pdns=%d fdns=%d actions=%zu %s fails=%zu hash=%016llx",
+                 "seed=%llu pdns=%d fdns=%d minutes=%llu actions=%zu %s fails=%zu hash=%016llx",
                  static_cast<unsigned long long>(config.schedule.seed), config.schedule.pdns,
-                 config.schedule.fdns, actions.size(), result.passed ? "PASS" : "FAIL",
-                 failures.size(), static_cast<unsigned long long>(result.logHash));
+                 config.schedule.fdns,
+                 static_cast<unsigned long long>(config.schedule.horizonMs / 60000), actions.size(),
+                 result.passed ? "PASS" : "FAIL", failures.size(),
+                 static_cast<unsigned long long>(result.logHash));
         result.summary = head;
         for (const std::pair<const std::string, uint64_t>& count : counts) {
             result.summary += " " + count.first + "=" + std::to_string(count.second);
