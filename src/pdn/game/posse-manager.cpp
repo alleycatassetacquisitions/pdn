@@ -2,6 +2,8 @@
 #include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
 
+#include <algorithm>
+
 #define TAG "POSSE"
 
 PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
@@ -82,23 +84,26 @@ std::optional<bool> PosseManager::peerIsHunter(SerialIdentifier jack) const {
     return reinterpret_cast<const PlayerProfile*>(raw)->gameRole != 0;
 }
 
-bool PosseManager::containsMac(const MacSlots& slots, size_t count, const uint8_t* mac) {
+bool PosseManager::containsMac(const SupporterSlots& slots, size_t count, const uint8_t* mac) {
     for (size_t i = 0; i < count; i++) {
-        if (memcmp(slots[i].data(), mac, 6) == 0) return true;
+        if (memcmp(slots[i].mac.data(), mac, 6) == 0) return true;
     }
     return false;
 }
 
-void PosseManager::recordMac(MacSlots& slots, std::atomic<size_t>& count,
-                             size_t& writeIndex, const uint8_t* mac) {
+void PosseManager::recordSupporter(SupporterSlots& slots, std::atomic<size_t>& count,
+                                   size_t& writeIndex, const uint8_t* mac,
+                                   const UUIDBytes& playerId) {
     size_t used = count.load();
     if (containsMac(slots, used, mac)) return;
     if (used < MAX_CHAIN_SUPPORTERS) {
-        memcpy(slots[used].data(), mac, 6);
+        memcpy(slots[used].mac.data(), mac, 6);
+        slots[used].playerId = playerId;
         count.store(used + 1);
         return;
     }
-    memcpy(slots[writeIndex].data(), mac, 6);
+    memcpy(slots[writeIndex].mac.data(), mac, 6);
+    slots[writeIndex].playerId = playerId;
     writeIndex = (writeIndex + 1) % MAX_CHAIN_SUPPORTERS;
 }
 
@@ -140,8 +145,8 @@ std::vector<std::array<uint8_t, 6>> PosseManager::getSupporterChainPeers() const
     peers.push_back(mac);
     size_t joined = supporterRosterCount.load();
     for (size_t i = 0; i < joined; i++) {
-        if (memcmp(supporterRoster[i].data(), directPeer, 6) == 0) continue;
-        peers.push_back(supporterRoster[i]);
+        if (memcmp(supporterRoster[i].mac.data(), directPeer, 6) == 0) continue;
+        peers.push_back(supporterRoster[i].mac);
     }
     return peers;
 }
@@ -242,7 +247,6 @@ void PosseManager::sendConfirm() {
 
     ChainConfirmPayload payload{};
     memcpy(payload.originatorMac, selfMac, 6);
-    // Read at send so the frame always carries the current player.
     payload.playerUuid = player->getServerPlayerId();
     chainConfirmChannel.sendReliable(challenger, payload);
 }
@@ -260,8 +264,6 @@ void PosseManager::onChainGameEventReceived(uint8_t eventType) {
 
 void PosseManager::onConfirmReceived(const uint8_t* originatorMac,
                                      const UUIDBytes& supporterPlayerId) {
-    // Nil is tested first so a demo challenger's own nil UUID never matches a
-    // supporter's.
     const bool supporterUnregistered = supporterPlayerId.isZero();
     if (supporterUnregistered || supporterPlayerId == player->getServerPlayerId()) {
         LOG_W(TAG, "confirm from %s not counted: %s", MacToString(originatorMac),
@@ -272,13 +274,8 @@ void PosseManager::onConfirmReceived(const uint8_t* originatorMac,
     // challenger who gets to count it, are both read live in
     // getConfirmedSupporterCount — neither is knowable for certain at the moment
     // a press arrives.
-    const size_t used = receivedConfirmCount.load();
-    // A reliable resend of a press already heard keeps the player it first carried.
-    if (containsMac(receivedConfirms, used, originatorMac)) return;
-    // The slot recordMac is about to fill, paired before it publishes the MAC.
-    const size_t slot = used < MAX_CHAIN_SUPPORTERS ? used : receivedConfirmWrite;
-    receivedConfirmPlayerIds[slot] = supporterPlayerId;
-    recordMac(receivedConfirms, receivedConfirmCount, receivedConfirmWrite, originatorMac);
+    recordSupporter(receivedConfirms, receivedConfirmCount, receivedConfirmWrite, originatorMac,
+                    supporterPlayerId);
 }
 
 void PosseManager::onChainJoinReceived(const uint8_t* supporterMac,
@@ -291,7 +288,8 @@ void PosseManager::onChainJoinReceived(const uint8_t* supporterMac,
     // A join that names another challenger reached us by radio accident; enrolling
     // its sender would hand this device a supporter from someone else's chain.
     if (memcmp(joinChallengerMac, selfMac, 6) != 0) return;
-    recordMac(supporterRoster, supporterRosterCount, supporterRosterWrite, supporterMac);
+    recordSupporter(supporterRoster, supporterRosterCount, supporterRosterWrite, supporterMac,
+                    UUIDBytes());
 }
 
 void PosseManager::announceToChallenger() {
@@ -367,23 +365,11 @@ size_t PosseManager::getConfirmedSupporterCount() const {
     std::array<UUIDBytes, MAX_CHAIN_SUPPORTERS> countedPlayerIds{};
     size_t confirmed = 0;
     for (size_t i = 0; i < count; i++) {
-        bool isMember = false;
-        for (const std::array<uint8_t, 6>& peer : peers) {
-            if (memcmp(peer.data(), receivedConfirms[i].data(), 6) == 0) {
-                isMember = true;
-                break;
-            }
-        }
-        if (!isMember) continue;
-        bool playerAlreadyCounted = false;
-        for (size_t j = 0; j < confirmed; j++) {
-            if (countedPlayerIds[j] == receivedConfirmPlayerIds[i]) {
-                playerAlreadyCounted = true;
-                break;
-            }
-        }
-        if (playerAlreadyCounted) continue;
-        countedPlayerIds[confirmed] = receivedConfirmPlayerIds[i];
+        const SupporterSlot& press = receivedConfirms[i];
+        if (std::find(peers.begin(), peers.end(), press.mac) == peers.end()) continue;
+        UUIDBytes* countedEnd = countedPlayerIds.data() + confirmed;
+        if (std::find(countedPlayerIds.data(), countedEnd, press.playerId) != countedEnd) continue;
+        countedPlayerIds[confirmed] = press.playerId;
         confirmed++;
     }
     return confirmed;
