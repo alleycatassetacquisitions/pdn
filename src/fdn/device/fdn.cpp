@@ -7,7 +7,14 @@ FDN* FDN::createFDN(DriverConfig& driverConfig) {
     return new FDN(driverConfig);
 }
 
-FDN::~FDN() {}
+FDN::~FDN() {
+    // The coordinator goes first: its destructor unbinds the jacks through
+    // serialManager and its channels through wirelessManager.
+    delete remoteDeviceCoordinator;
+    delete wirelessManager;
+    delete serialManager;
+    delete lightManager;
+}
 
 FDN::FDN(DriverConfig& driverConfig) : Device(driverConfig) {
     lightManager = new FDNLightManager(
