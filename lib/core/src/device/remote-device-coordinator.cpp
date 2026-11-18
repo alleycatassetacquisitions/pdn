@@ -69,7 +69,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
     // IDLE via the context-exchange timeout (HelloConnectingState, contextTimeoutMs).
     // The packet's PktType picks the channel that decodes a context; a jack takes
     // it only if that kind is the one its cable HELLO declared. RDC forwards the
-    // profile bytes opaquely.
+    // profile bytes opaquely, reading only FdnProfile::utcUnixMs for the clock.
     transport = new ReliableTransport(wirelessManager);
     pdnContextChannel = transport->channel<PdnConnectionContext>(
         PktType::kPdnConnectionContext);
@@ -195,9 +195,10 @@ void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callb
 }
 
 DeviceType RemoteDeviceCoordinator::getPeerDeviceType(SerialIdentifier jack) const {
-    // The kind comes from the peer's context, so it reads UNKNOWN until that
-    // exchange completes.
-    return helloByJack[jackIndex(jack)].peerDeviceType;
+    // The cable HELLO's kind, reported once a context of that kind has landed.
+    const JackHelloLink& link = helloByJack[jackIndex(jack)];
+    if (link.machine == nullptr || link.peerProfileLen == 0) return DeviceType::UNKNOWN;
+    return link.machine->peerType();
 }
 
 const uint8_t* RemoteDeviceCoordinator::getPeerMac(SerialIdentifier jack) const {
@@ -361,13 +362,7 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     // The machine records the peer MAC and, for a first HELLO on any Idle jack,
     // fires onContextRequest -> initiateContextExchange as it enters Connecting.
     JackHelloLink& link = helloByJack[jackIndex(jack)];
-    if (link.machine) {
-        link.machine->onHelloReceived(hello);
-        // The HELLO that arms a link names the peer's kind for the link's life.
-        if (link.machine->currentStateId() == HELLO_LINK_IDLE) {
-            link.helloDeviceType = static_cast<DeviceType>(hello.deviceType);
-        }
-    }
+    if (link.machine) link.machine->onHelloReceived(hello);
 
     // INPUT-only so the head's MAC cascades downstream, and on a PDN only: an FDN
     // that took its PDN's head would announce itself into that head's roster.
@@ -450,8 +445,8 @@ void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceTy
                                                 uint8_t chainRole, uint16_t peerUserId,
                                                 const uint8_t* profile, size_t len) {
     // Every jack sends its own context on connecting, so receiving the peer's just
-    // completes our matching jack(s); no reply in the normal exchange. Cache it keyed by MAC AND
-    // apply it now: caching (not only applying) covers a jack that reaches CONNECTING
+    // completes our matching jack(s); no reply in the normal exchange. Cache it keyed by MAC
+    // and kind AND apply it now: caching (not only applying) covers a jack that reaches CONNECTING
     // AFTER this arrives. That happens two ways — a context beats its own HELLO
     // (ESP-NOW vs serial) so no jack is CONNECTING yet, and in a 2-node ring the two
     // jacks facing this peer enter CONNECTING one tick apart (sync() drives them in
@@ -463,7 +458,7 @@ void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceTy
         const JackHelloLink& link = helloByJack[jackIndex(jack)];
         if (link.machine == nullptr) continue;
         if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
-        if (link.helloDeviceType != peerType) {
+        if (link.machine->peerType() != peerType) {
             LOG_W("RDC", "ignoring a context of a kind the jack's HELLO contradicts");
             return;
         }
@@ -486,7 +481,8 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
             completeJackContext(jack, peerType, chainRole, peerUserId, profile, len);
             appliedToConnectingJack = true;
         } else if (state == HELLO_LINK_CONNECTED) {
-            recordJackContext(jack, peerType, chainRole, peerUserId, profile, len);
+            recordJackContext(jack, chainRole, peerUserId, profile, len);
+            applyFdnClock(jack);
             if (firstConnectedLink == nullptr) firstConnectedLink = &link;
         }
     }
@@ -509,27 +505,21 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
     }
 }
 
-void RemoteDeviceCoordinator::recordJackContext(SerialIdentifier jack, DeviceType peerType,
-                                                uint8_t chainRole, uint16_t peerUserId,
-                                                const uint8_t* profile, size_t len) {
+void RemoteDeviceCoordinator::recordJackContext(SerialIdentifier jack, uint8_t chainRole,
+                                                uint16_t peerUserId, const uint8_t* profile,
+                                                size_t len) {
     JackHelloLink& link = helloByJack[jackIndex(jack)];
-    // Always the kind the jack's HELLO declared: both callers refuse any other.
-    link.peerDeviceType = peerType;
     link.peerChainRole = chainRole;
     // The bound is belt-and-braces: ReliableChannel rejects any frame whose length
     // is not exactly sizeof(P), so both callers pass a compile-time size that fits.
     link.peerProfileLen = std::min(len, link.peerProfile.size());
     memcpy(link.peerProfile.data(), profile, link.peerProfileLen);
     link.peerUserId = peerUserId;
-    // A refreshed context on a live link; the first one waits for Connected.
-    if (link.machine != nullptr && link.machine->currentStateId() == HELLO_LINK_CONNECTED) {
-        applyFdnClock(jack);
-    }
 }
 
 void RemoteDeviceCoordinator::applyFdnClock(SerialIdentifier jack) {
     const JackHelloLink& link = helloByJack[jackIndex(jack)];
-    if (selfDeviceType != DeviceType::PDN || link.peerDeviceType != DeviceType::FDN ||
+    if (selfDeviceType != DeviceType::PDN || getPeerDeviceType(jack) != DeviceType::FDN ||
         link.peerProfileLen < sizeof(FdnProfile)) {
         return;
     }
@@ -544,7 +534,7 @@ void RemoteDeviceCoordinator::applyFdnClock(SerialIdentifier jack) {
 void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceType peerType,
                                                   uint8_t chainRole, uint16_t peerUserId,
                                                   const uint8_t* profile, size_t len) {
-    recordJackContext(jack, peerType, chainRole, peerUserId, profile, len);
+    recordJackContext(jack, chainRole, peerUserId, profile, len);
     JackHelloLink& link = helloByJack[jackIndex(jack)];
     if (link.machine != nullptr && link.machine->didMarkContextComplete()) return;
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
@@ -558,7 +548,7 @@ void RemoteDeviceCoordinator::bufferContext(const uint8_t* fromMac, DeviceType p
     BufferedContext* slot = nullptr;
     BufferedContext* oldest = &contextBuffer[0];
     for (BufferedContext& e : contextBuffer) {
-        // Latest per MAC and kind, so a frame of the other kind cannot evict the real one.
+        // Latest per MAC and kind, so a frame of the other kind cannot take the real one's slot.
         if (e.valid && e.peerType == peerType && memcmp(e.mac.data(), fromMac, 6) == 0) {
             slot = &e;
             break;
@@ -589,7 +579,7 @@ void RemoteDeviceCoordinator::drainBufferedContext(SerialIdentifier jack, const 
             continue;
         }
         if (memcmp(e.mac.data(), mac, 6) != 0) continue;
-        if (e.peerType != helloByJack[jackIndex(jack)].helloDeviceType) continue;
+        if (e.peerType != helloByJack[jackIndex(jack)].machine->peerType()) continue;
         // Apply to THIS jack only, and leave the entry valid: the peer's other jack (a
         // 2-node ring) drains its own copy when it connects a tick later. Applying
         // per-jack keeps the context callback firing exactly once per jack. TTL clears it.
@@ -601,7 +591,6 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     // Per-jack residue clears unconditionally: the next peer on this jack must
     // not inherit the departed peer's chainRole during its CONNECTING window.
     helloByJack[jackIndex(jack)].peerChainRole = 0;
-    helloByJack[jackIndex(jack)].peerDeviceType = DeviceType::UNKNOWN;
     helloByJack[jackIndex(jack)].peerUserId = PEER_USER_ID_NONE;
     helloByJack[jackIndex(jack)].peerProfileLen = 0;
     // Defence in depth: the zeroed length already hides the bytes from

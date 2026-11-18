@@ -3115,6 +3115,15 @@ inline void rdcEmitHelloReadsPublishedSnapshotOnly(RDCHelloTests* suite) {
     EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), realHead, 6));
 }
 
+inline void deliverFdnContext(RDCHelloTests* suite, const uint8_t* fromMac, int64_t utcUnixMs,
+                              uint8_t seqId) {
+    FdnConnectionContext ctx{};
+    ctx.seqId = seqId;
+    ctx.fdn.utcUnixMs = utcUnixMs;
+    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, fromMac,
+                                        reinterpret_cast<const uint8_t*>(&ctx), sizeof(ctx));
+}
+
 // A PDN connected to an FDN on a serial jack syncs its UTC wall clock from the
 // FDN's context without disturbing its monotonic millisecond clock, while
 // ignoring unsynchronized (0) timestamps and senders never cabled.
@@ -3162,15 +3171,6 @@ inline void rdcFdnContextSyncsPdnWallClockOnlyFromCabledFdn(RDCHelloTests* suite
     suite->rdc.sync(&suite->device);
 
     EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS);
-}
-
-inline void deliverFdnContext(RDCHelloTests* suite, const uint8_t* fromMac, int64_t utcUnixMs,
-                              uint8_t seqId) {
-    FdnConnectionContext ctx{};
-    ctx.seqId = seqId;
-    ctx.fdn.utcUnixMs = utcUnixMs;
-    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, fromMac,
-                                        reinterpret_cast<const uint8_t*>(&ctx), sizeof(ctx));
 }
 
 // `profileHead` fills the profile's first bytes, which read as a UTC stamp if
@@ -3236,7 +3236,7 @@ inline void rdcForgedContextCannotEvictTheBufferedRealOne(RDCHelloTests* suite) 
 }
 
 // http-date-clock-sync: the clock is taken from an FDN Connected on a jack, so
-// not while the exchange is still completing.
+// not while the exchange is still completing, and again from each refresh.
 inline void rdcFdnClockAppliesOnceTheJackIsConnected(RDCHelloTests* suite) {
     const uint8_t fdn[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     constexpr int64_t SYNCED_UTC_MS = 1792359000000LL;
@@ -3253,4 +3253,7 @@ inline void rdcFdnClockAppliesOnceTheJackIsConnected(RDCHelloTests* suite) {
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
     EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS);
+
+    deliverFdnContext(suite, fdn, SYNCED_UTC_MS + 1000, 2);
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS + 1000) << "a refresh was ignored";
 }

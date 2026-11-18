@@ -299,8 +299,8 @@ private:
     size_t jackIndex(SerialIdentifier jack) const;
 
     void notifyChainChange();
-    void recordJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
-                           uint16_t peerUserId, const uint8_t* profile, size_t len);
+    void recordJackContext(SerialIdentifier jack, uint8_t chainRole, uint16_t peerUserId,
+                           const uint8_t* profile, size_t len);
     // Sets this PDN's UTC wall clock from the FDN profile recorded on `jack`.
     void applyFdnClock(SerialIdentifier jack);
 
@@ -318,12 +318,6 @@ private:
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
         // Recorded from the peer's received context; consumed by the chain SM.
         uint8_t peerChainRole = 0;
-        // The kind the arming HELLO declared over the cable; a context of any
-        // other kind is refused for this jack.
-        DeviceType helloDeviceType = DeviceType::UNKNOWN;
-        // Which context channel the peer's context arrived on, so the kind and the
-        // profile bytes below always describe the same peer and the same moment.
-        DeviceType peerDeviceType = DeviceType::UNKNOWN;
         std::array<uint8_t, MAX_PEER_PROFILE_BYTES> peerProfile{};
         size_t peerProfileLen = 0;
         // The only profile field lifted onto the jack surface; the profile itself
@@ -380,7 +374,8 @@ private:
     void initiateContextExchange(SerialIdentifier jack);
     // Serialize + reliably send this device's context to `mac` per selfDeviceType.
     void sendSelfContext(const uint8_t* mac);
-    // Cache a received peer context by MAC, then apply it to jacks (rationale in .cpp).
+    // Cache a received peer context by MAC and kind unless a live jack's HELLO
+    // contradicts its kind, then apply it to jacks (rationale in .cpp).
     void onContextReceived(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
                            uint16_t peerUserId, const uint8_t* profile, size_t len);
     void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
@@ -392,8 +387,9 @@ private:
     // Holds a context whose jack is not yet CONNECTING; evicts oldest when full.
     void bufferContext(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
                        uint16_t peerUserId, const uint8_t* profile, size_t len);
-    // Applies any cached context for `jack`'s peer to `jack` as it connects. Leaves
-    // the cache entry for the peer's other jack (2-node ring); the TTL clears it.
+    // Applies the cached context of the HELLO's kind for `jack`'s peer to `jack` as
+    // it connects. Leaves the cache entry for the peer's other jack (2-node ring);
+    // the TTL clears it.
     void drainBufferedContext(SerialIdentifier jack, const uint8_t* mac);
     // Link death on `jack`: clear the jack's peer residue; kill its context retries
     // unless another jack still faces this peer.

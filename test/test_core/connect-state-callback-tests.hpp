@@ -330,10 +330,8 @@ inline void connectStateClearedHandlerStopsReceiving(RDCHelloTests* suite) {
     EXPECT_EQ(state.events.size(), 1u) << "a cleared handler still fired";
 }
 
-// The HELLO on the cable names the peer's kind; the jack reports it only once a
-// context of that kind lands, because a consumer casting the profile bytes needs
-// the kind that produced them. A context of the other kind is refused. A swap
-// leaves the jack UNKNOWN until the new peer's own context lands.
+// The cable HELLO names the kind: the jack reports it once a context of that
+// kind lands, refuses the other kind, and reads UNKNOWN after a swap.
 inline void rdcHelloPeerDeviceTypeIsTheCablesKind(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     HelloPayload fdnHello{};
@@ -351,10 +349,7 @@ inline void rdcHelloPeerDeviceTypeIsTheCablesKind(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN)
         << "a PDN context typed a jack whose HELLO said FDN";
 
-    FdnConnectionContext fdnCtx{};
-    fdnCtx.seqId = 10;
-    suite->transport()->deliverIncoming(PktType::kFdnConnectionContext, peer,
-                                        reinterpret_cast<const uint8_t*>(&fdnCtx), sizeof(fdnCtx));
+    deliverFdnContext(suite, peer, 0, 10);
     suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::FDN);
 
