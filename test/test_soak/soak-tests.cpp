@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <fstream>
+#include <random>
 #include <sys/stat.h>
 
 #include "../test_core/soak/soak-world.hpp"
@@ -17,12 +18,23 @@ std::string environment(const char* name, const char* fallback) {
     return value != nullptr && value[0] != '\0' ? value : fallback;
 }
 
+// With SOAK_VARY=1 the seed also picks the event's size (PDNs 12-50, FDNs 3-5,
+// 6-20 virtual minutes), so a batch covers small and large events at a lower
+// average cost. An explicit SOAK_PDNS, SOAK_FDNS or SOAK_MINUTES still wins.
+std::string sized(const char* name, std::mt19937_64& rng, int low, int high, const char* fallback) {
+    if (environment("SOAK_VARY", "0") != "1" || getenv(name) != nullptr) {
+        return environment(name, fallback);
+    }
+    return std::to_string(std::uniform_int_distribution<int>(low, high)(rng));
+}
+
 soak::SoakConfig configFor(uint64_t seed) {
     soak::SoakConfig config;
     config.schedule.seed = seed;
-    config.schedule.pdns = std::stoi(environment("SOAK_PDNS", "50"));
-    config.schedule.fdns = std::stoi(environment("SOAK_FDNS", "4"));
-    config.schedule.horizonMs = std::stoull(environment("SOAK_MINUTES", "20")) * 60000;
+    std::mt19937_64 rng(seed ^ 0x5157E);
+    config.schedule.pdns = std::stoi(sized("SOAK_PDNS", rng, 12, 50, "50"));
+    config.schedule.fdns = std::stoi(sized("SOAK_FDNS", rng, 3, 5, "4"));
+    config.schedule.horizonMs = std::stoull(sized("SOAK_MINUTES", rng, 6, 20, "20")) * 60000;
     config.serverUrl = environment("SOAK_SERVER_URL", "");
     config.http.serverError = 0.05;
     config.http.transportFail = 0.02;
