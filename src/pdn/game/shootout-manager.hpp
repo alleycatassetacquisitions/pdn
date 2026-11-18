@@ -337,6 +337,17 @@ private:
                                                 const uint8_t* loser,
                                                 uint8_t matchIndex) const;
 
+    // Results dropped unacked during the reveal (#240), held until the first
+    // MATCH_START this device takes: one naming a later match shows it missed the
+    // start of the matches before it. One per loser, so bounded by the bracket.
+    struct HeldResult {
+        std::array<uint8_t, 6> winner;
+        std::array<uint8_t, 6> loser;
+        uint8_t matchIndex;
+    };
+    std::vector<HeldResult> resultsHeldInReveal;
+    void holdResultFromReveal(const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex);
+
     std::array<uint8_t, 6> tournamentWinner{};
     uint8_t lastTournamentEndSeqId = 0;
     // The ABORT or TOURNAMENT_END this device sent to report the tournament

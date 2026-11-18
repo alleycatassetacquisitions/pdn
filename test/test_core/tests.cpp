@@ -2139,6 +2139,15 @@ TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchRes
 TEST_F(ShootoutManagerTests, resultBeforeTheFirstMatchStartsIsIgnored) {
     resultBeforeTheFirstMatchStartsIsIgnored(this);
 }
+TEST_F(ShootoutManagerTests, spectatorThatMissedMatchStartRecordsTheResultOnTheNextStart) {
+    spectatorThatMissedMatchStartRecordsTheResultOnTheNextStart(this);
+}
+TEST_F(ShootoutManagerTests, heldResultTheNextStartDoesNotProveIsDropped) {
+    heldResultTheNextStartDoesNotProveIsDropped(this);
+}
+TEST_F(ShootoutManagerTests, resultHeldBeforePlayStartsNeverCounts) {
+    resultHeldBeforePlayStartsNeverCounts(this);
+}
 TEST_F(ShootoutManagerTests, eachMatchGetsItsOwnResultRetry) { eachMatchGetsItsOwnResultRetry(this); }
 TEST_F(ShootoutManagerTests, staleResultDoesNotEndTheCurrentMatch) { staleResultDoesNotEndTheCurrentMatch(this); }
 TEST_F(ShootoutManagerTests, coordinatorMissingOurResultIsRecoveredBySender) { coordinatorMissingOurResultIsRecoveredBySender(this); }

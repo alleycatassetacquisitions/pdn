@@ -1009,6 +1009,93 @@ inline void resultBeforeTheFirstMatchStartsIsIgnored(ShootoutManagerTests* suite
     EXPECT_TRUE(suite->shootout->isEliminated(bMac.data()));
 }
 
+// A four-member bracket {a, b, coord, me} watched by the spectator `me`. Match 0
+// is a vs b, match 1 is coord vs me.
+struct SpectatorBracket {
+    std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> a = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> b = {0x03, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x04, 0, 0, 0, 0, 0};
+
+    /** Runs a proposal into the reveal; match 0's MATCH_START is never delivered. */
+    void enterReveal(ShootoutManagerTests* suite) const {
+        suite->shootout->startProposal();
+        for (const std::array<uint8_t, 6>& m : {coord, a, b, me}) {
+            suite->shootout->onConfirmReceived(m.data());
+        }
+        suite->shootout->onBracketReceived(coord.data(), {a, b, coord, me}, 1);
+        ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    }
+
+    /** Makes the suite's manager `me`, a ring child under `coord`, in the reveal. */
+    void join(ShootoutManagerTests* suite) {
+        ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(me.data()));
+        ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+        suite->followRingHead(coord);
+        suite->shootout->setRingMembersForTest({coord, a, b, me});
+        enterReveal(suite);
+    }
+};
+
+// #475: the result of a match whose start this spectator missed lands in the
+// reveal and is dropped unacked (#240). The next MATCH_START names a later
+// match, which shows the dropped one was played, so the elimination is recorded.
+inline void spectatorThatMissedMatchStartRecordsTheResultOnTheNextStart(
+    ShootoutManagerTests* suite) {
+    SpectatorBracket s;
+    s.join(suite);
+    suite->shootout->onMatchResultReceived(s.a.data(), s.b.data(), 0, 7, s.a.data());
+    ASSERT_FALSE(suite->shootout->isEliminated(s.b.data()));
+
+    suite->shootout->onMatchStartReceived(s.coord.data(), s.coord.data(), s.me.data(), 1, 3);
+    EXPECT_TRUE(suite->shootout->isEliminated(s.b.data()))
+        << "the spectator never recorded the match it missed the start of";
+    EXPECT_FALSE(suite->shootout->isEliminated(s.a.data()));
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+    EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), 1);
+}
+
+// A held result counts only when the next MATCH_START proves its match was
+// played: it names an earlier match between bracket members, and its loser is
+// not one of the players.
+inline void heldResultTheNextStartDoesNotProveIsDropped(ShootoutManagerTests* suite) {
+    SpectatorBracket s;
+    s.join(suite);
+    suite->shootout->onMatchResultReceived(s.b.data(), s.coord.data(), 0, 7, s.b.data());
+    suite->shootout->onMatchResultReceived(s.b.data(), s.me.data(), 0, 8, s.b.data());
+    suite->shootout->onMatchResultReceived(s.coord.data(), s.a.data(), 1, 9, s.coord.data());
+    const std::array<uint8_t, 6> outsider = {0x09, 0, 0, 0, 0, 0};
+    suite->shootout->onMatchResultReceived(s.b.data(), outsider.data(), 0, 10, s.b.data());
+    suite->shootout->onMatchStartReceived(s.coord.data(), s.coord.data(), s.me.data(), 1, 3);
+
+    EXPECT_FALSE(suite->shootout->isEliminated(s.coord.data())) << "loser plays this match";
+    EXPECT_FALSE(suite->shootout->isEliminated(s.me.data())) << "loser plays this match";
+    EXPECT_FALSE(suite->shootout->isEliminated(s.a.data())) << "names the match being started";
+    EXPECT_FALSE(suite->shootout->isEliminated(outsider.data())) << "loser outside the bracket";
+}
+
+// The #240 case: a stray held while no match has started never counts, neither
+// once match 0 starts nor in the next tournament.
+inline void resultHeldBeforePlayStartsNeverCounts(ShootoutManagerTests* suite) {
+    SpectatorBracket s;
+    s.join(suite);
+    suite->shootout->onMatchResultReceived(s.b.data(), s.a.data(), 0, 7, s.b.data());
+    suite->shootout->onMatchStartReceived(s.coord.data(), s.a.data(), s.b.data(), 0, 2);
+    suite->shootout->onMatchResultReceived(s.a.data(), s.b.data(), 0, 8, s.a.data());
+    suite->shootout->onMatchStartReceived(s.coord.data(), s.coord.data(), s.me.data(), 1, 3);
+    EXPECT_FALSE(suite->shootout->isEliminated(s.a.data())) << "held past match 0's start";
+
+    suite->shootout->resetToIdle();
+    s.enterReveal(suite);
+    suite->shootout->onMatchResultReceived(s.b.data(), s.a.data(), 0, 9, s.b.data());
+    suite->shootout->resetToIdle();
+    s.enterReveal(suite);
+    suite->shootout->onMatchStartReceived(s.coord.data(), s.coord.data(), s.me.data(), 1, 4);
+    EXPECT_FALSE(suite->shootout->isEliminated(s.a.data())) << "held into the next tournament";
+}
+
 // Every match gets its own attempt. A device-wide flag would be spent by the
 // first match this device wins and never returned, so a later lost result would
 // go unrecovered on the same device — and on every later tournament in the same

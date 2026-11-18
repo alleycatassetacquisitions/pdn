@@ -257,6 +257,7 @@ void ShootoutManager::resetTournamentState() {
     // phase mid-window would carry a part-aged timer into the next one.
     shortRosterDebounce.reset();
     reportedLocalWin = false;
+    resultsHeldInReveal.clear();
     matchResultResentIndex = -1;
     names.clear();
     currentMatchIndex = -1;
@@ -729,6 +730,16 @@ void ShootoutManager::onMatchStartReceived(const uint8_t* fromMac, const uint8_t
     // maybeStartNextMatch does not wait on MATCH_START acks, so match N retries can arrive after match N+1 starts.
     if (static_cast<int>(matchIndex) <= currentMatchIndex) return;
     if (isEliminated(playerA) || isEliminated(playerB)) return;
+    // The reveal ends here. A held result for an earlier match is one whose start
+    // this device missed; any other is a stray, and so is one whose loser is about
+    // to play.
+    for (const HeldResult& held : resultsHeldInReveal) {
+        if (held.matchIndex < matchIndex && memcmp(held.loser.data(), playerA, 6) != 0 &&
+            memcmp(held.loser.data(), playerB, 6) != 0) {
+            applyMatchResult(held.winner.data(), held.loser.data(), false);
+        }
+    }
+    resultsHeldInReveal.clear();
     currentMatchIndex = matchIndex;
     memcpy(currentPlayerA.data(), playerA, 6);
     memcpy(currentPlayerB.data(), playerB, 6);
@@ -817,9 +828,13 @@ void ShootoutManager::onMatchResultReceived(
     // and a unicast takes a slot in the radio's 20-entry peer table, evicting
     // whatever sat there longest.
     if (!containsMac(bracket, fromMac)) return;
-    // No match has started during the reveal, so a result then is a stray: dropped
-    // unacked. Phases without a bracket were turned away above.
-    if (phase == Phase::BRACKET_REVEAL) return;
+    // No match has started during the reveal as far as this device knows, so a
+    // result then is dropped unacked; phases without a bracket were turned away
+    // above. It is held in case the first MATCH_START taken names a later match.
+    if (phase == Phase::BRACKET_REVEAL) {
+        holdResultFromReveal(winner, loser, matchIndex);
+        return;
+    }
     // Always ack so the sender stops retrying, even when this is a duplicate.
     sendShootoutAck(ShootoutCmd::MATCH_RESULT, seqId, fromMac);
     if (!containsMac(bracket, winner) || !containsMac(bracket, loser)) {
@@ -836,6 +851,19 @@ void ShootoutManager::onMatchResultReceived(
     // must not end the current match.
     const bool namesCurrentMatch = static_cast<int>(matchIndex) == currentMatchIndex;
     applyMatchResult(winner, loser, namesCurrentMatch);
+}
+
+void ShootoutManager::holdResultFromReveal(const uint8_t* winner, const uint8_t* loser,
+                                           uint8_t matchIndex) {
+    if (!containsMac(bracket, winner) || !containsMac(bracket, loser)) return;
+    for (const HeldResult& held : resultsHeldInReveal) {
+        if (memcmp(held.loser.data(), loser, 6) == 0) return;
+    }
+    HeldResult held{};
+    memcpy(held.winner.data(), winner, 6);
+    memcpy(held.loser.data(), loser, 6);
+    held.matchIndex = matchIndex;
+    resultsHeldInReveal.push_back(held);
 }
 
 void ShootoutManager::sendTournamentEndToPeers(const uint8_t* winner) {
