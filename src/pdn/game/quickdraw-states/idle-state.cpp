@@ -52,7 +52,7 @@ void Idle::onStateMounted(PDN* pdn) {
     parameterizedCallbackFunction cycleStats = [](void *ctx) {
         Idle* idle = (Idle*)ctx;
         idle->statsIndex++;
-        if (idle->statsIndex > idle->lastScreenIndex) {
+        if (idle->statsIndex > LAST_SCREEN_INDEX) {
             idle->statsIndex = NAME_SCREEN_INDEX;
         }
         idle->displayIsDirty = true;

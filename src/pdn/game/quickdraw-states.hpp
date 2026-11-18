@@ -117,9 +117,9 @@ private:
     bool matchInitialized = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
-    int lastScreenIndex = 8;
     size_t lastPosseCount = 0;
     static constexpr int NAME_SCREEN_INDEX = 0;
+    static constexpr int LAST_SCREEN_INDEX = 8;
     static constexpr size_t NAME_LINE_LIMIT = 3;
     static constexpr int NAME_LABEL_BASELINE = 12;
     static constexpr int NAME_FIRST_LINE_BASELINE = 28;
