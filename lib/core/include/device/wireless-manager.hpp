@@ -128,32 +128,24 @@ public:
     }
 
     /**
-     * Queues an HTTP request, automatically switching to WiFi mode if needed.
-     * With no trusted server configured the request fails at once with
-     * SERVER_NOT_TRUSTED, before the radio leaves ESP-NOW.
+     * Queues an HTTP request, then switches to WiFi mode if needed. A request
+     * the client refuses has already failed and leaves the radio on ESP-NOW.
      */
     bool queueHttpRequest(HttpRequest&& request) {
         if (httpClient == nullptr) {
             LOG_E(WM_TAG, "Cannot queue HTTP request - no HTTP client");
             return false;
         }
-        if (!httpClient->hasTrustedServer()) {
-            LOG_E(WM_TAG,
-                  "Request refused: BASE_URL is not https:// with a valid SERVER_KEY_SHA256");
-            if (request.onError) {
-                request.onError(
-                {WirelessError::SERVER_NOT_TRUSTED, "No trusted server configured"});
-            }
+        // Queued before the WiFi connection is up; the client sends it once
+        // the connection is established.
+        if (!httpClient->queueRequest(std::move(request))) {
             return false;
         }
         if (currentMode != WirelessMode::WIFI) {
             LOG_I(WM_TAG, "Auto-switching to WiFi mode for HTTP request");
             enableWifiMode();
         }
-
-        // Note: We queue the request even if not fully connected yet,
-        // the HTTP client will process it once connection is established
-        return httpClient->queueRequest(std::move(request));
+        return true;
     }
 
     /** Sends a peer-to-peer packet via ESP-NOW, rejecting sends while WiFi holds the radio. */

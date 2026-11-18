@@ -1,13 +1,10 @@
 #include "utils/server-key-pin.hpp"
 
-#include "device/drivers/logger.hpp"
 #include "utils/constant-time-equal.hpp"
 
 #include <cstring>
 
 namespace {
-
-constexpr const char* SERVER_KEY_PIN_TAG = "SERVER_KEY_PIN";
 
 // The value of one hex digit, or -1 for any other character.
 int hexDigitValue(char digit) {
@@ -44,11 +41,6 @@ ServerKeyPin::ServerKeyPin(const std::string& hexText) {
 
 bool ServerKeyPin::matchesKey(const uint8_t* spki, size_t length,
                               char (&presentedKeyHash)[SERVER_KEY_PIN_HEX_LENGTH + 1]) const {
-    if (spki == nullptr && length > 0) {
-        LOG_E(SERVER_KEY_PIN_TAG, "No key bytes to match");
-        presentedKeyHash[0] = '\0';
-        return false;
-    }
     uint8_t digest[SHA256_DIGEST_SIZE];
     Sha256 hash;
     hash.update(spki, length);

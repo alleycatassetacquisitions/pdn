@@ -75,10 +75,21 @@ public:
         return wifiConnected && httpClientInitialized;
     }
 
-    bool hasTrustedServer() override { return serverKeyPin.allowsRequestsTo(wifiConfig->baseUrl); }
-
-    /** Takes ownership of @p request; a large payload is moved, not copied. */
+    /**
+     * Takes ownership of @p request; a large payload is moved, not copied.
+     * Without an `https://` address and a well-formed pin the request fails at
+     * once with SERVER_NOT_TRUSTED and nothing is sent.
+     */
     bool queueRequest(HttpRequest&& request) override {
+        if (!serverTrusted) {
+            LOG_E(HTTP_TAG,
+                  "Request refused: BASE_URL is not https:// with a valid SERVER_KEY_SHA256");
+            if (request.onError) {
+                request.onError(
+                {WirelessError::SERVER_NOT_TRUSTED, "No trusted server configured"});
+            }
+            return false;
+        }
         httpQueue.push(std::move(request));
         return true;
     }
@@ -190,9 +201,11 @@ public:
     friend esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt);
 
 private:
+    // The trust verdict is worked out once per configuration, never per response.
     void useConfig(WifiConfig* config) {
         wifiConfig = config;
         serverKeyPin = ServerKeyPin(config->serverKeySha256);
+        serverTrusted = serverKeyPin.allowsRequestsTo(config->baseUrl);
     }
 
     /**
@@ -398,19 +411,14 @@ private:
     // verifyServerCertificate alone decides. SNI is still sent: esp-tls sets
     // it from the URL's host before this runs.
     static esp_err_t attachServerKeyCheck(void* conf) {
-        if (conf == nullptr || tlsClient == nullptr) {
-            LOG_E(HTTP_TAG, "No HTTP client to check the server key; the handshake will fail");
-            return ESP_FAIL;
-        }
         auto* sslConfig = static_cast<mbedtls_ssl_config*>(conf);
         mbedtls_ssl_conf_ca_chain(sslConfig, &placeholderCa, nullptr);
         mbedtls_ssl_conf_verify(sslConfig, &verifyServerCertificate, tlsClient);
         return ESP_OK;
     }
 
-    // Only the leaf's key decides; ServerKeyPin::verifiedFlags holds the rule.
-    // A leaf matching the pin clears host-name and date flags too, since the
-    // venue may lack DNS or a clock.
+    // ServerKeyPin::verifiedFlags holds the rule; host-name and date flags are
+    // cleared since the venue may lack DNS or a clock.
     static int verifyServerCertificate(void* context, mbedtls_x509_crt* certificate, int depth,
                                        uint32_t* flags) {
         auto* client = static_cast<Esp32S3HttpClient*>(context);
@@ -418,7 +426,7 @@ private:
         if (depth == 0) {
             keyMatches = client->serverKeyPin.matchesKey(
             certificate->pk_raw.p, certificate->pk_raw.len, client->presentedKeyHash);
-            client->serverKeyCheck = keyMatches ? ServerKeyCheck::PINNED : ServerKeyCheck::REFUSED;
+            client->serverKeyRefused = !keyMatches;
         }
         *flags =
         ServerKeyPin::verifiedFlags(depth, keyMatches, *flags, MBEDTLS_X509_BADCERT_NOT_TRUSTED);
@@ -431,7 +439,7 @@ private:
             httpClient = nullptr;
         }
         // The connection whose handshake set this is gone with the handle.
-        serverKeyCheck = ServerKeyCheck::UNCHECKED;
+        serverKeyRefused = false;
     }
 
     // Headers persist on the reused handle. Delete by name: delete_all would drop Host/User-Agent.
@@ -455,7 +463,7 @@ private:
         }
     }
 
-    // Only an https:// address reaches here (hasTrustedServer), so no scheme is added.
+    // Only an https:// address reaches here (queueRequest), so no scheme is added.
     std::string buildRequestUrl(const HttpRequest& request) const {
         std::string fullUrl = wifiConfig->baseUrl;
 
@@ -541,7 +549,7 @@ private:
         }
         HttpRequest& request = httpQueue.front();
         if (err != ESP_OK) {
-            if (serverKeyCheck == ServerKeyCheck::REFUSED) {
+            if (serverKeyRefused) {
                 LOG_E(HTTP_TAG, "Server presented key %s, not the pinned one (%s)",
                       presentedKeyHash, request.path.c_str());
                 resetHttpClient();
@@ -649,11 +657,9 @@ private:
     unsigned long retryAt = 0;
     // Parsed from wifiConfig whenever the configuration is set.
     ServerKeyPin serverKeyPin;
-    // What the current connection's handshake made of the server's key: not
-    // yet checked (no TLS handshake on this handle), the pinned key, or
-    // refused, which fails the handshake.
-    enum class ServerKeyCheck : uint8_t { UNCHECKED, PINNED, REFUSED };
-    ServerKeyCheck serverKeyCheck = ServerKeyCheck::UNCHECKED;
+    bool serverTrusted = false;
+    // Set when this connection's handshake refused the server's key.
+    bool serverKeyRefused = false;
     // The SHA-256 of the key the server presented, for the log.
     char presentedKeyHash[SERVER_KEY_PIN_HEX_LENGTH + 1] = {};
 

@@ -54,7 +54,7 @@ The FDN SHALL follow no redirect: an answer with a `3xx` status SHALL fail the r
 
 ### Requirement: Every server request uses the same trust
 
-Every request the FDN sends to the server, today the match and crash uploads and later the player lookup, SHALL use one HTTP client, server address and pin. An upload that is refused as untrusted, reaches an untrusted server or is answered with a redirect SHALL fail as an upload to an unreachable server does, keeping its records for the next upload cycle.
+Every request the FDN sends to the server, today the match and crash uploads and later the player lookup, SHALL use one HTTP client, server address and pin. An upload that is refused as untrusted, reaches an untrusted server or is answered with a redirect SHALL fail and keep its records for the next upload cycle.
 
 #### Scenario: Upload to an untrusted server keeps the records
 - **WHEN** an upload cycle reaches a server whose key does not hash to the pin

@@ -48,8 +48,7 @@ struct WifiConfig {
     // 64 hex digits; anything else trusts no server.
     std::string serverKeySha256;
 
-    WifiConfig() = default;
-
+    /** Holds the build-time Wi-Fi credentials, server address and server key pin. */
     WifiConfig(const std::string& ssid, const std::string& password, const std::string& baseUrl,
                const std::string& serverKeySha256)
         : ssid(ssid)

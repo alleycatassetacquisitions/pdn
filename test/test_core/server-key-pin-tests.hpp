@@ -31,7 +31,7 @@ inline const char TEST_SERVER_KEY_PIN[] =
 inline void serverKeyPinTrustsTheKeyItWasComputedFrom() {
     char presented[SERVER_KEY_PIN_HEX_LENGTH + 1] = {};
     const ServerKeyPin pin(TEST_SERVER_KEY_PIN);
-    ASSERT_TRUE(pin.isSet());
+    ASSERT_TRUE(pin.allowsRequestsTo("https://api.example"));
     EXPECT_TRUE(pin.matchesKey(TEST_SERVER_SPKI, sizeof(TEST_SERVER_SPKI), presented));
     EXPECT_STREQ(presented, TEST_SERVER_KEY_PIN)
     << "the logged hash is not one a pin can be set to";
@@ -93,7 +93,8 @@ inline void serverKeyPinThatIsMalformedTrustsNothing() {
                                  "SHA2-256(stdin)= " + pin};
     for (const std::string& text : cases) {
         const ServerKeyPin malformed(text);
-        EXPECT_FALSE(malformed.isSet()) << "\"" << text << "\" parsed as a pin";
+        EXPECT_FALSE(malformed.allowsRequestsTo("https://api.example"))
+        << "\"" << text << "\" parsed as a pin";
         presented[0] = '\0';
         EXPECT_FALSE(malformed.matchesKey(TEST_SERVER_SPKI, sizeof(TEST_SERVER_SPKI), presented))
         << "\"" << text << "\" trusted a key";
@@ -101,9 +102,6 @@ inline void serverKeyPinThatIsMalformedTrustsNothing() {
         << "\"" << text << "\" left the presented key unlogged";
     }
     EXPECT_FALSE(ServerKeyPin().matchesKey(TEST_SERVER_SPKI, sizeof(TEST_SERVER_SPKI), presented));
-    EXPECT_FALSE(ServerKeyPin(TEST_SERVER_KEY_PIN).matchesKey(nullptr, 4, presented))
-    << "no bytes matched";
-    EXPECT_STREQ(presented, "") << "a hash was logged for no bytes";
 }
 
 // Catches a flag rule that lets mbedTLS's own verdict leak through: a matched

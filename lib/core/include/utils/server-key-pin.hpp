@@ -26,9 +26,6 @@ public:
      */
     explicit ServerKeyPin(const std::string& hexText);
 
-    /** @return true when the configured text was 64 hex digits. */
-    bool isSet() const { return pinIsSet; }
-
     /**
      * Whether an FDN with this pin may send any request to @p baseUrl: only
      * when the pin is set and the address starts with `https://`. Plain HTTP,
@@ -42,9 +39,7 @@ public:
     /**
      * Hashes @p length bytes of DER SubjectPublicKeyInfo at @p spki and writes
      * the SHA-256 to @p presentedKeyHash as 64 lowercase hex digits and a
-     * terminator, for the log; a null @p spki with a length writes an empty
-     * string. Every byte is compared whatever the earlier ones held, so the
-     * time taken says nothing about how much of a presented key matched.
+     * terminator, for the log.
      * @return true only when the pin is set and the hash equals it.
      */
     bool matchesKey(const uint8_t* spki, size_t length,
