@@ -16,6 +16,12 @@ public:
 
     virtual void setWifiConfig(WifiConfig* config) = 0;
     virtual bool isConnected() = 0;
+    /**
+     * True when the configuration lets requests go out: an `https://` server
+     * address and a well-formed server key pin. Fixed by the configuration,
+     * not by any response.
+     */
+    virtual bool hasTrustedServer() = 0;
     /** Takes ownership of @p request; a large payload is moved, not copied. */
     virtual bool queueRequest(HttpRequest&& request) = 0;
     virtual void disconnect() = 0;

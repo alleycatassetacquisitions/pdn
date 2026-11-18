@@ -174,8 +174,12 @@ public:
 
 class MockHttpClient : public HttpClientInterface {
 public:
+    // Configured for a trusted server unless a test says otherwise.
+    MockHttpClient() { ON_CALL(*this, hasTrustedServer()).WillByDefault(testing::Return(true)); }
+
     MOCK_METHOD(void, setWifiConfig, (WifiConfig*), (override));
     MOCK_METHOD(bool, isConnected, (), (override));
+    MOCK_METHOD(bool, hasTrustedServer, (), (override));
     MOCK_METHOD(bool, queueRequest, (HttpRequest&&), (override));
     MOCK_METHOD(void, disconnect, (), (override));
     MOCK_METHOD(void, updateConfig, (WifiConfig*), (override));

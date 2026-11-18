@@ -349,3 +349,38 @@ TEST_F(FdnRecordUploaderTests, legacyMatchesNamespaceUntouched) {
 
     EXPECT_EQ(storage.read(LEGACY_MATCHES_NAMESPACE, "match_0", ""), "{\"match\":1}");
 }
+
+// Catches an untrusted configuration that still sends, raises Wi-Fi or loses
+// records: every cycle fails at once, the radio stays on ESP-NOW, and the
+// records wait for a build that trusts a server.
+TEST_F(FdnRecordUploaderTests, untrustedServerSendsNothingAndKeepsRecords) {
+    ON_CALL(httpClient, hasTrustedServer()).WillByDefault(testing::Return(false));
+    EXPECT_CALL(httpClient, setHttpClientState(testing::_)).Times(0);
+    storeMatch(1);
+    storeCrash(1);
+
+    uploader->sync();
+    uploader->sync();
+    clock.advance(FDN_UPLOAD_INTERVAL_MS + 1);
+    uploader->sync();
+    uploader->sync();
+
+    EXPECT_TRUE(requests.empty());
+    EXPECT_EQ(storedMatches(), 1u);
+    EXPECT_EQ(storedCrashes(), 1u);
+    EXPECT_EQ(wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
+}
+
+// Catches a refusal that reports as a network fault, which a caller would
+// retry or show as "server unreachable": it is SERVER_NOT_TRUSTED.
+TEST_F(FdnRecordUploaderTests, untrustedServerFailsARequestAsNotTrusted) {
+    ON_CALL(httpClient, hasTrustedServer()).WillByDefault(testing::Return(false));
+    std::vector<WirelessError> failures;
+    wirelessManager->queueHttpRequest(HttpRequest(
+    "/health", "GET", "", "", [](const std::string&) {},
+    [&failures](const WirelessErrorInfo& error) { failures.push_back(error.code); }));
+
+    ASSERT_EQ(failures.size(), 1u);
+    EXPECT_EQ(failures[0], WirelessError::SERVER_NOT_TRUSTED);
+    EXPECT_TRUE(requests.empty());
+}

@@ -127,10 +127,23 @@ public:
                peerComms->getPeerCommsState() == PeerCommsState::ENABLED;
     }
 
-    /** Queues an HTTP request, automatically switching to WiFi mode if needed. */
+    /**
+     * Queues an HTTP request, automatically switching to WiFi mode if needed.
+     * With no trusted server configured the request fails at once with
+     * SERVER_NOT_TRUSTED, before the radio leaves ESP-NOW.
+     */
     bool queueHttpRequest(HttpRequest&& request) {
         if (httpClient == nullptr) {
             LOG_E(WM_TAG, "Cannot queue HTTP request - no HTTP client");
+            return false;
+        }
+        if (!httpClient->hasTrustedServer()) {
+            LOG_E(WM_TAG,
+                  "Request refused: BASE_URL is not https:// with a valid SERVER_KEY_SHA256");
+            if (request.onError) {
+                request.onError(
+                {WirelessError::SERVER_NOT_TRUSTED, "No trusted server configured"});
+            }
             return false;
         }
         if (currentMode != WirelessMode::WIFI) {

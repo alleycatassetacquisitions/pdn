@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -11,7 +12,10 @@ enum class WirelessError {
     INVALID_RESPONSE,
     SERVER_ERROR,
     WIFI_NOT_CONNECTED,
-    INVALID_STATE
+    INVALID_STATE,
+    // The FDN refused to send, or the server presented a key other than the
+    // pinned one; retrying reaches the same server with the same key.
+    SERVER_NOT_TRUSTED
 };
 
 struct WirelessErrorInfo {
@@ -23,17 +27,35 @@ struct WirelessErrorInfo {
 };
 
 /**
+ * The failure an HTTP @p status means, or none for a 2xx. A 3xx fails too:
+ * redirects are not followed, since each hop would need its key checked.
+ */
+inline std::optional<WirelessErrorInfo> httpStatusFailure(int status) {
+    if (status >= 200 && status < 300) return std::nullopt;
+    const WirelessError code =
+    status >= 500 ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
+    return WirelessErrorInfo{code, "HTTP Error: " + std::to_string(status), status};
+}
+
+/**
  * Configuration struct for WiFi credentials and settings
  */
 struct WifiConfig {
     std::string ssid;
     std::string password;
     std::string baseUrl;
-    
-    WifiConfig() : ssid(""), password(""), baseUrl("") {}
-    
-    WifiConfig(const std::string& ssid, const std::string& password, const std::string& baseUrl)
-        : ssid(ssid), password(password), baseUrl(baseUrl) {}
+    // The server key pin: SHA-256 of the server's DER SubjectPublicKeyInfo as
+    // 64 hex digits; anything else trusts no server.
+    std::string serverKeySha256;
+
+    WifiConfig() = default;
+
+    WifiConfig(const std::string& ssid, const std::string& password, const std::string& baseUrl,
+               const std::string& serverKeySha256)
+        : ssid(ssid)
+        , password(password)
+        , baseUrl(baseUrl)
+        , serverKeySha256(serverKeySha256) {}
 };
 
 // Callback definitions

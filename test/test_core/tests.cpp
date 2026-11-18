@@ -36,6 +36,7 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
+#include "server-key-pin-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -2184,6 +2185,21 @@ TEST_F(ShootoutManagerTests, matchIndexAdvancesMonotonicallyAcrossRounds) {
 TEST_F(ShootoutManagerTests, resultRetryIsReturnedByTournamentReset) {
     resultRetryIsReturnedByTournamentReset(this);
 }
+
+TEST(Sha256, matchesPublishedVectors) { sha256MatchesPublishedVectors(); }
+TEST(Sha256, matchesTheMillionAVector) { sha256MatchesTheMillionAVector(); }
+TEST(Sha256, matchesDigestsAtThePaddingBoundaries) { sha256MatchesDigestsAtThePaddingBoundaries(); }
+TEST(Sha256, padsOverABufferThatWasFilledBefore) { sha256PadsOverABufferThatWasFilledBefore(); }
+TEST(Sha256, isTheSameHoweverTheMessageIsSplit) { sha256IsTheSameHoweverTheMessageIsSplit(); }
+
+TEST(ServerKeyPin, trustsTheKeyItWasComputedFrom) { serverKeyPinTrustsTheKeyItWasComputedFrom(); }
+TEST(ServerKeyPin, refusesAKeyOneBitAway) { serverKeyPinRefusesAKeyOneBitAway(); }
+TEST(ServerKeyPin, thatIsMalformedTrustsNothing) { serverKeyPinThatIsMalformedTrustsNothing(); }
+TEST(ServerKeyPin, flagsFollowOnlyTheLeafKey) { serverKeyPinFlagsFollowOnlyTheLeafKey(); }
+TEST(ServerKeyPin, allowsRequestsOnlyToHttpsWithAPin) {
+    serverKeyPinAllowsRequestsOnlyToHttpsWithAPin();
+}
+TEST(ServerKeyPin, httpStatusFailureRefusesRedirects) { httpStatusFailureRefusesRedirects(); }
 
 // ============================================
 // MAIN
