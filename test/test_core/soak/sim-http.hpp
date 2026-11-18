@@ -138,8 +138,6 @@ public:
     /** CONNECTED or DISCONNECTED. */
     HttpClientState getHttpClientState() override { return state; }
 
-    uint64_t requestsSent = 0;
-
 private:
     bool chance(double p) { return p > 0 && std::uniform_real_distribution<double>(0, 1)(rng) < p; }
 
@@ -153,7 +151,6 @@ private:
             result = {true, 503, "injected"};
             return;
         }
-        ++requestsSent;
         result =
         backend.perform(request.method, request.path, request.contentType, request.payload);
         // The server acted, but its answer never comes back: the timeout path.
@@ -322,7 +319,6 @@ public:
             alleycat_device_QuickdrawMatchRejection rejection =
             alleycat_device_QuickdrawMatchRejection_init_zero;
             if (!accept(batch[i], rejection)) {
-                ++rejections;
                 rejection.match_index = static_cast<uint32_t>(i);
                 strncpy(rejection.match_id, batch[i].id, sizeof(rejection.match_id) - 1);
                 rejected.push_back(rejection);
@@ -334,7 +330,6 @@ public:
 
     // False answers 409 "No active event", as between events.
     bool eventActive = false;
-    uint64_t rejections = 0;
 
 private:
     using Code = alleycat_device_QuickdrawMatchErrorCode;

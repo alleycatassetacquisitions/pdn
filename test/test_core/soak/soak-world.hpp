@@ -84,16 +84,8 @@ public:
 
     /** Frees every device. */
     ~World() {
-        for (PdnSlot& slot : pdns) {
-            enter(slot.clock, &slot.logger);
-            delete slot.device;
-            delete slot.clock;
-        }
-        for (FdnSlot& slot : fdns) {
-            enter(slot.clock, &slot.logger);
-            delete slot.device;
-            delete slot.clock;
-        }
+        destroyAll(pdns);
+        destroyAll(fdns);
         delete server;
         SimpleTimer::setPlatformClock(savedClock);
         g_logger = savedLogger;
@@ -118,17 +110,18 @@ public:
     }
 
 private:
-    struct PdnSlot {
-        SimPdn* device = nullptr;
+    template <class Device> struct Slot {
+        Device* device = nullptr;
         SimNvs nvs;
         VirtualClock* clock = nullptr;
         SoakLogger logger;
         uint8_t mac[6] = {};
-        PdnIdentity identity;
         bool down = false;
-        bool powerLost = false;
-        bool destroyPending = false;
         uint64_t upAt = 0;
+    };
+    struct PdnSlot : Slot<SimPdn> {
+        PdnIdentity identity;
+        bool powerLost = false;
         int activity = -1;
         int state = -1;
         uint64_t stateSince = 0;
@@ -147,17 +140,9 @@ private:
         std::string committedThisTick;
         std::map<std::string, std::string> legacy;
     };
-    struct FdnSlot {
-        SimFdn* device = nullptr;
-        SimNvs nvs;
-        VirtualClock* clock = nullptr;
-        SoakLogger logger;
-        uint8_t mac[6] = {};
+    struct FdnSlot : Slot<SimFdn> {
         HttpFaults faults;
         std::mt19937_64 rng;
-        bool down = false;
-        bool destroyPending = false;
-        uint64_t upAt = 0;
         uint64_t mutedUntil = 0;
         uint64_t offlineUntil = 0;
         uint64_t httpErrorUntil = 0;
@@ -201,6 +186,14 @@ private:
     };
 
     // ---- set-up -----------------------------------------------------------
+
+    template <class S> void destroyAll(std::vector<S>& slots) {
+        for (S& slot : slots) {
+            enter(slot.clock, &slot.logger);
+            delete slot.device;
+            delete slot.clock;
+        }
+    }
 
     void enter(PlatformClock* clock, LoggerInterface* logger) {
         SimpleTimer::setPlatformClock(clock);
