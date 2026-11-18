@@ -53,8 +53,8 @@ public:
         const Outcome answered = outcome;
         outcome = Outcome::NONE;
         if (answered == Outcome::KEEP) {
-            // The server answered the matches (409: no active event); crash records don't depend on
-            // it.
+            // An HTTP error answer keeps the matches in the store; the crash records don't
+            // depend on them.
             if (sentKind != RecordKind::MATCH || answeredStatus == 0) {
                 endCycle();
                 return;
@@ -170,7 +170,8 @@ private:
     SimpleTimer intervalTimer;
     // Set by a refused batch: send only the oldest match until one retires.
     bool probing = false;
-    // Set when the server kept the matches this cycle; the crash records still go.
+    // Set when an HTTP error keeps the matches in the store this cycle; the crash records
+    // still go.
     bool matchesHeld = false;
     Outcome outcome = Outcome::NONE;
     uint32_t generation = 0;

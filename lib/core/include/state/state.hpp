@@ -121,13 +121,8 @@ public:
     }
 
     /**
-     * Declares an edge out of this state's app, entering the target at the state
-     * named by `entryStateId`. Omit it to enter at the target's boot state.
-     *
-     * App and intra-machine edges share one priority list, so an app transition
-     * declared before a sibling outranks it: the alternative — checking every
-     * intra edge first — would silently demote every hand-off below the local
-     * edges of the state it leaves.
+     * Declares an edge to another app, entering at `entryStateId` (boot state if
+     * omitted). Shares the priority list with sibling edges: declaration order decides.
      */
     void addAppTransition(std::function<bool()> condition, StateId targetAppId,
                           StateId entryStateId = StateId(-1)) {
@@ -144,12 +139,7 @@ public:
         return nullptr;
     }
 
-    /**
-     * The transition list in priority order — checkTransitions takes the first
-     * whose condition holds, so position is behaviour. Reading it does not
-     * evaluate the conditions, which is what lets a graph be inspected before
-     * its managers exist.
-     */
+    /** The transition list in priority order; reading it evaluates no condition. */
     const std::vector<StateTransition*>& getTransitions() const { return transitions; }
 
     int getStateId() const { return name.id; }

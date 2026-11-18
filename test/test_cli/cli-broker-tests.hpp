@@ -139,7 +139,7 @@ void peerBrokerUnicastDelivery(NativePeerBrokerTestSuite* suite) {
     ASSERT_EQ(suite->receivedPackets, 1);
 }
 
-// Test: Broadcast excludes sender
+// Test: Broadcast reaches the other peer
 void peerBrokerBroadcastExcludesSender(NativePeerBrokerTestSuite* suite) {
     // Set handler on both peers
     suite->peerA->setPacketHandler(PktType::kMatchCommand,
@@ -157,14 +157,14 @@ void peerBrokerBroadcastExcludesSender(NativePeerBrokerTestSuite* suite) {
     suite->peerA->exec();
     suite->peerB->exec();
 
-    // B should receive, but A should not receive its own broadcast
+    // B receives the broadcast; the shared counter cannot tell whether A got its own
     ASSERT_GE(suite->receivedPackets, 1);
 }
 
 // Test: Peer registration with broker
 void peerBrokerPeerRegistration(NativePeerBrokerTestSuite* suite) {
-    // Both peers should be registered by enable()
-    // This test verifies the broker can route between them
+    // Both peers are registered by initialize(); this verifies the broker can route
+    // between them
 
     suite->peerB->setPacketHandler(PktType::kMatchCommand,
                                    NativePeerBrokerTestSuite::packetCallback, suite);

@@ -34,14 +34,8 @@ struct JackConnectionState {
 };
 
 /*
- * The coordinator's observer slot is single, and the mounted ConnectState holds it.
- * That works because StateMachine dismounts the outgoing state before mounting the
- * incoming one, handing the slot over cleanly; a second ConnectState mounted without
- * that dismount would take the slot and leave the first one permanently deaf.
- *
- * `subscribed` records that this state registered, not that it still holds the slot
- * — the coordinator arbitrates nothing — so the two clear paths below are only safe
- * under that same dismount-before-mount ordering.
+ * The coordinator has one jack-observer slot; ConnectState relies on StateMachine
+ * dismounting the outgoing state before mounting the next to hand it over.
  */
 template <typename DeviceT>
 class ConnectState : public TypedState<DeviceT> {
@@ -51,7 +45,7 @@ public:
         : TypedState<DeviceT>(stateId)
         , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
 
-    /** Non-owning; just drops the coordinator pointer. */
+    /** Clears the coordinator's jack observer slot if still subscribed; non-owning. */
     ~ConnectState() override {
         // App teardown deletes states without dismounting them, which would leave a
         // `this`-bound lambda in the device-owned coordinator.
@@ -63,23 +57,10 @@ public:
         std::function<void(SerialIdentifier jack, const JackConnectionState& state)>;
 
     /**
-     * Registers the handler for every jack edge during this state's tenure: a
-     * connect or disconnect on a jack this device owns, plus a replay of each
-     * already-connected jack at mount.
-     *
-     * Register once, from the constructor or from onStateMounted — the mount replay
-     * runs after both, and the slot is not cleared on dismount, so one registration
-     * covers every tenure. A handler capturing anything shorter-lived than the state
-     * must replace itself before that thing dies.
-     *
-     * Handlers must tolerate re-receiving an event they already acted on, and only
-     * *connected* jacks are replayed — a disconnect between tenures is never
-     * delivered, so reset per-jack state in onStateDismounted rather than waiting
-     * for a clear. On a disconnect the polled surface has not caught up yet:
-     * getJackStatus and isConnected() still read CONNECTED for that jack.
-     *
-     * The context is read at dispatch time rather than captured when it arrived,
-     * so a state mounted long after the peer connected still gets it.
+     * Handler for every jack edge while mounted, plus a replay of connected jacks at
+     * mount. Register once; handlers must tolerate repeats, a disconnect while
+     * dismounted is never delivered, and on a disconnect getJackStatus still reads
+     * CONNECTED.
      */
     void setOnJackState(JackStateHandler handler) {
         jackStateHandler = std::move(handler);

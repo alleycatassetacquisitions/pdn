@@ -82,8 +82,8 @@ void MatchState::onStateLoop(PDN* pdn) {
     }
 
     // Shootout timeout: the match's hunter forfeits, its bounty wins. The draw
-    // slot decides, not the standing role — a shootout pairs by MAC ordering, so
-    // the two disagree for the whole match.
+    // slot decides, not the standing role — a shootout assigns slots by MAC
+    // ordering, so the two can differ.
     if (matchManager->isLocalHunter()) {
         transitionToShootoutEliminatedState = true;
         return;

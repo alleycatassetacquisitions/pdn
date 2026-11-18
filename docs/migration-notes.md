@@ -16,8 +16,7 @@ These change runtime behavior or API contracts.
 
 ### Generic peripheral accessor on `Device`
 
-- Removed per-type virtual getters (`getDisplay()`, `getButton()`, etc.) from the `Device` base class
-- Replaced with a single `getPeripheral<T>()` template method
+- Added a single `getPeripheral<T>()` template method to the `Device` base class
 - Added `virtual void* abstractSelf() = 0` to `DriverInterface` and implemented it in each combined interface (`DisplayDriverInterface`, etc.) to enable RTTI-less cross-casting under `-fno-rtti`
 
 ---
@@ -70,7 +69,6 @@ These change runtime behavior or API contracts.
 | ESP32-specific (`ESPNOW_CHANNEL`, baud rates, GPIO) | `lib/esp32-drivers/include/esp32-driver-constants.hpp` |
 | Game string resources (`TEST_BOUNTY_ID`, etc.) | `src/pdn/game/quickdraw-resources.hpp` as `inline const` |
 | Match prefs keys (`PREF_COUNT_KEY`, etc.) | File-local `static constexpr` in `match-manager.cpp` |
-| NVS namespace | `PREF_NAMESPACE` in `src/pdn/pdn-constants.hpp` |
 
 ---
 
@@ -117,7 +115,6 @@ Not behavior changes — fix build errors that were latent or newly exposed by t
 | `src/game/` | `src/pdn/game/` |
 | `src/apps/` | `src/pdn/apps/` |
 | `src/wireless/` | `src/pdn/wireless/` |
-| `src/symbol-match/` | `src/pdn/symbol-match/` |
 | `src/main.cpp` | `src/pdn/main.cpp` |
 | _(new)_ | `src/pdn/pdn-constants.hpp` |
 

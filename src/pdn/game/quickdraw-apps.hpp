@@ -8,13 +8,7 @@
 // it registers and knows the others only as an app id plus the QuickdrawStateId
 // of the state to enter, never as a State*.
 
-/**
- * The between-match app: Awaken -> Idle, Idle <-> SupporterReady, Sleep -> Awaken.
- * Every other app hands back here, and Idle declares every launch out of it.
- * Sleep has no inbound edge from within the hub — it is entered only by hand-off,
- * from the match app's upload and from a finished tournament. Registration is its
- * own top-level app, not a state in this one.
- */
+/** The between-match app; every other app hands back here. */
 class HubApp : public StateMachine {
 public:
     /** Non-owning: the context's managers belong to the GameSession above it. */
@@ -30,13 +24,7 @@ private:
     GameContext context;
 };
 
-/**
- * MatchCountdown -> MatchState -> MatchPushed / MatchReceivedResult -> MatchResult ->
- * Win|Lose -> Upload. Entered at MatchCountdown from the hub's Idle for a 1v1,
- * and from the shootout's bracket reveal or spectator for a tournament match.
- * Leaves to the hub's Idle on an abandoned match, to the hub's Sleep once the
- * upload finishes, and to the shootout on abort or a bracket outcome.
- */
+/** One duel from countdown to its result, for a 1v1 or a tournament match. */
 class MatchApp : public StateMachine {
 public:
     /** Non-owning: the context's managers belong to the GameSession above it. */
@@ -59,13 +47,7 @@ private:
     GameContext context;
 };
 
-/**
- * Proposal -> BracketReveal, which either hands off to a bracket match or drops
- * to Spectator; Spectator and Eliminated both end at FinalStandings. Eliminated
- * has no inbound edge here — the match app hands into it. Aborted is the landing
- * state ten sources are pulled into: the hub's Idle, the five interruptible
- * match states, and four of the shootout states below.
- */
+/** The tournament around the bracket matches, plus Aborted, where an abort from any app lands. */
 class ShootoutApp : public StateMachine {
 public:
     /** Non-owning: the context's managers belong to the GameSession above it. */
@@ -78,11 +60,7 @@ private:
     GameContext context;
 };
 
-/**
- * Symbol -> SymbolMatched -> Symbol, and both states hand back to the hub's
- * Idle. Symbol's hand-off is its first edge, ahead of the local one into
- * SymbolMatched.
- */
+/** The symbol-matching app; both of its states hand back to the hub's Idle. */
 class SymbolApp : public StateMachine {
 public:
     /** Non-owning: the context's managers belong to the GameSession above it. */

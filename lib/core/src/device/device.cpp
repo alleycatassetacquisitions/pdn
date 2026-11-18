@@ -23,7 +23,7 @@ void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
     }
 
     // Stated rather than inherited, so a launch cannot come up at whatever a swap
-    // last asked for. Both Device mount paths write it for that reason.
+    // last asked for.
     launch->setEntryState(StateId(-1));
     launch->onStateMounted(this);
 }
@@ -35,9 +35,8 @@ void Device::setActiveApp(StateId appId, StateId entryStateId) {
         return;
     }
 
-    // Looked up, not indexed: currentAppId can name an app this config does not hold
-    // after a loadAppConfig whose launch id was missing, and operator[] would insert
-    // a null there and dereference it.
+    // currentAppId may name no app (failed launch); operator[] would insert a null
+    // and dereference it.
     StateMachine* outgoing = getActiveApp();
     if (outgoing != nullptr) {
         outgoing->onStateDismounted(this);

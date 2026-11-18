@@ -1,17 +1,15 @@
 #include "game/quickdraw-apps.hpp"
 
 namespace {
-// The abort rule, as an edge condition. Ten states carry an abort edge — the hub's
-// Idle, the five interruptible match states and four of the shootout states — and
-// all ten read this, so a split across three state maps cannot fork it.
+// One shared abort predicate, so the three apps cannot fork the rule.
 std::function<bool()> tournamentAbortedCondition(ShootoutManager* shootoutManager) {
     return [shootoutManager]() {
         return shootoutManager && shootoutManager->getPhase() == ShootoutManager::Phase::ABORTED;
     };
 }
 
-// The abandoned-match rule the three interruptible match states share, in the same
-// shape as the abort rule above so neither can fork.
+// The abandoned-match rule MatchCountdown, MatchPushed and MatchReceivedResult share,
+// in the same shape as the abort rule above so neither can fork.
 std::function<bool()> matchAbandonedCondition(ConnectState<PDN>& matchState,
                                               ShootoutManager* shootoutManager) {
     return
@@ -35,11 +33,8 @@ void HubApp::populateStateMap() {
         [awakenSequence]() { return awakenSequence->transitionToIdle(); },
         idle);
 
-    // Auto-trigger Shootout on ring closure — the coordinator's own RDC event,
-    // every other member's RING_CLOSED. Priority over MatchCountdown/
-    // SupporterReady: in a closed ring, adjacent H-B pairs otherwise look like a
-    // normal match initiation, and the ring intent (tournament) would be silently
-    // demoted to a 1v1 match.
+    // Ring closure outranks MatchCountdown/SupporterReady: adjacent hunter-bounty
+    // pairs in a closed ring would otherwise start a 1v1.
     idle->addAppTransition(
         [shootoutManager]() { return shootoutManager && shootoutManager->shouldEnterProposal(); },
         StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_PROPOSAL));
@@ -214,12 +209,8 @@ void ShootoutApp::populateStateMap() {
         finalStandings);
     eliminated->addTransition(phaseIsAborted, aborted);
 
-    // Cable-event reset after TOURNAMENT_END: when the physical ring opens,
-    // route through Sleep so the cooldown period elapses before the next
-    // proposal can fire. Going straight to Idle let stale RDC chain state
-    // (still advertising the old ring) feed back into the ring check on the
-    // same loop tick as unplug, triggering a phantom Proposal with no peers
-    // left to confirm.
+    // Via Sleep, not Idle: RDC still advertises the old ring on the unplug tick,
+    // and Idle would re-enter Proposal.
     finalStandings->addAppTransition(
         [finalStandings]() { return finalStandings->transitionToSleep(); },
         StateId(HUB_APP_ID), StateId(SLEEP));

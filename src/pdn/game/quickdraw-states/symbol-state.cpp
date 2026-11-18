@@ -102,7 +102,6 @@ void SymbolState::onStateLoop(PDN* pdn) {
         advanceSymbolRender(pdn);
     }
 
-    // if device is not connected to an FDN, transition to idle
     if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) != DeviceType::FDN) {
         transitionToIdleState = true;
     }

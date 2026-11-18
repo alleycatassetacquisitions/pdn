@@ -29,12 +29,8 @@ enum class JackStatus {
     CONNECTED = 2,     // Jack is connected to a peer.
 };
 
-// This device's position in the physical chain, derived from jack state:
-// head has no in-peer, a child has one, RING is the head of a chain whose ends
-// met. RING is deliberately head-only — it is the roster/coordinator authority.
-// Ring MEMBERSHIP, which every device on the ring shares, is isInRing().
-// Device-level (not per-jack): whether a connection makes this device a head
-// or child is a chain concern surfaced here, never a JackStatus.
+// Device-level chain position. RING is held only by the latching head; ring
+// membership for every device is isInRing().
 enum class ChainRole {
     STANDALONE = 0,
     HEAD = 1,
@@ -43,8 +39,6 @@ enum class ChainRole {
 };
 
 class RemoteDeviceCoordinator {
-    // Reaches the owned transport to inject SEND_SUCCESS / inbound contexts without
-    // a radio; the transport stays out of the public API.
     friend class RDCHelloTests;
 
 public:
@@ -77,8 +71,8 @@ public:
     void initialize(WirelessManager* radio, SerialManager* serial, Device* device);
 
     /**
-     * Must be called every loop tick (from PDN::loop). Pumps the reliable
-     * transport and drives each jack's HELLO link machine.
+     * Must be called every loop tick. Pumps the reliable transport and drives
+     * each jack's HELLO link machine.
      */
     void sync(Device* PDN);
 
@@ -162,13 +156,9 @@ public:
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
     // A link stuck mid-context-exchange past this falls back to IDLE.
     static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
-    // A ring latch is evidence-based: it survives a higher-MAC head claim only
-    // while this device's own MAC keeps returning on INPUT within this window, so
-    // it has to outlast a replacement claim's walk round the ring. Hand-set at 25
-    // HELLO cadences, not derived: a hop also costs the receiving device's
-    // exec()-to-parse gap, which nothing caps, so this is slack rather than
-    // arithmetic and not a bound on any particular chain length. Deliberately not
-    // sized off MAX_CHAIN_MEMBERS, a roster-array cap set past any real chain.
+    // How long a ring latch survives a higher-MAC head claim without its own MAC
+    // returning on INPUT. Hand-set slack (25 HELLO cadences), not derived from
+    // chain length.
     static constexpr unsigned long RING_EVIDENCE_TIMEOUT_MS = 500;
 
     enum class HelloLinkState { IDLE,
@@ -184,7 +174,7 @@ public:
      * Hands a received peer context to the game layer opaquely: the jack it
      * arrived on, the peer's device kind, and the raw profile bytes
      * (PlayerProfile for PDN, FdnProfile for FDN). RDC reads only
-     * FdnProfile::utcUnixMs, for clock sync; otherwise opaque.
+     * PlayerProfile::userId and FdnProfile::utcUnixMs (clock sync); otherwise opaque.
      */
     using ContextReceivedCallback =
         std::function<void(SerialIdentifier jack, DeviceType peerType,
@@ -201,10 +191,8 @@ public:
     using SelfProfileProvider = std::function<PlayerProfile()>;
 
     /**
-     * Registers the outgoing-profile source. A provider rather than a stored
-     * copy because the id, name, faction and role each settle at a different
-     * point in registration: reading at send time keeps a context honest
-     * without every one of those setters having to re-push here.
+     * Registers the outgoing-profile source; read at send time because profile
+     * fields settle at different points in registration.
      */
     void setSelfProfileProvider(SelfProfileProvider provider) {
         selfProfileProvider = std::move(provider);
@@ -228,11 +216,8 @@ public:
     }
 
     /**
-     * The peer's opaque profile bytes on `jack`, or nullptr before its context
-     * arrives. PlayerProfile for a PDN peer, FdnProfile for an FDN one; which it
-     * is comes from getPeerDeviceType. RDC reads only FdnProfile::utcUnixMs. Held per jack
-     * rather than only forwarded on arrival, so a state mounting later still gets
-     * the peer's identity instead of only whoever was mounted at the time.
+     * The peer's profile bytes on `jack` (struct per getPeerDeviceType), or nullptr
+     * before its context arrives; held so late-mounting states can read it.
      */
     virtual const uint8_t* getPeerProfile(SerialIdentifier jack, size_t& length) const {
         const JackHelloLink& link = helloByJack[jackIndex(jack)];
@@ -314,7 +299,6 @@ private:
     struct JackHelloLink {
         SerialFrameParser parser;  // non-copyable; default-constructed in place
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
-        // Recorded from the peer's received context; consumed by the chain SM.
         uint8_t peerChainRole = 0;
         // Which context channel the peer's context arrived on, so the kind and the
         // profile bytes below always describe the same peer and the same moment.
@@ -343,13 +327,8 @@ private:
     ReliableChannel<DisconnectReportPayload>* disconnectReportChannel = nullptr;
     ReliableChannel<HeadTransferPayload>* headTransferChannel = nullptr;
 
-    // A context (ESP-NOW) can beat its own HELLO (serial) and arrive before any jack
-    // is CONNECTING for that MAC. Rather than drop it, hold it here and apply it when
-    // the jack connects. Bounded + TTL'd on purpose: an on-channel attacker who knows
-    // our MAC can spray contexts from fabricated sources, so the fixed cap is the OOM
-    // guard and the short TTL clears junk; the worst it can do is evict a genuine
-    // early-arrival (that link then half-opens, same as with no buffer). Legitimate
-    // occupancy is at most one per jack.
+    // Contexts that beat their HELLO wait here. Fixed cap + TTL bound what a spoofing
+    // sender can pin; eviction only costs a half-open link.
     static constexpr size_t CONTEXT_BUFFER_SLOTS = 8;
     // TTL = silent-link window on purpose: a live peer's HELLO lands inside that
     // window, so a context older than it can never pair with a connecting jack.
@@ -418,14 +397,12 @@ private:
     // Main-loop-owned; chainHeadMac is all-zero when no upstream head is held.
     std::array<uint8_t, 6> chainHeadMac{};
     bool chainHeadConfirmed = false;
-    // Latched when this structural head sees its own MAC return on the INPUT jack;
-    // cleared when any ring link drops. Dominates getChainRole().
+    // Latched when this device's own MAC returns on INPUT while OUTPUT is a chain
+    // link; cleared when either chain link drops, or on a head conflict it loses
+    // or whose ring evidence timed out. Dominates getChainRole().
     bool ringLatched = false;
-    // The ring flag the INPUT peer last advertised. Only the latching device can
-    // observe closure, so every other member learns it from upstream and relays
-    // it on. Relayed only while a head is held, which keeps the assertion
-    // single-sourced: the latching device holds no head, so its own flag is
-    // never fed back to it and a cleared latch drains round the ring.
+    // Ring flag the INPUT peer last advertised; relayed only while a head is held,
+    // so the latching device never hears its own assertion back.
     bool upstreamRingClosed = false;
     // Written only by publishHelloState() on the main loop so emitHello() reads
     // a consistent view in one load.
@@ -467,11 +444,8 @@ private:
     // seqId of the announce most recently sent; delivery of any earlier one is
     // stale and must not raise the confirmed bit.
     uint8_t pendingAnnounceSeqId = 0;
-    // disconnectedMac of the report most recently sent whose delivery is not yet
-    // confirmed (all-zero = none). A head change cancels the in-flight report to
-    // the old head, and unlike the announce path nothing re-triggers it, so
-    // adoptUpstreamHead re-sends it to the successor — otherwise the departed
-    // member stays a phantom in the new head's roster.
+    // disconnectedMac of the newest undelivered report (all-zero = none);
+    // adoptUpstreamHead re-sends it to a successor head.
     std::array<uint8_t, 6> pendingReportMac{};
     uint8_t pendingReportSeqId = 0;
     bool isRosterAuthority() const;

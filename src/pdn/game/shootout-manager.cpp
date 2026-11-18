@@ -32,8 +32,6 @@ ShootoutManager::ShootoutManager(Player* player,
             onCommandAbandoned(seqId, targetMac, packet, len);
         });
     if (rdc == nullptr) return;
-    // Subscribed here rather than by whoever builds this manager: see
-    // PosseManager's constructor for the reasoning.
     rdc->setOnRingClosed([this]() { onRingClosed(); });
 }
 
@@ -102,7 +100,7 @@ bool ShootoutManager::containsMac(const std::vector<std::array<uint8_t, 6>>& set
 }
 
 bool ShootoutManager::isFromCoordinator(const uint8_t* mac) const {
-    // An all-zero anchor (no ring closed yet) matches no real sender.
+    // An all-zero anchor (no bracket held) matches no real sender.
     return mac != nullptr && memcmp(mac, coordinatorMac.data(), 6) == 0;
 }
 
@@ -119,16 +117,12 @@ void ShootoutManager::broadcastCommand(const uint8_t* packet, size_t len) {
 
 void ShootoutManager::broadcastToRing(const std::vector<std::array<uint8_t, 6>>& peers,
                                       const uint8_t* packet, size_t len) {
-    // A ring fan-out is one broadcast frame, not one unicast per member: the
-    // ESP-NOW peer table holds 20 entries, so unicast addressing cannot reach a
-    // ring larger than that at all, whereas the broadcast slot is registered once
-    // at radio init. Receivers must drop commands naming MACs outside their own ring.
+    // One broadcast frame per fan-out (see Resender::sendBroadcast); receivers drop
+    // commands from outside their own ring.
     if (peersExcludingSelf(peers).empty()) return;
     broadcastCommand(packet, len);
 }
 
-// Who a ring fan-out is addressed to. One spelling, asked by both send paths, so
-// a device can never end up owing an ack to itself.
 std::vector<std::array<uint8_t, 6>> ShootoutManager::peersExcludingSelf(
     const std::vector<std::array<uint8_t, 6>>& peers) const {
     const uint8_t* selfMac = wirelessManager->getMacAddress();
@@ -147,12 +141,6 @@ void ShootoutManager::sendReliablyToPeers(const std::vector<std::array<uint8_t, 
 }
 
 void ShootoutManager::onCommandAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    // seqId alone names the fan-out: nextSeqId() is the single allocator for all
-    // five command families, so no two frames in flight from this device share
-    // one. Cross-checking the ack's command against a per-family cursor would
-    // catch nothing — an ack echoes both fields out of the frame it answers —
-    // and would refuse a valid ack for a still-armed frame that is no longer its
-    // family's latest.
     resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
 }
 
@@ -161,18 +149,9 @@ void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac
     if (len == 0) return;
     const ShootoutCmd cmd = static_cast<ShootoutCmd>(packet[0]);
 
-    // Only silence that actually blocks the tournament ends it. BRACKET is the
-    // roster, so a member still in the running who never received it cannot take
-    // part at all. MATCH_START only matters to the two devices fighting: a
-    // spectator missing it just does not see that round, and ending a tournament
-    // for that would put an abort opportunity on every member of every match
-    // rather than one on the bracket.
-    //
-    // Both questions are asked of the frame that was abandoned, not of the
-    // manager's current state. A fan-out outlives the match it announced — it
-    // keeps retrying a silent recipient for over a second — so by the time it is
-    // given up on, currentPlayer* may already name a different match, and a
-    // finished tournament still names its final pair.
+    // Abort only when the silent recipient blocks play: a live bracket member missing
+    // BRACKET, or a fighter missing MATCH_START. The fighters are read from the abandoned
+    // frame, not current state: a fan-out outlives the match it announced.
     bool blocksTournament = false;
     if (cmd == ShootoutCmd::BRACKET) {
         blocksTournament = containsMac(bracket, targetMac) && !isEliminated(targetMac);
@@ -183,16 +162,12 @@ void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac
                            memcmp(&packet[8], targetMac, 6) == 0;
     } else if (cmd == ShootoutCmd::MATCH_RESULT && len >= 15 &&
                memcmp(targetMac, coordinatorMac.data(), 6) == 0) {
-        // Nothing on the coordinator's side notices a result that never lands: it
-        // advances only on receiving one, so it waits with nothing owed. This
-        // device is the one that knows, so it says so again. One attempt per
-        // match — a second abandonment cannot distinguish a lost result from a
-        // lost ack, and guessing is worse than staying quiet.
+        // The coordinator advances only on receiving a result, so the winner re-sends
+        // one it abandoned — once per match.
         if (matchResultResentIndex != static_cast<int>(packet[14])) {
             matchResultResentIndex = static_cast<int>(packet[14]);
             LOG_W(TAG, "coordinator missed our match result; re-sending");
-            // Off the abandoned frame, not current state: a fan-out outlives the
-            // match it announced. [cmd, seqId, winner(6), loser(6), matchIndex]
+            // [cmd, seqId, winner(6), loser(6), matchIndex]
             sendMatchResultToPeers(&packet[2], &packet[8], packet[14]);
         }
     }
@@ -238,18 +213,14 @@ void ShootoutManager::resetToIdle() {
 
 void ShootoutManager::resetTournamentState() {
     phase = Phase::IDLE;
-    // Retire a match this tournament primed: the match app's dismount is the only
-    // other path and cannot run for a match abandoned before that app mounts,
-    // and Idle mounts a match from whatever match is ready.
+    // Retire a primed match no app mounted: Idle mounts whatever match is ready.
     if (matchManager) matchManager->clearShootoutMatch();
     confirmedSet.clear();
     bracket.clear();
     currentRound.clear();
     memset(coordinatorMac.data(), 0, 6);
-    // A retransmit landing after the reset would speak for a tournament that no
-    // longer exists — except the frame reporting the ending, whose recipients are
-    // exactly the members yet to hear it. Both the screen showing the ending and
-    // the proposal after it reset, so it has to survive more than one.
+    // Cancel this tournament's retransmits, sparing the frame that reports its ending —
+    // across every later reset, until no recipient is still pending on it.
     resender.cancelAllExcept(PktType::kShootoutCommand, terminalFanOutSeqId);
     if (getPendingAckCount(terminalFanOutSeqId) == 0) terminalFanOutSeqId = 0;
     eliminated.clear();
@@ -511,10 +482,8 @@ void ShootoutManager::sendBracketToPeers() {
 }
 
 void ShootoutManager::abortTournament() {
-    // A tournament that reached its winner is over, not stuck. A late
-    // abandonment from a fan-out that outlived the final match must not tear
-    // down the standings — and the ABORT would be applied ring-wide, wiping the
-    // winner screen on every device.
+    // A tournament that reached its winner is over, not stuck: a late abandonment must
+    // not tear down the standings.
     if (isTerminalPhase()) return;
     LOG_W(TAG, "abortTournament from phase=%d", static_cast<int>(phase));
 
@@ -569,9 +538,6 @@ void ShootoutManager::sync() {
     }
 
     if (phase == Phase::PROPOSAL) {
-        // One rebuild per tick, shared by everything below: getRingMembers goes to
-        // the RDC for a fresh vector on the coordinator, and the proposal asks the
-        // same question three times.
         const std::vector<std::array<uint8_t, 6>> members = getRingMembers();
         const bool everyoneIn = headsRing() && allMembersConfirmed(members);
         const uint8_t* selfMac = wirelessManager->getMacAddress();
@@ -589,11 +555,8 @@ void ShootoutManager::sync() {
             sendLocalConfirm();
         }
 
-        // Without this the coordinator waits forever: a roster below the floor
-        // never satisfies everyoneIn, so the tournament neither starts nor ends.
-        // Held over a window because the roster is still filling just after a ring
-        // closes, and gated on a local confirm, which leaves an untouched
-        // self-cabled device sitting here idle rather than flashing ABORTED.
+        // A sub-floor roster never satisfies everyoneIn, so time it out; gated on a local
+        // confirm so an untouched self-cabled device idles instead of flashing ABORTED.
         const bool ringTooSmallToPlay =
             headsRing() && confirmedLocally && members.size() < MIN_PARTICIPANTS;
         if (shortRosterDebounce.heldFor(ringTooSmallToPlay, SHORT_ROSTER_TIMEOUT_MS)) {
@@ -609,8 +572,6 @@ void ShootoutManager::sync() {
         }
     }
 
-    // Every command family retransmits and abandons here; which one gave up is
-    // read off the frame in onCommandAbandoned.
     resender.sync();
 
     maybeStartNextMatch();
@@ -760,11 +721,8 @@ void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* los
         eliminated.push_back(mac);
     }
     if (!endsCurrentMatch) return;
-    // A player still mounted when the tournament ended resolves its own match and
-    // reports it. Walking ENDED back reopens a round that no longer exists;
-    // walking ABORTED back is worse, because the abort edge is read later in the
-    // same tick and would then read false, stranding this device in a tournament
-    // every other member has left.
+    // Never walk a terminal phase back: the abort edge is read later this tick and
+    // would miss ABORTED.
     if (isTerminalPhase()) return;
     phase = Phase::BETWEEN_MATCHES;
 }
@@ -784,13 +742,8 @@ void ShootoutManager::sendMatchResultToPeers(
     const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex) {
     lastMatchResultSeqId = nextSeqId();
     auto packet = buildMatchResultPacket(winner, loser, matchIndex);
-    // Targets bracket, not confirmedSet. Both reach eliminated players — only
-    // currentRound shrinks — but confirmedSet is each device's own tally of the
-    // CONFIRMs it happened to hear, and those are unacked broadcasts sent once
-    // per press. A follower that missed the coordinator's would never track it
-    // as a recipient, so its result could never abandon against the coordinator
-    // and the recovery below could never fire. The bracket is the coordinator's
-    // own roster, acked on arrival.
+    // Targets bracket: it is the coordinator's acked roster, whereas confirmedSet is each
+    // device's own tally of unacked CONFIRM broadcasts and may omit the coordinator.
     sendReliablyToPeers(bracket, lastMatchResultSeqId, packet.data(), packet.size());
 }
 
@@ -802,10 +755,8 @@ void ShootoutManager::reportLocalWin() {
     LOG_W(TAG, "reportLocalWin matchIndex=%d", currentMatchIndex);
     sendMatchResultToPeers(selfMac, opponentMac.data(), static_cast<uint8_t>(currentMatchIndex));
     applyMatchResult(selfMac, opponentMac.data());
-    // The round advances on the next sync(), not from here. On the timeout path
-    // this is called from MatchState::onStateLoop, and that state dismounts later in
-    // the same tick through clearCurrentMatch() — anything primed for the next
-    // match from here is torn down by the match that is still being left.
+    // The next match starts from sync(), never here: MatchApp's dismount
+    // (clearCurrentMatch) later this tick would tear down anything primed now.
 }
 
 void ShootoutManager::onMatchResultReceived(
@@ -815,12 +766,12 @@ void ShootoutManager::onMatchResultReceived(
     // our bracket is what says the frame is ours. A foreign ring's result is
     // refused before the ack for the same reason ABORT is: an ack is a unicast,
     // and a unicast takes a slot in the radio's 20-entry peer table, evicting
-    // whatever sat there longest.
+    // another peer once the table is full.
     if (!containsMac(bracket, fromMac)) return;
     // No match has started during the reveal, so a result then is a stray: dropped
     // unacked. Phases without a bracket were turned away above.
     if (phase == Phase::BRACKET_REVEAL) return;
-    // Always ack so the sender stops retrying, even when this is a duplicate.
+    // Ack ahead of the content and duplicate checks below so the sender stops retrying.
     sendShootoutAck(ShootoutCmd::MATCH_RESULT, seqId, fromMac);
     if (!containsMac(bracket, winner) || !containsMac(bracket, loser)) {
         LOG_E(TAG, "MATCH_RESULT from ring member names a device outside our bracket");
@@ -845,8 +796,6 @@ void ShootoutManager::sendTournamentEndToPeers(const uint8_t* winner) {
     packet[0] = static_cast<uint8_t>(ShootoutCmd::TOURNAMENT_END);
     packet[1] = lastTournamentEndSeqId;
     memcpy(&packet[2], winner, 6);
-    // Targets confirmedSet rather than bracket: eliminated players need the
-    // tournament-end transition or they stall in BETWEEN_MATCHES.
     sendReliablyToPeers(confirmedSet, lastTournamentEndSeqId, packet, sizeof(packet));
     terminalFanOutSeqId = lastTournamentEndSeqId;
     memcpy(tournamentWinner.data(), winner, 6);
@@ -867,12 +816,8 @@ void ShootoutManager::onTournamentEndReceived(const uint8_t* fromMac,
 }
 
 void ShootoutManager::onAbortReceived(const uint8_t* fromMac, uint8_t seqId) {
-    // One broadcast reaches every device in radio range, other rings included.
-    // The ack stays behind this filter because a unicast takes one of the radio's
-    // 20 peer slots, evicting whatever sat there longest. A follower that already
-    // aborted fails it too, its rosters cleared, so the sender spends retries on a
-    // device that has stopped; a still-cabled head keeps answering, its roster
-    // coming live from the RDC.
+    // Filter before acking: the broadcast reaches other rings, and a unicast ack costs
+    // one of the radio's 20 peer slots.
     if (!isRingMember(fromMac)) return;
     // Addressed to fromMac because any ring member may abort, not just the
     // coordinator.

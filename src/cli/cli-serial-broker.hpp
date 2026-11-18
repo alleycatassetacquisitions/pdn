@@ -255,9 +255,8 @@ private:
         std::string data = from->getOutput();
         if (data.empty()) return;
 
-        // Byte/binary mode (HELLO): deliver the raw stream; the receiver's
-        // byte-mode exec() feeds it to the frame parser. The STRING_START
-        // re-framing below only applies to a jack still in string mode.
+        // Byte mode (HELLO): deliver raw bytes for the frame parser; the STRING_START
+        // re-framing below is for string-mode jacks only.
         if (to->hasByteCallback()) {
             to->injectBytes(std::vector<uint8_t>(data.begin(), data.end()));
             from->clearOutput();

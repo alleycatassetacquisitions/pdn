@@ -41,9 +41,8 @@ void ShootoutSpectator::onStateLoop(PDN* pdn) {
 
     std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> pair =
     shootout->getCurrentMatchPair();
-    // A teardown zeroes the pair, and an all-zero MAC names no player. Without
-    // this the change test fires on the way out and repaints WATCHING over two
-    // blank names, for the one tick before the abort edge lifts the state.
+    // A teardown zeroes the pair; skip it so the screen is not repainted with two
+    // blank names before the abort edge leaves this state.
     const std::array<uint8_t, 6> noMatch{};
     if (memcmp(pair.first.data(), noMatch.data(), 6) == 0) return;
     if (memcmp(pair.first.data(), lastDisplayedA_.data(), 6) != 0 ||

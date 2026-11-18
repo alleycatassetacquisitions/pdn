@@ -16,8 +16,8 @@ const std::array<GameSession::PacketRoute, 4>& GameSession::packetRoutes() {
     return ROUTES;
 }
 
-// The initializer list is in declaration order, which is also dependency order:
-// both managers read the two device-owned managers pulled off the PDN above them.
+// Initializer order is dependency order: the managers read the device-owned
+// pointers set above them, and recordRelay reads matchManager and shootoutManager.
 GameSession::GameSession(Player* player, Device* pdn, SymbolWirelessManager* symbolWirelessManager)
     : player(player)
     , pdn(pdn)
@@ -141,10 +141,8 @@ void GameSession::logRetryStats() {
     }
     if (!statsLogTimer.expired()) return;
 
-    // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2, which
-    // strips info-level calls. Both managers are reported: a venue reading one
-    // line to judge radio health would otherwise be shown the posse's
-    // retries and told nothing about the tournament's.
+    // LOG_W, not LOG_I: release builds set CORE_DEBUG_LEVEL=2, which strips
+    // info-level calls.
     if (posseManager != nullptr) {
         PosseManager::RetryStats c = posseManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;

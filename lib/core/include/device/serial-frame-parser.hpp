@@ -7,11 +7,8 @@
 #include <functional>
 #include <vector>
 
-// Serial frame protocol constants. HELLO is the sole opcode on the wire:
-// serial carries physical-connectivity discovery/liveness only, everything
-// else rides ESP-NOW. The framing (preamble + opcode + payload + CRC-16)
-// recreates for UART what 802.11 gives ESP-NOW for free: message boundaries
-// and integrity on a raw byte stream with flaky TRS contacts.
+// HELLO is the sole serial opcode; framing (preamble + opcode + payload +
+// CRC-16) gives the raw UART stream boundaries and integrity.
 constexpr uint8_t FRAME_PREAMBLE_0 = 0xAA;
 constexpr uint8_t FRAME_PREAMBLE_1 = 0x55;
 constexpr uint8_t OP_HELLO = 0x00;
@@ -21,7 +18,7 @@ constexpr uint8_t OP_HELLO = 0x00;
 constexpr size_t HELLO_PAYLOAD_LEN = 14;
 constexpr size_t HELLO_FRAME_LEN = 2 + 1 + HELLO_PAYLOAD_LEN + 2;
 
-// Set once this device's context exchange with the head it currently holds has
+// Set once this device's ConnectionAnnounce to the head it currently holds has
 // been delivered; cleared by a head change until re-confirmed under the new one.
 constexpr uint8_t HELLO_FLAG_CONFIRMED = 0x01;
 // Asserted by the device whose own MAC came back around the ring and relayed
@@ -36,7 +33,7 @@ constexpr uint8_t HELLO_FLAG_RING_CLOSED = 0x02;
 // contract.
 struct HelloPayload {
     uint8_t source[6];   // this device's WiFi MAC
-    uint8_t deviceType;  // DeviceType value; discriminates ConnectionContext deser
+    uint8_t deviceType;  // DeviceType value; informational, not used to decode contexts
     uint8_t headMac[6];  // chain head MAC, all-zero if head/standalone; hop-propagated
     uint8_t flags;       // HELLO_FLAG_* bits
 } __attribute__((packed));
@@ -49,15 +46,10 @@ std::vector<uint8_t> encodeFramed(const HelloPayload& hello);
 
 using HelloFrameHandler = std::function<void(const HelloPayload&)>;
 
-// Parses one jack's serial byte stream into framed binary frames
-// (preamble 0xAA 0x55 + opcode + payload + CRC-16). One instance per jack.
-// Binary framing because the jacks are physically unreliable (TRS contacts,
-// partial insertion): a corrupted delimited string still parses as *some*
-// string, while a frame failing CRC is dropped and the preamble resyncs.
-// feed() runs on the main loop today (the driver's exec() polls RX and fires
-// the byte callback inline). requestReset() is an atomic flag honored at the
-// start of the next feed(), so parser state stays single-owner even if
-// feeding ever moves onto a UART event task.
+// One instance per jack. Binary framing because the jacks are physically
+// unreliable (TRS contacts, partial insertion): a CRC-failed frame is dropped
+// and the preamble resyncs. feed() is main-loop only; requestReset() defers to
+// the next feed().
 class SerialFrameParser {
 public:
     /**
@@ -67,8 +59,8 @@ public:
     void feed(const uint8_t* data, size_t len);
 
     /**
-     * Request a parser reset from another thread. The actual clear happens at
-     * the start of the next feed(), keeping parser state single-owner.
+     * Defers the parser clear to the start of the next feed(), keeping parser
+     * state single-owner.
      */
     void requestReset() { resetRequested.store(true); }
 

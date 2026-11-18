@@ -31,9 +31,8 @@ void ShootoutFinalStandings::onStateLoop(PDN* pdn) {
 }
 
 void ShootoutFinalStandings::onStateDismounted(PDN* pdn) {
-    // Held until the screen is done with them: the winner's MAC and the name
-    // table this screen reads outlive the final match, and shouldEnterProposal
-    // refuses any phase but IDLE, so the next ring cannot propose until this runs.
+    // Reset on dismount, not at ENDED: this screen reads the winner MAC and name
+    // table, and shouldEnterProposal refuses any phase but IDLE.
     if (shootout_) shootout_->resetToIdle();
     shouldGoToSleep_ = false;
 }

@@ -514,9 +514,9 @@ TEST_F(AppSwapTestSuite, setActiveAppEntersAtTheNamedState) {
 }
 
 // A swap that names no entry state boots the target at its first state, which is
-// what all ten FDN app transitions ask for — none of them names one. The second
-// half also covers re-entering an app that a previous swap entered part-way:
-// setActiveApp writes the default over whatever that swap asked for.
+// what every FDN app transition asks for. The second half also covers re-entering
+// an app that a previous swap entered part-way: setActiveApp writes the default
+// over whatever that swap asked for.
 TEST_F(AppSwapTestSuite, setActiveAppWithoutAnEntryStateEntersTheBootState) {
     loadAllApps(APP_ONE);
 
@@ -529,9 +529,7 @@ TEST_F(AppSwapTestSuite, setActiveAppWithoutAnEntryStateEntersTheBootState) {
     ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 0);
 }
 
-// loadAppConfig states its entry rather than inheriting one. Production calls it
-// once per device before any swap, so this pins the invariant rather than closing a
-// reachable hole — but the invariant is what lets the default be trusted.
+// loadAppConfig states its entry rather than inheriting one from an earlier part-way swap.
 TEST_F(AppSwapTestSuite, loadAppConfigEntersTheBootStateAfterAPartWaySwap) {
     loadAllApps(APP_ONE);
     device->setActiveApp(APP_TWO, StateId(2));
@@ -581,10 +579,8 @@ TEST_F(AppSwapTestSuite, unknownEntryStateFallsBackToBootState) {
     ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 0);
 }
 
-// App and intra-machine edges share one priority list. Checking every local edge
-// first would demote every hand-off below its own state's local edges — the
-// split's Idle depends on its shootout hand-off outranking the local edge into
-// SupporterReady.
+// App and local edges share one priority list: Idle's shootout hand-off must outrank its
+// local edge into SupporterReady.
 TEST_F(AppSwapTestSuite, appTransitionDeclaredFirstOutranksALocalEdge) {
     loadAllApps(APP_THREE);
 

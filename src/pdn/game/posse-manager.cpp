@@ -21,24 +21,16 @@ PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, Rem
     chainJoinChannel.onReceive([this](const uint8_t* fromMac, const ChainJoinPayload& p) {
         onChainJoinReceived(fromMac, p.challengerMac);
     });
-    // The radio's delivery report is this channel's ack; there is no reply
-    // packet. Latency is read here because the channel reports delivery but does
-    // not time it, and the peer is recorded as told here for the same reason:
-    // this is the first moment it is true.
-    // Receive rides the channel too, so the length check, the decode and the
-    // duplicate suppression are the channel's rather than a second copy of them
-    // in whoever routes the packet.
     roleAnnounceChannel.onReceive([this](const uint8_t* fromMac, const RoleAnnouncePayload& p) {
         onRoleAnnounceReceived(fromMac, p.challengerMac);
     });
+    // SEND_SUCCESS is this channel's only ack; the channel reports delivery but
+    // does not time it.
     roleAnnounceChannel.setOnDelivered([this](uint8_t seqId, const uint8_t* mac) {
         ackLatencyMsSum += roleAnnounceSentTimer.getElapsedTime();
         ackCount++;
         recordAnnounceDelivered(seqId, mac);
     });
-    // Subscribed here rather than by whoever builds this manager: an owner that
-    // wires it is an owner every other caller has to imitate, and one that forgets
-    // gets a manager that compiles, runs, and silently never reacts.
     rdc->setChainChangeCallback([this]() { onChainStateChanged(); });
     rdc->setOnContextReceived([this](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
         if (jack == supporterJack() && supporterAnnounce.has_value()) {
@@ -120,10 +112,8 @@ bool PosseManager::canInitiateMatch() const {
     if (!player->isHunter()) return false;
     // A closed ring is the shootout's topology; no 1v1 pairing forms inside one.
     if (rdc->isInRing()) return false;
-    // Half-open gate. Connected means the peer's context landed over the radio,
-    // so a path back exists. A jack that only reached Connecting has a peer MAC
-    // off one inbound serial frame and nothing proving the peer can answer, and
-    // a match pushed across it strands the initiator waiting for an ack.
+    // Half-open gate: only CONNECTED proves a radio path back; a match pushed
+    // across a Connecting jack strands the initiator waiting for an ack.
     if (rdc->getJackStatus(opponentJack()) != JackStatus::CONNECTED) return false;
     return peerIsHunter(opponentJack()) == false;
 }
@@ -169,14 +159,8 @@ void PosseManager::sendGameEventToSupporters(ChainGameEventType eventType) {
     payload.event_type = static_cast<uint8_t>(eventType);
     memcpy(payload.challengerMac, selfMac, 6);
 
-    // WIN/LOSS are state-terminal for the supporter UI and must arrive or
-    // the supporter display sticks on a stale screen until the next chain
-    // event. They get seqIds and retry tracking.
-    //
-    // COUNTDOWN/DRAW are time-sensitive transient events. A late-arriving
-    // retry of COUNTDOWN would falsely re-arm a supporter whose match has
-    // already resolved; a late DRAW would disarm a supporter who just
-    // entered a new COUNTDOWN. Keep them fire-and-forget: seqId=0.
+    // WIN/LOSS get a seqId and retries; COUNTDOWN/DRAW stay seqId 0 because a
+    // late retry would re-arm or disarm a supporter in the wrong round.
     if (eventType == ChainGameEventType::WIN || eventType == ChainGameEventType::LOSS) {
         payload.seqId = nextGameEventSeqId++;
         if (nextGameEventSeqId == 0) nextGameEventSeqId = 1;
@@ -189,11 +173,8 @@ void PosseManager::sendGameEventToSupporters(ChainGameEventType eventType) {
         resender.sendBroadcast(peers, PktType::kChainGameEvent, payload.seqId,
                                reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
     } else {
-        // Fire-and-forget: no seqId, no ack owed, so it goes straight out. One
-        // broadcast frame either way — addressing a supporter three cables away
-        // by unicast costs a peer-table slot per device in the chain and the
-        // table holds 20. Supporters keep only the events whose challengerMac
-        // matches the challenger they follow.
+        // One broadcast frame: unicast would cost one of the 20 peer-table slots
+        // per supporter. Supporters filter on challengerMac.
         wirelessManager->sendEspNowData(
             wirelessManager->getBroadcastAddress(),
             PktType::kChainGameEvent,
@@ -201,9 +182,6 @@ void PosseManager::sendGameEventToSupporters(ChainGameEventType eventType) {
             sizeof(payload));
     }
 
-    // After the send, never before: the recipients above are the join roster and
-    // not this roll call, but wiping first is one edit away from dropping every
-    // multi-hop supporter out of the COUNTDOWN that tells them to press.
     if (eventType == ChainGameEventType::COUNTDOWN) {
         clearSupporterConfirms();
     }
@@ -257,10 +235,6 @@ void PosseManager::onChainGameEventReceived(uint8_t eventType) {
 }
 
 void PosseManager::onConfirmReceived(const uint8_t* originatorMac) {
-    // Recorded unconditionally. Whether this originator is a chain member, and
-    // whether we are the challenger who gets to count it, are both read live in
-    // getConfirmedSupporterCount — neither is knowable for certain at the moment
-    // a press arrives.
     recordMac(receivedConfirms, receivedConfirmCount, receivedConfirmWrite, originatorMac);
 }
 
@@ -375,10 +349,8 @@ void PosseManager::onRoleAnnounceReceived(
     if (opponentPeer == nullptr || memcmp(opponentPeer, fromMac, 6) != 0) return;
     if (rdc->isInRing() || peerIsHunter(opponentJack()) == !player->isHunter()) return;
 
-    // Wire input: the field is always present, so a sender with no challenger sends
-    // it zeroed, and a two-bounty ring does exactly that: both clear their challenger,
-    // then each announces to the other's opponent jack with a matching role. Caching
-    // the zero would cascade it onward as this device's challenger.
+    // Wire input: this firmware never sends a zero challengerMac; one clears the
+    // challenger here rather than cascading as this device's challenger.
     if (MacToUInt64(announcedChallengerMac) == 0) {
         challengerMac.reset();
         resender.cancelAll(PktType::kChainConfirm);
@@ -433,12 +405,8 @@ void PosseManager::broadcastRoleAndChallenger() {
     memcpy(content.challenger.data(), challenger, 6);
     if (supporterAnnounce.has_value() && supporterAnnounce->told(content)) return;
 
-    // Half-open gate, same reasoning as canInitiateMatch. A jack at Connecting has
-    // a peer MAC off one inbound serial frame; the supporter has not necessarily
-    // parsed ours yet, and it drops announces from a MAC it does not yet hold as a
-    // direct peer. The radio would still report the frame delivered, so the retry
-    // clears and the announce is simply lost. Connected means its context came back
-    // over the radio, which it could only send having already recorded us.
+    // Half-open gate (see canInitiateMatch): a Connecting supporter drops announces
+    // from a MAC it has not recorded, yet the radio still reports them delivered.
     if (rdc->getJackStatus(supporterJack()) != JackStatus::CONNECTED) return;
 
     RoleAnnouncePayload payload{};
@@ -456,8 +424,6 @@ void PosseManager::sync() {
         onChainStateChanged();
     }
 
-    // The role announce clears on SEND_SUCCESS; the WIN/LOSS fan-out clears one
-    // supporter at a time, since a broadcast carries no per-member evidence.
     resender.sync();
 
     if (roleAnnounceBackstopTimer.expired()) {

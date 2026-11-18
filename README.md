@@ -33,8 +33,8 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
 ## Features
 
 - **Extensible Platform**: The PDN currently supports a single experience - the Neotropolis Quickdraw game, however, it is trivial to create new State Machines to support new game experiences.
-- **Peripheral Rich**: The base PDN design supports a 128x64 OLED, 19 LEDs, vibration haptics, 2 buttons, ESP-NOW, HTTP and Serial communication.
-- **Real-Time Tracking**: The PDN supports connecting to a server to update player data in real time.
+- **Peripheral Rich**: The base PDN design supports a 128x64 OLED, 19 LEDs, vibration haptics, 2 buttons, ESP-NOW and Serial communication.
+- **Record Tracking**: The PDN relays its match records over ESP-NOW to an FDN, which uploads them to the server.
 - **Modular Design**: The PDN framework works off of a "Driver" framework that allows for customizing the hardware, whether to support new hardware platforms or new peripherals.
 
 ## Installation

@@ -496,8 +496,7 @@ inline void rdcContextEvictionOrdersByAgeAcrossRollover(RDCHelloTests* suite) {
 // cached while both jacks are still IDLE, then the jacks enter CONNECTING one at a
 // time (sync drives OUTPUT before INPUT). The first to connect must NOT consume the
 // cache out from under the second — both links must reach CONNECTED, and each jack's
-// context callback must fire exactly once. Regression: a per-arrival consume left the
-// second jack CONNECTING until it silent-linked to IDLE, half-opening the ring.
+// context callback must fire exactly once.
 inline void rdcCachedContextCompletesBoth2NodeRingJacks(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
@@ -887,7 +886,7 @@ inline void rdcChainRoleReadsJackPresence(RDCHelloTests* suite) {
 }
 
 // Downstream inheritance: adopt the upstream peer's effective head and
-// re-advertise it. Head inheritance is synchronous on HELLO receipt.
+// re-advertise it.
 inline void rdcChainInheritsAndReadvertisesHead(RDCHelloTests* suite) {
     const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
@@ -3071,7 +3070,7 @@ inline void rdcAnnounceOverCapIsDroppedNotAdmitted(RDCHelloTests* suite) {
 }
 
 // A full-cap roster travels in one HeadTransfer payload, so a successor inherits
-// every member instead of the first 18.
+// every member.
 inline void rdcHeadTransferCarriesFullCapRoster(RDCHelloTests* suite) {
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);

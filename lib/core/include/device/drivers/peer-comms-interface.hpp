@@ -12,16 +12,8 @@ enum class PeerCommsState {
 class PeerCommsInterface {
 public:
     using PacketCallback = std::function<void(const uint8_t* src, const uint8_t* data, const size_t length, void* ctx)>;
-    // Fired once per outbound packet the driver accepted, either when the radio
-    // reports its MAC-layer result or when the radio refused the frame outright and
-    // will report nothing. A frame accepted and then dropped by disable() is the
-    // one case that goes unreported. `dst`/`data`/`length` mirror the send; `success` is
-    // the verdict. Drives the reliable transport's ack in place of a round-trip
-    // ack packet. A driver that accepts a frame owes this callback: it is the only
-    // delivery signal the reliable layer gets, and a frame never reported is one it
-    // waits on until its own timer gives up. Defaulted to a no-op only so a driver
-    // with no send callback at all still satisfies the interface -- a driver that
-    // takes frames and leaves this unset starves the layer above it.
+    // Fired once per accepted outbound packet with the radio's verdict (or its refusal);
+    // the reliable channels' only delivery signal. Frames dropped by disable() go unreported.
     using SendStatusCallback = std::function<void(const uint8_t* dst, const uint8_t* data, const size_t length, bool success, void* ctx)>;
 
     virtual ~PeerCommsInterface() = default;
@@ -43,9 +35,7 @@ public:
     /** Tears down the peer-to-peer radio. */
     virtual void disable() = 0;
 
-    // Sentinel for "no reading for this peer". Below every real dBm and below
-    // every proximity threshold, so a miss reads as the weakest signal rather than
-    // the strongest: a value above a threshold like -50 reads as the nearest tier.
+    // No reading for this peer; below every real dBm so a miss reads as the weakest signal.
     static constexpr int RSSI_UNKNOWN = -128;
 
     // Returns the last observed RSSI for a peer, or RSSI_UNKNOWN if none.

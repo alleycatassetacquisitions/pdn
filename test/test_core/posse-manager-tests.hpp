@@ -221,7 +221,7 @@ inline void posseConfirmLifecycle(PosseManagerTests* suite) {
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 0u);
 }
 
-// 10. onChainStateChanged clears confirms when chain drains to 0
+// onChainStateChanged clears confirms when chain drains to 0
 inline void posseOnChainStateChangedClearsOnDrain(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -230,7 +230,6 @@ inline void posseOnChainStateChangedClearsOnDrain(PosseManagerTests* suite) {
     posse.onConfirmReceived(suite->supporterMac);
     ASSERT_EQ(posse.getBoostMs(), 15u);
 
-    // First call: chain has peers (lastSupporterChainCount goes from 0 to N)
     posse.onChainStateChanged();
     EXPECT_EQ(posse.getBoostMs(), 15u);
 
@@ -238,14 +237,13 @@ inline void posseOnChainStateChangedClearsOnDrain(PosseManagerTests* suite) {
     suite->fakeClock->advance(5000);
     suite->rdc.sync(&suite->device);
 
-    // Second call: chain drained to 0
     posse.onChainStateChanged();
     EXPECT_EQ(posse.getBoostMs(), 0u);
     EXPECT_EQ(posse.getConfirmedSupporterCount(), 0u);
 }
 
-// Confirm with originator MAC not present in the challenger's supporter-jack
-// chain must be rejected. Covers MAC-spoof injection by an in-range stranger.
+// A confirm from a MAC outside the supporter chain is held but never counted.
+// Covers MAC-spoof injection by an in-range stranger.
 inline void posseConfirmFromUnknownOriginatorRejected(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -655,8 +653,7 @@ inline void posseRingClosureClearsTheChallenger(PosseManagerTests* suite) {
     EXPECT_GT(supporterAnnounces, announcesBeforeRingRx);
 }
 
-// An announce from a device that has no challenger of its own leaves the field
-// zeroed. Caching that address would cascade it onward as this device's challenger.
+// A zero challengerMac off the wire must be refused, not cached and cascaded.
 inline void posseRoleAnnounceWithNoChallengerIsRefused(PosseManagerTests* suite) {
     suite->setupHunterChallenger();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
@@ -682,8 +679,7 @@ inline void posseRoleAnnounceNoCascadeIfChallengerUnchanged(PosseManagerTests* s
     PosseManager posse(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t challengerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
-    // First receive triggers a cascade broadcast (challengerMac is new); may send to
-    // both jacks so we allow any number >= 1.
+    // First receive cascades to the supporter jack (challengerMac is new).
     int firstCascadeCount = 0;
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kRoleAnnounce, _, _))
     .WillRepeatedly([&](const uint8_t*, PktType, const uint8_t*, const size_t) {
@@ -1058,10 +1054,9 @@ inline void posseRetryStatsRecordsLifecycle(PosseManagerTests* suite) {
     // as already-told. Nobody reports it delivered, so it exhausts its retries.
     uint8_t challenger2[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x77};
     posse.onRoleAnnounceReceived(suite->opponentMac, challenger2);
-    // Tick at the cadence the platform loop actually uses. Sampling only once
-    // per backstop interval would let the re-offer land in the same call as the
-    // retry round and supersede the entry before its span ever runs out —
-    // an artefact of the test's clock, not of the schedule.
+    // Tick finer than the backstop interval: sampling once per interval would
+    // let the re-offer land in the same call as the retry round and supersede
+    // the entry before its span runs out.
     for (int i = 0; i < 19; i++) {
         suite->fakeClock->advance(100);
         posse.sync();

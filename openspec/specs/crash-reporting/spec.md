@@ -82,7 +82,7 @@ Unreported crash records SHALL be relayed from PDNs to FDNs over peer-to-peer wi
   - Upon a `400`, `413` or `415` response the FDN SHALL retire that record and continue. Upon any other encode or HTTP error, the FDN SHALL stop uploading further records on the current cycle and leave the failed record (and any subsequent records) pending.
   - Once all queued HTTP requests have completed, or when the `15,000 ms` upload timeout expires, the FDN SHALL re-enable the peer-to-peer radio.
 
-#### Scenario: PDN transfers pending crash records to Connected FDN and advances watermark on confirmation
+#### Scenario: PDN relays pending crash records to a beaconing FDN and advances watermark on stored acknowledgement
 - **WHEN** a PDN with pending crash records `1` and `2` hears the beacon of an FDN, Connected on its jack or not, and the FDN stores and acknowledges both records
 - **THEN** the PDN sends record `1`, then record `2` after the first stored acknowledgement, and advances its `sent_high_water_mark` to `2`
 

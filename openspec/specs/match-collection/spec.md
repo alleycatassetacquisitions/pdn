@@ -24,7 +24,7 @@ Every completed standalone 1v1 match SHALL be persisted on the PDN in a bounded 
 - A shootout match SHALL NOT be persisted. Every other finalized match SHALL be persisted as recorded, including one with a nil player UUID, the same player UUID on both sides, or no agreed winner; the server rejects or flags those.
 - The PDN SHALL persist a separate `collected_high_water_mark` (`0` initially), clamped to `match_sequence_number` if larger. Match `N` is pending whenever `N > collected_high_water_mark` and `N > match_sequence_number - 32`. Advancing the mark to `M` marks matches `<= M` as collected and leaves newer matches pending.
 
-#### Scenario: 33rd match overwrites oldest slot without losing newer uncollected matches
+#### Scenario: 33rd match is refused while 32 are pending
 - **WHEN** a PDN has 32 pending matches (`1..32`) and finishes a 33rd standalone match before encountering an FDN
 - **THEN** the 33rd match is not stored, `match_sequence_number` stays `32`, and matches `1..32` remain pending in ascending order
 
@@ -45,7 +45,7 @@ A PDN with pending match records SHALL deliver them to any FDN it hears by beaco
 - **WHEN** a PDN has pending matches `1..5` and leaves an FDN's range after the FDN acknowledges matches `1`, `2`, and `3`
 - **THEN** the PDN's `collected_high_water_mark` advances to `3`, and on the next FDN beacon the PDN sends only matches `4` and `5`
 
-#### Scenario: Spoofed wireless acknowledgement from uncabled sender is ignored
+#### Scenario: Acknowledgement from a different sender is ignored
 - **WHEN** a PDN that sent match `1` to an FDN receives a stored acknowledgement for match `1` from a different sender MAC
 - **THEN** the PDN ignores the acknowledgement and leaves `collected_high_water_mark` unchanged
 

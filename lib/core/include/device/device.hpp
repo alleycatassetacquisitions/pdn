@@ -53,11 +53,8 @@ public:
     StateMachine* getActiveApp();
 
     /**
-     * Runs every tick between the drivers and the mounted app's loop, so work
-     * that has to outlive an app swap can live here: only the mounted app gets an
-     * onStateLoop. One slot, and setting it displaces whatever held it, so it
-     * belongs to a single owner — on the PDN that is GameSession, which installs
-     * it in its constructor and clears it in its destructor.
+     * Runs every tick between the drivers and the mounted app's loop, surviving
+     * app swaps. Single slot: setting it displaces the previous owner.
      */
     void setTickCallback(std::function<void()> tickCallback);
 

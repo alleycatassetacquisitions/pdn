@@ -11,23 +11,13 @@
 
 class WirelessManager;
 
-// Reliable send: put a frame on the air, retransmit it on a backoff, give up on
-// it when its span runs out. One frame can owe delivery to one peer or to many —
-// a ring can hold more devices than the ESP-NOW peer table has slots, so a
-// fan-out goes out once addressed to the broadcast MAC and is tracked per
-// recipient. Both shapes are the same record here: a frame, the address it is
-// sent to, and the recipients still expected to answer for it. sync() must run
-// every loop tick.
+// Reliable send: retransmits a frame on a backoff and abandons it when its span runs out.
+// A fan-out is one broadcast frame tracked per recipient. sync() must run every loop tick.
 
 class Resender {
 public:
-    // How a send relates to other in-flight sends on the same channel that name
-    // the same recipient. SUPERSEDE_PER_TARGET (default): the payload is current
-    // state, so a newer send obsoletes any prior unacked one and only the latest
-    // survives — an older retransmit arriving last would otherwise reinstate
-    // stale state. KEEP_DISTINCT: the payload is one item of a stream (a bracket
-    // slot, one of several command families sharing a PktType), so each send
-    // keeps its own retry slot and a dropped one still retransmits.
+    // SUPERSEDE_PER_TARGET: payload is current state, a newer send drops the prior unacked one.
+    // KEEP_DISTINCT: one event of a stream, each send keeps its own retry slot.
     enum class SendMode { SUPERSEDE_PER_TARGET,
                           KEEP_DISTINCT };
 
@@ -106,24 +96,10 @@ public:
               SendMode mode = SendMode::SUPERSEDE_PER_TARGET);
 
     /**
-     * Reliable fan-out: ONE frame addressed to the broadcast MAC, with every
-     * named recipient expected to answer for it separately. Each is acked
-     * independently, but the retry schedule belongs to the frame: a round emits a
-     * single frame however many still owe an ack, and the ones still owing when
-     * the span runs out are given up on together.
-     *
-     * Broadcast rather than a unicast per recipient because the ESP-NOW peer
-     * table holds 20 entries, so a ring larger than that cannot be addressed by
-     * unicast at all, while the broadcast slot is registered once at radio init.
-     *
-     * Naming no recipients sends nothing: a frame nobody is expected to answer
-     * for is not a delivery.
-     *
-     * Always KEEP_DISTINCT. Superseding is per-recipient, so on a fan-out it
-     * would retire only the recipients the new frame happens to name, leaving a
-     * member that has since left the ring still owing an ack on the old one. A
-     * caller that wants the previous fan-out gone wants all of it gone, which is
-     * cancelAll.
+     * Reliable fan-out: ONE frame to the broadcast MAC, acked per named recipient; the
+     * retry schedule and abandonment belong to the frame. Unicast per recipient would
+     * churn the driver's peer-table eviction on a large ring. Always KEEP_DISTINCT
+     * (cancelAll retires a prior fan-out); no recipients sends nothing.
      */
     void sendBroadcast(const std::vector<std::array<uint8_t, 6>>& recipients,
                        PktType type, uint8_t seqId,
@@ -162,8 +138,7 @@ public:
      * cancelAll, sparing the frame sent under `keepSeqId`. For the frame that
      * announces the conversation is over: it owes delivery to exactly the peers
      * that have not yet heard the news, so it must outlive the teardown it is
-     * reporting. 0 spares nothing, so a caller that allocates seqId 0 cannot
-     * spare that frame.
+     * reporting.
      */
     void cancelAllExcept(PktType type, uint8_t keepSeqId);
 
@@ -207,16 +182,8 @@ public:
     }
 
 private:
-    // One frame in flight. `destination` is the address it goes to — the
-    // recipient's own MAC for a unicast, the broadcast MAC for a fan-out — and is
-    // part of the frame's identity, since one channel can address several peers
-    // out of a single seqId space.
-    //
-    // Stored rather than derived from the recipient count. Deriving it would let
-    // a fan-out quietly turn into a unicast as its members ack away, changing how
-    // an already-airborne frame is addressed and spending a peer-table slot per
-    // remaining member. The driver does register unicast peers on demand, so the
-    // wall is the 20-slot table, not membership in it.
+    // One frame in flight. `destination` is stored, not derived from recipients.size(): a
+    // fan-out must stay broadcast as its members ack away.
     struct Group {
         PktType type;
         uint8_t seqId;

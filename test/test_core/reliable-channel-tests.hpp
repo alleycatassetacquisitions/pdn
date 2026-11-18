@@ -10,9 +10,6 @@
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
 
-// Probe subclass exposing protected nextSeqId for testing.
-// Provides a no-op deliverBytes so the (otherwise pure-virtual) base
-// becomes instantiable.
 class ProbeChannel : public ReliableChannelBase {
 public:
     using ReliableChannelBase::isDuplicateReliableRx;
@@ -78,11 +75,8 @@ TEST(ReliableChannelBaseTest, duplicateSeqIdRemainsSuppressedAndFreshSeedDeliver
 }
 
 TEST(ReliableChannelBaseTest, rxDedupEvictsOldestSenderWhenFull) {
-    // The per-channel RX dedup cursor table is capped (kMaxRxSenders=32). Senders
-    // come and go across a session, so when a 33rd distinct sender arrives the
-    // oldest cursor is evicted to keep the table bounded. A wrongly-evicted
-    // still-active sender just re-seeds on its next packet (one tolerated
-    // re-dispatch); a tracked sender keeps deduping.
+    // The RX dedup table holds MAX_RX_SENDERS (32) cursors; a 33rd sender evicts the
+    // oldest, which re-seeds on its next packet at the cost of one re-dispatch.
     Resender resender(nullptr);
     ProbeChannel ch(nullptr, &resender, PktType::kChainGameEvent,
                     [](uint8_t, const uint8_t*) {});
@@ -114,10 +108,9 @@ TEST(ReliableChannelBaseTest, rxDedupEvictsOldestSenderWhenFull) {
 }
 
 TEST(ResenderTest, distinctSeqIdsToSameTargetCoexist) {
-    // A batch of distinct reliable packets to one peer on one channel (e.g. one
-    // BRACKET_ENTRY per bracket slot) must each retain an independent retry
-    // slot keyed by seqId; sharing (type, target) must not collapse them into
-    // one, or a dropped non-final slot would never retransmit.
+    // A batch of distinct reliable packets to one peer on one channel must each
+    // retain an independent retry slot keyed by seqId; sharing (type, target) must
+    // not collapse them into one, or a dropped non-final slot would never retransmit.
     Resender resender(nullptr);  // null wm: transmit() no-ops, retry bookkeeping intact
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     uint8_t payload[4] = {0};
@@ -162,7 +155,7 @@ TEST(ResenderTest, cancelMatchingDropsOnlyFramesWhosePayloadMatches) {
 }
 
 TEST(ResenderTest, supersedeDropsPriorAndStaleAckDoesNotResurrect) {
-    // The whole point of SupersedePerTarget (DRAW_RESULT / NEVER_PRESSED): a
+    // The whole point of SUPERSEDE_PER_TARGET (DRAW_RESULT / NEVER_PRESSED): a
     // newer send to the same peer obsoletes the prior unacked one, so only the
     // latest is armed. A late ack for the superseded seqId must match nothing and
     // must not resurrect it or disturb the surviving entry; otherwise a stale
@@ -188,10 +181,6 @@ TEST(ResenderTest, supersedeDropsPriorAndStaleAckDoesNotResurrect) {
 }
 
 // ---- Broadcast fan-out ----
-//
-// The fan-out exists because the ESP-NOW peer table holds 20 entries, so a ring
-// larger than that cannot be addressed by unicast at all. These cases pin the
-// contract that makes one frame safe to treat as N reliable deliveries.
 
 namespace {
 /**
@@ -243,8 +232,7 @@ struct BroadcastFixture {
 
 TEST(ResenderBroadcastTest, oneFramePerRoundNotOnePerMember) {
     // The reason the fan-out is broadcast at all. Four members owe an ack, and a
-    // retransmit round must put ONE frame on the wire, not four — a per-member
-    // unicast retry is what exhausts the 20-slot peer table.
+    // retransmit round must put ONE frame on the wire, not four.
     BroadcastFixture f;
     std::vector<std::array<uint8_t, 6>> members = {
         f.mac(1), f.mac(2), f.mac(3), f.mac(4)};
@@ -405,9 +393,8 @@ TEST(ResenderBroadcastTest, cancelDropsOneMemberAndResendReplacesTheGroup) {
 }
 
 TEST(ResenderBroadcastTest, sameSeqIdToADifferentPeerIsADifferentFrame) {
-    // One channel can address two peers out of one seqId space — the role announce
-    // does exactly that, one jack each. A seqId therefore names a frame only
-    // together with where it went, so the replacement scan has to compare the
+    // One channel can address two peers out of one seqId space, so a seqId names a
+    // frame only together with where it went: the replacement scan has to compare the
     // destination too. Matching on (type, seqId) alone lets the second peer's send
     // erase the first peer's still-pending frame, which then never retransmits and
     // never abandons: it is simply gone, and that peer is never told anything.

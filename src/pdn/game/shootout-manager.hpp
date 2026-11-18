@@ -43,7 +43,7 @@ public:
     /**
      * Optional MatchManager injection. When set, Shootout primes the
      * MatchManager with the player pair on each MATCH_START so match
-     * states find a ready match. Tests leave this unset.
+     * states find a ready match.
      */
     void setMatchManager(MatchManager* manager) { matchManager = manager; }
 
@@ -101,9 +101,8 @@ public:
 
     int getCurrentMatchIndex() const;
     /**
-     * The two devices of the current match index. Zero MACs only before the
-     * first match; the index is not cleared at a match boundary, so between
-     * matches and after the tournament ends this still names the last pair.
+     * Zero MACs before the first match and after a teardown; otherwise the last
+     * pair started, including between matches and in ENDED.
      */
     std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> getCurrentMatchPair() const;
 
@@ -151,27 +150,19 @@ public:
     std::array<uint8_t, 6> getTournamentWinner() const;
 
     // Reset all tournament state back to IDLE phase so a subsequent ring
-    // closure triggers a fresh proposal. Called when the physical ring is
-    // broken after TOURNAMENT_END or ABORTED.
+    // closure triggers a fresh proposal.
     void resetToIdle();
 
     /**
-     * Tears down, lands in Phase::ABORTED, and only then fans ABORT out to the
-     * ring (bracket, or confirmedSet before a bracket exists). Armed after the
-     * teardown because the teardown cancels the fan-outs in flight, sparing only
-     * the seqId already recorded as terminal — which this one is not yet.
-     * Idempotent, and refuses ENDED as well as ABORTED.
+     * Tears down to Phase::ABORTED, then fans ABORT out (if armed first, the
+     * teardown would cancel it). No-op in ENDED or ABORTED.
      */
     void abortTournament();
 
     /**
-     * Ring-break debounce. A cable nudge flickers the ring on real hardware; act
-     * only once the break has settled. This covers the flicker, not a recovery:
-     * healing a nudge costs a link re-handshake, the latching device's own MAC
-     * walking the ring to re-latch, then the flag walking back, all of which
-     * outlast it. Calibrated against how long a nudge flickers, so it is not the
-     * RDC's propagation window even though both are 500 — widening this one is a
-     * rig question and does not imply widening that one.
+     * Ring-break debounce: rides out a cable-nudge flicker, not a recovery.
+     * Rig-tuned; unrelated to RemoteDeviceCoordinator::RING_EVIDENCE_TIMEOUT_MS
+     * despite the equal value.
      */
     static constexpr unsigned long RING_BREAK_DEBOUNCE_MS = 500;
     /**
@@ -180,10 +171,8 @@ public:
      */
     static constexpr size_t MIN_PARTICIPANTS = 2;
     /**
-     * How long a roster stays below MIN_PARTICIPANTS before the proposal is
-     * given up on. Wall-clock, and generous: what fills the roster is members
-     * announcing themselves to the head, which nothing here drives or can
-     * predict. Raise it if a venue's larger rings are seen to fill slower.
+     * How long the roster may stay below MIN_PARTICIPANTS before the proposal
+     * aborts; members announce to the head on their own schedule.
      */
     static constexpr unsigned long SHORT_ROSTER_TIMEOUT_MS = 3000;
     static constexpr unsigned long kConfirmRebroadcastMs = 1000;
@@ -276,11 +265,9 @@ private:
     uint8_t lastBracketSeqId = 0;
     uint8_t nextShootoutSeqId = 1;
 
-    // Retransmits for every command family this manager sends. Owned here, not
-    // shared with the coordinator's: a fan-out armed by this manager must die
-    // with it rather than keep broadcasting for a tournament that is over.
-    // All five families ride one PktType, so the abandon callback reads which
-    // one gave up off the frame's own command byte.
+    // Retransmits the five acked command families; owned here so a fan-out dies
+    // with this manager. They share one PktType, so the abandon callback reads
+    // the command byte.
     Resender resender;
     void onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac,
                             const uint8_t* packet, size_t len);
@@ -309,8 +296,8 @@ private:
     uint8_t lastMatchStartSeqId = 0;
     SimpleTimer bracketRevealTimer;
     /**
-     * Advances the bracket. Called only from sync(), on the main loop — a second
-     * caller on the packet path would need its own guard against double-advance.
+     * Advances the bracket. Called only from sync(); see reportLocalWin for why
+     * not from the result path.
      */
     void maybeStartNextMatch();
     void sendMatchStartToPeers();
@@ -318,10 +305,8 @@ private:
 
     std::vector<std::array<uint8_t, 6>> eliminated;
     bool reportedLocalWin = false;
-    // The match whose result this device has already re-sent once, or -1. Keyed
-    // on the match rather than a flag, so only a tournament reset clears it: a
-    // later match names a different index and gets its own attempt. A device flag
-    // would have to be reset wherever a match turns over, which differs by role.
+    // Match index whose result this device has already re-sent once, or -1;
+    // cleared only by a tournament reset.
     int matchResultResentIndex = -1;
     uint8_t lastMatchResultSeqId = 0;
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,

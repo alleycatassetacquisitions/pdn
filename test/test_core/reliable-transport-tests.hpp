@@ -394,9 +394,8 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
 }
 
 TEST(ReliableTransportTest, duplicateReliableDeliveryDispatchesOnce) {
-    // A lost ack makes the sender resend, so the receiver sees the same
-    // (sender, seqId) twice. The reliable layer must ack both (to silence the
-    // sender) yet dispatch onReceive only once.
+    // A sender that missed SEND_SUCCESS retransmits; the duplicate must dispatch
+    // once.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
     ReliableTransport transport(&wm);
@@ -434,9 +433,7 @@ TEST(ReliableTransportTest, duplicateReliableDeliveryDispatchesOnce) {
 }
 
 TEST(ReliableTransportTest, unsequencedDeliveryNeverDeduped) {
-    // seqId==0 is the sendOnce/unsequenced sentinel: those payloads dedup by
-    // domain identity at the caller (e.g. forwarded CONFIRMs all carry 0), so
-    // the base must dispatch every one.
+    // seqId 0 is the unsequenced sentinel and is never deduped.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
     ReliableTransport transport(&wm);

@@ -13,18 +13,9 @@
 #include <array>
 
 /**
- * Owns the managers the gameplay apps share and the wireless plumbing that
- * feeds them, and sits above every app so neither is tied to one state machine.
- *
- * getContext() hands those managers out by value, so an app built from one — and
- * any state of that app which keeps a manager — holds a pointer the session frees.
- * Destroy the apps before the session. No state destructor dereferences one today,
- * so that is ordering hygiene rather than a live use-after-free.
- *
- * sync() must run on each platform tick, not from a state: only the mounted app
- * receives an onStateLoop, so a retry machine driven from inside a state stalls
- * the moment the device swaps apps — silently, because nothing on the wire says
- * a retransmit was skipped. Device::setTickCallback is the seam that runs it.
+ * Owns the managers and wireless plumbing the gameplay apps share. Destroy the
+ * apps before the session: they hold pointers to its managers. sync() must run on
+ * each platform tick, not from a state: only the mounted app gets an onStateLoop.
  */
 class GameSession {
 public:
@@ -53,11 +44,7 @@ public:
     GameContext getContext();
 
 private:
-    /**
-     * The mounted SupporterReady, or null when another state holds the device.
-     * Read from the mounted app rather than published into the session: which
-     * state is running is the app's fact, and a second copy of it can drift.
-     */
+    /** The mounted SupporterReady, or null when another state holds the device. */
     SupporterReady* getMountedSupporterReady();
 
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
@@ -66,22 +53,14 @@ private:
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void logRetryStats();
 
-    /**
-     * One row per packet type this session answers for. The constructor
-     * registers every row and the destructor clears every row, so the two lists
-     * cannot drift apart the way two hand-written ones can.
-     */
+    /** One row per packet type; the constructor registers and the destructor clears every row. */
     struct PacketRoute {
         PktType type;
         PeerCommsInterface::PacketCallback handler;
     };
     static const std::array<PacketRoute, 4>& packetRoutes();
 
-    /**
-     * Wraps a member handler in the C-style callback the radio takes. The member
-     * is a template parameter, so the pointer-to-member call resolves at compile
-     * time; the row still stores a std::function, as the lambdas it replaced did.
-     */
+    /** Adapts a member handler to the radio's C-style callback; ctx is the GameSession. */
     template <void (GameSession::*Handler)(const uint8_t*, const uint8_t*, size_t)>
     static void dispatchTo(const uint8_t* fromMac, const uint8_t* data,
                            const size_t dataLen, void* ctx) {
@@ -96,8 +75,6 @@ private:
     MatchManager* matchManager = nullptr;
     PosseManager* posseManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
-    // Sends this device's records to FDNs. Deleted before the managers above,
-    // which it reads.
     RecordRelay* recordRelay = nullptr;
 
     SimpleTimer statsLogTimer;

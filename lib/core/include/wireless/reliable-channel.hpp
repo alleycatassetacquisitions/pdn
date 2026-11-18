@@ -11,25 +11,9 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "wireless/resender.hpp"
 
-// A ReliableChannel is a typed, reliable pipe for exactly one PktType: game
-// code sends a packed payload struct and receives decoded structs back, and
-// the channel supplies everything reliability needs underneath — seqId
-// allocation, retry-until-delivered via a Resender, duplicate suppression on
-// receipt, and an abandon callback when a peer stays unreachable past the frame's
-// span. The struct itself is the wire format (packed, memcpy'd); both ends run
-// the same firmware, so field layout is the protocol. ReliableChannelBase holds
-// the untyped mechanics; the ReliableChannel<P> template below binds them to a
-// payload type.
-//
-// No ack packet is sent or expected: a send is cleared by the radio's own
-// SEND_SUCCESS, which is why deliver() emits nothing on receipt. Dedup still
-// earns its place, because a sender that missed SEND_SUCCESS retransmits.
-//
-// Most channels are created and owned by a ReliableTransport, one per PktType.
-// Not all: PosseManager binds one straight to its own Resender, which is
-// what a caller outside the coordinator has to do, the transport being private
-// to it. Such an owner can route abandonment itself by setting the callback on
-// the Resender it holds; PosseManager does not.
+// A typed, reliable pipe for exactly one PktType. The packed payload struct P is
+// the wire format. A channel sends no ack packet: the radio's SEND_SUCCESS clears
+// a send, and rx dedup covers a sender that missed it and retransmits.
 class ReliableChannelBase {
 public:
     using OnAbandon = std::function<void(uint8_t seqId, const uint8_t* targetMac)>;
@@ -63,7 +47,7 @@ public:
 
     /**
      * Typed subclass deserializes bytes into its payload type and dispatches
-     * to its onReceive callback. Returns true if delivered.
+     * to its onReceive callback. Returns false only on a length mismatch.
      */
     virtual bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) = 0;
 
@@ -77,8 +61,8 @@ public:
 
     /**
      * sizeof the payload struct this channel is typed on. The transport uses
-     * it to tell a same-type re-claim from a different-payload collision on
-     * the same PktType.
+     * it to tell a same-size re-claim from a different-size collision on the
+     * same PktType.
      */
     virtual size_t payloadSize() const = 0;
 
@@ -90,7 +74,6 @@ public:
 
 protected:
     uint8_t nextSeqId();
-    // nullptr in probe-style unit tests; every use is null-tolerant.
     WirelessManager* getWirelessManager() const { return wirelessManager; }
     // Defined in the .cpp so the logger stays out of this template header.
     static void logLengthMismatch(PktType type, size_t got, size_t want);
@@ -132,12 +115,8 @@ public:
                               std::move(onAbandon), sendMode) {}
 
     /**
-     * Reliable send: allocates a fresh nonzero seqId, writes it into `p`, hands
-     * the payload to the Resender for retry-until-ack, and returns the id. By
-     * reference rather than by value so a 770-byte HeadTransferPayload is not
-     * copied onto this frame on the way past; the id lands in the caller's struct
-     * as a consequence, which costs nothing because every caller passes a local
-     * it built for this send.
+     * Stamps a fresh nonzero seqId into `p`, sends it via the Resender, and returns
+     * the id. By reference so a 770-byte HeadTransferPayload is not copied.
      */
     uint8_t sendReliable(const uint8_t* mac, P& p) {
         p.seqId = nextSeqId();
@@ -146,17 +125,11 @@ public:
         return p.seqId;
     }
 
-    /**
-     * Decode + dispatch one inbound packet: dedup, then the onReceive
-     * callback. No ack is emitted; the sender's Resender is cleared by its own
-     * radio SEND_SUCCESS, not a round-trip. Dedup still matters because a
-     * sender that missed SEND_SUCCESS retransmits, and the duplicate must be
-     * suppressed here.
-     */
+    /** Decode + dispatch one inbound packet: dedup, then onReceive. */
     bool deliver(const uint8_t* fromMac, const uint8_t* data, size_t len) {
         if (len != sizeof(P)) {
-            // A corrupt/truncated ESP-NOW frame (no CRC on this path); log so
-            // it's diagnosable rather than silently dropped.
+            // The radio's FCS already rejects corrupt frames, so a wrong length
+            // means the sender's payload struct differs (firmware mismatch).
             logLengthMismatch(packetType, len, sizeof(P));
             return false;
         }
@@ -167,17 +140,17 @@ public:
         return true;
     }
 
-    /** Untyped entry point used by the transport's rx routing. */
+    /** Untyped entry point for the driver packet handler. */
     bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) override {
         return deliver(fromMac, data, len);
     }
 
     /**
      * Radio send-result for one of this channel's outbound packets, routed
-     * from the driver's send callback via the transport. `data` is the exact
-     * payload handed to the radio, so the stamped seqId reads straight back
-     * out. SEND_SUCCESS clears the pending entry (the peer's MAC acked it);
-     * SEND_FAIL is ignored and left to the backoff timer.
+     * from the driver's send callback. `data` is the exact payload handed to
+     * the radio, so the stamped seqId reads straight back out. SEND_SUCCESS
+     * clears the pending entry (the peer's MAC acked it); SEND_FAIL is ignored
+     * and left to the backoff timer.
      */
     void onSendResult(const uint8_t* toMac, const uint8_t* data, size_t len,
                       bool success) override {

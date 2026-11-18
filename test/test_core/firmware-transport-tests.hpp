@@ -377,7 +377,6 @@ TEST(FirmwareTransportTest, anUnreadableImageIsNotSeeded) {
 
 // Event firmware (tag event-firmware-2026-11b) reads a firmware frame as one type byte,
 // a 32-byte image id, a 4-byte image length and a 2-byte index, then the chunk.
-// Read at fixed offsets, so a layout change or a renumber without the static_assert fails here.
 TEST(FirmwareTransportTest, aChunkFrameParsesWithTheEventFirmwareLayout) {
     FirmwareTransportFixture f;
     f.deliverFirstFrames(1);

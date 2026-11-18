@@ -177,7 +177,7 @@ TEST_F(SerialFrameParserTests, unknownOpcodeDrops) {
     int frameCount = 0;
     parser.setHelloFrameHandler([&](const HelloPayload&) { ++frameCount; });
 
-    // 0x99 is not an opcode; neither is 0x01 (the fork's BEACON, not ported).
+    // Neither 0x99 nor 0x01 is an opcode.
     feed({0xAA, 0x55, 0x99, 0x01, 0x02, 0x03, 0x04});
     feed({0xAA, 0x55, 0x01, 0x01, 0x02, 0x03, 0x04});
     EXPECT_EQ(frameCount, 0);

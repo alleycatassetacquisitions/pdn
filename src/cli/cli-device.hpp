@@ -37,11 +37,8 @@
 namespace cli {
 
 /**
- * Human-readable name for a state id shown in the CLI's state history.
- *
- * Ids come from two namespaces that share one numbering: player-fetch owns
- * 0, 1, 2, 4 and 31 and the game owns the rest. Naming the constants rather than the
- * numbers is what keeps this from drifting — a retired state stops compiling here.
+ * Name for a state id in the CLI state history; PlayerFetchStateId (0, 1, 2, 4, 31) and
+ * QuickdrawStateId share one numbering.
  */
 inline const char* getStateName(int stateId) {
     switch (stateId) {
@@ -196,13 +193,12 @@ public:
         std::strncpy(team.name, isHunter ? "Hunter" : "Bounty", sizeof(team.name) - 1);
         instance.player->applyRegistrationProfile(
         Player::testPlayerIdFromMac(instance.peerCommsDriver->getMacAddress()), "Test", team, {});
-        instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
+        instance.player->setAllegiance(Allegiance::RESISTANCE);
 
         instance.symbolWirelessManager = new SymbolWirelessManager(
             instance.pdn->getWirelessManager(),
             instance.pdn->getRemoteDeviceCoordinator());
 
-        // Create the shared managers and the apps that read them
         instance.gameSession = new GameSession(
             instance.player,
             instance.pdn,
@@ -223,9 +219,8 @@ public:
         {StateId(SHOOTOUT_APP_ID), instance.shootoutApp},
         {StateId(SYMBOL_APP_ID), instance.symbolApp},
         };
-        // Skip the entire registration flow: launch straight into the hub's first
-        // state (AwakenSequence). The player is already configured with ID, role,
-        // and allegiance from DeviceFactory.
+        // Player is preconfigured above, so launch the hub (boot state AwakenSequence)
+        // and skip registration.
         instance.pdn->loadAppConfig(apps, StateId(HUB_APP_ID));
         // Register with SerialCableBroker for cable simulation
         SerialCableBroker::getInstance().registerDevice(
@@ -241,9 +236,7 @@ public:
         // Unregister from SerialCableBroker
         SerialCableBroker::getInstance().unregisterDevice(device.deviceIndex);
 
-        // Apps before the session, which owns the managers their GameContext
-        // copies point at. No state destructor dereferences one today, so this is
-        // ordering hygiene rather than a fix for a live use-after-free.
+        // Apps before the session: it owns the managers their GameContext copies point at.
         delete device.playerFetchApp;
         delete device.hubApp;
         delete device.matchApp;

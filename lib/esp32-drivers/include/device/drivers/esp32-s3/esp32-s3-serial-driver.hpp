@@ -93,8 +93,6 @@ public:
     void exec() override {
         while (available() > 0) {
             int incomingChar = read();
-            // Byte mode routes each RX byte to the byte callback (HELLO framing)
-            // and skips string assembly; the two are mutually exclusive per jack.
             if (byteCallback) {
                 byteCallback(static_cast<uint8_t>(incomingChar));
                 continue;

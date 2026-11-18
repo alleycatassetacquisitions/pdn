@@ -1,23 +1,6 @@
-# PlatformIO extra_script: keeps compile_commands.json fresh for clangd.
-#
-# Why: PlatformIO only writes compile_commands.json when you pass -t compiledb,
-# so on every normal `pio run` / `pio test` the file goes stale relative to
-# files added or renamed since the last manual refresh. Clangd then reports
-# diagnostics against a phantom snapshot of the tree.
-#
-# What it does:
-#   - For env:native_cli: registers the SCons CompilationDatabase builder as a
-#     default target, so every native_cli build refreshes
-#     $PROJECT_DIR/compile_commands.json inline (~0.5s overhead). This env is
-#     the canonical indexing source because it includes cli-main.cpp and the
-#     cli/* sources that other native envs exclude.
-#   - For every other env (esp32, native_cli_test, native, native_perf, etc):
-#     spawns `pio run -e native_cli -t compiledb` in the background at script
-#     LOAD time (not as a post-build action). This way the refresh fires even
-#     on no-op `pio test` invocations where SCons doesn't rebuild anything;
-#     AddPostAction is tied to target rebuilds and would silently skip those.
-#     Xtensa flags and headers aren't useful to clangd on a Linux dev machine,
-#     so we never let ESP32 entries reach the root file.
+# PlatformIO extra_script: native_cli builds write compile_commands.json; every
+# other env spawns `pio run -e native_cli -t compiledb` at load time
+# (post-actions skip no-op builds), so Xtensa entries never reach clangd.
 
 Import("env")  # noqa: F821  (PlatformIO injects this)
 

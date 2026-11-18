@@ -7,7 +7,10 @@
 
 class FirmwareUpdateManager;
 
-/** Registration app: the role picker, and the firmware update it can hand off to. */
+/**
+ * Registration app: PIN entry, role picker and welcome, plus the firmware
+ * update PIN entry hands off to.
+ */
 class PlayerFetchApp : public StateMachine {
 public:
     /** @p firmwareUpdateManager may be null to skip the hold-to-update state. */

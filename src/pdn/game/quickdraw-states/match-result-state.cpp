@@ -42,7 +42,6 @@ void MatchResult::onStateMounted(PDN* pdn) {
 }
 
 void MatchResult::onStateLoop(PDN* pdn) {
-    // No loop processing needed for result state
 }
 
 void MatchResult::onStateDismounted(PDN* pdn) {
