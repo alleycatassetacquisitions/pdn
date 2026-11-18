@@ -17,6 +17,10 @@
 namespace soak {
 
 inline constexpr uint64_t TICK_MS = 5;
+// The drain has no cables and no presses, only radio, flash and HTTP waiting out the
+// uploader's 300 s interval: a HELLO-aligned 20 ms tick is well inside every
+// retry window (100 ms resend, 500 ms context) and keeps the CI smoke runs short.
+inline constexpr uint64_t DRAIN_TICK_MS = 20;
 inline constexpr uint64_t HELLO_CADENCE_MS = 20;
 // The event's wall clock at virtual time zero (2026-11-18).
 inline constexpr int64_t EVENT_EPOCH_MS = 1795000000000LL;
@@ -73,7 +77,9 @@ public:
         medium.config = config.medium;
     }
 
+    /** Not copyable: devices hold references into the world. */
     World(const World&) = delete;
+    /** Not assignable. */
     World& operator=(const World&) = delete;
 
     /** Frees every device. */
@@ -106,7 +112,7 @@ public:
             tick();
         startDrain();
         const uint64_t cap = now + config.drainCapMs;
-        while (now < cap && !(now % 1000 == 0 && isQuiescent()))
+        while (now < cap && !(now % 1000 < DRAIN_TICK_MS && isQuiescent()))
             tick();
         return finish(isQuiescent());
     }
@@ -206,7 +212,8 @@ private:
         const uint64_t seed = config.schedule.seed;
         uint64_t nonce = 0;
         if (config.serverUrl.empty()) {
-            server = new FakeServer(seed ^ 0x22);
+            fake = new FakeServer(seed ^ 0x22);
+            server = fake;
         } else {
             RealServer* real = new RealServer(config.serverUrl);
             server = real;
@@ -336,8 +343,12 @@ private:
     // ---- the tick ---------------------------------------------------------
 
     void tick() {
-        now += TICK_MS;
+        now += draining ? DRAIN_TICK_MS : TICK_MS;
         medium.deliverDue();
+        if (noEventUntil != 0 && now >= noEventUntil) {
+            noEventUntil = 0;
+            fake->eventActive = true;
+        }
         cables.transfer(allJacks());
         applyActions();
         for (size_t i = 0; i < activities.size();) {
@@ -516,6 +527,13 @@ private:
                     const bool open = !match.hunter.finalized || !match.bounty.finalized;
                     if (open && match.disturbed.empty()) match.disturbed = "burst";
                 }
+                return 1;
+            case ActionType::NO_EVENT:
+                // Only the fake can go between events; the real one belongs to the lead.
+                if (fake == nullptr) return 1;
+                fake->eventActive = false;
+                noEventUntil =
+                std::max(noEventUntil, now + static_cast<uint64_t>(action.get("dur")));
                 return 1;
         }
         return 1;
@@ -817,7 +835,10 @@ private:
 
     void startDrain() {
         note("drain");
+        draining = true;
         medium.burstUntil = 0;
+        if (fake != nullptr) fake->eventActive = true;
+        noEventUntil = 0;
         for (FdnSlot& slot : fdns) {
             slot.mutedUntil = slot.offlineUntil = 0;
             slot.faults = HttpFaults();
@@ -1047,6 +1068,8 @@ private:
     VirtualMedium medium;
     VirtualCables cables;
     EventServer* server = nullptr;
+    FakeServer* fake = nullptr;
+    uint64_t noEventUntil = 0;
     std::vector<PdnSlot> pdns;
     std::vector<FdnSlot> fdns;
     std::vector<Activity> activities;
@@ -1064,6 +1087,7 @@ private:
     PlatformClock* savedClock = nullptr;
     LoggerInterface* savedLogger = nullptr;
     bool ready = false;
+    bool draining = false;
 };
 
 /** Generates the seed's actions and plays them. */

@@ -14,7 +14,7 @@ namespace soak {
 // ticks (it waits for the PDNs to be idle and presses relative to the draw), so
 // dropping actions from a list still leaves a runnable list: that is what lets a
 // failing seed shrink.
-enum class ActionType { DUEL, RING, VISIT, REBOOT, CUT, FDN_OFF, FDN_REBOOT, BURST };
+enum class ActionType { DUEL, RING, VISIT, REBOOT, CUT, FDN_OFF, FDN_REBOOT, BURST, NO_EVENT };
 
 struct Action {
     uint64_t at = 0;
@@ -33,8 +33,8 @@ struct Action {
     }
 };
 
-inline const char* const ACTION_NAMES[] = {"duel", "ring",   "visit",     "reboot",
-                                           "cut",  "fdnoff", "fdnreboot", "burst"};
+inline const char* const ACTION_NAMES[] = {"duel",   "ring",      "visit", "reboot", "cut",
+                                           "fdnoff", "fdnreboot", "burst", "noevent"};
 
 inline std::string formatList(const std::vector<int>& list) {
     std::string out;
@@ -62,7 +62,7 @@ inline bool parseAction(const std::string& line, Action& action) {
     while (words >> word) {
         const size_t eq = word.find('=');
         if (eq == std::string::npos) {
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < 9; i++) {
                 if (word == ACTION_NAMES[i]) {
                     action.type = static_cast<ActionType>(i);
                     typed = true;
@@ -99,6 +99,8 @@ struct ScheduleConfig {
     double fdnOffPerHour = 6;
     double fdnRebootsPerHour = 2;
     double burstsPerHour = 20;
+    // The fake server between events: uploads answer 409 and are kept.
+    double noEventPerHour = 2;
 };
 
 // Seeded generator of an action list. It keeps a rough busy-until per device so
@@ -242,6 +244,12 @@ private:
             fault.params = {{"down", uniform(1000, 4000)},
                             {"k", chance(0.4) ? uniform(1, 3) : 0},
                             {"torn", uniform(0, 1)}};
+            actions.push_back(fault);
+        }
+        fault.b.clear();
+        if (chance(perStep(config.noEventPerHour, 1))) {
+            fault.type = ActionType::NO_EVENT;
+            fault.params = {{"dur", uniform(60000, 600000)}};
             actions.push_back(fault);
         }
     }

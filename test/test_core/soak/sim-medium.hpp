@@ -159,6 +159,7 @@ private:
         uint64_t senderInstance;
     };
     struct Later {
+        /** Earliest delivery first; ties in send order. */
         bool operator()(const Frame* a, const Frame* b) const {
             return a->at != b->at ? a->at > b->at : a->order > b->order;
         }
