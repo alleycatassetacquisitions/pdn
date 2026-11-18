@@ -841,7 +841,9 @@ private:
         noEventUntil = 0;
         for (FdnSlot& slot : fdns) {
             slot.mutedUntil = slot.offlineUntil = 0;
-            slot.faults = HttpFaults();
+            // Online, but the server still errs: the uploader must keep and retry.
+            slot.faults = config.http;
+            slot.faults.offline = false;
             if (!slot.down) medium.setMuted(slot.mac, false);
         }
         for (PdnSlot& slot : pdns)

@@ -16,10 +16,14 @@ inline soak::SoakConfig soakSmokeConfig(uint64_t seed) {
     config.schedule.rebootsPerHour = 6;
     config.schedule.cutsPerHour = 6;
     config.schedule.fdnRebootsPerHour = 20;
-    config.http.serverError = 0.15;
+    // High enough that a short run resends records an FDN already holds (lost
+    // link-layer acks) and sees a third of upload batches answered 503.
+    config.medium.ackLoss = 0.15;
+    config.http.serverError = 0.3;
     config.http.transportFail = 0.05;
     config.http.lostResponse = 0.1;
-    config.drainCapMs = 20 * 60000;
+    // One upload try per FDN per 300 s: room for several 503s in a row.
+    config.drainCapMs = 40 * 60000;
     return config;
 }
 
