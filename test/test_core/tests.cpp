@@ -36,6 +36,7 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
+#include "soak-smoke-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -2184,6 +2185,16 @@ TEST_F(ShootoutManagerTests, matchIndexAdvancesMonotonicallyAcrossRounds) {
 TEST_F(ShootoutManagerTests, resultRetryIsReturnedByTournamentReset) {
     resultRetryIsReturnedByTournamentReset(this);
 }
+
+// ============================================
+// SOAK SMOKE TESTS (virtual event, fake server)
+// ============================================
+
+TEST(SoakSmoke, seed11PassesEndToEnd) { soakSmokeSeedPasses(11); }
+TEST(SoakSmoke, seed23PassesEndToEnd) { soakSmokeSeedPasses(23); }
+TEST(SoakSmoke, ringAndPosseStoreOnlyDuels) { soakRingAndPosseStoreOnlyDuels(); }
+TEST(SoakSmoke, sameSeedReplaysIdentically) { soakSameSeedReplaysIdentically(); }
+TEST(SoakSmoke, actionListRoundTrips) { soakActionListRoundTrips(); }
 
 // ============================================
 // MAIN
