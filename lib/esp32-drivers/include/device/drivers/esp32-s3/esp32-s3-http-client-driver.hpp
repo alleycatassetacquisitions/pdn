@@ -417,8 +417,8 @@ private:
         return ESP_OK;
     }
 
-    // ServerKeyPin::verifiedFlags holds the rule; host-name and date flags are
-    // cleared since the venue may lack DNS or a clock.
+    // ServerKeyPin::verifiedFlags holds the rule; a matching leaf clears host-name
+    // and date flags since the venue may lack DNS or a clock.
     static int verifyServerCertificate(void* context, mbedtls_x509_crt* certificate, int depth,
                                        uint32_t* flags) {
         auto* client = static_cast<Esp32S3HttpClient*>(context);
