@@ -29,10 +29,12 @@ typedef enum _alleycat_device_QuickdrawMatchErrorCode {
 } alleycat_device_QuickdrawMatchErrorCode;
 
 /* Struct definitions */
-/* Response for GET /device/players/by-pin/{pin}, application/protobuf.
- No request body. The path PIN is exactly four ASCII digits, including leading
- zeros, and is resolved in the active event. Invalid PIN format returns 400;
- no active event or no matching player returns 404. Errors are plain text.
+/* Response for GET /device/players/by-band/{uid}, application/protobuf.
+ SERVER-SEAM(registration-delivery): the by-band route is agreed in #485 but not
+ yet in alleycat-rs, which serves only by-pin. No request body. {uid} is the band
+ UID as upper-case hex with no separators (8, 14 or 20 characters), resolved in
+ the active event. A band no player is linked to, or no active event, returns 404.
+ Errors are plain text.
  Includes inactive registrations, without exposing their status. Email, PIN,
  event ID, creation time, and active status are not part of this response.
  Current PDN display profile: control characters become ?, then display strings
@@ -59,6 +61,11 @@ typedef struct _alleycat_device_DevicePlayerResponse {
  count limit. Names reflect current renames and use the PDN display profile.
  These are membership details, not permissions or match-time scoring snapshots. */
     pb_callback_t affiliations;
+    /* SERVER-SEAM(registration-delivery): provisional name and number until the
+ server team agrees them; upstream.lock.json's commit predates this field.
+ The player's 32-byte record key, HMAC-SHA-256(server_secret, id); the PDN
+ tags its match records with it. Absent from a server that issues no keys. */
+    pb_callback_t record_key;
 } alleycat_device_DevicePlayerResponse;
 
 /* One current player assignment. Categories and affiliations belong to the
@@ -191,14 +198,14 @@ extern "C" {
 
 
 /* Initializer values for message structs */
-#define alleycat_device_DevicePlayerResponse_init_default {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerResponse_init_default {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define alleycat_device_DevicePlayerAffiliation_init_default {{0}, {{NULL}, NULL}, {0}, {{NULL}, NULL}}
 #define alleycat_device_WriteDeviceLogRequest_init_default {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
 #define alleycat_device_WriteQuickdrawMatchesRequest_init_default {{{NULL}, NULL}}
 #define alleycat_device_WriteQuickdrawMatchesResponse_init_default {{{NULL}, NULL}}
 #define alleycat_device_QuickdrawMatchRejection_init_default {0, "", 0, {"", ""}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
 #define alleycat_device_QuickdrawMatch_init_default {"", "", "", false, "", false, "", false, 0, false, 0, "", false, 0}
-#define alleycat_device_DevicePlayerResponse_init_zero {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerResponse_init_zero {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define alleycat_device_DevicePlayerAffiliation_init_zero {{0}, {{NULL}, NULL}, {0}, {{NULL}, NULL}}
 #define alleycat_device_WriteDeviceLogRequest_init_zero {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
 #define alleycat_device_WriteQuickdrawMatchesRequest_init_zero {{{NULL}, NULL}}
@@ -212,6 +219,7 @@ extern "C" {
 #define alleycat_device_DevicePlayerResponse_team_id_tag 6
 #define alleycat_device_DevicePlayerResponse_team_name_tag 7
 #define alleycat_device_DevicePlayerResponse_affiliations_tag 9
+#define alleycat_device_DevicePlayerResponse_record_key_tag 10
 #define alleycat_device_DevicePlayerAffiliation_category_id_tag 1
 #define alleycat_device_DevicePlayerAffiliation_category_name_tag 2
 #define alleycat_device_DevicePlayerAffiliation_affiliation_id_tag 3
@@ -246,7 +254,8 @@ X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, id,                1) \
 X(a, CALLBACK, SINGULAR, STRING,   name,              4) \
 X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, team_id,           6) \
 X(a, CALLBACK, OPTIONAL, STRING,   team_name,         7) \
-X(a, CALLBACK, REPEATED, MESSAGE,  affiliations,      9)
+X(a, CALLBACK, REPEATED, MESSAGE,  affiliations,      9) \
+X(a, CALLBACK, OPTIONAL, BYTES,    record_key,       10)
 #define alleycat_device_DevicePlayerResponse_CALLBACK pb_default_field_callback
 #define alleycat_device_DevicePlayerResponse_DEFAULT NULL
 #define alleycat_device_DevicePlayerResponse_affiliations_MSGTYPE alleycat_device_DevicePlayerAffiliation

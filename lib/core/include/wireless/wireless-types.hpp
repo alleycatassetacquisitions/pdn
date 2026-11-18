@@ -73,6 +73,10 @@ struct HttpRequest {
     int retryCount;
     std::string responseData;
     std::vector<std::pair<std::string, std::string>> requestHeaders;
+    // How much of `path` a log may show. A request whose path carries a band UID
+    // cuts it off here, and a log then shows neither the rest nor the server's
+    // error text, which may echo it.
+    size_t loggablePathLength = std::string::npos;
 
     /**
      * `contentType` is the Content-Type header the ESP32 driver sends on POST and
@@ -89,4 +93,10 @@ struct HttpRequest {
         , lastAttemptTime(0)
         , retryCount(0)
         , responseData("") {}
+
+    /** @return `path` as a log may show it. */
+    std::string getLoggablePath() const { return path.substr(0, loggablePathLength); }
+
+    /** @return true when part of `path` must never be logged. */
+    bool hasPrivatePath() const { return loggablePathLength < path.size(); }
 };

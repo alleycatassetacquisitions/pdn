@@ -56,11 +56,24 @@ bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg
     return true;
 }
 
+/** Reads a record key into the IssuedRecordKey at @p arg; a key of any other length is skipped. */
+bool decodeRecordKey(pb_istream_t* stream, const pb_field_t* field, void** arg) {
+    (void)field;
+    IssuedRecordKey* recordKey = static_cast<IssuedRecordKey*>(*arg);
+    if (stream->bytes_left != ISSUED_RECORD_KEY_SIZE) {
+        *recordKey = {};
+        return pb_read(stream, nullptr, stream->bytes_left);
+    }
+    recordKey->held = pb_read(stream, recordKey->bytes.data(), ISSUED_RECORD_KEY_SIZE);
+    return recordKey->held;
+}
+
 }  // namespace
 
 namespace DevicePlayerCodec {
 
-bool decode(const std::string& body, Player& player) {
+bool decode(const std::string& body, Player& player, IssuedRecordKey& recordKey) {
+    recordKey = {};
     UUIDBytes serverId;
     char serverName[PlayerLimits::NAME_BUFFER_SIZE] = {};
     Team team;
@@ -73,15 +86,20 @@ bool decode(const std::string& body, Player& player) {
     message.team_name.arg = team.name;
     message.affiliations.funcs.decode = &decodeAffiliation;
     message.affiliations.arg = &affiliations;
+    // SERVER-SEAM(registration-delivery): record_key is a provisional field.
+    message.record_key.funcs.decode = &decodeRecordKey;
+    message.record_key.arg = &recordKey;
 
     pb_istream_t stream = pb_istream_from_buffer(
         reinterpret_cast<const pb_byte_t*>(body.data()), body.size());
     if (!pb_decode(&stream, alleycat_device_DevicePlayerResponse_fields, &message)) {
+        recordKey = {};
         return false;
     }
 
     std::memcpy(serverId.bytes, message.id, UUIDBytes::SIZE);
     if (serverId.isZero()) {
+        recordKey = {};
         return false;
     }
     if (message.has_team_id) {

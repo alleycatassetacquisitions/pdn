@@ -1076,9 +1076,35 @@ TEST(DevicePlayerCodec, rejectsMissingRequiredUuids) { devicePlayerRejectsMissin
 
 TEST(DevicePlayerCodec, rejectsGarbageBody) { devicePlayerRejectsGarbageBody(); }
 
-TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
-    playerApiQueuesDevicePlayerLookup(this);
+TEST_F(AlleycatApiTestSuite, playerApiQueuesBandLookupAsUpperHex) {
+    playerApiQueuesBandLookupAsUpperHex(this);
 }
+
+TEST_F(AlleycatApiTestSuite, playerApiQueuesNoLookupForUidOfAnotherLength) {
+    playerApiQueuesNoLookupForUidOfAnotherLength(this);
+}
+
+TEST_F(AlleycatApiTestSuite, playerApiReportsKeyIssuedOnlyForThirtyTwoByteKey) {
+    playerApiReportsKeyIssuedOnlyForThirtyTwoByteKey(this);
+}
+
+TEST_F(AlleycatApiTestSuite, playerApiReportsUndecodableAnswerAsFailedWithoutKey) {
+    playerApiReportsUndecodableAnswerAsFailedWithoutKey(this);
+}
+
+TEST_F(AlleycatApiTestSuite, playerApiClassifiesLookupErrors) {
+    playerApiClassifiesLookupErrors(this);
+}
+
+TEST_F(AlleycatApiTestSuite, playerApiReportsRefusedLookupAsUntrustedOnce) {
+    playerApiReportsRefusedLookupAsUntrustedOnce(this);
+}
+
+TEST_F(AlleycatApiTestSuite, playerApiNeverLogsBandUid) { playerApiNeverLogsBandUid(this); }
+
+TEST(HttpRequest, withoutPrivatePartLogsWholePath) { httpRequestWithoutPrivatePartLogsWholePath(); }
+
+TEST(BandReader, isReachedThroughDriverFramework) { bandReaderIsReachedThroughDriverFramework(); }
 
 // ============================================
 // PLAYER PROVIDER TESTS

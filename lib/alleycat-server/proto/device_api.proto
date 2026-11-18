@@ -2,10 +2,12 @@ syntax = "proto3";
 
 package alleycat.device;
 
-// Response for GET /device/players/by-pin/{pin}, application/protobuf.
-// No request body. The path PIN is exactly four ASCII digits, including leading
-// zeros, and is resolved in the active event. Invalid PIN format returns 400;
-// no active event or no matching player returns 404. Errors are plain text.
+// Response for GET /device/players/by-band/{uid}, application/protobuf.
+// SERVER-SEAM(registration-delivery): the by-band route is agreed in #485 but not
+// yet in alleycat-rs, which serves only by-pin. No request body. {uid} is the band
+// UID as upper-case hex with no separators (8, 14 or 20 characters), resolved in
+// the active event. A band no player is linked to, or no active event, returns 404.
+// Errors are plain text.
 // Includes inactive registrations, without exposing their status. Email, PIN,
 // event ID, creation time, and active status are not part of this response.
 // Current PDN display profile: control characters become ?, then display strings
@@ -34,6 +36,11 @@ message DevicePlayerResponse {
   // count limit. Names reflect current renames and use the PDN display profile.
   // These are membership details, not permissions or match-time scoring snapshots.
   repeated DevicePlayerAffiliation affiliations = 9;
+  // SERVER-SEAM(registration-delivery): provisional name and number until the
+  // server team agrees them; upstream.lock.json's commit predates this field.
+  // The player's 32-byte record key, HMAC-SHA-256(server_secret, id); the PDN
+  // tags its match records with it. Absent from a server that issues no keys.
+  optional bytes record_key = 10;
 }
 
 // One current player assignment. Categories and affiliations belong to the

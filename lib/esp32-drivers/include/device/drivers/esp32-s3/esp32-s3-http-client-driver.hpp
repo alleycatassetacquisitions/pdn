@@ -533,7 +533,8 @@ private:
             esp_http_client_set_post_field(httpClient, nullptr, 0);
         }
 
-        LOG_D(HTTP_TAG, "Starting %s %s", request.method.c_str(), request.path.c_str());
+        LOG_D(HTTP_TAG, "Starting %s %s", request.method.c_str(),
+              request.getLoggablePath().c_str());
         // The first perform() runs in checkOngoingRequests() on the same exec() tick.
     }
 
@@ -551,14 +552,15 @@ private:
         if (err != ESP_OK) {
             if (serverKeyRefused) {
                 LOG_E(HTTP_TAG, "Server presented key %s, not the pinned one (%s)",
-                      presentedKeyHash, request.path.c_str());
+                      presentedKeyHash, request.getLoggablePath().c_str());
                 resetHttpClient();
                 // No retry: the same server presents the same key.
                 completeFront(
                 false, {WirelessError::SERVER_NOT_TRUSTED, "Server key does not match the pin"});
                 return;
             }
-            LOG_E(HTTP_TAG, "Request failed: %s (%s)", esp_err_to_name(err), request.path.c_str());
+            LOG_E(HTTP_TAG, "Request failed: %s (%s)", esp_err_to_name(err),
+                  request.getLoggablePath().c_str());
             resetHttpClient();
             endAttempt({WirelessError::CONNECTION_FAILED, esp_err_to_name(err)});
             return;
@@ -571,9 +573,11 @@ private:
             completeFront(true, {});
             return;
         }
-        LOG_E(HTTP_TAG, "HTTP %d for: %s (%s)", statusCode, request.path.c_str(),
-              buildRequestUrl(request).c_str());
-        logHttpErrorBody(request.responseData);
+        LOG_E(HTTP_TAG, "HTTP %d for: %s (%s)", statusCode, request.getLoggablePath().c_str(),
+              wifiConfig->baseUrl.c_str());
+        if (!request.hasPrivatePath()) {
+            logHttpErrorBody(request.responseData);
+        }
         completeFront(false, *failure);
     }
 
@@ -586,7 +590,7 @@ private:
         const unsigned long elapsedTime =
             SimpleTimer::getPlatformClock()->milliseconds() - request.lastAttemptTime;
         if (elapsedTime > REQUEST_TIMEOUT_MS) {
-            LOG_E(HTTP_TAG, "Timeout: %s", request.path.c_str());
+            LOG_E(HTTP_TAG, "Timeout: %s", request.getLoggablePath().c_str());
             resetHttpClient();
             endAttempt({WirelessError::TIMEOUT, "Request timed out"});
             return;
@@ -607,7 +611,8 @@ private:
         if (request.retryCount < MAX_RETRIES) {
             request.retryCount++;
             retryAt = SimpleTimer::getPlatformClock()->milliseconds() + (1UL << request.retryCount) * 1000;
-            LOG_W(HTTP_TAG, "Retrying %s (attempt %d)", request.path.c_str(), request.retryCount + 1);
+            LOG_W(HTTP_TAG, "Retrying %s (attempt %d)", request.getLoggablePath().c_str(),
+                  request.retryCount + 1);
             return;
         }
         completeFront(false, error);
