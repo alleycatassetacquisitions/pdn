@@ -10,15 +10,8 @@
 #include "device/serial-manager.hpp"
 #include "device/serial-frame-parser.hpp"
 
-// Per-jack HELLO link state machine. One instance per jack, driven by the
-// RDC. Three states — Idle / Connecting / Connected — on the project's StateMachine
-// framework.
-//
-// Liveness (lastHelloMs) is inherently cross-state: every HELLO refreshes the
-// watchdog in Connecting and Connected alike, so it lives on this shared context,
-// not on any one State. The per-transition triggers stay where the framework wants
-// them — private flags on the state that owns the edge, set by the machine's event
-// inputs and read by the transition predicates.
+// Per-jack HELLO link machine. Liveness (lastHelloMs) is refreshed in every state,
+// so it lives on the shared context, not on a State.
 
 enum HelloLinkStateId {
     HELLO_LINK_MACHINE = 89,
@@ -34,8 +27,7 @@ struct HelloLinkContext {
     std::function<void(SerialIdentifier, bool)> onJackChange;  // connect / disconnect
     // Fired on every Idle mount — the initial one included, with an all-zero
     // peerMac — carrying the peer the link was tracking; both the Connected
-    // silent-link edge and the Connecting timeout converge here. Parser reset
-    // is folded into the owner's wiring, so there is no separate hook.
+    // silent-link edge and the Connecting timeout converge here.
     std::function<void(SerialIdentifier, const std::array<uint8_t, 6>&)> onLinkDown;
 
     unsigned long silentLinkMs = 100;
@@ -56,11 +48,8 @@ public:
         , context(context) {}
 
     /**
-     * Every teardown (silent link, context timeout, peer swap) converges on Idle,
-     * so this is the one seam for link-death cleanup: the owner drops any
-     * half-read frame, releases the tracked peer, and tears down chain state.
-     * Fires on the initial mount too (all-zero peerMac), a no-op on zero state;
-     * clearing peerMac keeps peer()'s all-zero-while-Idle contract true.
+     * Every link-death path mounts Idle (and the initial mount, with an all-zero
+     * peerMac), so link-death cleanup hangs off onLinkDown here.
      */
     void onStateMounted(Device*) override {
         transitionToConnectingState = false;
@@ -69,10 +58,8 @@ public:
     }
 
     /**
-     * The armed peer is published on the way out, not when it arrives: the
-     * jack is down for as long as this state is current, and peer() promises
-     * all-zero there. Dismount runs before Connecting mounts, so the peer is in
-     * place for the context request that mount fires.
+     * Publishes the armed peer only on leaving Idle: peer() must read all-zero
+     * while Idle, and Connecting's mount needs it.
      */
     void onStateDismounted(Device*) override { context->peerMac = armedPeer; }
 
@@ -98,16 +85,13 @@ public:
         connectingSinceMs = context->nowMs();
         transitionToConnectedState = false;
         // Every jack initiates its own context on connecting and completes when the
-        // peer's arrives; there is no initiator/replier asymmetry, so two devices
-        // whose jacks face each other (a 2-node ring) can't ping-pong.
+        // peer's arrives.
         if (context->onContextRequest) context->onContextRequest(context->jack);
     }
 
     void markContextComplete() { transitionToConnectedState = true; }
     bool transitionToConnected() { return transitionToConnectedState; }
 
-    // No HELLO within the silent-link window, or a context exchange that never
-    // completes, drops the link back to Idle.
     bool transitionToIdle() {
         return context->sinceHello() > context->silentLinkMs ||
                context->nowMs() - connectingSinceMs > context->contextTimeoutMs;
@@ -167,25 +151,20 @@ public:
     // A HELLO stamps liveness on every state; it only opens a new link while Idle.
     // The self-echo / all-zero reject happens upstream in the RDC (it owns selfMac).
     void onHelloReceived(const HelloPayload& hello) {
-        // A live link hearing a different source MAC means the peer was swapped
-        // before the silent-link watchdog fired. Tear down to Idle first — its
-        // mount fires onLinkDown — so the old link's parser and chain state are
-        // gone before this same HELLO opens the fresh link below.
+        // Different source on a live link = peer swap: drop to Idle (fires
+        // onLinkDown) so this HELLO opens a fresh link.
         if (currentState && currentState->getStateId() != HELLO_LINK_IDLE &&
             memcmp(context.peerMac.data(), hello.source, 6) != 0) {
             skipToState(nullptr, 0);
         }
         context.lastHelloMs = context.nowMs();
-        // A live link past the guard above already tracks this source, so the peer
-        // identity only ever changes here: Idle takes it and publishes it as it
-        // dismounts into Connecting.
         if (currentState && currentState->getStateId() == HELLO_LINK_IDLE) {
             static_cast<HelloIdleState*>(currentState)->arm(hello.source);
         }
     }
 
     // Driven when the context exchange completes; only meaningful while
-    // Connecting (mirrors the enum's state guard).
+    // Connecting.
     void onContextExchangeComplete() {
         if (currentState && currentState->getStateId() == HELLO_LINK_CONNECTING) {
             static_cast<HelloConnectingState*>(currentState)->markContextComplete();

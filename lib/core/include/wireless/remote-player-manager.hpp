@@ -26,7 +26,7 @@ public:
 
     void Update();
 
-    /** Broadcasts now and every interval after; each beacon carries senderDeviceType. */
+    /** Broadcasts now, then each interval from Update(); each beacon carries senderDeviceType. */
     void StartBroadcastingPlayerInfo(  // NOLINT(readability-identifier-naming)
     Player* playerInfo, unsigned long broadcastIntervalMillis, DeviceType senderDeviceType);
 

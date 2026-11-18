@@ -655,11 +655,9 @@ inline void matchButtonPressCalculatesReactionTime(MatchStateTests* suite) {
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 250);
 }
 
-// Test: Button press applies button masher penalty
 inline void matchButtonPressAppliesMasherPenalty(MatchStateTests* suite) {
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    // First, simulate button mashing during countdown
     MatchCountdown countdownState(suite->ctx);
 
     EXPECT_CALL(*suite->device.mockPrimaryButton,
@@ -696,7 +694,6 @@ inline void matchButtonPressAppliesMasherPenalty(MatchStateTests* suite) {
     .Times(1);
     matchState.onStateMounted(&suite->device);
 
-    // Advance 200ms
     suite->fakeClock->advance(200);
 
     suite->device.mockSecondaryButton->trigger(ButtonInteraction::PRESS);
@@ -785,7 +782,6 @@ inline void matchPushedWaitsForOpponentResult(MatchStateTests* suite) {
     
     pushedState.onStateMounted(&suite->device);
     
-    // Should not transition immediately
     EXPECT_FALSE(pushedState.transitionToMatchResult());
 
     suite->fakeClock->advance(500);
@@ -1201,12 +1197,8 @@ inline void resultMatchFinalizedOnResult(MatchResultTests* suite) {
     EXPECT_TRUE(suite->matchManager->getLastMatchDisplay().hasData);
 }
 
-// The ordinary press-and-lose path, with no timeout involved. The winner's
-// MATCH_RESULT lands while this device's match is still running — on hardware
-// that is the whole race — and MatchResult mounts after it. Resolving the outcome
-// from the standing role there put the loser on the winner branch, so one match
-// produced two eliminations and a two-player final could eliminate both
-// finalists.
+// Press-and-lose in the bounty slot while the standing role is hunter: the outcome
+// must come from the draw slot.
 inline void resultShootoutLoserDoesNotClaimTheWin(MatchResultTests* suite) {
     uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
     ShootoutManager shootout(suite->player, suite->device.wirelessManager,
@@ -1325,12 +1317,8 @@ inline void cleanupCountdownClearsButtonCallbacks(StateCleanupTests* suite) {
     countdownState.onStateDismounted(&suite->device);
 }
 
-// The match continues into MatchPushed, so the match has to survive the dismount —
-// that state reads it and writes the draw result against it.
-// Leaving the match app is what ends a match, so MatchApp owns the teardown. The
-// states inside it hand the match to one another and must not tear it down: which
-// edge the machine takes is decided by registration order in populateStateMap, so
-// no state can tell from its own flags whether it is handing off or leaving.
+// Leaving the match app ends the match; the states inside hand it to each other and
+// must not clear it.
 inline void matchAppDismountEndsTheMatch(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
@@ -1358,9 +1346,7 @@ inline void matchAppDismountEndsTheMatch(StateCleanupTests* suite) {
 }
 
 // The other half of the same rule: a state dismounting on its own leaves the match
-// alone, because it may be handing off to a sibling that needs it. Pinned on MatchState,
-// whose exits used to be enumerated by flag — the case that broke was an abort
-// winning while the press flag was set.
+// alone, because it may be handing off to a sibling that needs it.
 inline void aMatchStateDismountLeavesTheMatchToTheApp(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
@@ -1523,7 +1509,7 @@ inline void cleanupMatchManagerClearsMatchState(StateCleanupTests* suite) {
 }
 
 // ============================================
-// MatchState Callback Cleanup (new behaviours from refactor)
+// MatchState Callback Cleanup
 // ============================================
 
 // Test: MatchState removes button callbacks when transitioning to MatchReceivedResult
@@ -1546,7 +1532,7 @@ cleanupMatchStateClearsCallbacksWhenGoingToMatchReceivedResult(StateCleanupTests
     matchState.onStateLoop(&suite->device);
     ASSERT_TRUE(matchState.transitionToMatchReceivedResult());
 
-    // MatchState must now remove callbacks on dismount so MatchReceivedResult starts clean
+    // MatchState removes callbacks on dismount so MatchReceivedResult starts clean
     EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
 
@@ -1555,8 +1541,8 @@ cleanupMatchStateClearsCallbacksWhenGoingToMatchReceivedResult(StateCleanupTests
 
 // A disconnect ends the match through the app's abandon edge, not through the
 // state. MatchPushed leaves the match alone even while disconnected, because the
-// same dismount also runs on the way to MatchResult — which scores the match off
-// that match, and used to be handed an empty one on this exact path.
+// same dismount also runs on the way to MatchResult, which scores the match off
+// that match.
 inline void pushedLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
@@ -1573,12 +1559,7 @@ inline void pushedLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) 
         << "the state cleared a match the app had not finished with";
 }
 
-// Connection blip during a match countdown must not abort the match: a single
-// !isConnected() tick triggered by a cable nudge previously sent the player
-// straight to Idle. In a shootout match this orphans the player (Idle's
-// auto-trigger to ShootoutProposal is gated on !shootout->active(), which is
-// false mid-match), and the spectators wait forever for a MATCH_RESULT that
-// will never arrive.
+// A one-tick disconnect during countdown must not abandon the match.
 inline void countdownDebouncesTransientDisconnect(StateCleanupTests* suite) {
     suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
         SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);

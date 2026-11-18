@@ -44,7 +44,6 @@ public:
     MockDevice device;
 };
 
-// Until an FDN looks a PIN up (#485), every completed PIN, demo or not, leads to ChooseTeam.
 inline void pinEntryRoutesPinToChooseTeam(PlayerFetchTestSuite* suite, const int digits[4],
                                           const char* pin) {
     parameterizedCallbackFunction primaryPress = nullptr;
@@ -193,7 +192,6 @@ inline void fetchUserFoundPlayerLeadsToWelcome(PlayerFetchTestSuite* suite) {
     EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "an ignored answer writes nothing";
 }
 
-// Shows "Unable to / Locate Asset" for the failure-page time, then returns to PIN entry.
 inline void expectFailurePageThenPinEntry(PlayerFetchTestSuite* suite, FetchUserState* fetch) {
     fetch->onStateLoop(&suite->device);
     EXPECT_FALSE(fetch->transitionToPinEntry());

@@ -21,10 +21,8 @@
 #include "game/shootout-manager.hpp"
 
 /**
- * Bundle of the shared game-wide managers a state may need. Built by the
- * GameSession that owns them and handed to every state so a new manager is a
- * one-line addition here rather than a constructor change across every state.
- * All pointers are non-owning; states read only the fields they use.
+ * Non-owning bundle of the game-wide managers, built by GameSession::getContext();
+ * states keep only the fields they use.
  */
 struct GameContext {
     Player* player = nullptr;
@@ -168,11 +166,8 @@ private:
 };
 
 /**
- * A match state returns to Idle on a persistent disconnect, but never while a
- * tournament is live — the shootout's own ring-break/ABORT teardown owns that
- * path. The debounce ages on wall clock even when unsampled, so a run started
- * before the tournament went live would fire the instant the shootout ends;
- * reset it while active so a fresh full window is always required afterward.
+ * A persistent disconnect returns a match state to Idle, except during a shootout.
+ * The debounce ages unsampled, so it is reset while the shootout is live.
  */
 inline bool matchReturnsToIdle(ConnectState<PDN>& matchState, ShootoutManager* shootout) {
     if (shootout && shootout->active()) {
@@ -282,7 +277,10 @@ public:
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    /** True when the match timed out without a button press in standalone play. */
+    /**
+     * True when the match ended with no press and no result: a timeout outside a
+     * shootout, or a disconnect before the timer expires.
+     */
     bool transitionToIdle() const;
     /** True when the local player pressed the draw button during the active window. */
     bool transitionToMatchPushed() const;

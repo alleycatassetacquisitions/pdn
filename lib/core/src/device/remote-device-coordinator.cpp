@@ -31,10 +31,8 @@ void RemoteDeviceCoordinator::connectivityTaskBody() {
 
 RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
 #ifndef NATIVE_BUILD
-    // Cooperatively stop the emit task before freeing anything it dereferences:
-    // request exit, then wait for the task to observe it and self-delete. A
-    // cross-core vTaskDelete could otherwise cut it mid-emit, stranding the UART
-    // lock or dereferencing freed state.
+    // Stop the emit task before freeing anything it dereferences (see
+    // connectivityTaskStopRequested).
     if (connectivityTaskHandle != nullptr) {
         connectivityTaskStopRequested.store(true);
         while (!connectivityTaskExited.load()) {
@@ -63,12 +61,8 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
         selfDeviceType = device->getDeviceType();
     }
 
-    // One device-level channel per device-type PktType. Claiming a channel makes
-    // its receive path live (the transport installs the driver rx handler). The
-    // abandon callback is a no-op: an unreachable peer's jack link self-heals to
-    // IDLE via the context-exchange timeout (HelloConnectingState, contextTimeoutMs).
-    // The packet's PktType alone picks which channel decodes a context; the
-    // HELLO deviceType is not consulted. RDC forwards the profile bytes opaquely.
+    // PktType alone picks the context decoder; the HELLO deviceType is not consulted. No
+    // abandon callback: a dead peer's jack times out to IDLE.
     transport = new ReliableTransport(wirelessManager);
     pdnContextChannel = transport->channel<PdnConnectionContext>(
         PktType::kPdnConnectionContext);
@@ -103,14 +97,9 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
             [this](const uint8_t* fromMac, const ConnectionAnnouncePayload& announce) {
                 onConnectionAnnounce(fromMac, announce);
             });
-        // SEND_SUCCESS on the announce IS its delivery signal: only then
-        // may the HELLO confirmed bit rise. A head change mid-flight makes an
-        // older announce's delivery stale — the re-announce to the current head
-        // is what gates confirmed — so the seqId must match the latest announce
-        // sent AND the destination must still be the head currently held.
-        // confirmed therefore means "the head's radio took it", not "the head
-        // admitted me": a roster at MAX_CHAIN_MEMBERS drops the announce after
-        // the ack.
+        // confirmed rises only for the latest announce (seqId) delivered to the head still
+        // held. It means the head's radio took it, not that the roster admitted it (see
+        // MAX_CHAIN_MEMBERS).
         connectionAnnounceChannel->setOnDelivered([this](uint8_t seqId, const uint8_t* toMac) {
             if (seqId != pendingAnnounceSeqId) return;
             if (MacToUInt64(chainHeadMac.data()) == 0 ||
@@ -161,12 +150,8 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
         HelloLinkMachine* machine = helloByJack[jackIndex(jack)].machine;
         if (machine) machine->onStateLoop(PDN);
     }
-    // Three separate sites move the derived role: a link commits to CONNECTED in
-    // the loop above, dies through the Idle mount inside it, or latches a ring
-    // during HELLO parsing between ticks. Poll once per tick to catch all three.
-    // onRingClosed keeps firing at its own decision site (it is the shootout
-    // coordinator claim point), so a ring closure and the RING role it implies
-    // can be up to one tick apart.
+    // The role can move in the loop above or during HELLO parsing between ticks; poll once
+    // per tick. onRingClosed fires at its own site, up to a tick earlier.
     maybeFireChainRoleChange();
 }
 
@@ -285,11 +270,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             // operator() frame is still live.
             JackChangeCallback handler = jackChangeCallback;
             if (handler) handler(j, connected);
-            // Connects only. A disconnect reaches here during the Connected
-            // state's dismount, while this jack still names its departing peer
-            // and still reads CONNECTED, so the chain state a subscriber would
-            // read is the one that just stopped being true. onLinkDown below
-            // reports that edge instead, from Idle, where the accessors agree.
+            // Connects only; onLinkDown reports link death.
             if (connected) notifyChainChange();
         };
         // Every link-death path mounts Idle; the initial mount fires this too, a
@@ -307,12 +288,8 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
                 }
             }
             onLinkLost(jack);
-            // This is where a link death is reported: Idle is mounted, so the jack
-            // now answers IDLE and hands back no peer. Reporting it from the jack
-            // change instead would describe the link as still up — that callback
-            // runs during the Connected state's dismount — and a subscriber has no
-            // way to ask again later, so a peer returning on the same MAC would
-            // look unchanged to everyone downstream.
+            // Link death is reported here (Idle mounted, accessors agree), not from the
+            // disconnect edge, where the jack still reads CONNECTED.
             notifyChainChange();
         };
         context.silentLinkMs = HELLO_SILENT_LINK_MS;
@@ -441,13 +418,8 @@ bool RemoteDeviceCoordinator::isContextSendPending(const uint8_t* mac) const {
 void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceType peerType,
                                                 uint8_t chainRole, uint16_t peerUserId,
                                                 const uint8_t* profile, size_t len) {
-    // Every jack sends its own context on connecting, so receiving the peer's just
-    // completes our matching jack(s); no reply in the normal exchange. Cache it keyed by MAC AND
-    // apply it now: caching (not only applying) covers a jack that reaches CONNECTING
-    // AFTER this arrives. That happens two ways — a context beats its own HELLO
-    // (ESP-NOW vs serial) so no jack is CONNECTING yet, and in a 2-node ring the two
-    // jacks facing this peer enter CONNECTING one tick apart (sync() drives them in
-    // order), so the later jack must still find the context. The TTL clears the cache.
+    // Cache as well as apply: a context can beat its own HELLO (ESP-NOW vs serial) and land
+    // before any jack is CONNECTING. The TTL clears the cache.
     // A peer cannot change kind while its link stays up; chain role reads the
     // kind, and this frame arrives over unauthenticated ESP-NOW.
     for (SerialIdentifier jack : HELLO_JACKS) {
@@ -577,8 +549,8 @@ void RemoteDeviceCoordinator::drainBufferedContext(SerialIdentifier jack, const 
         }
         if (memcmp(e.mac.data(), mac, 6) != 0) continue;
         // Apply to THIS jack only, and leave the entry valid: the peer's other jack (a
-        // 2-node ring) drains its own copy when it connects a tick later. Applying
-        // per-jack keeps the context callback firing exactly once per jack. TTL clears it.
+        // 2-node ring) drains its own copy, so the context callback fires exactly once
+        // per jack. TTL clears it.
         completeJackContext(jack, e.peerType, e.chainRole, e.peerUserId, e.profile.data(), e.len);
     }
 }
@@ -687,16 +659,9 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     // return IS the evidence the ring still closes through us, so stamp it.
     if (ringLatched && peerHeadIsSelf) lastSelfHeadReturnMs = nowMs();
 
-    // A different head on INPUT while latched is a head conflict: a second
-    // latched head (symmetric 2-ring boot, two heads merging) or a replacement
-    // head propagating hop-by-hop after a break elsewhere in the ring. Lower MAC
-    // wins: stand down at once for a lower head — unlatching
-    // unconditionally lets two latched heads depose each other and re-latch in
-    // lockstep, re-firing ringClosed every cycle. For a higher head, hold the
-    // latch only while self-returns are fresh: in a merge transient our own
-    // claim keeps circulating and refreshing the stamp, but after a physical
-    // break it can no longer complete the ring, so the evidence times out and
-    // the new head must be adopted.
+    // Foreign head while latched: yield at once to a lower MAC; hold against a higher one
+    // only while own-MAC returns are fresh (merge transient vs physical break). Yielding
+    // to every foreign head would let two latched heads depose each other in lockstep.
     if (ringLatched && !peerHeadIsSelf) {
         if (MacToUInt64(peerEffectiveHead) > MacToUInt64(selfMac.data()) &&
             nowMs() - lastSelfHeadReturnMs <= RING_EVIDENCE_TIMEOUT_MS) {
@@ -705,11 +670,8 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         ringLatched = false;
     }
 
-    // Ring: this device's own MAC returns on its INPUT jack, so the head it seeded
-    // traveled the whole ring back. Gate on OUTPUT being a chain link (a downstream
-    // exists), NOT on role==HEAD — two already-connected sub-chains merging into a
-    // ring deliver our head back on an INPUT that is already CONNECTED, where
-    // role==HEAD (which demands INPUT be un-connected) would miss the closure.
+    // Own MAC back on INPUT = ring. Gate on OUTPUT being a chain link, not role==HEAD: a
+    // merge of two chains closes on an already-CONNECTED INPUT.
     if (!ringLatched && peerHeadIsSelf && isChainLink(SerialIdentifier::OUTPUT_JACK)) {
         ringLatched = true;
         // Seed the evidence stamp at closure so a break immediately after still
@@ -749,8 +711,8 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
 }
 
 void RemoteDeviceCoordinator::adoptUpstreamHead() {
-    // The INPUT link machine is the single authority on whether an upstream is
-    // real. A one-way cable delivers its HELLOs forever while this side never
+    // Adopt only over a chain link (Connected, this device a PDN, peer not an FDN). A
+    // one-way cable delivers its HELLOs forever while this side never
     // establishes; adopting off those would advertise a head no downstream can
     // reach and hand this device's roster to a peer that cannot answer.
     if (!isChainLink(SerialIdentifier::INPUT_JACK)) return;
@@ -825,11 +787,8 @@ void RemoteDeviceCoordinator::maybeFireChainRoleChange() {
 // ---- Head roster ----
 
 bool RemoteDeviceCoordinator::isRosterAuthority() const {
-    // Only the device currently heading a chain (or a latched ring, its own
-    // head) may edit a roster. Gating on role rather than "no head held"
-    // matters for STANDALONE: an ex-head holds no head after its
-    // chain dies, and late Resender retries from members would otherwise seed
-    // phantom entries that resurface the next time it heads a chain.
+    // Gate on role, not on "no head held": a STANDALONE ex-head must not let late retries
+    // seed phantom roster entries.
     const ChainRole role = getChainRole();
     return role == ChainRole::HEAD || role == ChainRole::RING;
 }
@@ -906,12 +865,8 @@ void RemoteDeviceCoordinator::clearPendingReport() {
 }
 
 void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {
-    // Everything downstream of the departed MAC is unreachable too. Forks are
-    // impossible by construction (transfers skip a member whose upstream slot is
-    // already held via isUpstreamHeldByOther, announces evict stale claimants),
-    // so this walk is a list traversal that finds at
-    // most one child per step by scanning — no reverse index kept. Tolerating
-    // multiple children anyway is cheap defense. `gone` doubles as the frontier.
+    // Drop `mac` and everything downstream of it; the roster is a list (one downstream per
+    // upstream), `gone` doubles as the frontier.
     std::vector<std::array<uint8_t, 6>> gone;
     gone.emplace_back();
     memcpy(gone.back().data(), mac, 6);
@@ -980,12 +935,8 @@ void RemoteDeviceCoordinator::onConnectionAnnounce(const uint8_t* fromMac,
 
 void RemoteDeviceCoordinator::evictStaleUpstreamClaimant(
     const std::array<uint8_t, 6>& member, const std::array<uint8_t, 6>& upstream) {
-    // Hardware invariant: one OUTPUT jack means one downstream, so at most one
-    // member can hang off any upstream. A fresh announce claiming an upstream
-    // some OTHER member already recorded proves the old claimant unplugged
-    // (its departure report may still be in flight); drop it and its subtree.
-    // Only announces evict — a head-transfer snapshot is older than any
-    // announce and must not displace one.
+    // One OUTPUT jack means one downstream per upstream, so a second claimant proves the
+    // first unplugged. Only announces evict; a head-transfer snapshot is older than any.
     for (const auto& entry : chainRoster) {
         // entry.first == member guards self-eviction (wiping our own subtree);
         // the caller's duplicate check makes it unreachable today, kept so the
@@ -1041,13 +992,8 @@ void RemoteDeviceCoordinator::onHeadTransfer(const uint8_t* /*fromMac*/,
     }
     const uint8_t count =
         transfer.memberCount <= MAX_CHAIN_MEMBERS ? transfer.memberCount : MAX_CHAIN_MEMBERS;
-    // Each pair carries the member's true recorded upstream, so the transferred
-    // chain keeps its order and a mid-chain departure prunes exactly its tail.
-    // A transfer snapshot is older than any announce, so it never displaces one:
-    // it is skipped when the member already exists, or when its upstream slot is
-    // already claimed by another member (a fresher announce that reached us
-    // first). That skip, paired with the announce-side eviction, keeps the
-    // one-downstream invariant true so a stale post-replug snapshot cannot fork.
+    // A transfer snapshot is older than any announce: skip a member already present or whose
+    // upstream another member holds.
     bool changed = false;
     for (uint8_t i = 0; i < count; ++i) {
         std::array<uint8_t, 6> member;

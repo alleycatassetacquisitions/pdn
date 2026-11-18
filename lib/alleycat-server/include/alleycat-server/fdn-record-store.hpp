@@ -46,10 +46,10 @@ public:
     uint32_t getStoredCount() const { return tail - head; }
 
     /**
-     * @return true when @p entry is held afterwards, so it may be acked: newly
-     * stored, or byte-identical to one already held. Same sender and number
-     * with different bytes is stored separately. A full ring, or an entry of
-     * another kind, is refused.
+     * @return true when @p entry is held afterwards: newly stored, or
+     * byte-identical to one already held. Same sender and number with different
+     * bytes is stored separately. A full ring, an entry of another kind, or a
+     * failed write is refused.
      */
     bool store(const Entry& entry) {
         if (entry.kind != static_cast<uint8_t>(kind)) {

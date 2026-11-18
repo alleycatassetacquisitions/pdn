@@ -105,8 +105,7 @@ static void storeOwnCrashRecords() {
     memcpy(entry.senderMac, fdn->getWirelessManager()->getMacAddress(), sizeof(entry.senderMac));
     entry.kind = static_cast<uint8_t>(RecordKind::CRASH);
     uint32_t recordNumber = 0;
-    // Stops when the store refuses or the sent mark does not move (a failed
-    // write would offer the same record again forever).
+    // A sent mark that does not move would offer the same record forever.
     while (crashLogger->readLowestPending(recordNumber, entry.content)) {
         entry.recordNumber = recordNumber;
         if (!fdnRecordStore->getCrashRecords().store(entry)) return;

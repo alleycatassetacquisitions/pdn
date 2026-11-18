@@ -222,6 +222,7 @@ bool MatchManager::finalizeMatch() {
     // The record keeps raw times, so it is told the winner.
     match.setWinnerPlayerId(isHunterWinner() ? match.getHunterPlayerId()
                                              : match.getBountyPlayerId());
+    // Unvalidated device clock: boot-relative, not UTC, until the clock has been set.
     if (PlatformClock* clock = SimpleTimer::getPlatformClock()) {
         match.setOccurredAtUnixMs(clock->unixMilliseconds());
     }
@@ -233,9 +234,8 @@ bool MatchManager::finalizeMatch() {
     lastMatchDisplay.penaltyMs = activeMatchState.penaltyMs;
     lastMatchDisplay.hasData = true;
 
-    // Shootout matches are local-ephemeral and their IDs are not UUIDs, so the
-    // server cannot take them. Every other record is kept as computed; the
-    // server rejects or flags a nil or repeated player or a disputed winner.
+    // Shootout ids are not UUIDs, so those matches are never stored; every other
+    // record is stored as computed.
     if (currentMatchIsShootout()) {
         clearCurrentMatch();
         return true;
@@ -420,8 +420,8 @@ void MatchManager::initialize(Player* player, StorageInterface* storage) {
         std::min(matchManager->boostProvider ? matchManager->boostProvider() : 0UL,
                  PosseManager::getMaxBoostMs());
 
-        // Snapshot boost at press time so the result screen can display it
-        // even if supporters unplug before the match finalizes.
+        // Snapshot at press: the winner comparison and result screen use the boost
+        // the frame carried, even if supporters unplug later.
         activeMatchState->boostMs = boost;
         activeMatchState->penaltyMs = penaltyMs;
 
@@ -476,7 +476,8 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
         }
         bool shootoutActive = shootoutManager_ && shootoutManager_->active();
         if(!shootoutActive && player->isHunter() == command.isHunter) {
-            // Echo the sender's matchId/MAC: activeMatchState.match is still empty.
+            // Echo the sender's matchId/MAC: activeMatchState.match is empty or
+            // describes a different match.
             sendCommand(command.wifiMacAddr, MatchCmd::MATCH_ROLE_MISMATCH, command.matchId, 0, 0,
                         player->isHunter());
             return;

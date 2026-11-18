@@ -969,7 +969,6 @@ public:
     NativeLoggerDriver globalLogger{"test_sim_logger"};
 };
 
-// Test: every simulated PDN boots into the hub with its own MAC test identity
 void cliDevicesStartWithDistinctTestIdentities(CliSimulationTestSuite* suite) {
     for (cli::DeviceInstance& device : suite->devices) {
         ASSERT_EQ(device.pdn->getActiveApp(), device.hubApp);
@@ -984,7 +983,6 @@ void cliDevicesStartWithDistinctTestIdentities(CliSimulationTestSuite* suite) {
     ASSERT_FALSE(suite->devices[1].player->isHunter());
 }
 
-// Test: a cabled hunter and bounty link through the simulator's own tick (HELLO + loop)
 void cliSimulationCabledDevicesConnect(CliSimulationTestSuite* suite) {
     ASSERT_TRUE(cli::SerialCableBroker::getInstance().connect(0, 1));
     RemoteDeviceCoordinator* hunter = suite->devices[0].pdn->getRemoteDeviceCoordinator();
@@ -1144,7 +1142,6 @@ void cliRoleCommandNoDevices(CliRoleCommandTestSuite* suite) {
     ASSERT_EQ(result.message, "No devices");
 }
 
-// Test: reboot puts a hub device on PinEntry with no player and clears its history
 inline void cliCommandRebootEntersPinEntry() {
     NativeClockDriver clock("test_reboot_clock");
     SimpleTimer::setPlatformClock(&clock);

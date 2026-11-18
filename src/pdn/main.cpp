@@ -66,7 +66,6 @@ MatchApp* matchApp = nullptr;
 ShootoutApp* shootoutApp = nullptr;
 SymbolApp* symbolApp = nullptr;
 
-// Symbol-match wireless traffic
 SymbolWirelessManager* symbolWirelessManager = nullptr;
 
 static void setup() {
@@ -130,7 +129,6 @@ static void setup() {
     playerProvider = new PlayerProvider();
     playerProvider->getPlayer()->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
-    // Create wireless managers
     LOG_I("SETUP", "Creating SymbolWirelessManager...");
     symbolWirelessManager =
     new SymbolWirelessManager(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());

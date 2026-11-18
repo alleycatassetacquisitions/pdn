@@ -104,7 +104,7 @@ public:
 
     // Spawn N devices. Each gets a unique MAC. Physical connectivity is NOT
     // established here — call connectLinearHunterChain() or drive
-    // connections manually via connectOutputOf(i).
+    // connections manually via connectOutputToPrev(i).
     void spawnDevices(size_t count) {
         cables.clear();
         nodes.clear();
@@ -159,12 +159,8 @@ public:
             n->player->setIsHunter(true);
     }
 
-    // Wire every device's i+1 OUTPUT to device i INPUT (reverse of task
-    // wording for the reason explained at the top of this header) so that
-    // in a homogeneous hunter chain, device 0 is the challenger.
-    //
-    // For i from 1 to N-1:
-    //   device i OUTPUT <-> device (i-1) INPUT
+    // Device i OUTPUT <-> device (i-1) INPUT for i in 1..N-1, so device 0 is the
+    // challenger of a homogeneous hunter chain.
     void connectLinearHunterChain() {
         for (size_t i = 1; i < nodes.size(); ++i) {
             connectOutputToPrev(i);
@@ -217,9 +213,6 @@ public:
     }
 
     /**
-     * Ring closure the way production delivers it: the head's RDC callback, the
-     * roster broadcast, then each member's Idle -> ShootoutProposal mount.
-     *
      * Index of the node that latched the ring, set by claimRing().
      */
     size_t ringHeadIndex = 0;
@@ -414,17 +407,9 @@ protected:
         if (!handler) return;
         handler(source.mac, p.data.data(), p.data.size(), ctx);
 
-        // Report delivery back to the sender: on channels with no reply packet
-        // that report IS the delivery signal, and a fixture that routed the frame
-        // without it would make every send look undelivered and run out its span.
-        //
-        // Friendlier than the real radio, deliberately. This sits after the
-        // no-handler return, so delivery is reported only when the receiver had a
-        // handler and it ran — whereas a real SEND_SUCCESS is a MAC-layer verdict
-        // that says nothing about the application. The case the production code
-        // worries about, the radio acking while the peer is deaf, therefore
-        // cannot be reproduced here; it needs a test that drives onSendResult by
-        // hand.
+        // SEND_SUCCESS is replayed for the context and role-announce channels
+        // only, and only after the receiver's handler ran; confirm/join sends go
+        // unreported.
         if (p.type == PktType::kPdnConnectionContext && source.contextSendStatus) {
             source.contextSendStatus(p.toMac.data(), p.data.data(), p.data.size(),
                                      /*success=*/true, source.contextSendStatusCtx);
@@ -504,12 +489,9 @@ protected:
         });
     }
 
-    // Mirrors what the GameSession constructor installs for the posse packet
-    // types that no channel claims. Deliberately NOT kRoleAnnounce: the PosseManager's
-    // ReliableChannel claims that slot in its own constructor, and registering
-    // over it here would replace the channel with a trampoline that skips the
-    // length check, the decode and the duplicate suppression — leaving the
-    // production receive path untested by every chain and tournament case here.
+    // Installs only the kChainGameEvent manager half of GameSession's routing; no
+    // ack is sent or routed. Not kRoleAnnounce: the PosseManager's channel owns
+    // that slot.
     void wireChainEventHandlers(MultiDeviceNode& n) {
         PosseManager* posse = n.posse;
 
@@ -530,9 +512,9 @@ protected:
         posse);
     }
 
-    // Register Shootout command + ack handlers. Mirrors the dispatcher in
-    // the GameSession constructor so every packet path exercised on hardware is
-    // exercised in the fixture too.
+    // Shootout command + ack handlers. The command handler is a hand copy of
+    // GameSession::onShootoutCommandPacket, minus its range check and
+    // bracket-size limit.
     void wireShootoutHandlers(MultiDeviceNode& n) {
         ShootoutManager* mgr = n.shootout;
 
@@ -625,8 +607,7 @@ inline void posseMultiDeviceChainFormsAndElectsChallenger(PosseMultiDeviceFixtur
     MultiDeviceNode& d2 = suite->node(2);
 
     // Role election: device 0 has no OUTPUT-jack peer so isChallenger() should be
-    // true once it observes its supporter-jack peer. Drive onChainStateChanged
-    // explicitly to match what GameSession does.
+    // true once it observes its supporter-jack peer.
     d0.posse->onChainStateChanged();
     d1.posse->onChainStateChanged();
     d2.posse->onChainStateChanged();

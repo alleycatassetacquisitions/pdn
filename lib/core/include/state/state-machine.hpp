@@ -14,8 +14,8 @@
  *
  * The basic control flow for a StateMachine looks like this:
  *
- * StateMachine initialized -> populates the state map, sets the current state and invokes
- * the first state's onStateMounted method.
+ * StateMachine initialized -> populates the state map once, then mounts the entry
+ * state, invoking its onStateMounted method.
  *
  * The device's loop() drives the active app's onStateLoop on every pass of the
  * main loop.
@@ -57,10 +57,7 @@ public:
     };
 
     void initialize(Device *PDN) {
-        // Populate once. onStateMounted lands here on every swap back to this
-        // app, and a second populateStateMap appends a whole duplicate state set
-        // that is never mounted (currentState addresses the original slots) and
-        // is only freed by ~StateMachine.
+        // Populate once: onStateMounted lands here on every swap back to this app.
         if (stateMap.empty()) {
             populateStateMap();
         }
@@ -70,12 +67,8 @@ public:
     }
 
     /**
-     * The state the next mount enters at, or unset for the boot state. Both paths
-     * on Device write it before mounting — setActiveApp from the app transition
-     * that named one, loadAppConfig with unset — so neither inherits an earlier
-     * mount's value. A StateMachine driven outside an AppConfig never writes it at
-     * all (HelloLinkMachine calls initialize() directly), and rides the unset
-     * default, so that default is load-bearing and not redundant.
+     * The state the next mount enters at; unset (the default, relied on by
+     * machines mounted outside an AppConfig) means the boot state.
      */
     void setEntryState(StateId stateId) {
         entryStateId = stateId;
@@ -173,7 +166,7 @@ protected:
 
     /**
      * The winning edge from the last checkStateTransitions, or null when none
-     * held. Its own fields say where it goes, so nothing else needs recording.
+     * held.
      */
     StateTransition* pendingTransition = nullptr;
 

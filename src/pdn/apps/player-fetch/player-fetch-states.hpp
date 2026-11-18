@@ -64,15 +64,11 @@ public:
     ~FetchUserState() override;
 
     /**
-     * The FDN found @p found; applies its registration profile to the provider's player and
-     * leads to Welcome. Ignored, writing nothing, when no lookup is outstanding (timed out or
-     * already answered).
+     * Applies @p found's registration profile and leads to Welcome; ignored, writing nothing,
+     * when no lookup is outstanding.
      */
     void onPlayerFound(const Player& found);
-    /**
-     * The FDN could not find the player. Shows the failure page, then returns to PIN entry.
-     * Ignored when no lookup is outstanding (timed out or already answered).
-     */
+    /** Leads to the failure page, then PIN entry; ignored when no lookup is outstanding. */
     void onPlayerLookupFailed();
     /** @return true when the found player's profile is stored and welcome should mount. */
     bool transitionToWelcome() const;

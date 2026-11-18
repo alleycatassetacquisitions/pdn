@@ -73,8 +73,6 @@ public:
      * Claims at most one frame per call, so a backlog drains over as many
      * Device::loop() iterations. sendData pumps its own frame, so this is the
      * path for frames left queued behind a busy slot, not for every send.
-     * DriverManager walks a std::map keyed by driver name, and "peer_comms"
-     * sorts ahead of "serial_in"/"serial_out".
      */
     void exec() override {
         // Re-pin armed by enable(): retry (paced) until the readback sticks,
@@ -114,7 +112,6 @@ public:
             pending.pop();
         }
 
-        // Order matters; applySendResult says why.
         applySendResult();
         startNextSend();
     }
@@ -168,9 +165,7 @@ public:
         esp_wifi_start();
 
         // Drops the AP association without stopping the radio, which ESP-NOW needs
-        // left running. Nothing re-dials behind us: IDF does not retry an
-        // association on its own, and the HTTP driver clears its own reconnect
-        // flag before handing the radio back.
+        // left running.
         esp_wifi_disconnect();
 
         // STA modem sleep defaults ON; with no AP the radio mostly sleeps and
@@ -212,22 +207,15 @@ public:
     void disable() override {
         // An excursion owns the radio now; the next enable() re-evaluates.
         channelPinPending = false;
-        // Whatever is still queued does not go out: it would arrive after the
-        // excursion as stale traffic, and the reliable layer resends what matters
-        // once the radio is back. Nothing is handed to the radio here either —
-        // esp_now_send returns before the frame is on the air, so the deinit below
-        // would race it, and claiming a frame without first consuming a recorded
-        // verdict would throw that verdict away.
+        // Queued frames are dropped: kept, they would go out stale after the
+        // excursion; flushed, esp_now_send would race the deinit below.
         clearSendQueue();
 
         esp_err_t err = esp_now_deinit();
         if (err != ESP_OK) LOG_E("ENC", "ESPNOW Error deinitializing: 0x%X\n", err);
 
-        // Unconditional: deinit unregisters the send callback, so the completion
-        // that would clear the slot is never coming, and an occupied slot blocks
-        // every later startNextSend. Leaving the state ENABLED would stop enable()
-        // re-running. A completion that does still arrive lands on an empty slot
-        // and applySendResult drops it.
+        // deinit unregisters the send callback, so no completion will ever free
+        // the slot; release it here.
         discardInFlight();
         peerCommsState = PeerCommsState::DISABLED;
     }
@@ -295,12 +283,6 @@ public:
         return 0;
     }
 
-    // Set the packet handler for a particular packet type
-    // Only one handler can be registered per packet type at a time, so if a new
-    // packet handler is registered for a packet type that has an existing handler,
-    // the existing handler is automatically unregistered
-    // userArg will be saved per packet type and will be passed in unmodified to
-    // packet handler for that packet type (when a packet of that type is receieved)
     /**
      * One handler per packet type; registering replaces any existing one.
      * ctx is stored per type and passed back unmodified to the handler.
@@ -310,7 +292,6 @@ public:
         pktHandlerCallbacks[(int)packetType].second = ctx;
     }
 
-    // Unregister packet handler for specified packet type
     /** Removes the handler for a packet type. */
     void clearPacketHandler(PktType packetType) override {
         pktHandlerCallbacks[(int)packetType].first = nullptr;
@@ -340,12 +321,8 @@ public:
         return empty && inFlight.ptr == nullptr;
     }
 
-    // Called by DriverManager at startup - we don't initialize ESP-NOW here
-    // because WiFi must be set up first. Actual init happens in connect().
-    /** Driver-interface initialization hook; radio setup happens in connect(). */
+    /** Driver-interface initialization hook; radio setup happens in enable(). */
     int initialize() override {
-        // No-op: ESP-NOW initialization requires WiFi to be running first.
-        // The actual initialization happens in connect() -> initializeEspNow()
         return 0;
     }
 
@@ -392,7 +369,7 @@ private:
         , sendMutex(xSemaphoreCreateMutex())
         , pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
         , sendStatusHandlers((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr)) {
-        // ESP-NOW initialization happens in connect() -> initializeEspNow()
+        // ESP-NOW initialization happens in enable() -> initializeEspNow()
         // after WiFi has been set up. RSSI is read directly from each receive
         // callback (esp_now_recv_info_t::rx_ctrl), so no promiscuous mode.
     }
@@ -503,12 +480,8 @@ private:
         const Completion outcome =
             pendingCompletion.exchange(Completion::NONE, std::memory_order_acquire);
         if (outcome == Completion::NONE) return;
-        // Nothing in the slot means the radio owed this for a frame disconnect()
-        // already released. There is no frame to attribute it to, so drop it.
-        // What keeps a stale verdict off a successor is discardInFlight clearing it
-        // as it releases the slot, not call ordering: a stale verdict
-        // is always consumed against an empty slot before the next frame is
-        // claimed, so it can never be charged to a successor.
+        // An empty slot means the verdict is for a frame disable() already
+        // released: drop it.
         if (inFlight.ptr == nullptr) return;
 
         if (outcome == Completion::SUCCEEDED) {
@@ -584,13 +557,7 @@ private:
         return false;
     }
 
-    /**
-     * Reports the slot's frame upward and releases it. Main loop only.
-     *
-     * Reports the failure verdict even though nothing consumes it today:
-     * Both registrants drop `!success` on their first
-     * line. An outcome class is the driver's to report, not to decide against.
-     */
+    /** Reports the slot's frame upward and releases it. Main loop only. */
     void finishInFlight(bool success) {
         const DataSendBuffer frame = inFlight;
         inFlight = {};
@@ -754,18 +721,13 @@ private:
     uint8_t macAddress[6];
 
     static constexpr uint8_t MAX_SEND_RETRIES = 5;
-    // The frame the radio currently owns; a null ptr means it is idle. Held out of
-    // sendQueue so the queue only ever contains unclaimed frames. Main loop only —
-    // claim, transmit, retry and release — which is why it needs no lock, and the
-    // rule extends to anything that touches it. Add a lock before calling those
-    // off the main loop.
+    // The frame the radio currently owns (null ptr = idle). Main loop only, hence
+    // no lock.
     DataSendBuffer inFlight{};
     uint8_t inFlightRetries = 0;
 
-    // The send path's only lock-free cross-task state: what the radio said about
-    // the frame it last finished. Nothing is paired with it — the callback gets a destination
-    // and the frame's bytes but no reference to what was queued, so a verdict
-    // rejected on a mismatch would strand the slot with no way to release it.
+    // The verdict owed to the in-flight frame. The send callback carries no frame
+    // handle, so a verdict cannot be matched to a frame, only paired with the slot.
     std::atomic<Completion> pendingCompletion{Completion::NONE};
 
     // Frames nobody has claimed yet. sendData is the one entry point a caller off
@@ -773,12 +735,7 @@ private:
     // caller today is on it.
     std::queue<DataSendBuffer> sendQueue;
 
-    // Storage for rssi, filled from each ESP-NOW receive callback (rx_ctrl).
-    // Written on the WiFi task and read from the main loop, so it shares
-    // recvMutex with the receive queue that the same callback feeds. Uncapped: an
-    // entry costs ~40 bytes of internal DRAM — allocations this small do not reach
-    // PSRAM — and a cap would have to evict a live
-    // peer at the device count a real event reaches, leaving it reading
-    // RSSI_UNKNOWN — which the proximity tiers treat as the weakest signal.
+    // Last RSSI per peer; written on the WiFi task, read on the main loop, under
+    // recvMutex. Uncapped: a cap would evict live peers into RSSI_UNKNOWN.
     std::unordered_map<uint64_t, int> rssiTracker;
 };

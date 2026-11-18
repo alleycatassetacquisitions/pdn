@@ -398,7 +398,7 @@ inline void foreignRingBracketLeavesLiveTournamentIntact(ShootoutManagerTests* s
     ASSERT_TRUE(suite->shootout->isCoordinator());
     ASSERT_EQ(suite->shootout->getBracket().size(), 2u);
 
-    // A stranger ring, lower MAC than us, sharing no member with our bracket.
+    // A stranger ring sharing no member with our bracket.
     std::array<uint8_t, 6> stranger = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> strangerPeer = {0x02, 0, 0, 0, 0, 0};
     suite->shootout->onBracketReceived(stranger.data(), {stranger, strangerPeer}, 7);
@@ -407,9 +407,7 @@ inline void foreignRingBracketLeavesLiveTournamentIntact(ShootoutManagerTests* s
     EXPECT_EQ(suite->shootout->getBracket().size(), 2u);
     EXPECT_EQ(memcmp(suite->shootout->getCoordinatorMac().data(), selfMac, 6), 0);
 
-    // The harder case: a lower-MAC stranger whose bracket claims one of ours but
-    // not us. Standing down to it drops our bracket and adopts nothing, which is
-    // worse than ignoring it — there is no coordinator left to restart anything.
+    // A stranger's bracket naming one of ours but not us is ignored too.
     suite->shootout->onBracketReceived(stranger.data(), {stranger, strangerPeer, mine}, 8);
 
     EXPECT_TRUE(suite->shootout->isCoordinator());
@@ -1275,9 +1273,9 @@ inline void ackIsMatchedBySeqIdAlone(ShootoutManagerTests* suite) {
 
 // A late MATCH_START for a finished match — the coordinator advances without
 // waiting on that fan-out, so an old frame can still be retrying to a member
-// whose seqId cursor has already moved on. Being
-// dragged back would re-prime it against an opponent it already beat, and a
-// second result for that match can eliminate the winner too.
+// that has already finished that match. Being dragged back would re-prime it
+// against an opponent it already beat, and a second result for that match can
+// eliminate the winner too.
 inline void reAnnouncedMatchIsNotReplayedOnceFinished(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
@@ -1292,9 +1290,6 @@ inline void reAnnouncedMatchIsNotReplayedOnceFinished(ShootoutManagerTests* suit
     suite->followRingHead(coord);
     suite->shootout->setRingMembersForTest({coord, me, other});
     suite->shootout->startProposal();
-    // Every member's CONFIRM is broadcast and every device in PROPOSAL records
-    // it, so a follower knows the whole ring — which is who a result goes to.
-    // Without this the set holds only this device, and a result reaches nobody.
     suite->shootout->onConfirmReceived(coord.data());
     suite->shootout->onConfirmReceived(me.data());
     suite->shootout->onConfirmReceived(other.data());
@@ -1319,9 +1314,8 @@ inline void reAnnouncedMatchIsNotReplayedOnceFinished(ShootoutManagerTests* suit
 }
 
 // A tournament that reached its winner is finished, not stuck. A fan-out from
-// the final match can outlive it and give up afterwards, and tearing the
-// standings down then would also broadcast ABORT — which every member applies
-// from ENDED, wiping the winner screen across the whole ring.
+// the final match can outlive it and give up afterwards; that must not tear the
+// standings down.
 inline void abortDoesNotTearDownAFinishedTournament(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
@@ -1493,7 +1487,7 @@ inline void startProposalClearsAllPriorTournamentState(ShootoutManagerTests* sui
     ASSERT_TRUE(suite->shootout->isEliminated(opMac.data()));
     ASSERT_GE(suite->shootout->getCurrentMatchIndex(), 0);
 
-    // Tournament 2 — previously leaked bracket_, eliminated_, currentMatchIndex_.
+    // Tournament 2
     suite->shootout->startProposal();
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
     EXPECT_TRUE(suite->shootout->getBracket().empty());
@@ -1634,10 +1628,10 @@ inline void tournamentEndRetriesUntilAcked(ShootoutManagerTests* suite) {
 }
 
 inline void matchResultRetriesUntilAcked(ShootoutManagerTests* suite) {
-    // Self is coord; match 0 is self vs opMac. reportLocalWin() broadcasts
-    // MATCH_RESULT to every confirmed peer (including coord, but
-    // sendReliablyToPeers skips self). Without retry, a single dropped packet
-    // would strand a peer whose state never advances.
+    // Self is coord; match 0 is self vs opMac. reportLocalWin() sends
+    // MATCH_RESULT to every bracket member (sendReliablyToPeers skips self).
+    // Without retry, a single dropped packet would strand a peer whose state
+    // never advances.
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me    = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};
@@ -1690,9 +1684,7 @@ inline void matchResultRetriesUntilAcked(ShootoutManagerTests* suite) {
 }
 
 inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
-    // The draw slot a bracket match assigns belongs to that match. Writing it to
-    // the Player instead made the restore at the next match boundary land on a
-    // match that was still running, and the loser then read the winner's slot.
+    // The draw slot a bracket match assigns belongs to that match, never to the Player.
     uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me    = {0x05, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};  // < self -> bounty slot
@@ -1837,11 +1829,8 @@ inline void endingSurvivesTheTerminalScreenExit(ShootoutManagerTests* suite) {
            "to a member that never acked it";
 }
 
-// The ending has to outlive every reset between it and its last retransmit, not
-// just the first. On an abandonment abort the ring stays cabled, so the device
-// walks the ABORTED screen straight back into a fresh proposal — and that
-// proposal's reset used to cancel the ABORT still in flight, leaving the whole
-// thing resting on the screen's dwell outlasting the retry schedule.
+// The ending has to outlive every reset between it and its last retransmit: here
+// the terminal screen's resetToIdle, then the next proposal's.
 inline void theEndingOutlivesAReProposal(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
@@ -1862,7 +1851,7 @@ inline void theEndingOutlivesAReProposal(ShootoutManagerTests* suite) {
     ASSERT_GT(suite->shootout->getPendingAckCount(endSeq), 0u);
 
     suite->shootout->resetToIdle();    // the standings screen dismounting
-    suite->shootout->startProposal();  // the ring is still closed, so straight back in
+    suite->shootout->startProposal();  // the next proposal's reset
 
     EXPECT_GT(suite->shootout->getPendingAckCount(endSeq), 0u)
         << "re-proposing cancelled the ending still owed to a member that never acked";
@@ -2099,10 +2088,10 @@ inline void aLateResultDoesNotReopenACrownedTournament(ShootoutManagerTests* sui
 
 // A bracket with nobody left cannot name a winner. A TOURNAMENT_END naming the
 // all-zero MAC is acked and dropped by every receiver, so nobody reaches ENDED
-// and the ring sits in BETWEEN_MATCHES for good. Reaching zero survivors takes a
-// stale result: one tagged with an index that is no longer current is recorded
-// without ending the match, so it can take a finalist out while the survivor scan
-// is still gated.
+// and the ring sits in BETWEEN_MATCHES for good. One way to reach zero survivors
+// is a stale result: one tagged with an index that is no longer current is
+// recorded without ending the match, so it can take a finalist out while the
+// survivor scan is still gated.
 inline void tournamentWithNoSurvivorsAbortsInsteadOfNamingNobody(
     ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};  // coord
@@ -2179,10 +2168,9 @@ inline void frameFromANonCoordinatorIsRefused(ShootoutManagerTests* suite) {
     ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), -1);
 
     // Both payloads are entirely well-formed against our own bracket; only the
-    // sender is wrong. Nothing may be acked either: an ack is a unicast, and a
-    // unicast permanently registers its destination in the 20-entry ESP-NOW peer
-    // table, so acking a stranger's ring spends that table on devices we will
-    // never speak to again.
+    // sender is wrong. Nothing may be acked either: an ack is a unicast and costs
+    // one of the 20 ESP-NOW peer slots, so acking a stranger's ring spends that
+    // table on devices we will never speak to again.
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
         .Times(0);
@@ -2296,7 +2284,7 @@ inline void settledRingBreakAbortsALiveTournament(ShootoutManagerTests* suite) {
         << "a tournament outlived the ring it ran on";
 }
 
-// ABORT rides the Resender now, so a receiver owes it an answer — otherwise the
+// ABORT rides the Resender, so a receiver owes it an answer — otherwise the
 // sender retries to exhaustion at a device that already stopped.
 inline void abortIsAckedByItsRecipient(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};

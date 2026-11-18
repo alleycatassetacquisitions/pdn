@@ -12,10 +12,9 @@ Usage:
   scripts/flash_and_monitor.py --tail-grep "JACKDEAD|HELLO"   # only print matching lines
 
 Defaults to the esp32-s3_pdn_release_verbose pio environment. Devices are
-discovered as /dev/ttyACM* ports. Flash is sequential (pio holds a lock per
-build dir, and the upload tool's --upload-port goes one at a time anyway).
-Monitor runs reading-side, one thread per port, via pyserial. Lines are
-prefixed with [devN] and time-of-host so concurrent streams are
+discovered as /dev/ttyACM* ports. Flash uses multi_flash (parallel), falling
+back to one port at a time. Monitor runs reading-side, one thread per port,
+via pyserial. Lines are prefixed with [devN] so concurrent streams are
 interleaved-friendly.
 
 Stop with Ctrl-C; pending writes are flushed.
@@ -91,7 +90,7 @@ def flash_one(env, port):
 
 def flash_all(env, ports):
     # multi_flash flashes all devices concurrently (~30s vs ~2min sequential);
-    # it can fail on an older pio target or esptool missing from its python.
+    # it fails when pyserial is missing from pio's python.
     emit("FLASH", f"multi_flash all ({len(ports)} devices)")
     r = subprocess.run(
         [PIO_BIN, "run", "-e", env, "-t", "multi_flash"],
@@ -137,7 +136,6 @@ def reader_thread(port, idx, duration, tail_filter):
             f.write(data)
             f.flush()
             line_buf += data
-            # Emit per newline so prints stay readable.
             while b"\n" in line_buf:
                 line, line_buf = line_buf.split(b"\n", 1)
                 text = line.decode("utf-8", errors="replace").rstrip()

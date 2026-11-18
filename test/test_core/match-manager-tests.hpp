@@ -609,7 +609,6 @@ inline void matchManagerBountyDropsTheMatchWhenItsAckIsAbandoned(MatchManagerTes
     EXPECT_FALSE(suite->matchManager->isMatchReady());
 }
 
-// clearCurrentMatch resets the matchIsReady flag along with all other match state.
 inline void matchManagerClearMatchResetsMatchIsReadyFlag(MatchManagerTestSuite* suite) {
     suite->setupMatchAsBounty("match-id-abc");
     ASSERT_TRUE(suite->matchManager->isMatchReady());
@@ -777,7 +776,6 @@ TEST_F(MatchManagerTestSuite, negativeTimeDoesNotWinAgainstAResultThatNeverArriv
     EXPECT_EQ(storedMatch(1).getWinnerPlayerId(), makeTestUuid(OPPONENT_PLAYER_UUID));
 }
 
-// A tie is a loss on both screens, and the record names the Bounty.
 TEST_F(MatchManagerTestSuite, tiedEffectiveTimesLoseOnScreenAndRecordTheBounty) {
     static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     const char* matchId = "a2222222-2222-4000-8000-333333333333";
@@ -797,7 +795,6 @@ TEST_F(MatchManagerTestSuite, tiedEffectiveTimesLoseOnScreenAndRecordTheBounty) 
     EXPECT_EQ(stored.getBountyDrawTime(), 210u);
 }
 
-// No frame earns more than a full posse can give.
 TEST_F(MatchManagerTestSuite, opponentsBoostIsHeldToAFullPosse) {
     static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     const char* matchId = "81111111-2222-4000-8000-333333333333";

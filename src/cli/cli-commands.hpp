@@ -541,7 +541,6 @@ private:
         }
         auto& dev = devices[targetDevice];
 
-        // Clear UI state history
         dev.stateHistory.clear();
         dev.lastStateId = -1;
 

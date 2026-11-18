@@ -1,7 +1,6 @@
 /*
-    Runs the match handshake and draw for this PDN and keeps qualifying
-    standalone matches as 112-byte records in a 32-slot ring until an FDN
-    collects them.
+    Runs the match handshake and draw for this PDN and keeps standalone
+    matches as 112-byte records in a 32-slot ring until an FDN collects them.
 */
 #pragma once
 
@@ -102,11 +101,7 @@ public:
 
     bool didWin();
 
-    /**
-     * The draw slot this device fills for the active match. primeMatch is the
-     * only writer and sets it alongside the match; the whole-struct reset clears
-     * both, so there is no slot without a match behind it.
-     */
+    /** The draw slot this device fills for the active match. */
     bool isLocalHunter() const { return activeMatchState.localIsHunter; }
 
     /** Timestamp when the match draw window started. */
@@ -200,7 +195,6 @@ public:
 
     void sendNeverPressed(unsigned long pityTime);
 
-    // For testing purposes only DO NOT USE IN PRODUCTION
     void setReceivedDrawResult();
     void setReceivedButtonPush();
     void setNeverPressed();
@@ -233,21 +227,16 @@ private:
                         unsigned long boostMs, bool isHunter);
     // The slot's raw draw time minus its player's boost. Needs an active match.
     long getEffectiveDrawTime(bool hunterSlot) const;
-    // The recorded winner: a side that never pressed or (for the opponent)
-    // never reported loses, else the lower effective time; a tie to the Bounty.
+    // The recorded winner: a side that never pressed loses, and the local side
+    // loses to a result that never arrived; else the lower effective time, a tie
+    // to the Bounty.
     bool isHunterWinner() const;
     bool appendRecordToStorage(const Match& match);
 
-    // Returns true when `command` belongs to the currently-active match and
-    // was sent by that match's opponent. All post-handshake match commands
-    // (MATCH_ID_ACK, MATCH_ROLE_MISMATCH, DRAW_RESULT, NEVER_PRESSED) must
-    // pass this gate before mutating match state — otherwise any neighbor
-    // in ESP-NOW range could forge a result for a match they're not in.
-    // SEND_MATCH_ID is intentionally exempt: it's the packet that
-    // establishes the peering in the first place.
+    // Gate for every post-handshake command: sender MAC and matchId must match the active
+    // match, else any ESP-NOW neighbor could forge a result. SEND_MATCH_ID is exempt: it
+    // establishes the peering.
     bool isFromActiveMatchOpponent(const MatchCommand& command) const;
 
-    // Emplace match with given id/opponent/draw slot. Common path for both the
-    // cable-handshake init and the Shootout MATCH_START init.
     void primeMatch(const char* matchId, const uint8_t* opponentMac, bool localIsHunter);
 };

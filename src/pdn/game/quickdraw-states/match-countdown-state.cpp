@@ -84,10 +84,8 @@ ImageType MatchCountdown::getImageIdForStep(CountdownStep step) {
 }
 
 void MatchCountdown::onStateDismounted(PDN* pdn) {
-    // Supporters armed on COUNTDOWN sit on "PRESS" until a DRAW clears them, and
-    // this state cannot tell whether the match it hands to will start. Sent on
-    // every exit: MatchState::onStateMounted sends the same frame and the supporter
-    // handler is idempotent, so the continuing path just gets it twice.
+    // Sent on every exit: supporters armed by COUNTDOWN stay on PRESS until a DRAW,
+    // and the match may never start. A repeat DRAW is idempotent.
     if (posseManager != nullptr) {
         posseManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
     }

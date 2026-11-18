@@ -49,8 +49,7 @@ struct MatchRecordTraits {
 };
 
 /// FDN-to-PDN over kRecordAck, sent only once the record is in the FDN's NVS.
-/// contentCrc is crc16() over the content and names the exact frame stored; it
-/// identifies, it does not authenticate.
+/// contentCrc is crc16() over the frame's content.
 struct RecordAckPacket {
     uint8_t seqId;
     uint8_t kind;

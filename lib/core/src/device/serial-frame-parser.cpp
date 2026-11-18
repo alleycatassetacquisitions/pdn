@@ -72,14 +72,8 @@ void SerialFrameParser::feed(const uint8_t* data, size_t len) {
 }
 
 void SerialFrameParser::resyncFromConsumedBytes() {
-    // A CRC failure means the frame boundary is wrong, not merely that a byte
-    // flipped: a truncated frame keeps consuming into the next one, so throwing
-    // the consumed bytes away costs two frames per dropped byte instead of one.
-    // The driver drains the whole RX FIFO in a single loop, so there need be no
-    // inter-frame gap for the mid-frame timeout to catch that. Replaying the
-    // bytes after the (already disproven) preamble and opcode lets an embedded
-    // 0xAA 0x55 restart framing at the real frame start; a trailing lone 0xAA
-    // ends in GOT_AA and pairs with whatever byte arrives next.
+    // A CRC failure usually means a truncated frame swallowed the next one's
+    // start; replay the consumed bytes so an embedded 0xAA 0x55 restarts framing.
     std::vector<uint8_t> replay = parser.payloadBuf;
     replay.insert(replay.end(), parser.crcBytes, parser.crcBytes + parser.crcBytesRead);
     resetParser();
@@ -109,7 +103,7 @@ void SerialFrameParser::consumeByte(uint8_t b) {
             }
             break;
         case ParseState::READING_OPCODE:
-            if (b != OP_HELLO) {  // HELLO is the sole serial opcode
+            if (b != OP_HELLO) {
                 resetParser();
                 break;
             }
@@ -135,7 +129,7 @@ void SerialFrameParser::consumeByte(uint8_t b) {
             if (parser.crcBytesRead == 2) {
                 const uint16_t got = (static_cast<uint16_t>(parser.crcBytes[0]) << 8) | static_cast<uint16_t>(parser.crcBytes[1]);
                 // CRC covers opcode + payload; fold the two spans into a
-                // running CRC to avoid a per-frame copy on the UART event task.
+                // running CRC to avoid a per-frame copy.
                 uint16_t expected = crc16(&parser.opcode, 1);
                 expected = crc16Update(expected, parser.payloadBuf.data(),
                                        parser.payloadBuf.size());

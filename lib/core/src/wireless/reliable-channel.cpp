@@ -31,11 +31,8 @@ ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager, Resen
     , sendMode(sendMode)
     , onAbandon(std::move(onAbandon))
     , lastSentSeqId(seedInitialSeqId()) {
-    // Owning the PktType is the whole registration. This channel already holds
-    // both things the wiring needs, and a channel whose send results never
-    // arrive retries to exhaustion in silence — so leaving the install to
-    // whoever constructs it makes a second, undeclared step that every caller
-    // has to imitate and any caller can forget.
+    // Installed here, not by the owner: a channel whose send results never
+    // arrive retries to abandonment in silence.
     if (this->wirelessManager == nullptr) return;
     this->wirelessManager->setEspNowPacketHandler(
         type,
@@ -53,11 +50,8 @@ ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager, Resen
 }
 
 ReliableChannelBase::~ReliableChannelBase() {
-    // A base destructor runs AFTER the derived one, so between the two the slot
-    // still points at an object whose deliverBytes is pure virtual again. What
-    // makes that safe is not the ordering here: the driver queues receives and
-    // records a send verdict, acting on both from the main loop, which
-    // is also where channels are destroyed, so no dispatch can land mid-teardown.
+    // Safe although the slots outlive the derived part: the driver dispatches rx
+    // and send verdicts only from the main loop, where channels also die.
     if (resender != nullptr) resender->cancelAll(packetType);
     if (wirelessManager == nullptr) return;
     wirelessManager->clearEspNowPacketHandler(packetType);

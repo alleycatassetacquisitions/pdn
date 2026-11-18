@@ -12,21 +12,9 @@
 class WirelessManager;
 
 // Owns one Resender. Vends typed channels, one per PktType, all sharing it.
-//
-// Lifecycle of a reliable packet:
-//   send: manager -> channel->sendReliable (serialize, allocate seqId) ->
-//     Resender pending entry -> WirelessManager::sendEspNowData -> driver
-//     (which itself retries a failed MAC-layer send). The platform loop's
-//     transport->sync() retransmits on the Resender's backoff until the radio
-//     lands or the frame's span runs out -> the channel's abandon callback.
-//     Abandonment is a game-level signal (void a match, abort a tournament), not
-//     a log line; channel->cancel() drops pending sends WITHOUT it.
-//   receive: driver rx -> the owning channel's own per-PktType handler, installed
-//     by its constructor, straight into deliver, which dedups and dispatches the
-//     decoded payload to onReceive. The transport is not on that path. No ack is
-//     emitted anywhere on it either: a send is cleared by the radio's
-//     SEND_SUCCESS, not a reply. Claiming a channel is sufficient to make its
-//     receive path live.
+// It is on neither the rx nor the send-result path: each channel installs its
+// own driver handlers. channel->cancel() drops pending sends without the
+// abandon callback.
 class ReliableTransport {
 public:
     /**
@@ -39,13 +27,9 @@ public:
     ~ReliableTransport();
 
     /**
-     * Get-or-create the channel owning a PktType. A first claim creates and
-     * registers it. A re-claim of the same PktType with the same payload type
-     * (e.g. a re-created owner re-initializing) returns the existing channel
-     * with its abandon callback rebound, so the caller just re-sets onReceive.
-     * A re-claim with a DIFFERENT payload type is a wiring collision — two
-     * subsystems fighting over one PktType — and returns nullptr after logging.
-     * The returned pointer stays owned by the transport.
+     * Get-or-create the channel owning a PktType; the transport keeps ownership.
+     * A re-claim with the same payload size returns the existing channel with its
+     * abandon callback rebound; a different payload size logs and returns nullptr.
      */
     template <class P>
     ReliableChannel<P>* channel(PktType type,
@@ -78,19 +62,16 @@ public:
     /**
      * Test seam, paired with onSendResult: dispatches an inbound packet to the
      * channel claiming this PktType. Returns false if no channel is registered.
-     * Not on the driver's path — see the receive note above.
+     * Not on the driver's path — each channel installs its own packet handler.
      */
     bool deliverIncoming(PktType type, const uint8_t* fromMac,
                          const uint8_t* data, size_t len);
 
-    /**
-     * Drives Resender retransmits and abandon dispatch. Called every loop
-     * tick by the platform loop only.
-     */
+    /** Drives Resender retransmits and abandon dispatch; must run every tick. */
     void sync();
 
 private:
-    // Logs a PktType claimed by two different payload types (a wiring bug).
+    // Logs a PktType claimed with two different payload sizes (a wiring bug).
     static void logChannelTypeCollision(PktType type, size_t got, size_t have);
 
     void onResenderAbandon(PktType type, uint8_t seqId,

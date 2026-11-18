@@ -211,7 +211,7 @@ private:
         void* context;
     };
 
-    // A send whose SEND_SUCCESS is reported on the next exec() (see send()/exec()).
+    // A send whose SEND_SUCCESS is reported on the next exec() (see sendData()/exec()).
     struct DeferredSendResult {
         PktType type;
         uint8_t dst[6];

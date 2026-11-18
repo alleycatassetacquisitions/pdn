@@ -101,7 +101,6 @@ PlayerProfile Player::toProfile() const {
                          : 0xFFFF;
     profile.gameRole = hunter ? 1 : 0;
     profile.allegiance = static_cast<uint8_t>(allegiance);
-    // snprintf both truncates to the fixed wire width and NUL-terminates.
     std::snprintf(profile.faction, sizeof(profile.faction), "%s", faction.c_str());
     std::snprintf(profile.name, sizeof(profile.name), "%s", name.c_str());
     return profile;
@@ -261,7 +260,8 @@ void Player::clearRegistrationProfile() {
 }
 
 UUIDBytes Player::testPlayerIdFromMac(const uint8_t* mac) {
-    // Byte 6 stays 0 (version nibble 0), so it never equals a server-issued (v4) UUID.
+    // Byte 6's high nibble (the RFC 9562 version field) stays 0, a version no
+    // generated UUID carries.
     UUIDBytes id;
     std::reverse_copy(mac, mac + 6, id.bytes);
     std::memcpy(id.bytes + 6, "\x00\x00\x7e\x57\x7e\x57\x7e\x57\x7e\x57", UUIDBytes::SIZE - 6);

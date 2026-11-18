@@ -21,10 +21,7 @@ void Resender::sendBroadcast(const std::vector<std::array<uint8_t, 6>>& recipien
                              PktType type, uint8_t seqId,
                              const uint8_t* payload, size_t len) {
     if (recipients.empty()) return;
-    // The all-ones address is the ESP-NOW broadcast MAC. Held as a literal rather
-    // than read from the radio so a fan-out is representable before the driver is
-    // up, and so the unit-test path (null manager) takes the same route as
-    // production instead of a second one.
+    // Literal broadcast MAC so the null-manager unit-test path matches production.
     const std::array<uint8_t, 6> broadcast = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     addGroup(type, seqId, broadcast, recipients, payload, len, SendMode::KEEP_DISTINCT);
 }
@@ -36,16 +33,9 @@ void Resender::addGroup(PktType type, uint8_t seqId,
     if (mode == SendMode::SUPERSEDE_PER_TARGET) {
         supersedeRecipients(type, recipients);
     }
-    // A re-send of the same frame — same seqId to the same address — replaces it
-    // outright whatever the mode, since the recipients are whoever is named now
-    // and a member that already acked must not be re-armed by it.
-    //
-    // The destination is part of that identity, not decoration. One channel can
-    // address several peers out of a single seqId space, so the same seqId to a
-    // different peer is a different frame; dropping it from the comparison would
-    // erase a still-pending send to someone else, and that one would then never
-    // retransmit and never abandon. An ack stays unambiguous across the two
-    // because onAck matches the recipient's MAC as well as the seqId.
+    // Same type, seqId and destination replaces the frame in any mode; the
+    // destination is compared because the same seqId to another peer is a
+    // different frame.
     for (std::vector<Group>::iterator it = groups.begin(); it != groups.end(); ++it) {
         if (it->type == type && it->seqId == seqId && it->destination == destination) {
             groups.erase(it);
@@ -137,11 +127,8 @@ void Resender::sync() {
     for (size_t gi = 0; gi < groups.size();) {
         Group& g = groups[gi];
 
-        // Out of time: everyone still owing an answer for this frame is given up on
-        // together, because one send armed them all together. Elapsed rather than
-        // counted, because a refusal is not an attempt: a full PSRAM, a payload over
-        // the packet size or a radio held out of ESP-NOW mode would otherwise leave
-        // the frame unbounded while every reader of RETRANSMIT_SPAN_MS assumes it.
+        // Bounded by elapsed time, not attempts: a send path that refuses every
+        // round would otherwise never abandon.
         if (g.deadlineTimer.expired()) {
             for (const std::array<uint8_t, 6>& target : g.recipients) {
                 LOG_E(RSND_TAG, "abandon type=%u seq=%u to=%02X%02X",

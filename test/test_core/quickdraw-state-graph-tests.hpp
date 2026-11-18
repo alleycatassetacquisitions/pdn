@@ -15,26 +15,13 @@
 #include "state/state.hpp"
 #include "state/state-machine.hpp"
 
-// The literals below are the pre-split flat graph, recorded before Quickdraw was
-// broken into swappable apps, and they are the equivalence check for that split.
-// Position in a transition list is priority, so it is behaviour, not style.
-//
-// They must not be "corrected" to match a future change: if a change is meant to
-// alter the graph, that intent belongs in the diff to these literals.
-//
-// A null GameContext is sufficient and deliberate. Every state constructor only
-// stores its pointers, and reading a transition list does not evaluate its
-// condition, so the shape can be inspected without standing up any manager.
+// Position in a transition list is priority, so these literals pin behaviour; they
+// change only in a diff that means to change the graph. A null GameContext suffices:
+// constructors only store pointers and reading a transition list evaluates no condition.
 
 namespace quickdraw_state_graph_expectations {
 
-// Registration order of the pre-split graph with its slot-0 PlayerRegistrationApp
-// dropped — that app is now mounted by the device rather than nested as a state.
-// The hub, match, shootout and symbol maps concatenate to this.
-//
-// One deliberate divergence from the pre-split order: Sleep sat between the
-// match result states and the shootout states, and now sits in the hub with the
-// other three between-match states. Only the flat position moved.
+// The hub, match, shootout and symbol state maps, concatenated in registration order.
 inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
 AWAKEN_SEQUENCE,
 IDLE,
@@ -57,11 +44,7 @@ SYMBOL,
 SYMBOL_MATCHED,
 };
 
-// Per-state transition targets, in the order they were added. 46 edges: the
-// pre-split graph's 48 less PlayerRegistration -> AwakenSequence, which moved off
-// the app object onto the state that triggered it (see
-// registrationHandsOffToHub below), and less UploadMatches, whose
-// Win/Lose in-edges became Win/Lose -> Sleep.
+// Per-state transition targets in priority (declaration) order.
 inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_EDGES = {
 {AWAKEN_SEQUENCE, {IDLE}},
 {IDLE, {SHOOTOUT_PROPOSAL, MATCH_COUNTDOWN, SUPPORTER_READY, SHOOTOUT_ABORTED, SYMBOL}},
@@ -90,8 +73,6 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 // state's list) -> (target app, entry state). Every other edge in the table above
 // stays inside its app. Pinned separately because the equivalence check reads
 // through a hand-off to the state it lands on and so cannot tell the two apart.
-//
-// All 24 were intra-app edges pre-split, when the whole game was one machine.
 inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> CROSS_APP_EDGES = {
 {{IDLE, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_PROPOSAL}},
 {{IDLE, 1}, {MATCH_APP_ID, MATCH_COUNTDOWN}},
@@ -252,12 +233,8 @@ inline void quickdrawAppEdgesMatchPreSplitGraph() {
     EXPECT_EQ(totalEdges, 46u);
 }
 
-// Which of those edges became hand-offs, and the app plus entry state each names.
-// The equivalence check above already catches an edge that loses its entry state or
-// names the wrong app: resolveTarget scans only the named app's map, the four maps
-// hold disjoint id ranges, so either mistake resolves nowhere and fails there. What
-// only this table pins is that an edge is a hand-off rather than an intra-app
-// transition — an intra edge that quietly became one still lands on the same state.
+// Pins which edges are hand-offs: the target check above reads through a hand-off and
+// cannot tell it from an intra-app edge.
 inline void quickdrawCrossAppEdgesAreAppTransitions() {
     QuickdrawAppsForTest apps;
     std::map<int, State*> byId = apps.statesById();
@@ -295,8 +272,8 @@ inline void quickdrawCrossAppEdgesAreAppTransitions() {
     }
 }
 
-// The pre-split graph's 48th edge. It used to sit on the PlayerRegistrationApp
-// object; nothing checks an app's own transition list, so it lives on the Welcome state.
+// Nothing checks an app's own transition list, so registration's hub hand-off lives on
+// the Welcome state.
 inline void registrationHandsOffToHub() {
     QuickdrawAppsForTest apps;
 

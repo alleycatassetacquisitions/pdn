@@ -39,13 +39,11 @@ constexpr uint32_t advancedRecordMark(uint32_t mark, uint32_t newestNumber,
 }
 
 /**
- * Finds the lowest record above @p mark, among the newest @p ringCapacity up to
- * @p newestNumber, that @p loadRecord (`bool(uint32_t number)`) can read, and
- * writes its number to @p recordNumber. An unreadable record is passed over,
- * never retired: it stays above the mark, pending, until a later record's
- * acknowledgement moves the mark past it. @p reportUnreadable
- * (`void(uint32_t number)`) hears of each one once; @p highestReportedUnreadable
- * carries that across calls.
+ * Writes to @p recordNumber the lowest record above @p mark, among the newest
+ * @p ringCapacity up to @p newestNumber, that @p loadRecord
+ * (`bool(uint32_t number)`) can read. @p reportUnreadable
+ * (`void(uint32_t number)`) hears of each unreadable record once;
+ * @p highestReportedUnreadable carries that across calls.
  * @return false when no pending record could be read.
  */
 template <class LoadRecord, class ReportUnreadable>

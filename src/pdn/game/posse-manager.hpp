@@ -72,8 +72,7 @@ public:
     void onChainGameEventReceived(uint8_t eventType);
 
     // Supporter-side: ACK a received WIN/LOSS game event back to the
-    // challenger so it stops retransmitting. Called from GameSession's packet
-    // handler when the incoming payload has seqId != 0.
+    // challenger so it stops retransmitting.
     void sendGameEventAck(const uint8_t* toMac, uint8_t seqId);
 
     // Challenger-side: called when a supporter's ACK arrives. Clears the
@@ -116,7 +115,10 @@ public:
     static constexpr unsigned long getMaxBoostMs() {
         return MAX_CHAIN_SUPPORTERS * BOOST_PER_SUPPORTER_MS;
     }
-    /** Must exceed the retry span so the backstop does not supersede a live entry and reset its retry window. */
+    /**
+     * Longer than the retry span, so an announce sent on a backstop tick runs out
+     * its span before the next tick can supersede it.
+     */
     static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::STALE_AFTER_MS;
 
     struct RetryStats {
@@ -150,9 +152,8 @@ private:
 
     std::optional<bool> peerIsHunter(SerialIdentifier jack) const;
 
-    // Ceiling shared by the roll call and the supporter roster: the longest
-    // supporter chain a match is built for. Both buffers hold one MAC per
-    // supporter, so one number bounds both.
+    // Slot count shared by the roll call and the supporter roster; one MAC per
+    // supporter.
     static constexpr size_t MAX_CHAIN_SUPPORTERS = 18;
     using MacSlots = std::array<std::array<uint8_t, 6>, MAX_CHAIN_SUPPORTERS>;
 
@@ -169,17 +170,9 @@ private:
 
     std::atomic<bool> confirmSent{false};
 
-    // Every press we have heard this round, member or not. Membership is applied
-    // when the count is read, not here, because a confirm can beat the kChainJoin
-    // that puts its originator in the roster and the sender gets no signal it was
-    // dropped. Deciding late means an early confirm starts counting the moment
-    // its join lands, and an unplugged supporter stops counting, with nothing to
-    // re-offer or evict on a topology event.
-    //
-    // Fixed slots rather than a vector: packets append to this while a match is
-    // running and the press path scans it to price the shot, so it must not
-    // allocate, and the overwrite contract above needs a hard ceiling to be
-    // expressible at all.
+    // Every press heard this round, member or not; membership is applied when
+    // counted because a confirm can beat its kChainJoin. Fixed slots give
+    // recordMac's overwrite-oldest a hard ceiling.
     MacSlots receivedConfirms{};
     std::atomic<size_t> receivedConfirmCount{0};
     size_t receivedConfirmWrite = 0;

@@ -86,7 +86,6 @@ inline void matchBinaryRoundTripPreservesAllFields() {
     EXPECT_EQ(restored.getOccurredAtUnixMs(), 1763200000123LL);
 }
 
-// The record is the packed 112-byte layout NVS stores.
 inline void matchRecordLayoutIs112Bytes() {
     EXPECT_EQ(sizeof(MatchRecord), 112u);
     EXPECT_EQ(offsetof(MatchRecord, hunterDrawTimeMs), 16u);

@@ -21,7 +21,7 @@ pio run -e native_cli
 ```
 
 - `num_devices` (optional): Number of PDN devices to spawn (default: 2)
-- Devices alternate roles: Device 0 = Hunter, Device 1 = Bounty, Device 2 = Hunter, etc.
+- All devices start as Hunters; `add bounty` adds a Bounty at runtime
 - Device IDs start at `0010` and increment
 
 ## Controls
@@ -48,6 +48,7 @@ Type commands at the prompt and press Enter:
 | `longpress <n> <ms>` | Simulate long press with duration |
 | `peer <src> <dst> <type> [hex]` | Send ESP-NOW packet between devices |
 | `inject <dst> <type> [hex]` | Inject ESP-NOW packet from external source |
+| `role [n\|all]` | Show a device's role, or every device's |
 | `state` | Show all device states |
 
 ## UI Panel
@@ -71,23 +72,25 @@ The `cable` command simulates plugging in an audio cable between two devices:
 
 Example workflow:
 ```
-cable 0 1          # Connect hunter (0) to bounty (1)
+cable 0 1          # Connect device 0 to device 1
 disconnect 0       # Disconnect device 0's cable
 ```
 
 ## Example Session
 
 ```bash
-# Start with 2 devices (hunter + bounty)
+# Start with 2 devices (both Hunters)
 .pio/build/native_cli/program 2
 
 # In the simulator:
-cable 0 1              # Connect devices - starts handshake
+add bounty             # Device 2 joins as a Bounty
+role all               # Check each device's role
+cable 0 2              # Connect hunter to bounty - starts handshake
 # Watch devices progress through: Idle → MatchCountdown → MatchState
 
 # Press buttons during match
 press 0 primary        # Hunter presses button
-press 1 primary        # Bounty presses button
+press 2 primary        # Bounty presses button
 ```
 
 ## Architecture

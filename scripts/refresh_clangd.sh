@@ -1,16 +1,6 @@
 #!/bin/bash
-# Refresh clangd's view of the project. Run this whenever code state changes
-# outside of a `pio run`/`pio test` invocation (e.g. after an Agent completes
-# or after direct file edits). PlatformIO's own auto_compiledb.py covers pio
-# invocations; this script covers the gap.
-#
-# What it does:
-#   1. Regenerates compile_commands.json from native_cli env (canonical).
-#   2. Touches the file to force mtime bump, so clangd's inotify watcher
-#      definitely picks up a change even when content is identical.
-#
-# A lockfile prevents concurrent runs from racing each other. If another
-# instance is already refreshing, this one exits immediately.
+# Regenerate compile_commands.json from native_cli outside a pio run; touch forces
+# clangd's watcher to reload; flock makes concurrent runs exit.
 
 set -u
 PROJECT_DIR="/home/tirefire/pdn"

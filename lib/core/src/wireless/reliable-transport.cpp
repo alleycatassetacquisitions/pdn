@@ -25,9 +25,6 @@ ReliableTransport::~ReliableTransport() {
         entry.second = nullptr;
     }
     registry.clear();
-    // No driver callbacks to unregister here: each channel installs and drops
-    // its own receive and send-status handlers, and every channel is deleted
-    // above, so both slots are already free.
 }
 
 void ReliableTransport::onSendResult(PktType type, const uint8_t* toMac,

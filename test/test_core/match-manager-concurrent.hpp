@@ -50,7 +50,7 @@ inline void matchManagerConcurrentDriverVsReader() {
 
     std::atomic<bool> running{true};
 
-    // Simulates the WiFi task: only enqueues after the fix — never touches MatchManager.
+    // Simulates the WiFi task: only enqueues, never touches MatchManager.
     std::thread wifiTask([&]() {
         int iter = 0;
         while (running.load(std::memory_order_relaxed)) {
