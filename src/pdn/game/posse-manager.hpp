@@ -156,7 +156,7 @@ private:
     std::optional<bool> peerIsHunter(SerialIdentifier jack) const;
 
     // Ceiling shared by the roll call and the supporter roster: the longest
-    // supporter chain a match is built for. Both buffers hold one MAC per
+    // supporter chain a match is built for. Both buffers hold one slot per
     // supporter, so one number bounds both.
     static constexpr size_t MAX_CHAIN_SUPPORTERS = 18;
     // A supporter MAC and, for a press, the player it was made for (nil in the
@@ -168,10 +168,11 @@ private:
     };
     using SupporterSlots = std::array<SupporterSlot, MAX_CHAIN_SUPPORTERS>;
 
-    // Appends `mac` to a slot buffer, deduped. Full means overwrite oldest, not
-    // refuse newest: refusing would let anything on the channel — the packet
-    // handler cannot prove a sender is a member — wedge the slots shut and
-    // silence every real supporter for the round.
+    // Appends a supporter to a slot buffer, deduped by MAC; a repeat keeps the
+    // player it first carried. Full means overwrite oldest, not refuse newest:
+    // refusing would let anything on the channel — the packet handler cannot
+    // prove a sender is a member — wedge the slots shut and silence every real
+    // supporter for the round.
     static void recordSupporter(SupporterSlots& slots, std::atomic<size_t>& count,
                                 size_t& writeIndex, const uint8_t* mac, const UUIDBytes& playerId);
     static bool containsMac(const SupporterSlots& slots, size_t count, const uint8_t* mac);
