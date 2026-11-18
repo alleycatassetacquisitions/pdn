@@ -199,4 +199,4 @@ These are decisions, not oversights.
 - **The receive bound covers game traffic.** Beside a seed, game frames past the 16 KB bound are dropped along with chunks.
 - **The task watchdog is 30 seconds on PDNs.** Core 0's idle-task check takes 30 seconds, not 5, to reset a PDN whose core 0 is starved.
 - **A pending image takes no update.** IDF refuses to open a slot until the running image confirms, so a device that just updated skips a newer run that starts within its first 10 seconds.
-- **A device that cannot open its storage has no radio.** IDF Wi-Fi needs it, so the device stays offline until the desk reads its records and reflashes or clears it; erasing at boot would bring it back by losing them.
+- **A device that cannot open its storage has no radio.** IDF Wi-Fi needs it, so the device stays offline until the desk reads its records and reflashes or clears it; erasing at boot would bring it back by losing them. A core dump kept through that boot is recorded on the next healthy boot with that boot's reset reason and build.

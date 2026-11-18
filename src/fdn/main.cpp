@@ -124,7 +124,7 @@ static void setup() {
     // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
     // and the preferences driver cannot open a namespace.
     // Never erased on failure: that would wipe every stored record. The FDN runs
-    // without storage, and so without its radio, until it is reflashed.
+    // without storage, and so without its radio, until the desk reflashes or clears it.
     esp_err_t nvsStatus = nvs_flash_init();
     if (nvsStatus != ESP_OK) {
         ESP_LOGE("FDN", "nvs_flash_init failed: %s", esp_err_to_name(nvsStatus));
