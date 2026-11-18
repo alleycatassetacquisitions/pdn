@@ -3217,7 +3217,8 @@ inline void rdcForgedFdnContextNeitherTypesACabledPdnNorSetsTheClock(RDCHelloTes
     deliverFdnContext(suite, pdn, FORGED_UTC_MS, 3);
     suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
-    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), 0) << "a context not from a cabled FDN set the clock";
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), 0)
+    << "a context not from a cabled FDN set the clock";
 }
 
 // The context buffer holds one entry per MAC and kind, so a forged frame of the
@@ -3255,5 +3256,6 @@ inline void rdcFdnClockAppliesOnceTheJackIsConnected(RDCHelloTests* suite) {
     EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS);
 
     deliverFdnContext(suite, fdn, SYNCED_UTC_MS + 1000, 2);
-    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS + 1000) << "a refresh was ignored";
+    EXPECT_EQ(suite->fakeClock->unixMilliseconds(), SYNCED_UTC_MS + 1000)
+    << "a refresh was ignored";
 }

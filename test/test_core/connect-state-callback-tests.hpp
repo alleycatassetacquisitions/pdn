@@ -340,14 +340,14 @@ inline void rdcHelloPeerDeviceTypeIsTheCablesKind(RDCHelloTests* suite) {
     suite->deliverHello(suite->outJack, encodeFramed(fdnHello));
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN)
-        << "the HELLO alone set the kind";
+    << "the HELLO alone set the kind";
 
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/4, /*userId=*/1234, /*seqId=*/9);
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN)
-        << "a PDN context typed a jack whose HELLO said FDN";
+    << "a PDN context typed a jack whose HELLO said FDN";
 
     deliverFdnContext(suite, peer, 0, 10);
     suite->rdc.sync(&suite->device);
