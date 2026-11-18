@@ -33,7 +33,10 @@ extern "C" unsigned int __wrap__ZNSt13random_device9_M_getvalEv(void* self) {
     return __real__ZNSt13random_device9_M_getvalEv(self);
 }
 
-// PDN::~PDN and FDN::~FDN free none of the managers their constructors allocate
-// (src/pdn/device/pdn.cpp:10, src/fdn/device/fdn.cpp:10), so every simulated reboot
-// leaks them. Scoped to those constructors until the production fix lands.
-extern "C" const char* __lsan_default_suppressions() { return "leak:PDN::PDN\nleak:FDN::FDN\n"; }
+// TEMPORARY: delete SOAK_DESTRUCTOR_LEAK_SUPPRESSIONS and the hook below once the
+// PDN/FDN destructor fix lands. PDN::~PDN and FDN::~FDN free none of the managers
+// their constructors allocate (src/pdn/device/pdn.cpp:10, src/fdn/device/fdn.cpp:10),
+// so every simulated reboot leaks them; scoped to those two constructors only.
+inline constexpr const char SOAK_DESTRUCTOR_LEAK_SUPPRESSIONS[] = "leak:PDN::PDN\nleak:FDN::FDN\n";
+
+extern "C" const char* __lsan_default_suppressions() { return SOAK_DESTRUCTOR_LEAK_SUPPRESSIONS; }
