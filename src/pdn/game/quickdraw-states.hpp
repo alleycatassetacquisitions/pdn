@@ -118,6 +118,9 @@ private:
     bool displayIsDirty = false;
     int statsIndex = 0;
     int statsCount = 7;
+    // A nil player UUID, read at mount: the stats cycle opens on the UNREGISTERED page.
+    bool playerIsUnregistered = false;
+    static constexpr int UNREGISTERED_PAGE = -1;
     size_t lastPosseCount = 0;
 
     bool isPrimaryRequired() override;
@@ -203,6 +206,10 @@ inline void renderLastMatchStats(Display* display, const LastMatchDisplay& stats
     }
     snprintf(line, sizeof(line), "Opp:%4ld", stats.opponentTimeMs);
     display->drawText(line, 2, (hasBoost && hasPenalty) ? 48 : 44);
+    // The card has room for one more line, not for "NOT SCORED" beside it.
+    if (stats.isPractice) {
+        display->drawText("PRACTICE", 2, 60);
+    }
 }
 
 class MatchCountdown : public ConnectState<PDN> {
@@ -253,6 +260,8 @@ private:
     };
 
     ImageType getImageIdForStep(CountdownStep step);
+    /** Draws one countdown step, with the practice label over the art for a practice match. */
+    void renderStep(PDN* pdn, CountdownStep step);
 
     Player* player;
     SimpleTimer countdownTimer;
@@ -260,6 +269,8 @@ private:
     const int HAPTIC_DURATION = 75;
     const int HAPTIC_INTENSITY = 255;
     bool doBattle = false;
+    // Read at mount: the handshake has named both players before the countdown starts.
+    bool matchIsPractice = false;
     const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2000);
     const CountdownStage TWO = CountdownStage(CountdownStep::TWO, 2000);
     const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 2000);

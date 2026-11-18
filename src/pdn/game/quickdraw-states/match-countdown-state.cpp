@@ -22,11 +22,8 @@ void MatchCountdown::onStateMounted(PDN* pdn) {
     // match is starting so they can arm their confirmation window.
     posseManager->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
 
-    pdn->getDisplay()
-    ->invalidateScreen()
-    ->drawImage(getImageForAllegiance(player->getAllegiance(),
-                                      getImageIdForStep(countdownQueue[currentStepIndex].step)))
-    ->render();
+    matchIsPractice = matchManager->isPracticeMatch();
+    renderStep(pdn, countdownQueue[currentStepIndex].step);
 
     pdn->getLightManager()->startAnimation(new CountdownAnimation(),
                                            countdownQueue[currentStepIndex].animationConfig);
@@ -60,11 +57,7 @@ void MatchCountdown::onStateLoop(PDN* pdn) {
         if (countdownQueue[currentStepIndex].step == CountdownStep::BATTLE) {
             doBattle = true;
         } else {
-            pdn->getDisplay()
-            ->invalidateScreen()
-            ->drawImage(getImageForAllegiance(
-            player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))
-            ->render();
+            renderStep(pdn, countdownQueue[currentStepIndex].step);
 
             pdn->getLightManager()->startAnimation(
             new CountdownAnimation(), countdownQueue[currentStepIndex].animationConfig);
@@ -83,6 +76,22 @@ ImageType MatchCountdown::getImageIdForStep(CountdownStep step) {
     }
 }
 
+void MatchCountdown::renderStep(PDN* pdn, CountdownStep step) {
+    Display* display = pdn->getDisplay();
+    display->invalidateScreen()->drawImage(
+    getImageForAllegiance(player->getAllegiance(), getImageIdForStep(step)));
+    if (matchIsPractice) {
+        // Text over the art is unreadable on every allegiance, so the label
+        // takes the left half. "NOT SCORED" is wider than that half.
+        display->whiteScreenLeftHalf();
+        display->setGlyphMode(FontMode::TEXT_INVERTED_SMALL);
+        display->drawText("PRACTICE", 5, 24);
+        display->drawText("NOT", 22, 38);
+        display->drawText("SCORED", 11, 52);
+    }
+    display->render();
+}
+
 void MatchCountdown::onStateDismounted(PDN* pdn) {
     // Supporters armed on COUNTDOWN sit on "PRESS" until a DRAW clears them, and
     // this state cannot tell whether the match it hands to will start. Sent on
@@ -93,6 +102,7 @@ void MatchCountdown::onStateDismounted(PDN* pdn) {
     }
 
     doBattle = false;
+    matchIsPractice = false;
     currentStepIndex = 0;
     countdownTimer.invalidate();
     pdn->getPrimaryButton()->removeButtonCallbacks();

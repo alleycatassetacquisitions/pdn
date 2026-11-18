@@ -946,8 +946,8 @@ TEST_F(MatchManagerTestSuite, unregisteredLocalPlayerIsPractice) {
 }
 
 TEST_F(MatchManagerTestSuite, samePlayerOnBothSidesIsPractice) {
-    expectPracticeLeavesStorageAlone(
-    this, [this]() { playHunterWin(makeTestUuid(LOCAL_PLAYER_UUID)); });
+    expectPracticeLeavesStorageAlone(this,
+                                     [this]() { playHunterWin(makeTestUuid(LOCAL_PLAYER_UUID)); });
 }
 
 // Each device names itself the winner when neither pressed.

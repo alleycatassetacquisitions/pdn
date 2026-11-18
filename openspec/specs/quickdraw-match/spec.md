@@ -186,11 +186,11 @@ A standalone match SHALL be scored, and stored for relay and upload, only when b
 
 ### Requirement: Unregistered idle indicator
 
-A PDN whose player UUID is nil SHALL show `UNREGISTERED` on its idle screen; a PDN with a non-nil player UUID SHALL NOT. A test build's MAC test identity is non-nil, so it shows no label. A release build keeps the nil "Demo" identity until the FDN lookup exists (#485), so it shows the label and every match it plays is a practice match.
+A PDN whose player UUID is nil SHALL open its idle screen on `UNREGISTERED`, shown again each time the stats cycle wraps; a PDN with a non-nil player UUID SHALL NOT show it. A test build's MAC test identity is non-nil, so it shows no label. A release build keeps the nil "Demo" identity until the FDN lookup exists (#485), so it shows the label and every match it plays is a practice match.
 
 #### Scenario: Idle screen shows UNREGISTERED with a nil player UUID
 - **WHEN** a PDN with a nil player UUID enters the idle screen
-- **THEN** the idle screen shows `UNREGISTERED`
+- **THEN** the idle screen opens on `UNREGISTERED`, split over two lines to fit the stats panel
 
 #### Scenario: Idle screen shows no label with a non-nil player UUID
 - **WHEN** a PDN with a non-nil player UUID, a test build's MAC test identity included, enters the idle screen

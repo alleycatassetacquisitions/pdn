@@ -232,11 +232,14 @@ bool MatchManager::finalizeMatch() {
     lastMatchDisplay.boostMs = activeMatchState.boostMs;
     lastMatchDisplay.penaltyMs = activeMatchState.penaltyMs;
     lastMatchDisplay.hasData = true;
+    // One read decides both the label and storage, so they cannot disagree.
+    lastMatchDisplay.isPractice = isPracticeMatch();
 
-    // Shootout matches are local-ephemeral and their IDs are not UUIDs, so the
-    // server cannot take them. Every other record is kept as computed; the
-    // server rejects or flags a nil or repeated player or a disputed winner.
-    if (currentMatchIsShootout()) {
+    // Shootout matches are scored by the tournament, and their IDs are not
+    // UUIDs, so the server cannot take them. A practice match has no two
+    // distinct players to score. Every other record is kept as computed; the
+    // server flags a disputed winner.
+    if (currentMatchIsShootout() || lastMatchDisplay.isPractice) {
         clearCurrentMatch();
         return true;
     }
@@ -551,3 +554,13 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
 }
 
 bool MatchManager::isMatchReady() const { return activeMatchState.matchIsReady; }
+
+bool MatchManager::isPracticeMatch() const {
+    // A shootout's opponent slot is never filled by a handshake; the tournament scores it.
+    if (!activeMatchState.match.has_value() || currentMatchIsShootout()) {
+        return false;
+    }
+    const UUIDBytes& hunterPlayerId = activeMatchState.match->getHunterPlayerId();
+    const UUIDBytes& bountyPlayerId = activeMatchState.match->getBountyPlayerId();
+    return hunterPlayerId.isZero() || bountyPlayerId.isZero() || hunterPlayerId == bountyPlayerId;
+}

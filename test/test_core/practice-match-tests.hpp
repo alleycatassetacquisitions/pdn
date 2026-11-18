@@ -33,6 +33,7 @@ public:
         ON_CALL(*display, drawImage(_, _, _)).WillByDefault(Return(display));
         ON_CALL(*display, setGlyphMode(_)).WillByDefault(Return(display));
         ON_CALL(*display, whiteScreenLeftHalf()).WillByDefault(Return(display));
+        ON_CALL(*display, renderGlyph(_, _, _)).WillByDefault(Return(display));
         ON_CALL(*display, drawText(_, _, _))
         .WillByDefault(Invoke([this, display](const char* text, int, int) {
             lines.emplace_back(text);
@@ -224,4 +225,26 @@ TEST_F(PracticeMatchTests, idleLabelTracksANilPlayerUuid) {
 
     hunter->clearRegistrationProfile();
     EXPECT_TRUE(idleShowsUnregistered(this)) << "registration cleared";
+}
+
+// The stats cycle steps off the label and comes back to it when it wraps.
+TEST_F(PracticeMatchTests, idleLabelReturnsWhenTheStatsCycleWraps) {
+    hunterMatchManager->clearCurrentMatch();
+    Idle idle(hunterCtx);
+    mountState(&idle, &hunterDevice);
+    idle.onStateLoop(&hunterDevice);
+    ASSERT_TRUE(hunterScreen.shows("UNREGIS-"));
+
+    hunterScreen.clear();
+    hunterDevice.mockPrimaryButton->trigger(ButtonInteraction::CLICK);
+    idle.onStateLoop(&hunterDevice);
+    EXPECT_FALSE(hunterScreen.shows("UNREGIS-")) << "first stats page";
+
+    // Eight stats pages, 0 through 7; the click after the last wraps.
+    for (int click = 0; click < 8; click++) {
+        hunterDevice.mockPrimaryButton->trigger(ButtonInteraction::CLICK);
+        idle.onStateLoop(&hunterDevice);
+    }
+    EXPECT_TRUE(hunterScreen.shows("UNREGIS-")) << "after the wrap";
+    dismountState(&idle, &hunterDevice);
 }

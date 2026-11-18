@@ -50,7 +50,7 @@ void Idle::onStateMounted(PDN* pdn) {
         Idle* idle = (Idle*)ctx;
         idle->statsIndex++;
         if (idle->statsIndex > idle->statsCount) {
-            idle->statsIndex = 0;
+            idle->statsIndex = idle->playerIsUnregistered ? UNREGISTERED_PAGE : 0;
         }
         idle->displayIsDirty = true;
     };
@@ -58,6 +58,8 @@ void Idle::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
 
+    playerIsUnregistered = player->getServerPlayerId().isZero();
+    statsIndex = playerIsUnregistered ? UNREGISTERED_PAGE : 0;
     displayIsDirty = true;
 }
 
@@ -94,6 +96,7 @@ void Idle::onStateDismounted(PDN* pdn) {
         matchManager->clearCurrentMatch();
     }
     statsIndex = 0;
+    playerIsUnregistered = false;
     matchInitializationTimer.invalidate();
     matchInitialized = false;
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
@@ -109,7 +112,13 @@ void Idle::renderStats(PDN* pdn) {
     pdn->getDisplay()->invalidateScreen();
     pdn->getDisplay()->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
 
-    if(statsIndex == 0) {
+    if (statsIndex == UNREGISTERED_PAGE) {
+        // "UNREGISTERED" is wider than the stats panel, so it takes two lines.
+        pdn->getDisplay()
+        ->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+        ->drawText("UNREGIS-", 70, 28)
+        ->drawText("TERED", 70, 42);
+    } else if (statsIndex == 0) {
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getWins()).c_str(), 88, 40);
     } else if(statsIndex == 1) {
