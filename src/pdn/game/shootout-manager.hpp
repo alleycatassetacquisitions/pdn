@@ -328,14 +328,24 @@ private:
                                 uint8_t matchIndex);
     /**
      * Applies an elimination. `endsCurrentMatch` false records it without
-     * leaving MATCH_IN_PROGRESS — a late result for an older match must not pull
-     * this device out of the one it is fighting now.
+     * changing the phase, so a result for another match never ends the one in
+     * progress.
      */
     void applyMatchResult(const uint8_t* winner, const uint8_t* loser,
                           bool endsCurrentMatch = true);
     std::vector<uint8_t> buildMatchResultPacket(const uint8_t* winner,
                                                 const uint8_t* loser,
                                                 uint8_t matchIndex) const;
+
+    // Unacked reveal results (#240), kept until the first MATCH_START a
+    // non-coordinator takes; one per loser, so bounded by the bracket.
+    struct HeldResult {
+        std::array<uint8_t, 6> winner;
+        std::array<uint8_t, 6> loser;
+        uint8_t matchIndex;
+    };
+    std::vector<HeldResult> resultsHeldInReveal;
+    void holdResultFromReveal(const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex);
 
     std::array<uint8_t, 6> tournamentWinner{};
     uint8_t lastTournamentEndSeqId = 0;

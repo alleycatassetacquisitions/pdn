@@ -218,7 +218,7 @@ Within a match, the paired player with the lower MAC address SHALL be the hunter
 
 The paired player who wins a match SHALL report it exactly once by sending MATCH_RESULT (winner, loser, match index) reliably to the bracket, and SHALL apply the result locally. If the match timer expires without a press, the match's hunter forfeits and its bounty reports the win.
 
-A device receiving MATCH_RESULT SHALL ignore it unless the sender is in its bracket and the tournament has entered match play (`MATCH_IN_PROGRESS`, `BETWEEN_MATCHES`, or a terminal phase, ignoring stray frames before the first match starts). It SHALL acknowledge it, and apply it only if the winner and loser are both in its bracket and the loser is not already eliminated. Applying a result eliminates the loser and moves the device to BETWEEN_MATCHES, but only if the result's monotonic match index names the device's current match. A result for an earlier match index records the elimination without pulling the device out of a newer match. A device in a terminal phase records the elimination and stays in that phase.
+A device receiving MATCH_RESULT SHALL ignore it unless the sender is in its bracket and the tournament has entered match play (`MATCH_IN_PROGRESS`, `BETWEEN_MATCHES`, or a terminal phase, ignoring stray frames before the first match starts). It SHALL acknowledge it, and apply it only if the winner and loser are both in its bracket and the loser is not already eliminated. Applying a result eliminates the loser and moves the device to BETWEEN_MATCHES, but only if the result's monotonic match index names the device's current match. A result for an earlier match index records the elimination without pulling the device out of a newer match. A device in a terminal phase records the elimination and stays in that phase. A non-coordinator that ignores a result during the bracket reveal SHALL hold it if its winner and loser are in its bracket; the first MATCH_START it takes SHALL record each held elimination for an earlier match index whose loser does not play in that match, and SHALL discard the rest.
 
 #### Scenario: Match timeout
 - **WHEN** the match timer expires in a shootout match with neither paired player pressing
@@ -231,6 +231,10 @@ A device receiving MATCH_RESULT SHALL ignore it unless the sender is in its brac
 #### Scenario: Late result for an earlier match
 - **WHEN** a device in match 3 receives a first-time MATCH_RESULT for match 2
 - **THEN** it eliminates match 2's loser and stays in match 3
+
+#### Scenario: Spectator missed the first match start
+- **WHEN** a spectator still in the bracket reveal receives MATCH_RESULT for match 0, then MATCH_START for match 1 whose players do not include match 0's loser
+- **THEN** it does not acknowledge the result, and records match 0's loser as eliminated when it takes the MATCH_START
 
 ### Requirement: Abandonment policy
 
