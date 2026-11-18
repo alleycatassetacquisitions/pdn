@@ -1031,7 +1031,8 @@ struct SpectatorBracket {
     void join(ShootoutManagerTests* suite) {
         ON_CALL(*suite->device.mockPeerComms, getMacAddress())
         .WillByDefault(testing::Return(me.data()));
-        ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        ON_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, testing::_, testing::_, testing::_))
         .WillByDefault(testing::Return(1));
         suite->followRingHead(coord);
         suite->shootout->setRingMembersForTest({coord, a, b, me});
@@ -1042,8 +1043,8 @@ struct SpectatorBracket {
 // #475: the result of a match whose start this spectator missed lands in the
 // reveal and is dropped unacked (#240). The next MATCH_START names a later
 // match, which shows the dropped one was played, so the elimination is recorded.
-inline void spectatorThatMissedMatchStartRecordsTheResultOnTheNextStart(
-    ShootoutManagerTests* suite) {
+inline void
+spectatorThatMissedMatchStartRecordsTheResultOnTheNextStart(ShootoutManagerTests* suite) {
     SpectatorBracket s;
     s.join(suite);
     suite->shootout->onMatchResultReceived(s.a.data(), s.b.data(), 0, 7, s.a.data());
@@ -1051,7 +1052,7 @@ inline void spectatorThatMissedMatchStartRecordsTheResultOnTheNextStart(
 
     suite->shootout->onMatchStartReceived(s.coord.data(), s.coord.data(), s.me.data(), 1, 3);
     EXPECT_TRUE(suite->shootout->isEliminated(s.b.data()))
-        << "the spectator never recorded the match it missed the start of";
+    << "the spectator never recorded the match it missed the start of";
     EXPECT_FALSE(suite->shootout->isEliminated(s.a.data()));
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
     EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), 1);
