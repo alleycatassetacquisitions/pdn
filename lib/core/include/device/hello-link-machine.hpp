@@ -9,6 +9,7 @@
 #include "state/state-machine.hpp"
 #include "device/serial-manager.hpp"
 #include "device/serial-frame-parser.hpp"
+#include "device/device-type.hpp"
 
 // Per-jack HELLO link state machine. One instance per jack, driven by the
 // RDC. Three states — Idle / Connecting / Connected — on the project's StateMachine
@@ -43,6 +44,7 @@ struct HelloLinkContext {
 
     unsigned long lastHelloMs = 0;
     std::array<uint8_t, 6> peerMac{};  // source MAC last heard; the owner's per-jack peer identity
+    DeviceType peerType = DeviceType::UNKNOWN;  // the kind that peer's arming HELLO declared
 
     /** Milliseconds elapsed since the last HELLO on this jack. */
     unsigned long sinceHello() const { return nowMs() - lastHelloMs; }
@@ -66,6 +68,7 @@ public:
         transitionToConnectingState = false;
         if (context->onLinkDown) context->onLinkDown(context->jack, context->peerMac);
         context->peerMac = {};
+        context->peerType = DeviceType::UNKNOWN;
     }
 
     /**
@@ -74,11 +77,15 @@ public:
      * all-zero there. Dismount runs before Connecting mounts, so the peer is in
      * place for the context request that mount fires.
      */
-    void onStateDismounted(Device*) override { context->peerMac = armedPeer; }
+    void onStateDismounted(Device*) override {
+        context->peerMac = armedPeer;
+        context->peerType = armedType;
+    }
 
-    /** Opens the link on the next tick, with `source` as the peer it tracks. */
-    void arm(const uint8_t* source) {
+    /** Opens the link on the next tick, with `source` of kind `type` as its peer. */
+    void arm(const uint8_t* source, DeviceType type) {
         memcpy(armedPeer.data(), source, 6);
+        armedType = type;
         transitionToConnectingState = true;
     }
     bool transitionToConnecting() { return transitionToConnectingState; }
@@ -86,6 +93,7 @@ public:
 private:
     HelloLinkContext* context = nullptr;
     std::array<uint8_t, 6> armedPeer{};
+    DeviceType armedType = DeviceType::UNKNOWN;
     bool transitionToConnectingState = false;
 };
 
@@ -180,7 +188,8 @@ public:
         // identity only ever changes here: Idle takes it and publishes it as it
         // dismounts into Connecting.
         if (currentState && currentState->getStateId() == HELLO_LINK_IDLE) {
-            static_cast<HelloIdleState*>(currentState)->arm(hello.source);
+            static_cast<HelloIdleState*>(currentState)
+            ->arm(hello.source, static_cast<DeviceType>(hello.deviceType));
         }
     }
 
@@ -208,6 +217,9 @@ public:
 
     /** The peer this link tracks (last HELLO source); all-zero while Idle. */
     const std::array<uint8_t, 6>& peer() const { return context.peerMac; }
+
+    /** The kind the peer's arming HELLO declared over the cable; UNKNOWN while Idle. */
+    DeviceType peerType() const { return context.peerType; }
 
 private:
     HelloLinkContext context;

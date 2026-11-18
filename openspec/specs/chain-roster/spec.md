@@ -53,7 +53,7 @@ The capability SHALL remain correct under the following conditions, and no requi
 Each serial jack SHALL progress through three states — **Disconnected**, **Connecting**, and **Connected**:
 
 - **Disconnected to Connecting**: When a Disconnected jack receives a valid serial beacon from a neighbor, it records that neighbor's identity, enters **Connecting**, and sends this device's context (device type `PDN` or `FDN`, current chain role, and player profile including standing Hunter/Bounty role and player ID) reliably over the wireless channel to that neighbor.
-- **Connecting to Connected**: A Connecting jack SHALL transition to **Connected** only after a wireless context from that same neighbor has been received and recorded on the jack.
+- **Connecting to Connected**: A Connecting jack SHALL transition to **Connected** only after a wireless context from that same neighbor, of the device type its serial beacon declared, has been received and recorded on the jack. A context of another device type SHALL NOT be recorded on that jack.
 - **Early wireless context buffering**: If a neighbor's wireless context arrives before the local jack has entered **Connecting** for that neighbor (or before the second jack of a two-device ring has entered **Connecting**), the device SHALL buffer that context for up to the link-silence window (100 ms) and apply it as soon as the matching jack enters **Connecting**.
 - **Link loss and half-open timeout**: If a Connecting or Connected jack hears no valid serial beacon for 100 ms, or if a Connecting jack does not receive the neighbor's wireless context within 500 ms, the jack SHALL return to **Disconnected** and clear all stored identity, device type, and profile state for the departed neighbor.
 - **Immediate peer swap**: If a Connecting or Connected jack receives a valid serial beacon whose identity differs from the neighbor currently tracked on that jack, the jack SHALL immediately tear down the prior link through **Disconnected** before entering **Connecting** for the new neighbor.
@@ -62,6 +62,10 @@ Each serial jack SHALL progress through three states — **Disconnected**, **Con
 #### Scenario: Half-open link does not report Connected
 - **WHEN** a jack receives serial beacons from neighbor $B$ but $B$'s wireless context never arrives
 - **THEN** the jack remains in **Connecting** (never **Connected**) and resets to **Disconnected** after 500 ms
+
+#### Scenario: Wireless context of another device type
+- **WHEN** neighbor $B$'s serial beacon declares PDN and a wireless context declaring FDN arrives under $B$'s MAC
+- **THEN** the jack records nothing from it and stays **Connecting** until $B$'s PDN context arrives
 
 #### Scenario: Wireless context arriving before serial beacon completes connection
 - **WHEN** neighbor $B$'s wireless context arrives at $A$ 20 ms before $A$ parses $B$'s first serial beacon on a jack
