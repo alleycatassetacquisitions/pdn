@@ -38,6 +38,7 @@
 #include "uuid-bytes-tests.hpp"
 #include "server-key-pin-tests.hpp"
 #include "text-lines-tests.hpp"
+#include "hmac-sha256-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -2250,6 +2251,20 @@ TEST(Sha256, matchesTheMillionAVector) { sha256MatchesTheMillionAVector(); }
 TEST(Sha256, matchesDigestsAtThePaddingBoundaries) { sha256MatchesDigestsAtThePaddingBoundaries(); }
 TEST(Sha256, padsOverABufferThatWasFilledBefore) { sha256PadsOverABufferThatWasFilledBefore(); }
 TEST(Sha256, isTheSameHoweverTheMessageIsSplit) { sha256IsTheSameHoweverTheMessageIsSplit(); }
+
+TEST(HmacSha256, matchesTheRfc4231VectorsForShortKeys) {
+    hmacSha256MatchesTheRfc4231VectorsForShortKeys();
+}
+TEST(HmacSha256, matchesTheRfc4231VectorsForKeysLongerThanABlock) {
+    hmacSha256MatchesTheRfc4231VectorsForKeysLongerThanABlock();
+}
+TEST(HmacSha256, hashesTheKeyOnlyWhenItIsLongerThanABlock) {
+    hmacSha256HashesTheKeyOnlyWhenItIsLongerThanABlock();
+}
+TEST(HmacSha256, tagsAnEmptyMessage) { hmacSha256TagsAnEmptyMessage(); }
+TEST(HmacSha256, refusesAMissingKeyOrANullMessageThatHasALength) {
+    hmacSha256RefusesAMissingKeyOrANullMessageThatHasALength();
+}
 
 TEST(ServerKeyPin, trustsTheKeyItWasComputedFrom) { serverKeyPinTrustsTheKeyItWasComputedFrom(); }
 TEST(ServerKeyPin, refusesAKeyOneBitAway) { serverKeyPinRefusesAKeyOneBitAway(); }
