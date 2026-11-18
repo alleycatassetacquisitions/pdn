@@ -1017,7 +1017,7 @@ struct SpectatorBracket {
     std::array<uint8_t, 6> b = {0x03, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x04, 0, 0, 0, 0, 0};
 
-    /** Runs a proposal into the reveal; match 0's MATCH_START is never delivered. */
+    /** Runs a proposal into the reveal. */
     void enterReveal(ShootoutManagerTests* suite) const {
         suite->shootout->startProposal();
         for (const std::array<uint8_t, 6>& m : {coord, a, b, me}) {

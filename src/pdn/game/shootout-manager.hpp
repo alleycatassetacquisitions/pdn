@@ -328,8 +328,8 @@ private:
                                 uint8_t matchIndex);
     /**
      * Applies an elimination. `endsCurrentMatch` false records it without
-     * leaving MATCH_IN_PROGRESS — a late result for an older match must not pull
-     * this device out of the one it is fighting now.
+     * changing the phase, so a result for another match never ends the one in
+     * progress.
      */
     void applyMatchResult(const uint8_t* winner, const uint8_t* loser,
                           bool endsCurrentMatch = true);
@@ -337,9 +337,8 @@ private:
                                                 const uint8_t* loser,
                                                 uint8_t matchIndex) const;
 
-    // Results dropped unacked during the reveal (#240), held until the first
-    // MATCH_START this device takes: one naming a later match shows it missed the
-    // start of the matches before it. One per loser, so bounded by the bracket.
+    // Unacked reveal results (#240), kept until the first MATCH_START a
+    // non-coordinator takes; one per loser, so bounded by the bracket.
     struct HeldResult {
         std::array<uint8_t, 6> winner;
         std::array<uint8_t, 6> loser;

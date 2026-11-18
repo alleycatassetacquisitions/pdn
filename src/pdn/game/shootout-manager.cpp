@@ -828,9 +828,9 @@ void ShootoutManager::onMatchResultReceived(
     // and a unicast takes a slot in the radio's 20-entry peer table, evicting
     // whatever sat there longest.
     if (!containsMac(bracket, fromMac)) return;
-    // No match has started during the reveal as far as this device knows, so a
-    // result then is dropped unacked; phases without a bracket were turned away
-    // above. It is held in case the first MATCH_START taken names a later match.
+    // Unacked: as far as this device knows no match has started. Phases without a
+    // bracket were turned away above; the first MATCH_START taken decides whether
+    // a held result counts.
     if (phase == Phase::BRACKET_REVEAL) {
         holdResultFromReveal(winner, loser, matchIndex);
         return;
@@ -855,7 +855,7 @@ void ShootoutManager::onMatchResultReceived(
 
 void ShootoutManager::holdResultFromReveal(const uint8_t* winner, const uint8_t* loser,
                                            uint8_t matchIndex) {
-    if (!containsMac(bracket, winner) || !containsMac(bracket, loser)) return;
+    if (isCoordinator() || !containsMac(bracket, winner) || !containsMac(bracket, loser)) return;
     for (const HeldResult& held : resultsHeldInReveal) {
         if (memcmp(held.loser.data(), loser, 6) == 0) return;
     }
