@@ -117,6 +117,7 @@ kw_false="false"
 kw_shootout="SHT-"
 kw_preamble="\xaa\x55"
 kw_hello="\xaa\x55\x00"
+kw_application="\xaa\x55\x02"
 EOF
 
     # Instrument only project sources and harnesses, skipping ArduinoJson and STL.

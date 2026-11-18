@@ -39,6 +39,7 @@
 #include "server-key-pin-tests.hpp"
 #include "text-lines-tests.hpp"
 #include "hmac-sha256-tests.hpp"
+#include "rdc-application-frame-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1931,6 +1932,21 @@ TEST_F(RDCHelloTests, contextOfAnotherKindDoesNotRetypeAConnectedPeer) {
 }
 TEST_F(RDCHelloTests, fdnOnTheOutputJackEndsRelayedRingMembership) {
     rdcFdnOnTheOutputJackEndsRelayedRingMembership(this);
+}
+TEST_F(RDCHelloTests, applicationFrameRoutesByKindWithItsJack) {
+    rdcApplicationFrameRoutesByKindWithItsJack(this);
+}
+TEST_F(RDCHelloTests, applicationFrameWithoutAHelloPeerIsDropped) {
+    rdcApplicationFrameWithoutAHelloPeerIsDropped(this);
+}
+TEST_F(RDCHelloTests, applicationFrameIsWrittenAfterHelloToAConnectedJack) {
+    rdcApplicationFrameIsWrittenAfterHelloToAConnectedJack(this);
+}
+TEST_F(RDCHelloTests, applicationFrameIsDroppedWhenThePeerLeavesFirst) {
+    rdcApplicationFrameIsDroppedWhenThePeerLeavesFirst(this);
+}
+TEST(ApplicationFrameHandOff, keepsFramesWholeAcrossTwoThreads) {
+    applicationFrameHandOffKeepsFramesWholeAcrossTwoThreads();
 }
 TEST(RDCHelloStandalone, fdnNeverAdoptsItsPdnsChainHead) { rdcFdnNeverAdoptsItsPdnsChainHead(); }
 

@@ -7,11 +7,12 @@
 #include <functional>
 #include <vector>
 
-// Serial frame protocol constants. HELLO is the sole opcode on the wire:
-// serial carries physical-connectivity discovery/liveness only, everything
-// else rides ESP-NOW. The framing (preamble + opcode + payload + CRC-16)
-// recreates for UART what 802.11 gives ESP-NOW for free: message boundaries
-// and integrity on a raw byte stream with flaky TRS contacts.
+// Serial frame protocol constants. Two opcodes share the wire: HELLO, which
+// carries physical-connectivity discovery/liveness, and one opaque application
+// frame for bytes that have to reach the jack's peer without crossing the
+// radio. Everything else rides ESP-NOW. The framing (preamble + opcode +
+// payload + CRC-16) recreates for UART what 802.11 gives ESP-NOW for free:
+// message boundaries and integrity on a raw byte stream with flaky TRS contacts.
 constexpr uint8_t FRAME_PREAMBLE_0 = 0xAA;
 constexpr uint8_t FRAME_PREAMBLE_1 = 0x55;
 constexpr uint8_t OP_HELLO = 0x00;
@@ -20,6 +21,16 @@ constexpr uint8_t OP_HELLO = 0x00;
 // without depending on the struct in switch tables.
 constexpr size_t HELLO_PAYLOAD_LEN = 14;
 constexpr size_t HELLO_FRAME_LEN = 2 + 1 + HELLO_PAYLOAD_LEN + 2;
+// 0x01 is reserved.
+constexpr uint8_t OP_APPLICATION = 0x02;
+// An application frame's payload is a kind byte, a length byte, then that many
+// bytes, at most APPLICATION_PAYLOAD_MAX_LEN. The serial layer gives neither
+// the kind nor the bytes a meaning: each kind's number and layout belong to the
+// layer that sends and receives it.
+constexpr size_t APPLICATION_HEADER_LEN = 2;
+constexpr size_t APPLICATION_PAYLOAD_MAX_LEN = 32;
+constexpr size_t APPLICATION_FRAME_MAX_LEN =
+2 + 1 + APPLICATION_HEADER_LEN + APPLICATION_PAYLOAD_MAX_LEN + 2;
 
 // Set once this device's context exchange with the head it currently holds has
 // been delivered; cleared by a head change until re-confirmed under the new one.
@@ -30,7 +41,7 @@ constexpr uint8_t HELLO_FLAG_CONFIRMED = 0x01;
 // rather than rediscovered.
 constexpr uint8_t HELLO_FLAG_RING_CLOSED = 0x02;
 
-// The sole serial payload, exchanged jack-to-jack on every HELLO frame.
+// The HELLO payload, exchanged jack-to-jack on every HELLO frame.
 // Packed to a fixed 14-byte wire layout: the parser memcpys the raw payload
 // straight into this struct, so the field order and packing ARE the wire
 // contract.
@@ -49,6 +60,20 @@ std::vector<uint8_t> encodeFramed(const HelloPayload& hello);
 
 using HelloFrameHandler = std::function<void(const HelloPayload&)>;
 
+using ApplicationFrame = std::array<uint8_t, APPLICATION_FRAME_MAX_LEN>;
+
+/**
+ * Frames one application frame of `kind` carrying `length` bytes of `payload`
+ * into the front of `frame`. Returns the bytes used, or 0, writing nothing,
+ * when `length` exceeds APPLICATION_PAYLOAD_MAX_LEN.
+ */
+size_t encodeApplicationFrame(uint8_t kind, const uint8_t* payload, size_t length,
+                              ApplicationFrame& frame);
+
+/** Receives a CRC-valid application frame; `payload` is valid only for the call. */
+using ApplicationFrameHandler =
+std::function<void(uint8_t kind, const uint8_t* payload, size_t length)>;
+
 // Parses one jack's serial byte stream into framed binary frames
 // (preamble 0xAA 0x55 + opcode + payload + CRC-16). One instance per jack.
 // Binary framing because the jacks are physically unreliable (TRS contacts,
@@ -61,7 +86,7 @@ using HelloFrameHandler = std::function<void(const HelloPayload&)>;
 class SerialFrameParser {
 public:
     /**
-     * Consumes one burst of raw serial bytes; fires the frame handler for
+     * Consumes one burst of raw serial bytes; fires the matching handler for
      * every CRC-valid frame completed within it.
      */
     void feed(const uint8_t* data, size_t len);
@@ -74,6 +99,11 @@ public:
 
     /** Registers the consumer for CRC-valid HELLO frames, decoded to HelloPayload. */
     void setHelloFrameHandler(HelloFrameHandler cb) { helloFrameHandler = std::move(cb); }
+
+    /** Registers the consumer for CRC-valid application frames, of any kind. */
+    void setApplicationFrameHandler(ApplicationFrameHandler handler) {
+        applicationFrameHandler = std::move(handler);
+    }
 
 private:
     enum class ParseState {
@@ -102,6 +132,7 @@ private:
     std::atomic<bool> resetRequested{false};
 
     HelloFrameHandler helloFrameHandler;
+    ApplicationFrameHandler applicationFrameHandler;
 
     // Wall-clock window after which a mid-frame parser resets to scan-for-sync.
     static constexpr unsigned long PARSER_TIMEOUT_MS = 50;
@@ -110,6 +141,9 @@ private:
     void checkTimeout();
     void consumeByte(uint8_t b);
     void resyncFromConsumedBytes();
-    static size_t opcodePayloadLen(uint8_t opcode);
+    void dispatchFrame();
+    // The one place that says what is an opcode and how many payload bytes
+    // frame it (for an application frame, the header that gives its length).
+    static bool isKnownOpcode(uint8_t opcode, size_t& payloadLen);
     static unsigned long nowMs();
 };

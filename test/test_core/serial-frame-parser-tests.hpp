@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <utility>
 #include <vector>
 
 class SerialFrameParserTests : public testing::Test {
@@ -335,4 +336,92 @@ TEST_F(SerialFrameParserTests, splitPreambleAcrossFeeds) {
     feed(std::vector<uint8_t>(valid.begin() + 1, valid.end()));    // 0x55 + body
 
     EXPECT_EQ(frameCount, 1);
+}
+
+// Collects application frames as (kind, bytes) in arrival order.
+struct ApplicationFrameLog {
+    std::vector<std::pair<uint8_t, std::vector<uint8_t>>> frames;
+    /** A handler that appends each frame to `frames`. */
+    ApplicationFrameHandler handler() {
+        return [this](uint8_t kind, const uint8_t* payload, size_t length) {
+            frames.emplace_back(kind, std::vector<uint8_t>(payload, payload + length));
+        };
+    }
+};
+
+// The encoder agrees with a frame built by hand, and the parser hands up the
+// kind and exactly the bytes sent, full or empty, then still reads a HELLO.
+TEST_F(SerialFrameParserTests, applicationFrameRoundTripsKindAndBytes) {
+    ApplicationFrameLog log;
+    parser.setApplicationFrameHandler(log.handler());
+    int helloCount = 0;
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++helloCount; });
+
+    std::vector<uint8_t> full(APPLICATION_PAYLOAD_MAX_LEN);
+    for (size_t i = 0; i < full.size(); ++i) {
+        full[i] = static_cast<uint8_t>(0xA0 + i);
+    }
+    ApplicationFrame frame{};
+    const size_t used = encodeApplicationFrame(0x42, full.data(), full.size(), frame);
+    std::vector<uint8_t> stream(frame.begin(), frame.begin() + used);
+    std::vector<uint8_t> handBuilt = {0x42, static_cast<uint8_t>(full.size())};
+    handBuilt.insert(handBuilt.end(), full.begin(), full.end());
+    ASSERT_EQ(stream, buildFrame(OP_APPLICATION, handBuilt));
+
+    const std::vector<uint8_t> empty = buildFrame(OP_APPLICATION, {0x07, 0x00});
+    const std::vector<uint8_t> hello = buildFrame(OP_HELLO, helloPayload());
+    stream.insert(stream.end(), empty.begin(), empty.end());
+    stream.insert(stream.end(), hello.begin(), hello.end());
+    feed(stream);
+
+    ASSERT_EQ(log.frames.size(), 2u);
+    EXPECT_EQ(log.frames[0].first, 0x42);
+    EXPECT_EQ(log.frames[0].second, full);
+    EXPECT_EQ(log.frames[1].first, 0x07);
+    EXPECT_TRUE(log.frames[1].second.empty());
+    EXPECT_EQ(helloCount, 1);
+}
+
+// A frame whose CRC fails is not handed up, and the frames behind it in the
+// same burst, with no gap, still are.
+TEST_F(SerialFrameParserTests, corruptApplicationFrameIsDroppedAndTheNextFramesParse) {
+    ApplicationFrameLog log;
+    parser.setApplicationFrameHandler(log.handler());
+    int helloCount = 0;
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++helloCount; });
+
+    std::vector<uint8_t> stream = {0x13, 0xAA, 0x00};
+    std::vector<uint8_t> corrupt = buildFrame(OP_APPLICATION, {0x42, 3, 1, 2, 3});
+    corrupt[6] ^= 0x01;
+    const std::vector<uint8_t> good = buildFrame(OP_APPLICATION, {0x42, 1, 9});
+    const std::vector<uint8_t> hello = buildFrame(OP_HELLO, helloPayload());
+    stream.insert(stream.end(), corrupt.begin(), corrupt.end());
+    stream.insert(stream.end(), good.begin(), good.end());
+    stream.insert(stream.end(), hello.begin(), hello.end());
+    feed(stream);
+
+    ASSERT_EQ(log.frames.size(), 1u);
+    EXPECT_EQ(log.frames[0].second, std::vector<uint8_t>{9});
+    EXPECT_EQ(helloCount, 1);
+}
+
+// A length past the maximum is no frame, even with a valid CRC, and the
+// encoder will not make one.
+TEST_F(SerialFrameParserTests, applicationFrameLongerThanTheMaximumIsRefused) {
+    ApplicationFrameLog log;
+    parser.setApplicationFrameHandler(log.handler());
+
+    std::vector<uint8_t> oversize = {0x42, APPLICATION_PAYLOAD_MAX_LEN + 1};
+    oversize.resize(APPLICATION_HEADER_LEN + APPLICATION_PAYLOAD_MAX_LEN + 1, 0x5A);
+    feed(buildFrame(OP_APPLICATION, oversize));
+    EXPECT_TRUE(log.frames.empty());
+
+    feed(buildFrame(OP_APPLICATION, {0x42, 1, 9}));
+    EXPECT_EQ(log.frames.size(), 1u);
+
+    ApplicationFrame frame{};
+    frame.fill(0xEE);
+    EXPECT_EQ(encodeApplicationFrame(0x42, &oversize[2], APPLICATION_PAYLOAD_MAX_LEN + 1, frame),
+              0u);
+    EXPECT_EQ(frame[0], 0xEE) << "nothing written";
 }
