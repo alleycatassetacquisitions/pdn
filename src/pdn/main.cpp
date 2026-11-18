@@ -75,7 +75,7 @@ static void setup() {
     // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
     // and the preferences driver cannot open a namespace.
     // Never erased on failure: that would wipe every stored record. The PDN runs
-    // without storage, and so without its radio, until the desk reads it.
+    // without storage, and so without its radio, until it is reflashed.
     esp_err_t nvsStatus = nvs_flash_init();
     if (nvsStatus != ESP_OK) {
         ESP_LOGE("PDN", "nvs_flash_init failed: %s", esp_err_to_name(nvsStatus));
@@ -135,7 +135,7 @@ static void setup() {
 
     // The PDN's crash records go to an FDN through the record relay.
     crashLogger = new CrashLogger(storageDriver);
-    crashLogger->capture(crashedBootUptimeMs);
+    if (nvsStatus == ESP_OK) crashLogger->capture(crashedBootUptimeMs);  // it erases the dump
 
     gameSession = new GameSession(playerProvider->getPlayer(), pdn, symbolWirelessManager);
     gameSession->setCrashRecordSource(crashLogger);

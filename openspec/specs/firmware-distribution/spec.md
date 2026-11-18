@@ -172,7 +172,7 @@ A receiver SHALL provide distinct visual and LED feedback while receiving an ove
 - **WHEN** a receiver commits a received image, restarts into the new slot, and confirms the image
 - **THEN** the device surfaces a visual/LED confirmation indicating that the firmware update succeeded
 
-### Requirement: Release flashing preserves non-volatile storage
+### Requirement: Flashing and boot preserve non-volatile storage
 
 No release flash target or flash script step SHALL erase non-volatile storage or the whole flash by default, so stored match and crash records survive a USB or peer-to-peer firmware update. An explicit operator erase option MAY exist and SHALL be documented as wiping stored records. Firmware SHALL NOT erase non-volatile storage it fails to open at boot; it SHALL log the failure and run without storage, so the records stay for a firmware or desk tool that can read them.
 
@@ -199,4 +199,4 @@ These are decisions, not oversights.
 - **The receive bound covers game traffic.** Beside a seed, game frames past the 16 KB bound are dropped along with chunks.
 - **The task watchdog is 30 seconds on PDNs.** Core 0's idle-task check takes 30 seconds, not 5, to reset a PDN whose core 0 is starved.
 - **A pending image takes no update.** IDF refuses to open a slot until the running image confirms, so a device that just updated skips a newer run that starts within its first 10 seconds.
-- **A device that cannot open its storage has no radio.** IDF Wi-Fi needs it, so the device stays offline until the desk reads or reflashes it; erasing would bring it back by losing its records.
+- **A device that cannot open its storage has no radio.** IDF Wi-Fi needs it, so the device stays offline until the desk reads its records and reflashes or clears it; erasing at boot would bring it back by losing them.
