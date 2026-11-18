@@ -222,8 +222,11 @@ public:
             } else if (state == PeerCommsState::ENABLED) {
                 std::map<PktType, PacketHandler>::iterator it = handlers.find(event.type);
                 if (it != handlers.end()) {
+                    const uint64_t acksBefore = acksSent;
                     it->second.callback(event.mac, event.data.data(), event.data.size(),
                                         it->second.context);
+                    if (onHandled)
+                        onHandled(event.mac, event.type, event.data, acksSent != acksBefore);
                 }
             }
             pending.pop();
@@ -234,6 +237,7 @@ public:
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data,
                  const size_t length) override {
         if (state != PeerCommsState::ENABLED) return -1;
+        if (packetType == PktType::kRecordAck) ++acksSent;
         medium.send(*this, dst, packetType, data, length);
         return 0;
     }
@@ -297,6 +301,10 @@ public:
     uint64_t getInstance() const { return instance; }
 
     static constexpr uint8_t BROADCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    // After each received frame's handler: whether it sent a record ack meanwhile.
+    std::function<void(const uint8_t* src, PktType type, const std::vector<uint8_t>& data,
+                       bool acked)>
+    onHandled;
 
 private:
     struct PacketHandler {
@@ -323,6 +331,7 @@ private:
     std::map<PktType, StatusHandler> statusHandlers;
     std::queue<Event> events;
     size_t awaitingStatus = 0;
+    uint64_t acksSent = 0;
 };
 
 inline void VirtualMedium::send(SimRadio& from, const uint8_t* dst, PktType type,

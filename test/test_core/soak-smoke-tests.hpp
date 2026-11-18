@@ -102,7 +102,8 @@ inline void soakRingAndPosseStoreOnlyDuels() {
 
 // Test: matches still arrive when one has a single stored copy, every record ack
 // is lost for a while (the PDNs resend what the FDN holds), and the FDN reboots
-// into a window where every upload answers 503
+// into a window where every upload fails in transport, then one where every upload
+// answers 503
 inline void soakSingleCopiesOutliveLostAcksAndServerErrors() {
     soak::RunResult result = playSoakScript(4, 1,
                                             {
@@ -110,8 +111,10 @@ inline void soakSingleCopiesOutliveLostAcksAndServerErrors() {
                                             "at=1000 duel a=0 b=1 cut=0 k=1 rb=300 rh=250",
                                             "at=1000 duel a=2 b=3 rb=-1 rh=200",
                                             "at=3000 ackloss a=- b=- dur=30000",
-                                            "at=40000 httperr a=- b=0 dur=60000 mode=1",
+                                            "at=40000 httperr a=- b=0 dur=20000 mode=2",
                                             "at=41000 fdnreboot a=- b=0 down=1000",
+                                            "at=62000 httperr a=- b=0 dur=20000 mode=1",
+                                            "at=63000 fdnreboot a=- b=0 down=1000",
                                             });
     EXPECT_GE(result.counts["allowedCutBeforeCommit"], 1u) << result.summary;
     EXPECT_GE(result.counts["storedMatches"], 2u) << result.summary;

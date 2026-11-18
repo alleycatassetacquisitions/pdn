@@ -163,9 +163,9 @@ public:
     SimFdn(const std::string& suffix, VirtualMedium& medium, const uint8_t* mac, SimNvs& nvs,
            HttpBackend& backend, HttpFaults& faults, std::mt19937_64& rng)
         : http(new SimHttpClient(HTTP_CLIENT_DRIVER_NAME + suffix, backend, faults, rng))
+        , radio(new SimRadio(PEER_COMMS_DRIVER_NAME + suffix, medium, mac))
         , serialIn(new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix))
-        , serialInSecondary(new NativeSerialDriver(SERIAL_IN_SECONDARY_DRIVER_NAME + suffix))
-        , radio(new SimRadio(PEER_COMMS_DRIVER_NAME + suffix, medium, mac)) {
+        , serialInSecondary(new NativeSerialDriver(SERIAL_IN_SECONDARY_DRIVER_NAME + suffix)) {
         SimNvsDriver* storage =
         new SimNvsDriver(STORAGE_DRIVER_NAME + suffix, nvs, {FDN_RECORD_STORE_NAMESPACE});
         DriverConfig config = {
@@ -210,11 +210,11 @@ public:
 
     FDN* fdn = nullptr;
     SimHttpClient* http = nullptr;
+    SimRadio* radio = nullptr;
 
 private:
     NativeSerialDriver* serialIn = nullptr;
     NativeSerialDriver* serialInSecondary = nullptr;
-    SimRadio* radio = nullptr;
     Player player;
     RemotePlayerManager* beacon = nullptr;
     FdnRecordStore* store = nullptr;

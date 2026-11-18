@@ -161,6 +161,8 @@ private:
         uint64_t mutedUntil = 0;
         uint64_t offlineUntil = 0;
         uint64_t httpErrorUntil = 0;
+        // The last record frame seqId per sender, as the FDN's channel dedupes it.
+        std::map<uint64_t, uint8_t> lastRecordSeq;
     };
     struct CableOp {
         uint64_t at;
@@ -328,8 +330,34 @@ private:
         enter(slot.clock, &slot.logger);
         slot.device = new SimFdn("_f" + std::to_string(index), medium, slot.mac, slot.nvs,
                                  server->deviceBackend(), slot.faults, slot.rng);
+        slot.lastRecordSeq.clear();
+        slot.device->radio->onHandled =
+        [this, index](const uint8_t* src, PktType type, const std::vector<uint8_t>& data,
+                      bool acked) { onFdnFrame(index, src, type, data, acked); };
         slot.down = false;
         note("up fdn=" + std::to_string(index));
+    }
+
+    // An FDN acks every new record frame it stores or already holds (fdn-record-store.hpp
+    // store()); it may stay silent only when its ring is full or the write failed (power cut).
+    void onFdnFrame(int index, const uint8_t* src, PktType type, const std::vector<uint8_t>& data,
+                    bool acked) {
+        if (type != PktType::kMatchRecord || data.size() != sizeof(MatchRecordFramePacket)) return;
+        FdnSlot& slot = fdns[static_cast<size_t>(index)];
+        MatchRecordFramePacket frame;
+        memcpy(&frame, data.data(), sizeof(frame));
+        uint8_t& last = slot.lastRecordSeq[macKey(src)];
+        const bool repeat = frame.seqId != 0 && frame.seqId == last;
+        last = frame.seqId;
+        if (acked || repeat) return;
+        const uint32_t head = slot.nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_head", 0);
+        const uint32_t tail = slot.nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_tail", 0);
+        if (slot.nvs.isFrozen() || tail - head >= FDN_MATCH_RECORD_CAPACITY) {
+            counts["allowedFdnRefusals"]++;
+            return;
+        }
+        fail("fdn " + std::to_string(index) + " left record " + std::to_string(frame.recordNumber) +
+             " from pdn " + std::to_string(src[4] << 8 | src[5]) + " unacked");
     }
 
     NativeSerialDriver* resolveJack(const JackRef& jack) {
@@ -1057,9 +1085,9 @@ private:
             if (!drained) fail("drain did not quiesce within the cap");
         }
         // Printed even when zero: the #518 class and the wrap evidence are read per seed.
-        for (const char* key :
-             {"knownUnsyncedStamp518", "syncedStampsChecked", "pdnRingsWrapped", "fdnStoresWrapped",
-              "allowedRingFull", "allowedCutBeforeCommit", "storedMatches", "serverRows"}) {
+        for (const char* key : {"knownUnsyncedStamp518", "syncedStampsChecked", "pdnRingsWrapped",
+                                "fdnStoresWrapped", "allowedRingFull", "allowedCutBeforeCommit",
+                                "storedMatches", "serverRows", "allowedFdnRefusals"}) {
             counts[key] += 0;
         }
         counts["commits"] = commits.size();
