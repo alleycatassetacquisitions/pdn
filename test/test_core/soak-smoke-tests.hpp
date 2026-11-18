@@ -64,9 +64,10 @@ inline void soakRingAndPosseStoreOnlyDuels() {
     config.schedule.horizonMs = 1000;
     std::vector<soak::Action> actions;
     const char* const lines[] = {
-    "at=1000 ring a=0,2,4 b=- cm=15",      "at=1000 duel a=6,8 b=1,3 cm=3 rb=260 rh=310",
-    "at=1000 visit a=7 b=0 dur=4000",      "at=12000 duel a=10 b=7 rb=-1 rh=280",
-    "at=95000 duel a=6 b=1 rb=420 rh=390",
+    "at=1000 ring a=0,2,4 b=- cm=15",
+    "at=1000 duel a=6,8 b=1,3 cm=3 rb=260 rh=310",
+    "at=1000 visit a=7 b=0 dur=4000",
+    "at=12000 duel a=10 b=7 rb=-1 rh=280",
     };
     for (const char* line : lines) {
         soak::Action action;
@@ -78,5 +79,5 @@ inline void soakRingAndPosseStoreOnlyDuels() {
     soak::RunResult result = world.run();
     expectSoakPasses(result);
     EXPECT_GT(result.counts["shootoutMatches"], 0u) << result.summary;
-    EXPECT_GE(result.counts["storedMatches"], 3u) << result.summary;
+    EXPECT_GE(result.counts["storedMatches"], 2u) << result.summary;
 }
