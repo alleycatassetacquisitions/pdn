@@ -2,6 +2,8 @@
 #include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
 
+#include <algorithm>
+
 #define TAG "POSSE"
 
 PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
@@ -16,7 +18,7 @@ PosseManager::PosseManager(Player* player, WirelessManager* wirelessManager, Rem
     , chainConfirmChannel(wirelessManager, &resender, PktType::kChainConfirm, nullptr)
     , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr) {
     chainConfirmChannel.onReceive([this](const uint8_t*, const ChainConfirmPayload& p) {
-        onConfirmReceived(p.originatorMac);
+        onConfirmReceived(p.originatorMac, p.playerUuid);
     });
     chainJoinChannel.onReceive([this](const uint8_t* fromMac, const ChainJoinPayload& p) {
         onChainJoinReceived(fromMac, p.challengerMac);
@@ -82,23 +84,26 @@ std::optional<bool> PosseManager::peerIsHunter(SerialIdentifier jack) const {
     return reinterpret_cast<const PlayerProfile*>(raw)->gameRole != 0;
 }
 
-bool PosseManager::containsMac(const MacSlots& slots, size_t count, const uint8_t* mac) {
+bool PosseManager::containsMac(const SupporterSlots& slots, size_t count, const uint8_t* mac) {
     for (size_t i = 0; i < count; i++) {
-        if (memcmp(slots[i].data(), mac, 6) == 0) return true;
+        if (memcmp(slots[i].mac.data(), mac, 6) == 0) return true;
     }
     return false;
 }
 
-void PosseManager::recordMac(MacSlots& slots, std::atomic<size_t>& count,
-                             size_t& writeIndex, const uint8_t* mac) {
+void PosseManager::recordSupporter(SupporterSlots& slots, std::atomic<size_t>& count,
+                                   size_t& writeIndex, const uint8_t* mac,
+                                   const UUIDBytes& playerId) {
     size_t used = count.load();
     if (containsMac(slots, used, mac)) return;
     if (used < MAX_CHAIN_SUPPORTERS) {
-        memcpy(slots[used].data(), mac, 6);
+        memcpy(slots[used].mac.data(), mac, 6);
+        slots[used].playerId = playerId;
         count.store(used + 1);
         return;
     }
-    memcpy(slots[writeIndex].data(), mac, 6);
+    memcpy(slots[writeIndex].mac.data(), mac, 6);
+    slots[writeIndex].playerId = playerId;
     writeIndex = (writeIndex + 1) % MAX_CHAIN_SUPPORTERS;
 }
 
@@ -140,8 +145,8 @@ std::vector<std::array<uint8_t, 6>> PosseManager::getSupporterChainPeers() const
     peers.push_back(mac);
     size_t joined = supporterRosterCount.load();
     for (size_t i = 0; i < joined; i++) {
-        if (memcmp(supporterRoster[i].data(), directPeer, 6) == 0) continue;
-        peers.push_back(supporterRoster[i]);
+        if (memcmp(supporterRoster[i].mac.data(), directPeer, 6) == 0) continue;
+        peers.push_back(supporterRoster[i].mac);
     }
     return peers;
 }
@@ -242,6 +247,7 @@ void PosseManager::sendConfirm() {
 
     ChainConfirmPayload payload{};
     memcpy(payload.originatorMac, selfMac, 6);
+    payload.playerUuid = player->getServerPlayerId();
     chainConfirmChannel.sendReliable(challenger, payload);
 }
 
@@ -256,12 +262,20 @@ void PosseManager::onChainGameEventReceived(uint8_t eventType) {
     resender.cancelAll(PktType::kChainConfirm);
 }
 
-void PosseManager::onConfirmReceived(const uint8_t* originatorMac) {
-    // Recorded unconditionally. Whether this originator is a chain member, and
-    // whether we are the challenger who gets to count it, are both read live in
+void PosseManager::onConfirmReceived(const uint8_t* originatorMac,
+                                     const UUIDBytes& supporterPlayerId) {
+    const bool supporterUnregistered = supporterPlayerId.isZero();
+    if (supporterUnregistered || supporterPlayerId == player->getServerPlayerId()) {
+        LOG_W(TAG, "confirm from %s not counted: %s", MacToString(originatorMac),
+              supporterUnregistered ? "supporter not registered" : "same player as challenger");
+        return;
+    }
+    // Whether this originator is a chain member, and whether we are the
+    // challenger who gets to count it, are both read live in
     // getConfirmedSupporterCount — neither is knowable for certain at the moment
     // a press arrives.
-    recordMac(receivedConfirms, receivedConfirmCount, receivedConfirmWrite, originatorMac);
+    recordSupporter(receivedConfirms, receivedConfirmCount, receivedConfirmWrite, originatorMac,
+                    supporterPlayerId);
 }
 
 void PosseManager::onChainJoinReceived(const uint8_t* supporterMac,
@@ -274,7 +288,8 @@ void PosseManager::onChainJoinReceived(const uint8_t* supporterMac,
     // A join that names another challenger reached us by radio accident; enrolling
     // its sender would hand this device a supporter from someone else's chain.
     if (memcmp(joinChallengerMac, selfMac, 6) != 0) return;
-    recordMac(supporterRoster, supporterRosterCount, supporterRosterWrite, supporterMac);
+    recordSupporter(supporterRoster, supporterRosterCount, supporterRosterWrite, supporterMac,
+                    UUIDBytes());
 }
 
 void PosseManager::announceToChallenger() {
@@ -346,14 +361,16 @@ size_t PosseManager::getConfirmedSupporterCount() const {
     if (!isChallenger()) return 0;
     std::vector<std::array<uint8_t, 6>> peers = getSupporterChainPeers();
     size_t count = receivedConfirmCount.load();
+    // One boost per supporting player, however many of their PDNs press.
+    std::array<UUIDBytes, MAX_CHAIN_SUPPORTERS> countedPlayerIds{};
     size_t confirmed = 0;
     for (size_t i = 0; i < count; i++) {
-        for (const std::array<uint8_t, 6>& peer : peers) {
-            if (memcmp(peer.data(), receivedConfirms[i].data(), 6) == 0) {
-                confirmed++;
-                break;
-            }
-        }
+        const SupporterSlot& press = receivedConfirms[i];
+        if (std::find(peers.begin(), peers.end(), press.mac) == peers.end()) continue;
+        UUIDBytes* countedEnd = countedPlayerIds.data() + confirmed;
+        if (std::find(countedPlayerIds.data(), countedEnd, press.playerId) != countedEnd) continue;
+        countedPlayerIds[confirmed] = press.playerId;
+        confirmed++;
     }
     return confirmed;
 }

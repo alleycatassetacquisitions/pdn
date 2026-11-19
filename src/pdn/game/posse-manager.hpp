@@ -13,6 +13,7 @@
 #include "device/drivers/serial-wrapper.hpp"
 #include "wireless/resender.hpp"
 #include "wireless/reliable-channel.hpp"
+#include "utils/uuid-bytes.hpp"
 
 enum class ChainGameEventType : uint8_t {
     COUNTDOWN = 0,
@@ -93,8 +94,12 @@ public:
      * join naming any challenger but this device.
      */
     void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChallengerMac);
-    /** Records a supporter press from originatorMac; chain membership is filtered when read. */
-    void onConfirmReceived(const uint8_t* originatorMac);
+    /**
+     * Records a press from originatorMac if supporterPlayerId is non-nil and not
+     * this device's player; chain membership and one boost per player are applied
+     * when read.
+     */
+    void onConfirmReceived(const uint8_t* originatorMac, const UUIDBytes& supporterPlayerId);
     void onChainStateChanged();
 
     unsigned long getBoostMs() const;
@@ -151,25 +156,33 @@ private:
     std::optional<bool> peerIsHunter(SerialIdentifier jack) const;
 
     // Ceiling shared by the roll call and the supporter roster: the longest
-    // supporter chain a match is built for. Both buffers hold one MAC per
+    // supporter chain a match is built for. Both buffers hold one slot per
     // supporter, so one number bounds both.
     static constexpr size_t MAX_CHAIN_SUPPORTERS = 18;
-    using MacSlots = std::array<std::array<uint8_t, 6>, MAX_CHAIN_SUPPORTERS>;
+    // A supporter MAC and, for a press, the player it was made for (nil in the
+    // roster). Deduplicating players when the count is read, not on arrival,
+    // lets whichever PDN of a player is still a chain member carry the boost.
+    struct SupporterSlot {
+        std::array<uint8_t, 6> mac{};
+        UUIDBytes playerId;
+    };
+    using SupporterSlots = std::array<SupporterSlot, MAX_CHAIN_SUPPORTERS>;
 
-    // Appends `mac` to a slot buffer, deduped. Full means overwrite oldest, not
-    // refuse newest: refusing would let anything on the channel — the packet
-    // handler cannot prove a sender is a member — wedge the slots shut and
-    // silence every real supporter for the round.
-    static void recordMac(MacSlots& slots, std::atomic<size_t>& count,
-                          size_t& writeIndex, const uint8_t* mac);
-    static bool containsMac(const MacSlots& slots, size_t count, const uint8_t* mac);
+    // Appends a supporter to a slot buffer, deduped by MAC; a repeat keeps the
+    // player it first carried. Full means overwrite oldest, not refuse newest:
+    // refusing would let anything on the channel — the packet handler cannot
+    // prove a sender is a member — wedge the slots shut and silence every real
+    // supporter for the round.
+    static void recordSupporter(SupporterSlots& slots, std::atomic<size_t>& count,
+                                size_t& writeIndex, const uint8_t* mac, const UUIDBytes& playerId);
+    static bool containsMac(const SupporterSlots& slots, size_t count, const uint8_t* mac);
 
     size_t lastSupporterChainCount = 0;
     bool wasInRing = false;
 
     std::atomic<bool> confirmSent{false};
 
-    // Every press we have heard this round, member or not. Membership is applied
+    // Every eligible press heard this round, member or not. Membership is applied
     // when the count is read, not here, because a confirm can beat the kChainJoin
     // that puts its originator in the roster and the sender gets no signal it was
     // dropped. Deciding late means an early confirm starts counting the moment
@@ -180,7 +193,7 @@ private:
     // running and the press path scans it to price the shot, so it must not
     // allocate, and the overwrite contract above needs a hard ceiling to be
     // expressible at all.
-    MacSlots receivedConfirms{};
+    SupporterSlots receivedConfirms{};
     std::atomic<size_t> receivedConfirmCount{0};
     size_t receivedConfirmWrite = 0;
 
@@ -188,7 +201,7 @@ private:
     // direct supporter-jack peer lives here and nowhere else: the role cascade
     // only travels downstream, so a challenger has no way to see the far end of
     // its own chain until that end says so.
-    MacSlots supporterRoster{};
+    SupporterSlots supporterRoster{};
     std::atomic<size_t> supporterRosterCount{0};
     size_t supporterRosterWrite = 0;
 
