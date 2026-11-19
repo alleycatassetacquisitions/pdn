@@ -1,0 +1,6 @@
+# FDN-only, layered over sdkconfig.defaults by CMakeLists.txt.
+
+# Check server certificates' validity dates; IDF ignores them by default. The
+# HTTP client holds requests until SNTP has set the clock this compares against,
+# and refuses to build without it.
+CONFIG_MBEDTLS_HAVE_TIME_DATE=y
