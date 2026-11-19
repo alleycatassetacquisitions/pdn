@@ -1,6 +1,10 @@
 #pragma once
 
+#include <array>
+
+#include "apps/player-fetch/band-registration.hpp"
 #include "device/pdn.hpp"
+#include "state/connect-state.hpp"
 #include "state/state.hpp"
 #include "utils/simple-timer.hpp"
 #include "game/quickdraw-resources.hpp"
@@ -9,7 +13,7 @@
 class FirmwareUpdateManager;
 
 namespace PlayerFetchStateId {
-constexpr int PIN_ENTRY = 0;
+constexpr int AWAIT_BAND = 0;
 constexpr int FETCH_USER = 1;
 constexpr int CHOOSE_TEAM = 2;
 constexpr int WELCOME = 4;
@@ -17,16 +21,22 @@ constexpr int FIRMWARE_UPDATE = 31;
 }  // namespace PlayerFetchStateId
 
 constexpr unsigned long PLAYER_FETCH_FIRMWARE_HOLD_MS = 5000;
+constexpr unsigned long PLAYER_FETCH_DEMO_HOLD_MS = 5000;
 constexpr int USER_DATA_FETCH_TIMEOUT_MS = 10000;
 constexpr int FETCH_FAILURE_PAGE_TIMEOUT_MS = 3000;
 constexpr int WELCOME_MESSAGE_TIMEOUT_MS = 5000;
 
-class PinEntryState : public TypedState<PDN> {
+class AwaitBandState : public ConnectState<PDN> {
 public:
-    /** Pairing-code entry; while it is up, @p firmwareUpdateManager (may be null) takes updates. */
-    PinEntryState(PlayerProvider* playerProvider, FirmwareUpdateManager* firmwareUpdateManager);
+    /**
+     * The band waiting screen. Opens @p bandRegistration for its tenure; while it is up,
+     * @p firmwareUpdateManager (may be null) takes updates.
+     */
+    AwaitBandState(RemoteDeviceCoordinator* remoteDeviceCoordinator,
+                   PlayerProvider* playerProvider, BandRegistration* bandRegistration,
+                   FirmwareUpdateManager* firmwareUpdateManager);
     /** @copydoc TypedState::~TypedState */
-    ~PinEntryState() override;
+    ~AwaitBandState() override;
 
     /** @copydoc TypedState::onStateMounted */
     void onStateMounted(PDN* pdn) override;
@@ -34,50 +44,67 @@ public:
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
-    /** @return true once four digits are entered; every PIN leads to the role picker. */
+    /** @return true once the cabled FDN delivered the first piece of a registration. */
+    bool transitionToFetchUser() const;
+    /** @return true when the primary-button demo hold completed. */
     bool transitionToChooseTeam() const;
-    /** @return true when secondary-button OTA hold completed on pin entry. */
+    /** @return true when the secondary-button firmware hold completed. */
     bool transitionToFirmwareUpdate() const;
 
+protected:
+    bool isPrimaryRequired() override;
+    bool isAuxRequired() override;
+
 private:
-    bool transitionToChooseTeamState = false;
-    bool transitionToFirmwareUpdateState = false;
+    // Ordered by precedence: the screen shown is the highest any jack asks for.
+    enum class WaitingScreen : uint8_t {
+        CABLE_TO_FDN,
+        PLEASE_WAIT,
+        TAP_BAND,
+    };
+
+    void onJackState(SerialIdentifier jack, const JackConnectionState& state);
+    bool isHoldComplete(unsigned long heldMs, unsigned long holdMs);
+    void renderWaitingScreen(PDN* pdn) const;
+
+    PlayerProvider* playerProvider = nullptr;
+    BandRegistration* bandRegistration = nullptr;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
     SimpleTimer sinceMount;
-    bool shouldRender = false;
-    PlayerProvider* playerProvider = nullptr;
-    int currentDigit = 0;
-    int currentDigitIndex = 0;
-    static constexpr int DIGIT_COUNT = 4;
-    int inputId[DIGIT_COUNT] = {0, 0, 0, 0};
+    // What each jack's Connected peer says, from its jack events.
+    std::array<WaitingScreen, RemoteDeviceCoordinator::HELLO_JACKS.size()> screenByJack{};
+    bool displayIsDirty = false;
+    bool transitionToFetchUserState = false;
+    bool transitionToChooseTeamState = false;
+    bool transitionToFirmwareUpdateState = false;
 };
 
 /**
- * Waits for an FDN to look the entered PIN up. Not in the PlayerFetch flow yet: the
- * registration project (#485) wires it in and calls the two lookup events below.
+ * Waits, for up to USER_DATA_FETCH_TIMEOUT_MS from the first piece, for the rest of a band
+ * registration an FDN started, and applies it through the two lookup events below.
  */
 class FetchUserState : public TypedState<PDN> {
 public:
-    /** Loading screen while the FDN lookup for the stored PIN is outstanding. */
-    explicit FetchUserState(PlayerProvider* playerProvider);
+    /** Loading screen while @p bandRegistration waits for the rest of its attempt. */
+    FetchUserState(PlayerProvider* playerProvider, BandRegistration* bandRegistration);
     /** @copydoc TypedState::~TypedState */
     ~FetchUserState() override;
 
     /**
-     * The FDN found @p found; applies its registration profile to the provider's player and
-     * leads to Welcome. Ignored, writing nothing, when no lookup is outstanding (timed out or
-     * already answered).
+     * The FDN delivered @p found with its record key; applies its registration profile to the
+     * provider's player, seeds the random generator from it and leads to Welcome. Ignored,
+     * writing nothing, when no lookup is outstanding (timed out or already answered).
      */
     void onPlayerFound(const Player& found);
     /**
-     * The FDN could not find the player. Shows the failure page, then returns to PIN entry.
-     * Ignored when no lookup is outstanding (timed out or already answered).
+     * The FDN could not find the player. Shows the failure page, then returns to the waiting
+     * screen. Ignored when no lookup is outstanding (timed out or already answered).
      */
     void onPlayerLookupFailed();
     /** @return true when the found player's profile is stored and welcome should mount. */
     bool transitionToWelcome() const;
     /** @return true when the lookup failed or timed out and the failure page finished. */
-    bool transitionToPinEntry() const;
+    bool transitionToAwaitBand() const;
     /** @copydoc TypedState::onStateMounted */
     void onStateMounted(PDN* pdn) override;
     /** @copydoc TypedState::onStateLoop */
@@ -86,17 +113,20 @@ public:
     void onStateDismounted(PDN* pdn) override;
 
 private:
+    void takeAnswer();
     void showLoadingGlyphs(PDN* pdn);
     void showAssetNotFoundPage(PDN* pdn);
     void beginFailurePage(PDN* pdn);
 
     PlayerProvider* playerProvider = nullptr;
+    BandRegistration* bandRegistration = nullptr;
     SimpleTimer fetchTimer;
     SimpleTimer failurePageTimer;
     bool transitionToWelcomeState = false;
-    bool transitionToPinEntryState = false;
+    bool transitionToAwaitBandState = false;
     bool showingFailurePage = false;
     bool failurePagePending = false;
+    bool answerChanged = false;
 };
 
 class ChooseTeamState : public TypedState<PDN> {

@@ -83,11 +83,11 @@ void Player::setIsHunter(bool isHunter) { applyRole(isHunter); }
 void Player::applyRole(bool isHunter) {
     if (hunter == isHunter) return;
     hunter = isHunter;
-    if (roleChangedCallback) roleChangedCallback();
+    if (profileChangedCallback) profileChangedCallback();
 }
 
-void Player::setOnRoleChanged(RoleChangedCallback callback) {
-    roleChangedCallback = std::move(callback);
+void Player::setOnProfileChanged(ProfileChangedCallback callback) {
+    profileChangedCallback = std::move(callback);
 }
 
 PlayerProfile Player::toProfile() const {
@@ -178,12 +178,12 @@ void Player::setUserID(char* newId) {
     symbol.updateFromUserIdString(id);
 }
 
-void Player::applyRngSeedFromDecimalString(const char* decimalString) {
-    if (decimalString == nullptr || decimalString[0] == '\0') {
-        return;
+void Player::applyRngSeedFromServerPlayerId() {
+    // FNV-1a over the id bytes, so a player gets the same seed on any PDN.
+    uint32_t seed = 2166136261u;
+    for (uint8_t byte : serverPlayerId.bytes) {
+        seed = (seed ^ byte) * 16777619u;
     }
-    const unsigned int seed =
-        static_cast<unsigned int>(std::strtoul(decimalString, nullptr, 10));
     std::srand(seed);
     symbol.setRandomSymbol();
 }
@@ -252,14 +252,17 @@ void Player::applyRegistrationProfile(const UUIDBytes& serverId, const char* ser
     registrationAffiliations = affiliations;
     registrationProfileStored = true;
     syncLegacyFieldsFromRegistration();
+    if (profileChangedCallback) profileChangedCallback();
 }
 
 void Player::clearRegistrationProfile() {
+    const bool wasStored = registrationProfileStored;
     serverPlayerId = UUIDBytes();
     serverPlayerName[0] = '\0';
     registrationTeam = Team();
     registrationAffiliations.clear();
     registrationProfileStored = false;
+    if (wasStored && profileChangedCallback) profileChangedCallback();
 }
 
 UUIDBytes Player::testPlayerIdFromMac(const uint8_t* mac) {
@@ -281,11 +284,11 @@ void Player::syncLegacyFieldsFromRegistration() {
     }
 
     if (teamNameIsHunter(registrationTeam.name)) {
-        applyRole(true);
+        hunter = true;
     } else if (teamNameIsBounty(registrationTeam.name)) {
-        applyRole(false);
+        hunter = false;
     } else if (hasTeam()) {
-        applyRole(true);
+        hunter = true;
         LOG_W(TAG, "Unknown team name '%s'; defaulting to hunter", registrationTeam.name);
     }
 

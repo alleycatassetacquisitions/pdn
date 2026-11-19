@@ -5,24 +5,35 @@
 
 static const char TAG[] = "FetchUserState";
 
-FetchUserState::FetchUserState(PlayerProvider* playerProvider)
+FetchUserState::FetchUserState(PlayerProvider* playerProvider, BandRegistration* bandRegistration)
     : TypedState<PDN>(PlayerFetchStateId::FETCH_USER)
-    , playerProvider(playerProvider) {}
+    , playerProvider(playerProvider)
+    , bandRegistration(bandRegistration) {}
 
-FetchUserState::~FetchUserState() { playerProvider = nullptr; }
+FetchUserState::~FetchUserState() {
+    playerProvider = nullptr;
+    bandRegistration = nullptr;
+}
 
 void FetchUserState::onStateMounted(PDN* pdn) {
-    LOG_I(TAG, "State mounted - waiting for the FDN lookup of PIN %s",
-          playerProvider->getRegistrationPin());
+    LOG_I(TAG, "State mounted - waiting for the rest of the band registration");
     showingFailurePage = false;
     failurePagePending = false;
     transitionToWelcomeState = false;
-    transitionToPinEntryState = false;
+    transitionToAwaitBandState = false;
     showLoadingGlyphs(pdn);
     fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
+    // The piece that led here, or the whole pair, may already be in.
+    bandRegistration->setOnAnswerChanged([this]() { answerChanged = true; });
+    answerChanged = true;
 }
 
 void FetchUserState::onStateLoop(PDN* pdn) {
+    if (answerChanged) {
+        answerChanged = false;
+        takeAnswer();
+    }
+
     if (failurePagePending) {
         beginFailurePage(pdn);
         failurePagePending = false;
@@ -31,14 +42,14 @@ void FetchUserState::onStateLoop(PDN* pdn) {
     if (showingFailurePage) {
         failurePageTimer.updateTime();
         if (failurePageTimer.expired()) {
-            transitionToPinEntryState = true;
+            transitionToAwaitBandState = true;
         }
         return;
     }
 
     fetchTimer.updateTime();
     if (fetchTimer.expired()) {
-        LOG_W(TAG, "Device player fetch timed out");
+        LOG_W(TAG, "Band registration timed out with only part of it delivered");
         beginFailurePage(pdn);
     } else if (fetchTimer.isRunning()) {
         if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
@@ -48,13 +59,31 @@ void FetchUserState::onStateLoop(PDN* pdn) {
 }
 
 void FetchUserState::onStateDismounted(PDN* pdn) {
+    bandRegistration->setOnAnswerChanged(nullptr);
+    // The key stays only with the profile it came with.
+    bandRegistration->close(transitionToWelcomeState);
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     showingFailurePage = false;
     failurePagePending = false;
+    answerChanged = false;
     transitionToWelcomeState = false;
-    transitionToPinEntryState = false;
+    transitionToAwaitBandState = false;
     fetchTimer.invalidate();
     failurePageTimer.invalidate();
+}
+
+void FetchUserState::takeAnswer() {
+    switch (bandRegistration->getAnswer()) {
+        case BandRegistration::Answer::FOUND:
+            onPlayerFound(*bandRegistration->getFoundPlayer());
+            break;
+        case BandRegistration::Answer::FAILED:
+            onPlayerLookupFailed();
+            break;
+        case BandRegistration::Answer::NONE:
+        case BandRegistration::Answer::PARTIAL:
+            break;
+    }
 }
 
 void FetchUserState::onPlayerFound(const Player& found) {
@@ -63,9 +92,11 @@ void FetchUserState::onPlayerFound(const Player& found) {
         return;
     }
     LOG_I(TAG, "Found player: %s", found.getServerPlayerName());
-    playerProvider->getPlayer()->applyRegistrationProfile(
-    found.getServerPlayerId(), found.getServerPlayerName(), found.getRegistrationTeam(),
-    found.getRegistrationAffiliations());
+    Player* player = playerProvider->getPlayer();
+    player->applyRegistrationProfile(found.getServerPlayerId(), found.getServerPlayerName(),
+                                     found.getRegistrationTeam(),
+                                     found.getRegistrationAffiliations());
+    player->applyRngSeedFromServerPlayerId();
     fetchTimer.invalidate();
     transitionToWelcomeState = true;
 }
@@ -81,6 +112,8 @@ void FetchUserState::onPlayerLookupFailed() {
 }
 
 void FetchUserState::beginFailurePage(PDN* pdn) {
+    // Whatever part of the pair arrived goes now, not when the page ends.
+    bandRegistration->close(false);
     fetchTimer.invalidate();
     showingFailurePage = true;
     failurePageTimer.setTimer(FETCH_FAILURE_PAGE_TIMEOUT_MS);
@@ -100,4 +133,4 @@ void FetchUserState::showLoadingGlyphs(PDN* pdn) { renderLoadingScreen(pdn->getD
 
 bool FetchUserState::transitionToWelcome() const { return transitionToWelcomeState; }
 
-bool FetchUserState::transitionToPinEntry() const { return transitionToPinEntryState; }
+bool FetchUserState::transitionToAwaitBand() const { return transitionToAwaitBandState; }

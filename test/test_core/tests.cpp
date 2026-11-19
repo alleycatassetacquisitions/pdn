@@ -43,6 +43,7 @@
 #include "hmac-sha256-tests.hpp"
 #include "rdc-application-frame-tests.hpp"
 #include "fdn-registration-tests.hpp"
+#include "band-registration-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -670,8 +671,8 @@ TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
 // PLAYER TESTS
 // ============================================
 
-TEST_F(PlayerTestSuite, roleChangeFiresOnlyOnFlip) {
-    playerRoleChangeFiresOnlyOnFlip(player);
+TEST_F(PlayerTestSuite, profileChangeFiresOncePerChange) {
+    playerProfileChangeFiresOncePerChange(player);
 }
 
 TEST_F(PlayerTestSuite, profileCarriesRoleAndIdentity) {
@@ -1145,14 +1146,32 @@ TEST(PlayerRegistrationShim, formatsServerIdAsUserId) { playerLegacyShimFormatsS
 // PLAYER FETCH APP TESTS
 // ============================================
 
-TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
-    const int digits[4] = {0, 0, 0, 0};
-    pinEntryRoutesPinToChooseTeam(this, digits, "0000");
+TEST_F(BandRegistrationTests, waitingScreenFollowsTheFdnTurn) {
+    bandRegistrationWaitingScreenFollowsTheFdnTurn(this);
 }
-
-TEST_F(PlayerFetchTestSuite, pinEntryRoutesAnyOtherPinToChooseTeam) {
-    const int digits[4] = {0, 0, 0, 7};
-    pinEntryRoutesPinToChooseTeam(this, digits, "0007");
+TEST_F(BandRegistrationTests, tapRegistersAndTheFdnLetsThePdnGo) {
+    bandRegistrationTapRegistersAndTheFdnLetsThePdnGo(this);
+}
+TEST_F(BandRegistrationTests, profileBeforeKeyRegisters) {
+    bandRegistrationProfileBeforeKeyRegisters(this);
+}
+TEST_F(BandRegistrationTests, keyOnlyFromTheConnectedFdnsJack) {
+    bandRegistrationKeyOnlyFromTheConnectedFdnsJack(this);
+}
+TEST_F(BandRegistrationTests, profileOnlyFromAConnectedFdn) {
+    bandRegistrationProfileOnlyFromAConnectedFdn(this);
+}
+TEST_F(BandRegistrationTests, onePieceTimesOutAndIsWiped) {
+    bandRegistrationOnePieceTimesOutAndIsWiped(this);
+}
+TEST_F(BandRegistrationTests, lookupFailureShowsTheFailurePageThenWaits) {
+    bandRegistrationLookupFailureShowsTheFailurePageThenWaits(this);
+}
+TEST_F(BandRegistrationTests, lateProfileAfterApplyIsIgnored) {
+    bandRegistrationLateProfileAfterApplyIsIgnored(this);
+}
+TEST_F(BandRegistrationTests, demoHoldLeadsToChooseTeamThenWelcome) {
+    bandRegistrationDemoHoldLeadsToChooseTeamThenWelcome(this);
 }
 
 TEST_F(PlayerFetchTestSuite, chooseTeamTestIdentityRegistersMacPlayerAndEntersWelcome) {
@@ -1163,8 +1182,8 @@ TEST_F(PlayerFetchTestSuite, chooseTeamDemoKeepsNilPlayerId) {
     chooseTeamDemoKeepsNilPlayerId(this);
 }
 
-TEST_F(PlayerFetchTestSuite, pinEntryAndFirmwareUpdateLeadToEachOther) {
-    pinEntryAndFirmwareUpdateLeadToEachOther(this);
+TEST_F(PlayerFetchTestSuite, awaitBandAndFirmwareUpdateLeadToEachOther) {
+    awaitBandAndFirmwareUpdateLeadToEachOther(this);
 }
 
 TEST_F(PlayerFetchTestSuite, welcomeShowsPlayerNameThenHandsOff) {
@@ -1305,15 +1324,15 @@ TEST_F(IdleStateTests, nineClicksReturnToTheNameScreen) {
 
 TEST_F(IdleStateTests, remountStartsOnTheNameScreen) { idleRemountStartsOnTheNameScreen(this); }
 
-TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
-    pairingCodeFirmwareHoldStartsAnUpdate(this);
+TEST_F(IdleStateTests, waitingScreenFirmwareHoldStartsAnUpdate) {
+    waitingScreenFirmwareHoldStartsAnUpdate(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeFirmwareHoldCarriedInDoesNotFire) {
-    pairingCodeFirmwareHoldCarriedInDoesNotFire(this);
+TEST_F(IdleStateTests, waitingScreenFirmwareHoldCarriedInDoesNotFire) {
+    waitingScreenFirmwareHoldCarriedInDoesNotFire(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) { pairingCodeTakesUpdatesWhileUp(this); }
+TEST_F(IdleStateTests, waitingScreenTakesUpdatesWhileUp) { waitingScreenTakesUpdatesWhileUp(this); }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);
@@ -2381,8 +2400,8 @@ TEST_F(FdnRegistrationTests, closesTheTurnBeforeTheLookupTakesTheRadio) {
     fdnRegistrationClosesTheTurnBeforeTheLookupTakesTheRadio(this);
 }
 TEST(FdnRegistration, screenText) { fdnRegistrationScreenText(); }
-TEST(FdnRegistration, provisionCodecEncodesTheRegistrationFields) {
-    playerProvisionCodecEncodesTheRegistrationFields();
+TEST(FdnRegistration, provisionCodecRoundTripsAndBoundsTheWire) {
+    playerProvisionCodecRoundTripsAndBoundsTheWire();
 }
 
 // ============================================

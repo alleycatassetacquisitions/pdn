@@ -196,6 +196,19 @@ public:
         contextReceivedCallback = std::move(callback);
     }
 
+    /** Told the jack whose Connected peer sent a fresh context. */
+    using JackContextCallback = std::function<void(SerialIdentifier jack)>;
+
+    /**
+     * Registers the observer told each time the peer already Connected on a jack
+     * sends a fresh context; its first context comes with the connect edge
+     * instead. One slot, held by the mounted ConnectState alongside
+     * setOnJackChange.
+     */
+    void setOnJackContext(JackContextCallback callback) {
+        jackContextCallback = std::move(callback);
+    }
+
     /**
      * Yields this device's outgoing player profile, forwarded verbatim in the
      * context this device sends. Opaque to RDC.
@@ -385,6 +398,7 @@ private:
     WirelessManager* wirelessManager = nullptr;
     std::function<void()> chainChangeCallback;
     JackChangeCallback jackChangeCallback;
+    JackContextCallback jackContextCallback;
     ChainRoleChangeCallback chainRoleChangeCallback;
     MembershipChangeCallback membershipChangeCallback;
     RingClosedCallback ringClosedCallback;

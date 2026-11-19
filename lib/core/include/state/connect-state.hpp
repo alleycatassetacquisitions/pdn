@@ -64,8 +64,9 @@ public:
 
     /**
      * Registers the handler for every jack edge during this state's tenure: a
-     * connect or disconnect on a jack this device owns, plus a replay of each
-     * already-connected jack at mount.
+     * connect or disconnect on a jack this device owns, a replay of each
+     * already-connected jack at mount, and a connect again each time a
+     * Connected peer sends a fresh context.
      *
      * Register once, from the constructor or from onStateMounted — the mount replay
      * runs after both, and the slot is not cleared on dismount, so one registration
@@ -141,6 +142,8 @@ private:
             [this](SerialIdentifier jack, bool connected) {
                 dispatchJackState(jack, connected);
             });
+        remoteDeviceCoordinator->setOnJackContext(
+            [this](SerialIdentifier jack) { dispatchJackState(jack, true); });
         subscribed = true;
     }
 
@@ -171,6 +174,7 @@ private:
 
     void unsubscribe() {
         remoteDeviceCoordinator->setOnJackChange(nullptr);
+        remoteDeviceCoordinator->setOnJackContext(nullptr);
         subscribed = false;
     }
 

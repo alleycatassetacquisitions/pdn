@@ -57,6 +57,7 @@ Esp32S3PrefsDriver* storageDriver = nullptr;
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
 PlayerProvider* playerProvider = nullptr;
+BandRegistration* bandRegistration = nullptr;
 
 // Shared game managers, and the apps the device swaps between
 GameSession* gameSession = nullptr;
@@ -144,8 +145,11 @@ static void setup() {
     gameSession->setCrashRecordSource(crashLogger);
 
     GameContext gameContext = gameSession->getContext();
-    playerFetchApp =
-    new PlayerFetchApp(pdn->getFirmwareUpdateManager(), playerProvider, TEST_PLAYER_IDENTITY);
+    bandRegistration = new BandRegistration(pdn->getWirelessManager(),
+                                            pdn->getRemoteDeviceCoordinator(), playerProvider);
+    playerFetchApp = new PlayerFetchApp(pdn->getFirmwareUpdateManager(), playerProvider,
+                                        bandRegistration, pdn->getRemoteDeviceCoordinator(),
+                                        TEST_PLAYER_IDENTITY);
     hubApp = new HubApp(gameContext);
     matchApp = new MatchApp(gameContext);
     shootoutApp = new ShootoutApp(gameContext);

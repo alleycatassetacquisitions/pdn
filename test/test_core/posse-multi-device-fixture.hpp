@@ -146,7 +146,7 @@ public:
             RemoteDeviceCoordinator* r = node->rdc.get();
             PosseManager* c = node->posse;
             r->setSelfProfileProvider([p]() -> PlayerProfile { return p->toProfile(); });
-            p->setOnRoleChanged([r, c]() {
+            p->setOnProfileChanged([r, c]() {
                 r->resendContext();
                 c->onChainStateChanged();
             });

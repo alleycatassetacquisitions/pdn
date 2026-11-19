@@ -129,32 +129,39 @@ inline void playerReactionTimeAverageCalculatesCorrectly(Player* player) {
 // Role Change + Outgoing Profile Tests
 // ============================================
 
-// The role-flip observer is what drives the connection-context re-broadcast, so
+// The profile observer is what drives the connection-context re-broadcast, so
 // it must fire on every real flip and stay silent on a set that reasserts the
 // current role — an idle re-registration would otherwise put a redundant frame
-// on the air for every peer.
-inline void playerRoleChangeFiresOnlyOnFlip(Player* player) {
-    int flips = 0;
+// on the air for every peer. A profile applied or cleared changes the context's
+// `registered` byte, so each fires it once, however many fields moved.
+inline void playerProfileChangeFiresOncePerChange(Player* player) {
+    int changes = 0;
     player->setIsHunter(true);
-    player->setOnRoleChanged([&flips]() { flips++; });
+    player->setOnProfileChanged([&changes]() { changes++; });
 
     player->setIsHunter(true);
-    EXPECT_EQ(flips, 0);
+    EXPECT_EQ(changes, 0);
 
     player->setIsHunter(false);
-    EXPECT_EQ(flips, 1);
+    EXPECT_EQ(changes, 1);
     EXPECT_FALSE(player->isHunter());
 
     player->toggleHunter();
-    EXPECT_EQ(flips, 2);
+    EXPECT_EQ(changes, 2);
     EXPECT_TRUE(player->isHunter());
 
-    // A fetched profile is the other role write path and must notify too.
     Team bountyTeam;
     std::snprintf(bountyTeam.name, sizeof(bountyTeam.name), "%s", "Bounty");
     player->applyRegistrationProfile(UUIDBytes{}, "Ada", bountyTeam, {});
-    EXPECT_EQ(flips, 3);
+    EXPECT_EQ(changes, 3) << "a profile that flips the role fires once";
     EXPECT_FALSE(player->isHunter());
+    player->applyRegistrationProfile(UUIDBytes{}, "Ada", bountyTeam, {});
+    EXPECT_EQ(changes, 4);
+
+    player->clearRegistrationProfile();
+    EXPECT_EQ(changes, 5);
+    player->clearRegistrationProfile();
+    EXPECT_EQ(changes, 5) << "clearing with no profile held changes nothing";
 }
 
 // toProfile is what a peer decodes out of the connection context, so gameRole
