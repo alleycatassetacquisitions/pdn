@@ -158,8 +158,10 @@ public:
             if (forTo) receive(to, from.mac, frame.type, frame.data);
             const auto status = from.statusHandlers.find(frame.type);
             if (status != from.statusHandlers.end() && status->second.first) {
-                status->second.first(frame.to.data(), frame.data.data(), frame.data.size(), true,
-                                     status->second.second);
+                const std::pair<PeerCommsInterface::SendStatusCallback, void*> slot =
+                status->second;
+                slot.first(frame.to.data(), frame.data.data(), frame.data.size(), true,
+                           slot.second);
             }
         }
     }
@@ -167,9 +169,11 @@ public:
     /** One frame of @p type from @p fromMac arriving at @p radio. */
     static void receive(Radio& radio, const uint8_t* fromMac, PktType type,
                         const std::vector<uint8_t>& data) {
+        // Copied: a handler may clear its own slot while it runs.
         const auto handler = radio.handlers.find(type);
         if (handler == radio.handlers.end() || !handler->second.first) return;
-        handler->second.first(fromMac, data.data(), data.size(), handler->second.second);
+        const std::pair<PeerCommsInterface::PacketCallback, void*> slot = handler->second;
+        slot.first(fromMac, data.data(), data.size(), slot.second);
     }
 
     /** One tick of @p ms: HELLOs over the cables, the radios, every sync and the PDN's loop. */
@@ -298,6 +302,15 @@ public:
         return true;
     }
 
+    // What the mocks' actions write into comes first, so it outlives them.
+    Radio pdnRadio;
+    Radio fdnRadio;
+    std::vector<HttpRequest> requests;
+    std::vector<std::string> screen;
+    parameterizedCallbackFunction primaryPress = nullptr;
+    void* primaryCtx = nullptr;
+    parameterizedCallbackFunction secondaryPress = nullptr;
+    void* secondaryCtx = nullptr;
     FakePlatformClock clock;
     PlayerProvider playerProvider;
     PdnDevice pdn;
@@ -316,19 +329,11 @@ public:
     GameSession* session = nullptr;
     BandRegistration* bandRegistration = nullptr;
     PlayerFetchApp* app = nullptr;
-    Radio pdnRadio;
-    Radio fdnRadio;
-    std::vector<HttpRequest> requests;
     RegistrationView fdnView;
-    std::vector<std::string> screen;
     bool fdnCabled = true;
     std::optional<std::array<uint8_t, 6>> forgedPeer;
     DeviceType forgedType = DeviceType::PDN;
     uint8_t forgedSeqId = 0;
-    parameterizedCallbackFunction primaryPress = nullptr;
-    void* primaryCtx = nullptr;
-    parameterizedCallbackFunction secondaryPress = nullptr;
-    void* secondaryCtx = nullptr;
 };
 
 constexpr uint8_t OTHER_FDN_MAC[6] = {0x0F, 0x0D, 0x0E, 0x01, 0x02, 0x03};

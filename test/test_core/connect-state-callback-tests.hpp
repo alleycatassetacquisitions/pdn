@@ -205,6 +205,33 @@ inline void connectStateDisconnectCarriesNoContext(RDCHelloTests* suite) {
     EXPECT_FALSE(state.events[1].hadContext);
 }
 
+// A fresh context from a peer already Connected comes again as a connect with
+// that context, so a state learns a changed profile with no replug; once the
+// state is dismounted it hears no more of them.
+inline void connectStateFreshContextComesAgainWhileMounted(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    RecordingConnectState state(&suite->rdc, /*stateId=*/1);
+    mountState(&state, &suite->device);
+    connectOutJack(suite, /*chainRole=*/0, /*userId=*/1);
+    ASSERT_EQ(state.events.size(), 1u);
+
+    std::vector<uint8_t> fresh = pdnContextBytes(0, 2, /*seqId=*/10);
+    suite->transport()->deliverIncoming(PktType::kPdnConnectionContext, peer, fresh.data(),
+                                        fresh.size());
+    ASSERT_EQ(state.events.size(), 2u);
+    EXPECT_TRUE(state.events[1].connected);
+    PlayerProfile decoded{};
+    ASSERT_EQ(state.events[1].profile.size(), sizeof(PlayerProfile));
+    memcpy(&decoded, state.events[1].profile.data(), sizeof(decoded));
+    EXPECT_EQ(decoded.userId, 2);
+
+    dismountState(&state, &suite->device);
+    fresh = pdnContextBytes(0, 3, /*seqId=*/11);
+    suite->transport()->deliverIncoming(PktType::kPdnConnectionContext, peer, fresh.data(),
+                                        fresh.size());
+    EXPECT_EQ(state.events.size(), 2u) << "a dismounted state heard a context";
+}
+
 // The disconnect reaches the state too, not just the connect.
 inline void connectStateReceivesDisconnect(RDCHelloTests* suite) {
     RecordingConnectState state(&suite->rdc, /*stateId=*/1);

@@ -11,11 +11,12 @@ A PDN today takes any PIN and plays as a nil or test identity, the first upload 
 - Standalone match frames are signed with a 16-byte per-match secret sent over the cable; early signed results are held; there is no reaction-time floor.
 - Match records carry a 16-byte tag made with the player's derived key, held in RAM only; the relay frame, acknowledgement and FDN store carry it.
 - The FDN reads a band UID through a reader interface (no hardware driver yet), looks the player up by band over pinned HTTPS, hands the key over the jack, then the profile. No key, no registration.
-- The PDN's first screen becomes the band waiting screen; a 5 s hold enters the demo.
+- The PDN's first screen becomes the band waiting screen ("Tap band" only while its jack holds the FDN's turn); it applies a profile only with its record key, from the FDN on its jack, within 10 s, and then tells that FDN it registered. A 5 s hold enters the demo.
+- Practice matches (#498, merged from #543): only a match between two real, distinct player IDs is stored, tagged when a key is held; idle opens on `UNREGISTERED` in place of the name for a nil player ID.
 
 ## Non-goals
 
-A band-reader hardware driver (#485 Q1). Server totals on the PDN (#487 Q1–Q4). Each side's posse boost and supporter-side support records in a new record layout, and ties under tags (#486 Q4, Q5). Upload of the raw record, tag or originating MAC (#486 Q2, Q3). Storage partitions (#463, #472) are separate PRs. Refusing matches without real, distinct player IDs (#498).
+A band-reader hardware driver (#485 Q1). Server totals on the PDN (#487 Q1–Q4). Each side's posse boost and supporter-side support records in a new record layout, and ties under tags (#486 Q4, Q5). Upload of the raw record, tag or originating MAC (#486 Q2, Q3). Storage partitions (#463, #472) are separate PRs.
 
 ## Roll-out gate
 

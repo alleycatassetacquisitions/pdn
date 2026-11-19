@@ -32,7 +32,6 @@ BandRegistration::~BandRegistration() {
 
 void BandRegistration::open() {
     dropPieces();
-    playerProvider->getRecordKey()->clear();
     isOpen = true;
     answer = Answer::NONE;
 }
@@ -83,10 +82,9 @@ void BandRegistration::onProvision(const uint8_t* fromMac, const PlayerProvision
     }
     if (!bindAttempt(*fdnJack, fromMac)) return;
 
+    // The failure ends the attempt; FetchUser wipes what it held as it shows it.
     if (packet.status == static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED)) {
         LOG_E(TAG, "The FDN reported the band lookup failed");
-        dropPieces();
-        playerProvider->getRecordKey()->clear();
         isOpen = false;
         setAnswer(Answer::FAILED);
         return;
@@ -128,7 +126,5 @@ void BandRegistration::dropPieces() {
 
 void BandRegistration::setAnswer(Answer changed) {
     answer = changed;
-    // Both pieces in hand: a late duplicate must not replace either.
-    if (answer == Answer::FOUND) isOpen = false;
     if (onAnswerChanged) onAnswerChanged();
 }

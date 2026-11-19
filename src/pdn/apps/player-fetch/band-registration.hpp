@@ -28,8 +28,8 @@ public:
     enum class Answer : uint8_t {
         NONE,     // nothing taken since open()
         PARTIAL,  // the key or the profile, not both
-        FOUND,    // key and profile both held; nothing more is taken
-        FAILED,   // the FDN reported a failed lookup; nothing is held or taken
+        FOUND,    // key and profile both held
+        FAILED,   // the FDN reported a failed lookup; nothing more is taken
     };
 
     /** The key goes into @p playerProvider's RecordKey as it arrives. */
@@ -39,7 +39,10 @@ public:
     /** Gives the record-key frame kind back to the coordinator. */
     ~BandRegistration();
 
-    /** Drops whatever is held and takes pieces until close(). */
+    /**
+     * Drops the held profile and takes pieces until close(). The key lives in
+     * the provider, which the caller clears first.
+     */
     void open();
 
     /**

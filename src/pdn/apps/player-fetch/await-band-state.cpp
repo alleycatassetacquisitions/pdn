@@ -28,11 +28,8 @@ void AwaitBandState::onStateMounted(PDN* pdn) {
     // Only a key and profile taken while this screen's attempt is open may register the PDN.
     playerProvider->clear();
     bandRegistration->open();
-    bandRegistration->setOnAnswerChanged([this]() {
-        if (!transitionToChooseTeamState && !transitionToFirmwareUpdateState) {
-            transitionToFetchUserState = true;
-        }
-    });
+    // A hold seen in a later loop yields to the attempt; see onStateLoop.
+    bandRegistration->setOnAnswerChanged([this]() { transitionToFetchUserState = true; });
     sinceMount.setTimer(0);
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->setEligible(true);

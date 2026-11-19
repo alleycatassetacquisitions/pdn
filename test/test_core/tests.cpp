@@ -1677,6 +1677,10 @@ TEST_F(ConnectStateTests, mountedStateReceivesJackConnect) {
     connectStateMountedReceivesJackConnect(this);
 }
 
+TEST_F(ConnectStateTests, freshContextComesAgainWhileMounted) {
+    connectStateFreshContextComesAgainWhileMounted(this);
+}
+
 TEST_F(ConnectStateTests, receivesDisconnect) {
     connectStateReceivesDisconnect(this);
 }
