@@ -46,10 +46,10 @@ public:
     uint32_t getStoredCount() const { return tail - head; }
 
     /**
-     * @return true when @p entry is held afterwards, so it may be acked: newly
-     * stored, or byte-identical to one already held. Same sender and number
-     * with different bytes is stored separately. A full ring, or an entry of
-     * another kind, is refused.
+     * @return true when @p entry may be acked: newly stored, or byte-identical
+     * to one held or retired and still matchable, which is not stored again.
+     * Same sender and number with different bytes is stored separately. A
+     * full ring, or an entry of another kind, is refused.
      */
     bool store(const Entry& entry) {
         if (entry.kind != static_cast<uint8_t>(kind)) {
@@ -138,8 +138,18 @@ private:
         held.recordNumber = entry.recordNumber;
     }
 
+    // Retired slots stay matchable until overwritten, except the next store's:
+    // a blob whose tail commit failed may sit there.
+    uint32_t oldestKept() const {
+        const uint32_t retiredStart =
+        tail < CAPACITY ? 0 : tail - static_cast<uint32_t>(CAPACITY) + 1;
+        return std::min(head, retiredStart);
+    }
+
+    // Retired records match too: a PDN that missed the ack resends one
+    // already uploaded.
     bool holds(const Entry& entry) const {
-        for (uint32_t index = head; index != tail; ++index) {
+        for (uint32_t index = oldestKept(); index != tail; ++index) {
             const HeldKey& held = heldKeys[index % CAPACITY];
             if (held.recordNumber != entry.recordNumber ||
                 memcmp(held.senderMac, entry.senderMac, sizeof(held.senderMac)) != 0) {
@@ -160,7 +170,7 @@ private:
         if (head > tail) head = tail;
         if (tail - head > CAPACITY) head = tail - static_cast<uint32_t>(CAPACITY);
         Entry entry{};
-        for (uint32_t index = head; index != tail; ++index) {
+        for (uint32_t index = oldestKept(); index != tail; ++index) {
             if (readEntry(index, entry)) rememberKey(index, entry);
         }
     }
