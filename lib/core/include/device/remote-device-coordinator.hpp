@@ -281,8 +281,8 @@ public:
      * is Connected on `jack`, or the jack's last frame has no outcome reported
      * yet. The coordinator's copy is wiped once written or dropped.
      */
-    bool sendApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
-                              const uint8_t* payload, size_t length);
+    virtual bool sendApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                                      const uint8_t* payload, size_t length);
 
     /**
      * Native/test hook: suppress the FreeRTOS emit-task spawn so the caller

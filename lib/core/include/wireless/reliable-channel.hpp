@@ -121,6 +121,8 @@ class ReliableChannel : public ReliableChannelBase {
 public:
     using OnReceive = std::function<void(const uint8_t* fromMac, const P&)>;
     using OnDelivered = std::function<void(uint8_t seqId, const uint8_t* toMac)>;
+    /** Decides whether one decoded inbound frame goes on to duplicate detection. */
+    using AdmitFilter = std::function<bool(const uint8_t* fromMac, const P&)>;
 
     /** See ReliableChannelBase; the payload struct P is the wire format. */
     ReliableChannel(WirelessManager* wirelessManager,
@@ -147,11 +149,11 @@ public:
     }
 
     /**
-     * Decode + dispatch one inbound packet: dedup, then the onReceive
-     * callback. No ack is emitted; the sender's Resender is cleared by its own
-     * radio SEND_SUCCESS, not a round-trip. Dedup still matters because a
-     * sender that missed SEND_SUCCESS retransmits, and the duplicate must be
-     * suppressed here.
+     * Decode + dispatch one inbound packet: the admit filter, then dedup, then
+     * the onReceive callback. No ack is emitted; the sender's Resender is
+     * cleared by its own radio SEND_SUCCESS, not a round-trip. Dedup still
+     * matters because a sender that missed SEND_SUCCESS retransmits, and the
+     * duplicate must be suppressed here.
      */
     bool deliver(const uint8_t* fromMac, const uint8_t* data, size_t len) {
         if (len != sizeof(P)) {
@@ -162,6 +164,7 @@ public:
         }
         P p;
         std::memcpy(&p, data, sizeof(P));
+        if (admitFilter && !admitFilter(fromMac, p)) return false;
         if (isDuplicateReliableRx(fromMac, p.seqId)) return true;
         if (onReceiveCallback) onReceiveCallback(fromMac, p);
         return true;
@@ -200,6 +203,14 @@ public:
     /** Registers the SEND_SUCCESS observer (see onSendResult). */
     void setOnDelivered(OnDelivered cb) { onDeliveredCallback = std::move(cb); }
 
+    /**
+     * Registers the check every decoded inbound frame must pass before dedup;
+     * null admits every frame. A refused frame leaves the sender's seqId
+     * record untouched, so a forgery cannot take the seqId of the genuine
+     * frame behind it and have that one dropped as a retransmit.
+     */
+    void setAdmitFilter(AdmitFilter filter) { admitFilter = std::move(filter); }
+
     /** Silently drops every pending send whose payload `matches` (no abandon callback). */
     void cancelMatching(const std::function<bool(const P&)>& matches) {
         resender->cancelMatching(packetType, [&matches](const uint8_t* payload, size_t len) {
@@ -213,4 +224,5 @@ public:
 private:
     OnReceive onReceiveCallback;
     OnDelivered onDeliveredCallback;
+    AdmitFilter admitFilter;
 };

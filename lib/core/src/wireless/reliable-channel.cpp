@@ -1,23 +1,15 @@
 #include "wireless/reliable-channel.hpp"
 #include "device/wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
-
-#ifdef NATIVE_BUILD
-#include <random>
-#else
-#include <esp_random.h>
-#endif
+#include "utils/hardware-random.hpp"
 
 namespace {
 constexpr const char* RELIABLE_CHANNEL_TAG = "ReliableChannel";
 constexpr size_t MAX_RX_SENDERS = 32;
 
 uint8_t seedInitialSeqId() {
-#ifdef NATIVE_BUILD
-    const uint32_t raw = std::random_device{}();
-#else
-    const uint32_t raw = esp_random();
-#endif
+    uint32_t raw = 0;
+    fillHardwareRandom(reinterpret_cast<uint8_t*>(&raw), sizeof(raw));
     return static_cast<uint8_t>(1 + (raw % 255));
 }
 }
