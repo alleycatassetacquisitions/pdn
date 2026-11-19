@@ -938,12 +938,10 @@ TEST_F(MatchManagerTestSuite, shootoutDrawSlotDecidesTheWinner) {
 }
 
 TEST_F(MatchManagerTestSuite, rejectsNeverPressedFromStranger) {
-    matchManagerRejectsNeverPressedFromStranger(matchManager, player);
+    matchManagerRejectsNeverPressedFromStranger(this);
 }
 
-TEST_F(MatchManagerTestSuite, rejectsWrongMatchId) {
-    matchManagerRejectsWrongMatchId(matchManager, player);
-}
+TEST_F(MatchManagerTestSuite, rejectsWrongMatchId) { matchManagerRejectsWrongMatchId(this); }
 
 TEST_F(MatchManagerTestSuite, acceptsResultFromOpponent) {
     matchManagerAcceptsResultFromOpponent(matchManager, player);

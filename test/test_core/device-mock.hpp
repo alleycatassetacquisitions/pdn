@@ -461,11 +461,10 @@ inline MatchSecret testMatchSecret(uint8_t first) {
 
 /** A secret frame as a Hunter lays it out: the match ID's 16 bytes, then the secret. */
 inline std::vector<uint8_t> matchSecretFrame(const char* matchId, const MatchSecret& secret) {
-    UUIDBytes id{};
-    EXPECT_TRUE(UUIDBytes::parse(matchId, id)) << "a match secret names a UUID match ID";
-    std::vector<uint8_t> frame(id.bytes, id.bytes + UUIDBytes::SIZE);
-    frame.insert(frame.end(), secret.begin(), secret.end());
-    return frame;
+    MatchSecretFrame frame{{}, secret};
+    EXPECT_TRUE(UUIDBytes::parse(matchId, frame.matchId)) << "a match secret names a UUID match ID";
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&frame);
+    return std::vector<uint8_t>(bytes, bytes + sizeof(frame));
 }
 
 /** The last match secret frame @p rdc accepted; empty when it accepted none. */
@@ -480,12 +479,10 @@ inline std::vector<uint8_t> lastSentMatchSecretFrame(const FakeRemoteDeviceCoord
 
 /** The secret in the last secret frame @p rdc accepted; all zero when none. */
 inline MatchSecret lastSentMatchSecret(const FakeRemoteDeviceCoordinator& rdc) {
-    MatchSecret secret{};
-    const std::vector<uint8_t> frame = lastSentMatchSecretFrame(rdc);
-    if (frame.size() == MATCH_SECRET_FRAME_LENGTH) {
-        memcpy(secret.data(), frame.data() + UUIDBytes::SIZE, secret.size());
-    }
-    return secret;
+    MatchSecretFrame frame{};
+    const std::vector<uint8_t> payload = lastSentMatchSecretFrame(rdc);
+    if (payload.size() == sizeof(frame)) memcpy(&frame, payload.data(), sizeof(frame));
+    return frame.secret;
 }
 
 /** Hands the last secret frame @p hunterRdc accepted to @p bounty as arrived on @p bountyJack. */

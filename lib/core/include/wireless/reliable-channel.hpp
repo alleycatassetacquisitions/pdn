@@ -116,13 +116,24 @@ private:
     std::vector<RxSeqRecord> rxSeq;
 };
 
+// What a ReliableChannel's admit filter makes of one decoded inbound frame.
+enum class FrameAdmission : uint8_t {
+    // Dropped; the sender's seqId record is untouched.
+    REFUSE,
+    // On to duplicate detection, then the onReceive callback.
+    DEDUPLICATE,
+    // Straight to the onReceive callback, seqId unrecorded: the filter's own
+    // check refuses a retransmit, or the handler shrugs one off.
+    DELIVER,
+};
+
 template <class P>
 class ReliableChannel : public ReliableChannelBase {
 public:
     using OnReceive = std::function<void(const uint8_t* fromMac, const P&)>;
     using OnDelivered = std::function<void(uint8_t seqId, const uint8_t* toMac)>;
-    /** Decides whether one decoded inbound frame goes on to duplicate detection. */
-    using AdmitFilter = std::function<bool(const uint8_t* fromMac, const P&)>;
+    /** Decides what becomes of one decoded inbound frame (see FrameAdmission). */
+    using AdmitFilter = std::function<FrameAdmission(const uint8_t* fromMac, const P&)>;
 
     /** See ReliableChannelBase; the payload struct P is the wire format. */
     ReliableChannel(WirelessManager* wirelessManager,
@@ -149,11 +160,11 @@ public:
     }
 
     /**
-     * Decode + dispatch one inbound packet: the admit filter, then dedup, then
-     * the onReceive callback. No ack is emitted; the sender's Resender is
-     * cleared by its own radio SEND_SUCCESS, not a round-trip. Dedup still
-     * matters because a sender that missed SEND_SUCCESS retransmits, and the
-     * duplicate must be suppressed here.
+     * Decode + dispatch one inbound packet: the admit filter, then dedup
+     * unless the filter says otherwise, then the onReceive callback. No ack is
+     * emitted; the sender's Resender is cleared by its own radio SEND_SUCCESS,
+     * not a round-trip. Dedup still matters because a sender that missed
+     * SEND_SUCCESS retransmits, and the duplicate must be suppressed here.
      */
     bool deliver(const uint8_t* fromMac, const uint8_t* data, size_t len) {
         if (len != sizeof(P)) {
@@ -164,8 +175,12 @@ public:
         }
         P p;
         std::memcpy(&p, data, sizeof(P));
-        if (admitFilter && !admitFilter(fromMac, p)) return false;
-        if (isDuplicateReliableRx(fromMac, p.seqId)) return true;
+        const FrameAdmission admission =
+        admitFilter ? admitFilter(fromMac, p) : FrameAdmission::DEDUPLICATE;
+        if (admission == FrameAdmission::REFUSE) return false;
+        if (admission == FrameAdmission::DEDUPLICATE && isDuplicateReliableRx(fromMac, p.seqId)) {
+            return true;
+        }
         if (onReceiveCallback) onReceiveCallback(fromMac, p);
         return true;
     }
@@ -204,10 +219,11 @@ public:
     void setOnDelivered(OnDelivered cb) { onDeliveredCallback = std::move(cb); }
 
     /**
-     * Registers the check every decoded inbound frame must pass before dedup;
-     * null admits every frame. A refused frame leaves the sender's seqId
-     * record untouched, so a forgery cannot take the seqId of the genuine
-     * frame behind it and have that one dropped as a retransmit.
+     * Registers the verdict every decoded inbound frame gets before dedup;
+     * null sends every frame through dedup. A frame the filter refuses or
+     * delivers directly leaves the sender's seqId record untouched, so it
+     * cannot take the seqId of a genuine frame behind it and have that one
+     * dropped as a retransmit.
      */
     void setAdmitFilter(AdmitFilter filter) { admitFilter = std::move(filter); }
 

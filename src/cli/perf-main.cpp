@@ -124,10 +124,12 @@ class PerfRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
     bool sendApplicationFrame(SerialIdentifier, ApplicationFrameKind kind, const uint8_t* payload,
                               size_t length) override {
-        if (kind != ApplicationFrameKind::MATCH_SECRET || length != MATCH_SECRET_FRAME_LENGTH) {
+        if (kind != ApplicationFrameKind::MATCH_SECRET || length != sizeof(MatchSecretFrame)) {
             return false;
         }
-        memcpy(lastMatchSecret.data(), payload + UUIDBytes::SIZE, lastMatchSecret.size());
+        MatchSecretFrame frame;
+        memcpy(&frame, payload, sizeof(frame));
+        lastMatchSecret = frame.secret;
         return true;
     }
 
@@ -218,14 +220,14 @@ int main(int argc, char** argv) {
         hunter.matchMgr->initializeMatch(const_cast<uint8_t*>(kBountyMac));
 
         // Bypass the radio initiation, which the Bounty takes only beside the
-        // secret off its opponent jack; the secret and the initiation's counter go across here.
+        // secret off its opponent jack; the secret goes across here.
         const char* matchId = hunter.matchMgr->getCurrentMatch()->getMatchId();
-        bounty.matchMgr->receiveMatch(
-        matchId, UUIDBytes{}, UUIDBytes{}, true, const_cast<uint8_t*>(kHunterMac),
-        MatchFrameAuth(hunter.rdc.lastMatchSecret, hunter.peerComms.lastMatchFrame.counter));
+        bounty.matchMgr->receiveMatch(matchId, UUIDBytes{}, UUIDBytes{}, true,
+                                      const_cast<uint8_t*>(kHunterMac),
+                                      MatchFrameAuth(hunter.rdc.lastMatchSecret));
 
-        MatchCommand ackCmd(kBountyMac, MatchCmd::MATCH_ID_ACK, matchId, 0, false);
-        hunter.matchMgr->listenForMatchEvents(ackCmd);
+        MatchPacket ackPkt = bounty.peerComms.lastMatchFrame;
+        deliver(hunter.peerComms, kBountyMac, ackPkt);
 
         hunter.matchMgr->setMatchLocalStartTime(matchStart);
         bounty.matchMgr->setMatchLocalStartTime(matchStart);

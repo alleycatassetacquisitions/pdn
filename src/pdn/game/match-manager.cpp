@@ -16,13 +16,8 @@ static constexpr const char* PREF_MATCH_KEY = "match_";
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
-static_assert(MATCH_SECRET_FRAME_LENGTH <= APPLICATION_PAYLOAD_MAX_LEN,
+static_assert(sizeof(MatchSecretFrame) <= APPLICATION_PAYLOAD_MAX_LEN,
               "the match ID and secret fit one application frame");
-
-// Bounded: a frame's match ID comes off the wire and need not be terminated.
-static bool isShootoutMatchId(const char* matchId) {
-    return strncmp(matchId, kShootoutMatchIdPrefix, sizeof(kShootoutMatchIdPrefix) - 1) == 0;
-}
 
 MatchManager::MatchManager(WirelessManager* wirelessManager)
     : player(nullptr)
@@ -32,6 +27,11 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     matchChannel.setAdmitFilter(
     [this](const uint8_t* fromMac, const MatchPacket& p) { return admitMatchFrame(fromMac, p); });
     matchChannel.onReceive([this](const uint8_t* fromMac, const MatchPacket& p) {
+        // The initiation keeps its counter and tag for the pairing with its secret.
+        if (p.command == MatchCmd::SEND_MATCH_ID) {
+            onMatchInitiation(fromMac, p);
+            return;
+        }
         MatchCommand command(fromMac, p.command, p.matchId, p.playerDrawTime, p.isHunter,
                              p.playerUuid, p.teamUuid);
         command.boostMs = p.boostMs;
@@ -70,8 +70,7 @@ uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* m
     IdGenerator::copyId(packet.matchId, matchId);
     packet.playerUuid = player->getServerPlayerId();
     packet.teamUuid = player->getRegistrationTeam().id;
-    // A role mismatch answers an initiation that brought no secret.
-    if (activeMatchState.frameAuth.has_value() && command != MatchCmd::MATCH_ROLE_MISMATCH) {
+    if (activeMatchState.frameAuth.has_value()) {
         activeMatchState.frameAuth->sign(packet);
     }
 
@@ -117,12 +116,11 @@ bool MatchManager::sendMatchSecret(const char* matchId, const MatchSecret& secre
     if (remoteDeviceCoordinator == nullptr || !UUIDBytes::parse(matchId, matchIdBytes)) {
         return false;
     }
-    uint8_t frame[MATCH_SECRET_FRAME_LENGTH];
-    memcpy(frame, matchIdBytes.bytes, UUIDBytes::SIZE);
-    memcpy(frame + UUIDBytes::SIZE, secret.data(), secret.size());
+    MatchSecretFrame frame{matchIdBytes, secret};
     const bool accepted = remoteDeviceCoordinator->sendApplicationFrame(
-    opponentJack(), ApplicationFrameKind::MATCH_SECRET, frame, sizeof(frame));
-    secureWipe(frame, sizeof(frame));
+    opponentJack(), ApplicationFrameKind::MATCH_SECRET, reinterpret_cast<const uint8_t*>(&frame),
+    sizeof(frame));
+    secureWipe(frame.secret.data(), frame.secret.size());
     return accepted;
 }
 
@@ -134,7 +132,8 @@ ShootoutManager* MatchManager::getShootoutManager() const { return shootoutManag
 
 bool MatchManager::currentMatchIsShootout() const {
     return activeMatchState.match.has_value() &&
-           isShootoutMatchId(activeMatchState.match->getMatchId());
+           strncmp(activeMatchState.match->getMatchId(), kShootoutMatchIdPrefix,
+                   sizeof(kShootoutMatchIdPrefix) - 1) == 0;
 }
 
 void MatchManager::clearShootoutMatch() {
@@ -536,26 +535,29 @@ bool MatchManager::isFromActiveMatchOpponent(const uint8_t* fromMac, const char*
            0;
 }
 
-bool MatchManager::admitMatchFrame(const uint8_t* fromMac, const MatchPacket& packet) {
-    // Never put through duplicate detection: it verifies once its secret is
-    // here, and a retransmit after that fails the counter check.
-    if (packet.command == MatchCmd::SEND_MATCH_ID) {
-        onMatchInitiation(fromMac, packet);
-        return false;
-    }
-    // Unsigned: a role mismatch answers an initiation that brought no secret,
-    // and a forged one can only deny a match. Shootout matches are not cabled.
-    if (packet.command == MatchCmd::MATCH_ROLE_MISMATCH || isShootoutMatchId(packet.matchId)) {
-        return true;
-    }
-    if (!activeMatchState.frameAuth.has_value() ||
-        !isFromActiveMatchOpponent(fromMac, packet.matchId) ||
-        !activeMatchState.frameAuth->admit(packet, activeMatchState.localIsHunter)) {
-        LOG_W(MATCH_MANAGER_TAG, "Dropping match frame %d: it does not verify for the active match",
+FrameAdmission MatchManager::admitMatchFrame(const uint8_t* fromMac, const MatchPacket& packet) {
+    // Never deduplicated: it verifies only beside its secret, which pairing
+    // consumes, and once paired the active match refuses it.
+    if (packet.command == MatchCmd::SEND_MATCH_ID) return FrameAdmission::DELIVER;
+    if (!isFromActiveMatchOpponent(fromMac, packet.matchId)) {
+        LOG_W(MATCH_MANAGER_TAG, "Dropping match frame %d: not from the active match's opponent",
               packet.command);
-        return false;
+        return FrameAdmission::REFUSE;
     }
-    return true;
+    // A shootout match is not cabled, has no secret and signs nothing.
+    if (!activeMatchState.frameAuth.has_value()) return FrameAdmission::DEDUPLICATE;
+    // Nothing of a signed match touches the seqId record, so no frame can
+    // take a signed one's seqId. A role mismatch answers an initiation that
+    // brought no secret and goes unsigned: a forged one can only deny a
+    // match, and a repeat finds the match gone.
+    if (packet.command == MatchCmd::MATCH_ROLE_MISMATCH) return FrameAdmission::DELIVER;
+    // The counter refuses a retransmit in place of duplicate detection.
+    if (!activeMatchState.frameAuth->admit(packet, activeMatchState.localIsHunter)) {
+        LOG_W(MATCH_MANAGER_TAG, "Dropping match frame %d: it does not verify, or is a repeat",
+              packet.command);
+        return FrameAdmission::REFUSE;
+    }
+    return FrameAdmission::DELIVER;
 }
 
 void MatchManager::onMatchInitiation(const uint8_t* fromMac, const MatchPacket& packet) {
@@ -564,15 +566,20 @@ void MatchManager::onMatchInitiation(const uint8_t* fromMac, const MatchPacket& 
         LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
         return;
     }
+    if (activeMatchState.match.has_value()) return;
     const bool shootoutActive = shootoutManager && shootoutManager->active();
     if (!shootoutActive && player->isHunter() == (packet.isHunter != 0)) {
-        // Echo the sender's matchId/MAC: activeMatchState.match is still empty.
-        char matchId[IdGenerator::UUID_BUFFER_SIZE];
-        IdGenerator::copyId(matchId, packet.matchId);
-        sendCommand(fromMac, MatchCmd::MATCH_ROLE_MISMATCH, matchId, 0, 0, player->isHunter());
+        // Echo the sender's matchId/MAC: no match is active.
+        sendCommand(fromMac, MatchCmd::MATCH_ROLE_MISMATCH, packet.matchId, 0, 0,
+                    player->isHunter());
         return;
     }
-    if (activeMatchState.match.has_value()) return;
+    // Only the peer on the jack the secret comes in on can know it.
+    const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(opponentJack());
+    if (peerMac == nullptr || memcmp(peerMac, fromMac, 6) != 0) {
+        LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not the opponent jack's peer");
+        return;
+    }
     // Held: the radio frame overtakes the secret on the slower serial jack.
     pendingInitiation.emplace(PendingInitiation{{}, packet});
     memcpy(pendingInitiation->fromMac.data(), fromMac, 6);
@@ -583,18 +590,15 @@ void MatchManager::onMatchSecretFrame(SerialIdentifier jack, const uint8_t* payl
                                       size_t length) {
     // A secret belongs to the match it starts.
     if (activeMatchState.match.has_value()) return;
-    if (jack != opponentJack() || length != MATCH_SECRET_FRAME_LENGTH) {
+    if (jack != opponentJack() || length != sizeof(MatchSecretFrame)) {
         LOG_W(MATCH_MANAGER_TAG,
               "Ignoring a match secret: not from the opponent jack, or malformed");
         return;
     }
-    MatchSecret secret{};
-    memcpy(secret.data(), payload + UUIDBytes::SIZE, secret.size());
-    UUIDBytes matchId;
-    memcpy(matchId.bytes, payload, UUIDBytes::SIZE);
-    pendingMatchSecret.reset();
-    pendingMatchSecret.emplace(PendingMatchSecret{matchId, MatchFrameAuth(secret)});
-    secureWipe(secret.data(), secret.size());
+    MatchSecretFrame frame;
+    memcpy(&frame, payload, sizeof(frame));
+    pendingMatchSecret.emplace(PendingMatchSecret{frame.matchId, MatchFrameAuth(frame.secret)});
+    secureWipe(frame.secret.data(), frame.secret.size());
     pairInitiationWithSecret();
 }
 
@@ -609,10 +613,7 @@ void MatchManager::pairInitiationWithSecret() {
     if (!UUIDBytes::parse(matchId, initiationId) || initiationId != pendingMatchSecret->matchId) {
         return;
     }
-    // Only the peer on the jack the secret came in on can know it.
-    const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(opponentJack());
-    if (peerMac == nullptr || memcmp(peerMac, fromMac.data(), fromMac.size()) != 0 ||
-        !pendingMatchSecret->frameAuth.admit(packet, player->isHunter())) {
+    if (!pendingMatchSecret->frameAuth.admit(packet, player->isHunter())) {
         // Only the initiation goes: the genuine one may still be on its way.
         LOG_W(MATCH_MANAGER_TAG, "Dropping SEND_MATCH_ID: it does not verify under its secret");
         pendingInitiation.reset();
@@ -630,7 +631,6 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
 
     if (command.command == MatchCmd::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
-        if (!isFromActiveMatchOpponent(command.wifiMacAddr, command.matchId)) return;
         if (activeMatchState.matchIsReady || activeMatchState.pendingAckSeqId != 0) return;
         matchChannel.cancel(activeMatchState.opponentMac.data());
         activeMatchState.match->setPlayer(!activeMatchState.localIsHunter, command.playerUuid,
@@ -640,14 +640,12 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
         activeMatchState.matchIsReady = true;
     } else if (command.command == MatchCmd::MATCH_ROLE_MISMATCH) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ROLE_MISMATCH command from opponent");
-        if (!isFromActiveMatchOpponent(command.wifiMacAddr, command.matchId)) return;
         if (activeMatchState.matchIsReady || activeMatchState.pendingAckSeqId != 0) return;
         clearCurrentMatch();
         return;
     } else if (command.command == MatchCmd::DRAW_RESULT ||
                command.command == MatchCmd::NEVER_PRESSED) {
         LOG_I(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
-        if (!isFromActiveMatchOpponent(command.wifiMacAddr, command.matchId)) return;
         // A frame naming this device's own slot would overwrite the local time.
         if (command.isHunter == activeMatchState.localIsHunter) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting draw result: names the local draw slot");
@@ -664,7 +662,7 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
         // The countdowns start a frame delivery apart and the sender will not
         // resend, so an early result waits for the window; the latest counts.
         // A shootout's results apply on arrival.
-        if (!currentMatchIsShootout() && !activeMatchState.drawWindowIsOpen) {
+        if (activeMatchState.frameAuth.has_value() && !activeMatchState.drawWindowIsOpen) {
             LOG_I(MATCH_MANAGER_TAG, "Holding draw result until the draw window opens");
             activeMatchState.heldOpponentResult = result;
             return;
@@ -686,9 +684,7 @@ void MatchManager::applyOpponentResult(const OpponentResult& result) {
     result.isHunter ? setHunterDrawTime(result.playerDrawTime)
                     : setBountyDrawTime(result.playerDrawTime);
 
-    if (result.command == MatchCmd::NEVER_PRESSED) {
-        activeMatchState.opponentNeverPressed = true;
-    }
+    activeMatchState.opponentNeverPressed = result.command == MatchCmd::NEVER_PRESSED;
 
     setReceivedDrawResult();
 }

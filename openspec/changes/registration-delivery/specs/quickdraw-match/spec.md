@@ -2,7 +2,7 @@
 
 ### Requirement: Match secret over the cable
 
-For each standalone match the Hunter SHALL draw a 16-byte secret from the hardware RNG and queue it with the 16-byte match UUID as one application frame on its opponent jack before the match initiation; if the jack refuses it, no match starts. A Bounty SHALL take a secret only from its opponent jack while no match is active, and SHALL prime a match only from an initiation that verifies under the secret for that match, held until it arrives.
+For each standalone match the Hunter SHALL draw a 16-byte secret from the hardware RNG and queue it with the 16-byte match UUID as one application frame on its opponent jack before the initiation; if the jack refuses it, no match starts. A Bounty SHALL take a secret only from its opponent jack while no match is active, and SHALL prime a match only from an initiation by its opponent jack's peer that verifies under that match's secret, holding the latest one unverified until then.
 
 #### Scenario: Initiation overtakes its secret
 - **WHEN** a Bounty receives Hunter $H$'s match initiation for match $M$ before $M$'s secret arrives on its opponent jack
@@ -14,11 +14,15 @@ For each standalone match the Hunter SHALL draw a 16-byte secret from the hardwa
 
 ### Requirement: Signed standalone match frames
 
-Standalone match initiation, acknowledgement, draw-result and never-pressed frames SHALL carry a counter, rising with each frame the sender sends, and a 16-byte tag: the first 16 bytes of HMAC-SHA-256 under the match secret over every field but the sequence number. A receiver SHALL check sender, draw slot, tag and counter before duplicate detection, and a failing frame changes nothing. Shootout, role-mismatch, posse, roster and join frames stay unsigned.
+Standalone match initiation, acknowledgement, draw-result and never-pressed frames SHALL carry a rising counter and a 16-byte tag: the first 16 bytes of HMAC-SHA-256 under the match secret over every field but the sequence number. A receiver SHALL check the last three for sender, match, draw slot, tag and counter in place of duplicate detection; a failing frame changes nothing, and no unsigned frame affects a signed one. Shootout, role-mismatch, posse, roster and join frames stay unsigned.
 
 #### Scenario: Forged draw result does not block the honest one
 - **WHEN** a radio attacker spoofing Hunter $H$'s MAC sends a $0\text{ ms}$ draw result with a $270\text{ ms}$ boost under $H$'s next sequence number, and $H$'s own draw result follows under the same sequence number
 - **THEN** the Bounty refuses the forgery and applies $H$'s result
+
+#### Scenario: Unsigned frame does not block the signed result
+- **WHEN** a radio attacker spoofing Hunter $H$'s MAC sends a role-mismatch frame for the running match, or a frame naming a shootout match, under $H$'s next sequence number, and $H$'s own draw result follows under the same sequence number
+- **THEN** the Bounty keeps the match and applies $H$'s result
 
 #### Scenario: Forged never-pressed report is refused
 - **WHEN** a radio attacker spoofing the opponent's MAC sends a never-pressed report for the active standalone match without the match secret

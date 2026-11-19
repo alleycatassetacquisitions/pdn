@@ -217,8 +217,9 @@ public:
     ShootoutManager* getShootoutManager() const;
 
     /**
-     * Dispatches an inbound match command after the channel's admit filter:
-     * MATCH_ID_ACK, MATCH_ROLE_MISMATCH, DRAW_RESULT or NEVER_PRESSED.
+     * Acts on one inbound command the channel's admit filter passed:
+     * MATCH_ID_ACK, MATCH_ROLE_MISMATCH, DRAW_RESULT or NEVER_PRESSED. The
+     * filter, not this, checks the sender, the match and the tag.
      */
     void listenForMatchEvents(const MatchCommand& command);
 
@@ -253,10 +254,11 @@ private:
     SerialIdentifier opponentJack() const;
     // Queues the secret frame for the opponent jack; false when the coordinator refuses it.
     bool sendMatchSecret(const char* matchId, const MatchSecret& secret);
-    // Every inbound frame before duplicate detection: takes SEND_MATCH_ID
-    // itself, and admits a standalone match's other frames only once they verify.
-    bool admitMatchFrame(const uint8_t* fromMac, const MatchPacket& packet);
-    // Holds an initiation from the cabled peer for the secret it needs.
+    // Every inbound frame's verdict before duplicate detection. SEND_MATCH_ID
+    // goes through undeduplicated; any other frame must come from the active
+    // match's opponent, and a standalone one must verify, a role mismatch excepted.
+    FrameAdmission admitMatchFrame(const uint8_t* fromMac, const MatchPacket& packet);
+    // Holds an initiation from the opponent jack's peer for the secret it needs.
     void onMatchInitiation(const uint8_t* fromMac, const MatchPacket& packet);
     // Primes the match once the held initiation verifies under the held secret.
     void pairInitiationWithSecret();

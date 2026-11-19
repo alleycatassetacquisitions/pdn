@@ -21,7 +21,7 @@ inline constexpr const char TEST_MATCH_ID[] = "aaaaaaaa-0000-4000-8000-000000000
 inline void primeBountyMatch(MatchManager* mm, const char* matchId = TEST_MATCH_ID) {
     static uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     mm->receiveMatch(matchId, UUIDBytes{}, UUIDBytes{}, true, hunterMac,
-                     MatchFrameAuth(testMatchSecret(1), 1));
+                     MatchFrameAuth(testMatchSecret(1)));
 }
 
 // ============================================
@@ -384,20 +384,20 @@ inline void matchManagerShootoutDrawSlotDecidesTheWinner(MatchManager* mm, Playe
 // match's established opponent (right MAC + right matchId). A neighbor
 // device forging results for someone else's match must be ignored.
 
-// NEVER_PRESSED forged by a non-opponent MAC must not set opponentNeverPressed
-// (which would otherwise force didWin() to true).
-inline void matchManagerRejectsNeverPressedFromStranger(MatchManager* mm, Player* player) {
-    player->setIsHunter(true);
-    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    mm->initializeMatch(opponentMac);
-    const char* realMatchId = mm->getCurrentMatch()->getMatchId();
-
-    mm->setHunterDrawTime(300);
+// NEVER_PRESSED from a non-opponent MAC must not set opponentNeverPressed
+// (which would otherwise force didWin() to true), even with a good tag.
+inline void matchManagerRejectsNeverPressedFromStranger(MatchManagerTestSuite* suite) {
+    suite->setupMatchAsBounty();
+    MatchManager* mm = suite->matchManager;
+    mm->setMatchLocalStartTime(suite->fakeClock->milliseconds());
+    mm->setBountyDrawTime(300);
     mm->setReceivedButtonPush();
 
     uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
-    MatchCommand forged(strangerMac, MatchCmd::NEVER_PRESSED, realMatchId, 0, false);
-    mm->listenForMatchEvents(forged);
+    MatchPacket forged =
+    signedMatchFrame(*suite->hunterAuth, MatchCmd::NEVER_PRESSED, TEST_MATCH_ID, true, 9999);
+    forged.seqId = 2;
+    suite->radioTap.deliverFrameFrom(strangerMac, &forged);
 
     EXPECT_FALSE(mm->didWin());
     EXPECT_FALSE(mm->matchResultsAreIn());
@@ -405,16 +405,18 @@ inline void matchManagerRejectsNeverPressedFromStranger(MatchManager* mm, Player
 
 // Commands with the wrong matchId from the right MAC must also be rejected
 // (prevents stale results from a prior match confusing the current one).
-inline void matchManagerRejectsWrongMatchId(MatchManager* mm, Player* player) {
-    player->setIsHunter(true);
-    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    mm->initializeMatch(opponentMac);
+inline void matchManagerRejectsWrongMatchId(MatchManagerTestSuite* suite) {
+    suite->setupMatchAsBounty();
+    MatchManager* mm = suite->matchManager;
+    mm->setMatchLocalStartTime(suite->fakeClock->milliseconds());
 
-    MatchCommand stale(opponentMac, MatchCmd::DRAW_RESULT, "wrong-match-id-xxxxxxxxxxxxxxxxxxxx",
-                       222, false);
-    mm->listenForMatchEvents(stale);
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    MatchPacket stale = signedMatchFrame(*suite->hunterAuth, MatchCmd::DRAW_RESULT,
+                                         "bbbbbbbb-0000-4000-8000-000000000002", true, 222);
+    stale.seqId = 2;
+    suite->radioTap.deliverFrameFrom(hunterMac, &stale);
 
-    EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 0u);
+    EXPECT_EQ(mm->getCurrentMatch()->getHunterDrawTime(), 0u);
     EXPECT_FALSE(mm->getHasReceivedDrawResult());
 }
 
@@ -435,6 +437,7 @@ inline void matchManagerAcceptsResultFromOpponent(MatchManager* mm, Player* play
     uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     mm->initializeMatch(opponentMac);
     const char* realMatchId = mm->getCurrentMatch()->getMatchId();
+    mm->setMatchLocalStartTime(1000);
 
     MatchCommand legit(opponentMac, MatchCmd::DRAW_RESULT, realMatchId, 150, false);
     mm->listenForMatchEvents(legit);
@@ -811,6 +814,7 @@ TEST_F(MatchManagerTestSuite, opponentsBoostIsHeldToAFullPosse) {
     static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     const char* matchId = "81111111-2222-4000-8000-333333333333";
     setupMatchAsBounty(matchId);
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
 
     MatchCommand tooFast(hunterMac, MatchCmd::DRAW_RESULT, matchId, 300, true);
     tooFast.boostMs = 100000;
@@ -990,6 +994,7 @@ TEST_F(MatchManagerTestSuite, samePlayerOnBothSidesIsStored) {
 // Each device names itself the winner when neither pressed.
 TEST_F(MatchManagerTestSuite, matchNeitherSidePressedIsStored) {
     setupAckedMatchAsHunter();
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
     matchManager->sendNeverPressed(4000);
     static const uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     MatchCommand neverPressed(opponentMac, MatchCmd::NEVER_PRESSED,

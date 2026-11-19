@@ -245,3 +245,78 @@ TEST_F(MatchManagerTestSuite, shootoutFramesStayUnsignedAndApplyOnArrival) {
     ASSERT_NE(radioTap.lastFrame(), nullptr);
     EXPECT_EQ(radioTap.lastFrame()->counter, 0u) << "a shootout frame went out signed";
 }
+
+// A radio attacker spoofs the Hunter's MAC and sends an unsigned frame under
+// the next seqId: a role mismatch for the running match, or one naming a
+// shootout match. Neither may take that seqId from the honest result behind it.
+TEST_F(MatchManagerTestSuite, unsignedFramesDoNotTakeTheSignedResultsSeqId) {
+    setupMatchAsBounty();
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+
+    MatchPacket mismatch{};
+    IdGenerator::copyId(mismatch.matchId, TEST_MATCH_ID);
+    mismatch.command = MatchCmd::MATCH_ROLE_MISMATCH;
+    mismatch.isHunter = 1;
+    mismatch.seqId = 2;
+    radioTap.deliverFrameFrom(FRAME_AUTH_HUNTER_MAC, &mismatch);
+    ASSERT_TRUE(matchManager->isMatchReady()) << "a role mismatch ended a ready match";
+
+    MatchPacket shootout{};
+    IdGenerator::copyId(shootout.matchId, "SHT-00000000000000000000000000486");
+    shootout.command = MatchCmd::DRAW_RESULT;
+    shootout.isHunter = 1;
+    shootout.seqId = 2;
+    radioTap.deliverFrameFrom(FRAME_AUTH_HUNTER_MAC, &shootout);
+
+    MatchPacket honest =
+    signedMatchFrame(*hunterAuth, MatchCmd::DRAW_RESULT, TEST_MATCH_ID, true, 240, 0);
+    honest.seqId = 2;
+    radioTap.deliverFrameFrom(FRAME_AUTH_HUNTER_MAC, &honest);
+    EXPECT_TRUE(matchManager->getHasReceivedDrawResult());
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 240u);
+}
+
+// The Hunter's seqId runs across every frame it sends to anyone, so a rematch's
+// result can carry the seqId of its last result to this Bounty. The counter,
+// not that stale record, decides.
+TEST_F(MatchManagerTestSuite, aRematchResultIsNotTakenForTheLastMatchsRetransmit) {
+    setupMatchAsBounty();
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    MatchPacket first =
+    signedMatchFrame(*hunterAuth, MatchCmd::DRAW_RESULT, TEST_MATCH_ID, true, 200, 0);
+    first.seqId = 7;
+    radioTap.deliverFrameFrom(FRAME_AUTH_HUNTER_MAC, &first);
+    ASSERT_TRUE(matchManager->getHasReceivedDrawResult());
+    matchManager->clearCurrentMatch();
+
+    const char* rematchId = "cccccccc-0000-4000-8000-000000000003";
+    setupMatchAsBounty(rematchId);
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    MatchPacket rematch =
+    signedMatchFrame(*hunterAuth, MatchCmd::DRAW_RESULT, rematchId, true, 260, 0);
+    rematch.seqId = 7;
+    radioTap.deliverFrameFrom(FRAME_AUTH_HUNTER_MAC, &rematch);
+    EXPECT_TRUE(matchManager->getHasReceivedDrawResult());
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 260u);
+}
+
+// Only the opponent jack's peer can know the secret, so an initiation from the
+// supporter jack's peer does not displace the Hunter's while it waits.
+TEST_F(MatchManagerTestSuite, supporterPeerInitiationDoesNotDisplaceTheHuntersOne) {
+    player->setIsHunter(false);
+    const uint8_t supporterMac[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    fakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, supporterMac);
+    const MatchSecret secret = testMatchSecret(1);
+    MatchFrameAuth hunterSide(secret);
+    MatchPacket initiation =
+    signedMatchFrame(hunterSide, MatchCmd::SEND_MATCH_ID, TEST_MATCH_ID, true);
+    radioTap.deliverFrameFrom(FRAME_AUTH_HUNTER_MAC, &initiation);
+    MatchFrameAuth supporterSide(testMatchSecret(9));
+    MatchPacket intrusion =
+    signedMatchFrame(supporterSide, MatchCmd::SEND_MATCH_ID, TEST_MATCH_ID, true);
+    radioTap.deliverFrameFrom(supporterMac, &intrusion);
+
+    const std::vector<uint8_t> frame = matchSecretFrame(TEST_MATCH_ID, secret);
+    matchManager->onMatchSecretFrame(SerialIdentifier::INPUT_JACK, frame.data(), frame.size());
+    EXPECT_TRUE(matchManager->getCurrentMatch().has_value());
+}

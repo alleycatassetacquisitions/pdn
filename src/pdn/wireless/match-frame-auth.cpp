@@ -28,9 +28,8 @@ void computeTag(const MatchSecret& secret, const MatchPacket& packet,
 
 }  // namespace
 
-MatchFrameAuth::MatchFrameAuth(const MatchSecret& secret, uint32_t opponentCounter)
-    : secret(secret)
-    , admittedCounter(opponentCounter) {}
+MatchFrameAuth::MatchFrameAuth(const MatchSecret& secret)
+    : secret(secret) {}
 
 MatchFrameAuth::~MatchFrameAuth() { secureWipe(secret.data(), secret.size()); }
 

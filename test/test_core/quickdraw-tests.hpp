@@ -1184,7 +1184,7 @@ inline void resultBountyWinsWithFasterTime(MatchResultTests* suite) {
     uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->receiveMatch("aaaaaaaa-0000-4000-8000-000000000001", UUIDBytes{},
                                       UUIDBytes{}, true, hunterMac,
-                                      MatchFrameAuth(testMatchSecret(1), 1));
+                                      MatchFrameAuth(testMatchSecret(1)));
     suite->matchManager->setHunterDrawTime(250);
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedButtonPush();

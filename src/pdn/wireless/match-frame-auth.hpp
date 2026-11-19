@@ -12,16 +12,21 @@
 inline constexpr size_t MATCH_SECRET_SIZE = 16;
 using MatchSecret = std::array<uint8_t, MATCH_SECRET_SIZE>;
 
-// An ApplicationFrameKind::MATCH_SECRET frame: the match ID's 16 bytes, then the secret.
-inline constexpr size_t MATCH_SECRET_FRAME_LENGTH = UUIDBytes::SIZE + MATCH_SECRET_SIZE;
+// An ApplicationFrameKind::MATCH_SECRET frame's payload, copied as bytes.
+struct MatchSecretFrame {
+    UUIDBytes matchId;
+    MatchSecret secret;
+};
+static_assert(sizeof(MatchSecretFrame) == UUIDBytes::SIZE + MATCH_SECRET_SIZE,
+              "a match secret frame is the match ID's bytes, then the secret");
 
 // One standalone match's frame signing: the secret, the counter of the last
 // frame signed and that of the last opponent frame admitted. The secret is
 // wiped when the value goes.
 class MatchFrameAuth {
 public:
-    /** Signs and checks under @p secret; opponent frames must count above @p opponentCounter. */
-    explicit MatchFrameAuth(const MatchSecret& secret, uint32_t opponentCounter = 0);
+    /** Signs and checks under @p secret. */
+    explicit MatchFrameAuth(const MatchSecret& secret);
     /** Wipes the secret. */
     ~MatchFrameAuth();
     /** A copy carries the secret and both counters, and wipes its secret in turn. */
@@ -47,5 +52,5 @@ public:
 private:
     MatchSecret secret;
     uint32_t sentCounter = 0;
-    uint32_t admittedCounter;
+    uint32_t admittedCounter = 0;
 };
