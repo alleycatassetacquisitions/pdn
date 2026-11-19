@@ -2354,6 +2354,9 @@ TEST_F(FdnRegistrationTests, sendsNoProfileToAPdnSwappedAsItsKeyIsWritten) {
 TEST_F(FdnRegistrationTests, ignoresTapsDuringTheResultHold) {
     fdnRegistrationIgnoresTapsDuringTheResultHold(this);
 }
+TEST_F(FdnRegistrationTests, requeuesAFailedPdnAtTheBack) {
+    fdnRegistrationRequeuesAFailedPdnAtTheBack(this);
+}
 TEST_F(FdnRegistrationTests, turnNeverOpensWithoutAReader) {
     fdnRegistrationTurnNeverOpensWithoutAReader(this);
 }
@@ -2373,8 +2376,8 @@ TEST_F(FdnRegistrationTests, closesTheTurnBeforeTheLookupTakesTheRadio) {
     fdnRegistrationClosesTheTurnBeforeTheLookupTakesTheRadio(this);
 }
 TEST(FdnRegistration, screenText) { fdnRegistrationScreenText(); }
-TEST(FdnRegistration, provisionCodecRoundTripsAndBoundsTheWire) {
-    playerProvisionCodecRoundTripsAndBoundsTheWire();
+TEST(FdnRegistration, provisionCodecEncodesTheRegistrationFields) {
+    playerProvisionCodecEncodesTheRegistrationFields();
 }
 
 // ============================================

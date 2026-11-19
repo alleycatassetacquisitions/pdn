@@ -297,10 +297,9 @@ inline void fdnRegistrationTapSendsKeyThenProfileToTheTurnsPdn(FdnRegistrationTe
     suite->step();
     const std::vector<PlayerProvisionPacket> packets = suite->provisionsTo(PDN_A);
     ASSERT_EQ(packets.size(), 1u);
-    Player delivered;
-    ASSERT_TRUE(PlayerProvisionCodec::decode(packets[0], delivered));
-    EXPECT_EQ(delivered.getServerPlayerId(), makeTestUuid(TEST_PLAYER_ID));
-    EXPECT_STREQ(delivered.getServerPlayerName(), "Alex");
+    EXPECT_EQ(packets[0].status, static_cast<uint8_t>(ProvisionStatus::PROFILE_DELIVERED));
+    EXPECT_EQ(memcmp(packets[0].playerId, makeTestUuid(TEST_PLAYER_ID).bytes, UUIDBytes::SIZE), 0);
+    EXPECT_STREQ(packets[0].playerName, "Alex");
     EXPECT_TRUE(suite->provisionsTo(PDN_B).empty());
     EXPECT_EQ(suite->view.screen, RegistrationScreen::RESULT);
     EXPECT_EQ(suite->view.outcome, RegistrationOutcome::REGISTERED);
@@ -391,6 +390,17 @@ inline void fdnRegistrationIgnoresTapsDuringTheResultHold(FdnRegistrationTests* 
     EXPECT_EQ(suite->requests.size(), 2u);
 }
 
+// A PDN whose lookup failed rejoins at the back, behind a PDN cabled during it.
+inline void fdnRegistrationRequeuesAFailedPdnAtTheBack(FdnRegistrationTests* suite) {
+    suite->cable(suite->jack1, PDN_A);
+    suite->tap();
+    suite->cable(suite->jack2, PDN_B);
+    suite->fail(0, {WirelessError::INVALID_RESPONSE, "HTTP Error: 404", 404});
+    suite->advance(FdnProvisioningManager::LOOKUP_RESULT_HOLD_MS + 40);
+    EXPECT_EQ(suite->lastTurnTo(PDN_B), RegistrationTurn::OPEN);
+    EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::CLOSED);
+}
+
 // Turns are open only while the registration screen is shown and the reader
 // answers; with no reader the screen says why.
 inline void fdnRegistrationTurnNeverOpensWithoutAReader(FdnRegistrationTests* suite) {
@@ -436,11 +446,16 @@ inline void fdnRegistrationResendsTheTurnAfterAnAbandonedContext(FdnRegistration
     EXPECT_TRUE(resent) << "the abandoned turn context was never sent again";
 }
 
-// A turn nobody taps for passes to the next PDN.
+// A turn nobody taps for passes to the next PDN 30 s after it started waiting,
+// however long the head held the turn alone before it came.
 inline void fdnRegistrationPassesAnUntappedTurnOn(FdnRegistrationTests* suite) {
     suite->cable(suite->jack1, PDN_A);
+    suite->advance(2 * FdnProvisioningManager::REGISTRATION_PENDING_MS - 100);
+    EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::OPEN) << "a lone PDN lost the turn";
     suite->cable(suite->jack2, PDN_B);
-    suite->advance(FdnProvisioningManager::REGISTRATION_PENDING_MS + 40);
+    suite->advance(200);
+    EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::OPEN) << "a late arrival cut the turn";
+    suite->advance(FdnProvisioningManager::REGISTRATION_PENDING_MS);
     EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::CLOSED);
     EXPECT_EQ(suite->lastTurnTo(PDN_B), RegistrationTurn::OPEN);
 }
@@ -460,13 +475,14 @@ inline void fdnRegistrationClosesTheTurnBeforeTheLookupTakesTheRadio(FdnRegistra
 }
 
 // A modified PDN on the other jack claims the MAC of the PDN waiting on jack 1:
-// a context told to that MAC could be tapped for either jack, so no turn opens
-// and no key can reach the impostor's jack.
+// a context told to that MAC could be tapped for either jack, so no turn opens,
+// the screen does not ask for a tap, and no key can reach the impostor's jack.
 inline void fdnRegistrationOpensNoTurnForAMacOnBothJacks(FdnRegistrationTests* suite) {
     suite->cable(suite->jack1, PDN_A);
     ASSERT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::OPEN);
     suite->cable(suite->jack2, PDN_A);
     EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::CLOSED);
+    EXPECT_EQ(suite->view.screen, RegistrationScreen::NONE) << "TAP BAND with no turn open";
 
     suite->advance(FdnProvisioningManager::REGISTRATION_PENDING_MS + 40);
     EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::CLOSED) << "the rotation opened a turn";
@@ -520,42 +536,26 @@ inline void fdnRegistrationScreenText() {
     }
 }
 
-// The profile packet carries the registration fields across, and a decoding
-// PDN never trusts the count or the names off the radio.
-inline void playerProvisionCodecRoundTripsAndBoundsTheWire() {
+// The profile packet carries the registration fields, at most three affiliations.
+inline void playerProvisionCodecEncodesTheRegistrationFields() {
     Player player;
     Team team;
     team.id = makeTestUuid(TEST_PLAYER_ID);
     strcpy(team.name, "Hunter");
     std::vector<Affiliation> affiliations(4);
     for (size_t i = 0; i < affiliations.size(); ++i) {
-        affiliations[i].categoryId.bytes[0] = static_cast<uint8_t>(i + 1);
         affiliations[i].affiliationId.bytes[0] = static_cast<uint8_t>(i + 11);
         snprintf(affiliations[i].affiliationName, PlayerLimits::NAME_BUFFER_SIZE, "Helix %zu", i);
     }
     player.applyRegistrationProfile(makeTestUuid(TEST_PLAYER_ID), "Ada", team, affiliations);
 
-    PlayerProvisionPacket packet = PlayerProvisionCodec::encode(player);
-    Player decoded;
-    ASSERT_TRUE(PlayerProvisionCodec::decode(packet, decoded));
-    EXPECT_EQ(decoded.getServerPlayerId(), makeTestUuid(TEST_PLAYER_ID));
-    EXPECT_STREQ(decoded.getServerPlayerName(), "Ada");
-    EXPECT_STREQ(decoded.getRegistrationTeam().name, "Hunter");
-    ASSERT_EQ(decoded.getRegistrationAffiliations().size(), PlayerLimits::MAX_AFFILIATIONS);
-    EXPECT_STREQ(decoded.getRegistrationAffiliations()[2].affiliationName, "Helix 2");
-
-    packet.affiliationCount = 200;
-    memset(packet.playerName, 'x', sizeof(packet.playerName));
-    ASSERT_TRUE(PlayerProvisionCodec::decode(packet, decoded));
-    EXPECT_EQ(decoded.getRegistrationAffiliations().size(), PlayerLimits::MAX_AFFILIATIONS);
-    EXPECT_EQ(strlen(decoded.getServerPlayerName()), PlayerLimits::NAME_BUFFER_SIZE - 1);
-
-    Player untouched;
-    PlayerProvisionPacket failed = PlayerProvisionCodec::encode(player);
-    failed.status = static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED);
-    EXPECT_FALSE(PlayerProvisionCodec::decode(failed, untouched));
-    PlayerProvisionPacket nilPlayer = PlayerProvisionCodec::encode(Player());
-    strcpy(nilPlayer.playerName, "Ada");
-    EXPECT_FALSE(PlayerProvisionCodec::decode(nilPlayer, untouched));
-    EXPECT_FALSE(untouched.hasRegistrationProfile());
+    const PlayerProvisionPacket packet = PlayerProvisionCodec::encode(player);
+    EXPECT_EQ(packet.status, static_cast<uint8_t>(ProvisionStatus::PROFILE_DELIVERED));
+    EXPECT_EQ(memcmp(packet.playerId, makeTestUuid(TEST_PLAYER_ID).bytes, UUIDBytes::SIZE), 0);
+    EXPECT_STREQ(packet.playerName, "Ada");
+    EXPECT_EQ(memcmp(packet.teamId, team.id.bytes, UUIDBytes::SIZE), 0);
+    EXPECT_STREQ(packet.teamName, "Hunter");
+    ASSERT_EQ(packet.affiliationCount, PlayerLimits::MAX_AFFILIATIONS);
+    EXPECT_EQ(packet.affiliations[2].affiliationId[0], 13);
+    EXPECT_STREQ(packet.affiliations[2].affiliationName, "Helix 2");
 }

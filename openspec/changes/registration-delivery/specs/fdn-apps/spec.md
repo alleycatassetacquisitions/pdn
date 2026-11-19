@@ -22,7 +22,7 @@ When a PDN connects to the FDN on an upstream serial jack, the FDN SHALL inspect
 
 ### Requirement: Registration screen for band taps
 
-While a PDN waits to register, a lookup runs or its result holds, the FDN SHALL show the registration screen in place of symbol match, except during the codeword hold. It SHALL show `"TAP BAND"` over the label of the jack holding the turn (`"JACK 1"` primary, `"JACK 2"` secondary), `"NO READER"` over it while the band reader does not answer, and `"LOOKING"` / `"UP"` during a lookup. No PIN is asked for.
+While a PDN waits to register, a lookup runs or its result holds, the FDN SHALL show the registration screen in place of symbol match, except during the codeword hold. It SHALL show `"TAP BAND"` over the label of the jack holding the turn (`"JACK 1"` primary, `"JACK 2"` secondary), `"NO READER"` over it while the band reader does not answer, and `"LOOKING"` / `"UP"` during a lookup. No screen SHALL show while the head's MAC is the peer of both jacks. No PIN is asked for.
 
 #### Scenario: Turn's jack is named
 - **WHEN** an unprovisioned PDN becomes Connected on the secondary jack of an FDN with no other PDN

@@ -25,14 +25,14 @@ When a band is tapped at an FDN while the jack of a Connected unprovisioned PDN 
 
 ### Requirement: FDN registration queue
 
-The FDN SHALL queue, in arrival order, each PDN Connected on an input jack whose context reports no applied profile, learning arrivals, departures and profile changes from the jack's events. A PDN that leaves or reports an applied profile SHALL leave the queue. A PDN whose lookup ended SHALL rejoin at the back if still Connected and unprovisioned. A turn held `30,000 ms` with no tap SHALL pass to the next PDN.
+The FDN SHALL queue, in arrival order, each PDN Connected on an input jack whose context reports no applied profile, learning arrivals, departures and profile changes from the jack's events. A PDN that leaves or reports an applied profile SHALL leave the queue. A PDN whose lookup ended SHALL rejoin at the back if still Connected and unprovisioned. An open turn untapped `30,000 ms` after the next PDN began waiting SHALL pass to it.
 
 #### Scenario: Second PDN waits its turn
 - **WHEN** an unprovisioned PDN connects on the secondary jack while the primary jack's PDN holds the turn
 - **THEN** the secondary jack's PDN is queued behind it
 
 #### Scenario: Untapped turn passes on
-- **WHEN** the turn has been with the primary jack's PDN for `30,000 ms` with no tap while the secondary jack's PDN waits
+- **WHEN** the secondary jack's PDN has waited `30,000 ms` behind the primary jack's open turn with no tap, however long that turn was open before
 - **THEN** the turn moves to the secondary jack's PDN
 
 ### Requirement: FDN tells each jack whether its turn is open

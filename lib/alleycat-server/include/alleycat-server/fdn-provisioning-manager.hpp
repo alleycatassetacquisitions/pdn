@@ -1,10 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
 #include <functional>
 #include <optional>
+#include <utility>
 #include "alleycat-server/player-api.hpp"
 #include "alleycat-server/player-provision-codec.hpp"
 #include "device/application-frame-kind.hpp"
@@ -21,9 +23,9 @@
 
 /** What the FDN registration screen shows. */
 enum class RegistrationScreen : uint8_t {
-    // Nothing queued, no lookup, no result held: the screen is not needed.
+    // Nobody can take a turn, no lookup, no result held: the screen is not needed.
     NONE,
-    // The turn is open for the PDN on `jack`.
+    // The turn is the PDN's on `jack`; it is open while this screen shows.
     TAP_BAND,
     // The PDN on `jack` is next, but the band reader does not answer.
     NO_READER,
@@ -102,7 +104,7 @@ public:
     /** Told of every change to what the registration screen shows. */
     using OnViewChanged = std::function<void(const RegistrationView& view)>;
 
-    /** How long one PDN holds the turn with no tap before it passes to a waiting PDN. */
+    /** How long a turn stays untapped once another PDN waits before it passes on. */
     static constexpr unsigned long REGISTRATION_PENDING_MS = 30000;
     /**
      * How long a lookup's result holds. No turn is open meanwhile, so a tap
@@ -179,15 +181,9 @@ public:
             phase = LookupPhase::IDLE;
             phaseTimer.invalidate();
         }
-        if (isTurnOpen() && pendingTimer.expired()) {
-            if (queueLength > 1) {
-                LOG_I("FDN_PROVISION", "No tap in time; the next PDN takes the turn");
-                const QueuedPdn head = queue[0];
-                queue[0] = queue[1];
-                queue[1] = head;
-            } else {
-                pendingTimer.setTimer(REGISTRATION_PENDING_MS);
-            }
+        if (isTurnOpen() && queueLength > 1 && pendingTimer.expired()) {
+            LOG_I("FDN_PROVISION", "No tap in time; the next PDN takes the turn");
+            std::swap(queue[0], queue[1]);
         }
         announceTurn();
         if (phase == LookupPhase::CLOSING_TURN &&
@@ -237,6 +233,11 @@ private:
         bool operator==(const QueuedPdn& other) const {
             return jack == other.jack && mac == other.mac;
         }
+
+        /** @return true when @p other is this PDN's MAC; false for nullptr. */
+        bool hasMac(const uint8_t* other) const {
+            return other != nullptr && memcmp(other, mac.data(), mac.size()) == 0;
+        }
     };
 
     static constexpr std::array<SerialIdentifier, 2> REGISTRATION_JACKS = {
@@ -256,14 +257,12 @@ private:
 
     // True while `pdn` is still the PDN Connected on its jack.
     bool isStillCabled(const QueuedPdn& pdn) const {
-        const uint8_t* mac = remoteDeviceCoordinator->getPeerMac(pdn.jack);
         return remoteDeviceCoordinator->getJackStatus(pdn.jack) == JackStatus::CONNECTED &&
-               mac != nullptr && memcmp(mac, pdn.mac.data(), pdn.mac.size()) == 0;
+               pdn.hasMac(remoteDeviceCoordinator->getPeerMac(pdn.jack));
     }
 
     bool isLookingUp() const {
-        return phase == LookupPhase::CLOSING_TURN || phase == LookupPhase::AWAITING_SERVER ||
-               phase == LookupPhase::AWAITING_JACK;
+        return phase != LookupPhase::IDLE && phase != LookupPhase::HOLDING_RESULT;
     }
 
     // Drops PDNs that left or registered, then queues newly cabled unregistered
@@ -271,49 +270,45 @@ private:
     void updateQueue() {
         size_t kept = 0;
         for (size_t i = 0; i < queueLength; ++i) {
-            const uint8_t* mac = getUnregisteredPdnMac(queue[i].jack);
-            if (mac != nullptr && memcmp(mac, queue[i].mac.data(), queue[i].mac.size()) == 0) {
-                queue[kept++] = queue[i];
-            }
+            if (queue[i].hasMac(getUnregisteredPdnMac(queue[i].jack))) queue[kept++] = queue[i];
         }
         queueLength = kept;
         for (SerialIdentifier jack : REGISTRATION_JACKS) {
             const uint8_t* mac = getUnregisteredPdnMac(jack);
-            if (mac == nullptr) continue;
-            bool queued = false;
-            for (size_t i = 0; i < queueLength; ++i) {
-                if (queue[i].jack == jack) queued = true;
+            if (mac == nullptr ||
+                std::any_of(queue.begin(), queue.begin() + queueLength,
+                            [jack](const QueuedPdn& queued) { return queued.jack == jack; }) ||
+                (isLookingUp() && lookupPdn.jack == jack && lookupPdn.hasMac(mac))) {
+                continue;
             }
-            const bool inLookup = isLookingUp() && lookupPdn.jack == jack &&
-                                  memcmp(mac, lookupPdn.mac.data(), lookupPdn.mac.size()) == 0;
-            if (queued || inLookup) continue;
             queue[queueLength].jack = jack;
             memcpy(queue[queueLength].mac.data(), mac, queue[queueLength].mac.size());
             queueLength++;
+            // A PDN starts waiting behind the head: the head's untapped time runs from now.
+            if (queueLength > 1) pendingTimer.setTimer(REGISTRATION_PENDING_MS);
         }
     }
 
     // A context goes to a radio MAC, and a tap's key to a jack: with the head's
     // MAC heard on both jacks (a peer claiming another's MAC in its HELLO), a
     // turn told to that MAC could be tapped for the other jack, so none opens.
+    // Both jacks then hold that MAC, so nobody else can take the turn either.
+    bool canHeadTakeTurn() const {
+        return queueLength > 0 &&
+               std::count_if(REGISTRATION_JACKS.begin(), REGISTRATION_JACKS.end(),
+                             [this](SerialIdentifier jack) {
+                                 return queue[0].hasMac(remoteDeviceCoordinator->getPeerMac(jack));
+                             }) == 1;
+    }
+
     bool isTurnOpen() const {
-        if (!registrationScreenIsShown || !readerResponds || phase != LookupPhase::IDLE ||
-            queueLength == 0) {
-            return false;
-        }
-        size_t jacksWithHeadMac = 0;
-        for (SerialIdentifier jack : REGISTRATION_JACKS) {
-            const uint8_t* mac = remoteDeviceCoordinator->getPeerMac(jack);
-            if (mac != nullptr && memcmp(mac, queue[0].mac.data(), queue[0].mac.size()) == 0) {
-                jacksWithHeadMac++;
-            }
-        }
-        return jacksWithHeadMac == 1;
+        return registrationScreenIsShown && readerResponds && phase == LookupPhase::IDLE &&
+               canHeadTakeTurn();
     }
 
     // The queue follows the jack events, so its head is still the peer on its jack.
     bool isTurnOpenFor(const uint8_t* peerMac) const {
-        return isTurnOpen() && memcmp(queue[0].mac.data(), peerMac, queue[0].mac.size()) == 0;
+        return isTurnOpen() && queue[0].hasMac(peerMac);
     }
 
     void announceTurn() {
@@ -336,7 +331,7 @@ private:
             view.jack = lookupPdn.jack;
         } else if (phase == LookupPhase::HOLDING_RESULT) {
             view = heldResult;
-        } else if (queueLength > 0) {
+        } else if (canHeadTakeTurn()) {
             view.screen =
             readerResponds ? RegistrationScreen::TAP_BAND : RegistrationScreen::NO_READER;
             view.jack = queue[0].jack;
