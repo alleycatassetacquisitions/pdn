@@ -17,6 +17,7 @@
 #include "utility-tests.hpp"
 #include "fake-firmware-store.hpp"
 #include "protocol-constants.hpp"
+#include "connect-state-callback-tests.hpp"
 
 using ::testing::_;
 using ::testing::Return;
@@ -1700,6 +1701,32 @@ inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* 
     EXPECT_TRUE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     suite->ctx.shootoutManager = nullptr;
+}
+
+// Soak seed 6002: a countdown that last exited with its jack disconnected left
+// the debounce window expired, and the next match (entered while the jack was
+// still CONNECTING after a lost context frame) abandoned on its first sample.
+// The spec abandons only after the jack stays disconnected past the debounce.
+inline void countdownDebounceStartsFreshEachTenure(StateCleanupTests* suite) {
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
+    MatchCountdown countdown(suite->ctx);
+
+    mountState(&countdown, &suite->device);
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    suite->fakeClock->advance(600);
+    EXPECT_TRUE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    dismountState(&countdown, &suite->device);
+
+    suite->fakeClock->advance(70000);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
+        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTING);
+    mountState(&countdown, &suite->device);
+    EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    suite->fakeClock->advance(500);
+    EXPECT_TRUE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    dismountState(&countdown, &suite->device);
 }
 
 inline void receivedResultLeavesTheMatchAloneWhenDisconnected(StateCleanupTests* suite) {

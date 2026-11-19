@@ -131,9 +131,12 @@ private:
     }
 
     // A dismounted state must stop receiving; the next mounted state may not be a
-    // ConnectState, and nothing else would clear the slot.
+    // ConnectState, and nothing else would clear the slot. The debounce window
+    // goes too: nobody samples it while dismounted, so a run left in flight would
+    // read as already held on the next tenure's first disconnected sample.
     void beforeDismount(DeviceT* device) final {
         if (subscribed) unsubscribe();
+        disconnectDebounce.reset();
     }
 
     void subscribe() {

@@ -1447,6 +1447,10 @@ TEST_F(StateCleanupTests, countdownFreezesDisconnectDebounceDuringShootout) {
     countdownFreezesDisconnectDebounceDuringShootout(this);
 }
 
+TEST_F(StateCleanupTests, countdownDebounceStartsFreshEachTenure) {
+    countdownDebounceStartsFreshEachTenure(this);
+}
+
 TEST_F(StateCleanupTests, winAndLoseStopTheirAnimation) {
     cleanupWinAndLoseStopTheirAnimation(this);
 }
