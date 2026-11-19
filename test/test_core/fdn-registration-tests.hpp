@@ -316,8 +316,8 @@ inline void fdnRegistrationSendsNothingToAPdnThatLeftDuringLookup(FdnRegistratio
 
 // The PDN is swapped for another after its key frame went out but before the
 // FDN collected the outcome: the frame reports written, yet no profile follows.
-inline void fdnRegistrationSendsNoProfileToAPdnSwappedAsItsKeyIsWritten(
-FdnRegistrationTests* suite) {
+inline void
+fdnRegistrationSendsNoProfileToAPdnSwappedAsItsKeyIsWritten(FdnRegistrationTests* suite) {
     suite->cable(suite->jack1, PDN_A);
     suite->tap();
     ASSERT_EQ(suite->requests.size(), 1u);
