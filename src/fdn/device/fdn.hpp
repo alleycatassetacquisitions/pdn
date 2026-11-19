@@ -35,10 +35,10 @@ protected:
     FDN(DriverConfig& driverConfig);
 
 private:
-    LightManager* lightManager;
-    SerialManager* serialManager;
-    WirelessManager* wirelessManager;
-    RemoteDeviceCoordinator* remoteDeviceCoordinator;
+    LightManager* lightManager = nullptr;
+    SerialManager* serialManager = nullptr;
+    WirelessManager* wirelessManager = nullptr;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
 
     std::string deviceId;
 };

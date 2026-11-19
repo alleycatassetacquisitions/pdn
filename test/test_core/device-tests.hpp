@@ -5,7 +5,13 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include <set>
+#include <string>
+
 #include "device-mock.hpp"
+#include "device/drivers/native/native-light-strip-driver.hpp"
+#include "device/drivers/native/native-peer-comms-driver.hpp"
+#include "device/drivers/native/native-serial-driver.hpp"
 #include "state/state-machine.hpp"
 
 // Test app IDs - using StateId type for compatibility
@@ -182,3 +188,105 @@ public:
         device->loadAppConfig(std::move(config), launchAppId);
     }
 };
+
+// What a real PDN's managers still had bound on its drivers when the drivers
+// were deleted. The PDN deletes its drivers with itself, so the drivers report
+// into this tally from their own destructors.
+struct DriverBindingsAtTeardown {
+    int packetHandlers = -1;
+    int sendStatusHandlers = -1;
+    int byteCallbacks = 0;
+};
+
+// A simulated radio that tracks which packet types have a handler bound.
+class TeardownTallyPeerComms : public NativePeerCommsDriver {
+public:
+    /** Reports into `tally` when deleted. */
+    TeardownTallyPeerComms(const std::string& name, DriverBindingsAtTeardown& tally)
+        : NativePeerCommsDriver(name)
+        , tally(tally) {}
+
+    /** Writes the handler counts still bound into the tally. */
+    ~TeardownTallyPeerComms() override {
+        tally.packetHandlers = static_cast<int>(packetTypes.size());
+        tally.sendStatusHandlers = static_cast<int>(sendStatusTypes.size());
+    }
+
+    /** Records the binding, then binds as the native driver does. */
+    void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) override {
+        packetTypes.insert(packetType);
+        NativePeerCommsDriver::setPacketHandler(packetType, callback, ctx);
+    }
+
+    /** Records the unbinding, then unbinds as the native driver does. */
+    void clearPacketHandler(PktType packetType) override {
+        packetTypes.erase(packetType);
+        NativePeerCommsDriver::clearPacketHandler(packetType);
+    }
+
+    /** Records the binding, then binds as the native driver does. */
+    void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
+        sendStatusTypes.insert(packetType);
+        NativePeerCommsDriver::setSendStatusHandler(packetType, callback, ctx);
+    }
+
+    /** Records the unbinding, then unbinds as the native driver does. */
+    void clearSendStatusHandler(PktType packetType) override {
+        sendStatusTypes.erase(packetType);
+        NativePeerCommsDriver::clearSendStatusHandler(packetType);
+    }
+
+    /** Packet types with a receive handler bound right now. */
+    size_t getBoundPacketHandlerCount() const { return packetTypes.size(); }
+
+private:
+    DriverBindingsAtTeardown& tally;
+    std::set<PktType> packetTypes;
+    std::set<PktType> sendStatusTypes;
+};
+
+// A simulated jack that reports a byte callback still bound when it is deleted.
+class TeardownTallySerial : public NativeSerialDriver {
+public:
+    /** Reports into `tally` when deleted. */
+    TeardownTallySerial(const std::string& name, DriverBindingsAtTeardown& tally)
+        : NativeSerialDriver(name)
+        , tally(tally) {}
+
+    /** Counts itself into the tally if a byte callback is still bound. */
+    ~TeardownTallySerial() override {
+        if (hasByteCallback()) {
+            tally.byteCallbacks++;
+        }
+    }
+
+private:
+    DriverBindingsAtTeardown& tally;
+};
+
+// Deleting a PDN must unbind every manager from its drivers before ~Device
+// deletes them. Under native_asan, LeakSanitizer also checks the managers are
+// freed.
+TEST(PdnTeardown, managersUnbindFromDriversBeforeDriversGo) {
+    DriverBindingsAtTeardown tally;
+    auto* radio = new TeardownTallyPeerComms(PEER_COMMS_DRIVER_NAME, tally);
+    auto* outputJack = new TeardownTallySerial(SERIAL_OUT_DRIVER_NAME, tally);
+    auto* inputJack = new TeardownTallySerial(SERIAL_IN_DRIVER_NAME, tally);
+    DriverConfig config = {
+    {LIGHT_DRIVER_NAME, new NativeLightStripDriver(LIGHT_DRIVER_NAME)},
+    {SERIAL_OUT_DRIVER_NAME, outputJack},
+    {SERIAL_IN_DRIVER_NAME, inputJack},
+    {PEER_COMMS_DRIVER_NAME, radio},
+    };
+    PDN* pdn = PDN::createPDN(config);
+    pdn->begin();
+    ASSERT_GT(radio->getBoundPacketHandlerCount(), 0u);
+    ASSERT_TRUE(outputJack->hasByteCallback());
+    ASSERT_TRUE(inputJack->hasByteCallback());
+
+    delete pdn;
+
+    EXPECT_EQ(tally.packetHandlers, 0);
+    EXPECT_EQ(tally.sendStatusHandlers, 0);
+    EXPECT_EQ(tally.byteCallbacks, 0);
+}

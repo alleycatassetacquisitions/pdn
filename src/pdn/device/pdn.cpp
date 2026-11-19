@@ -8,7 +8,13 @@ PDN* PDN::createPDN(DriverConfig& driverConfig) {
 }
 
 PDN::~PDN() {
+    // The coordinator goes first: its destructor unbinds the jacks through
+    // serialManager and its channels through wirelessManager.
+    delete remoteDeviceCoordinator;
     delete firmwareUpdateManager;
+    delete wirelessManager;
+    delete serialManager;
+    delete lightManager;
 }
 
 PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {

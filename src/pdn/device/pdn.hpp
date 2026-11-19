@@ -35,18 +35,14 @@ protected:
 
     // No-arg constructor for test subclasses that override all virtual getters.
     // Skips driver initialization — do not call in production code.
-    PDN() : Device(DriverConfig{}) {
-        lightManager = nullptr;
-        serialManager = nullptr;
-        wirelessManager = nullptr;
-        remoteDeviceCoordinator = nullptr;
-    }
+    PDN()
+        : Device(DriverConfig{}) {}
 
 private:
-    LightManager* lightManager;
-    SerialManager* serialManager;
-    WirelessManager* wirelessManager;
-    RemoteDeviceCoordinator* remoteDeviceCoordinator;
+    LightManager* lightManager = nullptr;
+    SerialManager* serialManager = nullptr;
+    WirelessManager* wirelessManager = nullptr;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
 
     std::string deviceId;

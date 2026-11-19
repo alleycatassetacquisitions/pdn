@@ -68,7 +68,7 @@ public:
     /** Inert until initialize(). */
     RemoteDeviceCoordinator();
     /** Stops the emit task, unhooks the jacks and frees the link machines. */
-    ~RemoteDeviceCoordinator();
+    virtual ~RemoteDeviceCoordinator();
 
     /**
      * Claims the RDC packet channels, then brings HELLO connectivity up on
