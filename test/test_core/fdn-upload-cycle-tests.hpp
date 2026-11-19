@@ -80,8 +80,8 @@ public:
             ++offered[match.id];
             const std::map<std::string, int>::const_iterator stored = storedUnder.find(match.id);
             if (stored != storedUnder.end() && stored->second != activeEvent) {
-                request.onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 409", 409,
-                                 CROSS_EVENT_409_BODY});
+                request.onError(
+                {WirelessError::INVALID_RESPONSE, "HTTP Error: 409", 409, CROSS_EVENT_409_BODY});
                 return;
             }
         }

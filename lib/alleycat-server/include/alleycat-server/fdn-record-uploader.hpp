@@ -32,6 +32,19 @@ inline constexpr unsigned long FDN_HELD_MATCH_RETRY_MS = 1800000;
 static_assert(FDN_MATCH_RECORD_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH,
               "a full match ring goes up in one batch");
 
+/** The active event's id in a GET /game-state body, or "" when none is selected. */
+inline std::string activeEventIdFrom(const std::string& body) {
+    static constexpr char KEY[] = "\"active_event\"";
+    size_t at = body.find(KEY);
+    if (at == std::string::npos) return "";
+    at = body.find_first_not_of(": ", at + sizeof(KEY) - 1);
+    if (at == std::string::npos || body[at] != '{') return "";
+    const size_t id = body.find("\"id\":\"", at);
+    if (id == std::string::npos) return "";
+    const size_t end = body.find('"', id + 6);
+    return end == std::string::npos ? "" : body.substr(id + 6, end - id - 6);
+}
+
 // Uploads the FDN's stored records: one cycle at boot, then one every
 // FDN_UPLOAD_INTERVAL_MS while records wait, or sooner once the match store is
 // full. A cycle owns Wi-Fi until it ends
@@ -65,8 +78,8 @@ public:
         }
         const Outcome answered = outcome;
         outcome = Outcome::NONE;
-        if (askingTime) {
-            askingTime = false;
+        if (askingServer) {
+            askingServer = false;
             sendNext();
             return;
         }
@@ -102,6 +115,7 @@ private:
         matchesHeld = false;
         matchesFailed = false;
         timeAsked = false;
+        eventAsked = false;
         cycleTimer.setTimer(FDN_UPLOAD_CYCLE_CAP_MS);
         sendNext();
     }
@@ -109,10 +123,11 @@ private:
     // A full match store refuses relayed matches, so it goes up early, but no
     // sooner than FDN_UPLOAD_FULL_STORE_REST_MS after the last cycle ended, and
     // not after a cycle whose matches failed: a failing server waits its interval.
+    // A store full of held matches has nothing to send early.
     bool isFullAndRested() {
-        return !matchesFailed &&
-               fdnRecordStore->getMatchRecords().getStoredCount() >= FDN_MATCH_RECORD_CAPACITY &&
-               (!restTimer.isRunning() || restTimer.expired());
+        const size_t stored = fdnRecordStore->getMatchRecords().getStoredCount();
+        return !matchesFailed && stored >= FDN_MATCH_RECORD_CAPACITY &&
+               heldMatches.size() < stored && (!restTimer.isRunning() || restTimer.expired());
     }
 
     void sendNext() {
@@ -122,26 +137,44 @@ private:
             askTime();
             return;
         }
+        if (!heldMatches.empty() && !eventAsked) {
+            askEvent();
+            return;
+        }
+        if (heldRetryTimer.expired()) releaseHeld = true;
+        if (releaseHeld) {
+            LOG_I("FDN_UPLOAD", "Retrying %u matches held for another event",
+                  static_cast<unsigned>(heldMatches.size()));
+            heldMatches.clear();
+            heldEvent.clear();
+            heldRetryTimer.invalidate();
+            releaseHeld = false;
+        }
         const size_t limit = probing ? 1 : FDN_MATCH_RECORD_CAPACITY;
         // A match goes up only with the FDN's clock set (#518).
-        sentCount = matchesHeld || !isClockSet()
-                    ? 0
-                    : fdnRecordStore->getMatchRecords().peekOldest(matchBatch, limit);
+        sentCount = matchesHeld || !isClockSet() ? 0 : peekUnheldMatches(limit);
         if (sentCount > 0) {
             sentKind = RecordKind::MATCH;
             sentNumber = matchBatch[0].recordNumber;
+            eventRejected.clear();
             MatchesApi::uploadQuickdrawMatches(
             wirelessManager, sentCount,
             [this](size_t index, MatchRecord& record) {
                 memcpy(&record, matchBatch[index].content, sizeof(record));
                 return true;
             },
-            [](const QuickdrawMatchRejection& rejection) {
+            [this](const QuickdrawMatchRejection& rejection) {
                 char matchId[UUIDBytes::TEXT_BUFFER_SIZE];
                 rejection.matchId.format(matchId);
-                LOG_W("FDN_UPLOAD", "Server rejected match %u (%s): code %d; retiring it",
+                const bool otherEvent =
+                rejection.code == QuickdrawMatchErrorCode::INVALID_EVENT_REFERENCE;
+                LOG_W("FDN_UPLOAD", "Server rejected match %u (%s): code %d; %s",
                       static_cast<unsigned>(rejection.matchIndex), matchId,
-                      static_cast<int>(rejection.rawCode));
+                      static_cast<int>(rejection.rawCode),
+                      otherEvent ? "holding it for its event" : "retiring it");
+                if (otherEvent && rejection.matchIndex < sentCount) {
+                    eventRejected.push_back(rejection.matchIndex);
+                }
             },
             [this, cycle = generation](const QuickdrawUploadResult&) {
                 answer(cycle, Outcome::RETIRE, 0);
@@ -175,13 +208,70 @@ private:
     // Once a cycle, without the time: the answer's Date header sets the clock.
     void askTime() {
         timeAsked = true;
-        askingTime = true;
+        askingServer = true;
         HealthApi::healthCheck(
         wirelessManager,
         [this, cycle = generation](const std::string&) { answer(cycle, Outcome::RETIRE, 0); },
         [this, cycle = generation](const WirelessErrorInfo& error) {
             answer(cycle, Outcome::KEEP, error.httpStatus);
         });
+    }
+
+    // While matches are held: the active event's id, which releases them when it changes.
+    void askEvent() {
+        eventAsked = true;
+        askingServer = true;
+        wirelessManager->queueHttpRequest(HttpRequest(
+        FDN_GAME_STATE_ENDPOINT, "GET", "", "",
+        [this, cycle = generation](const std::string& body) {
+            if (cycle == generation) noteActiveEvent(activeEventIdFrom(body));
+            answer(cycle, Outcome::RETIRE, 0);
+        },
+        [this, cycle = generation](const WirelessErrorInfo& error) {
+            answer(cycle, Outcome::KEEP, error.httpStatus);
+        }));
+    }
+
+    void noteActiveEvent(const std::string& eventId) {
+        if (eventId.empty()) return;
+        if (heldEvent.empty()) {
+            heldEvent = eventId;
+        } else if (eventId != heldEvent) {
+            releaseHeld = true;
+        }
+    }
+
+    bool isHeld(const FdnRecordStore::MatchRing::Entry& entry) const {
+        for (const HeldMatch& held : heldMatches) {
+            if (held.recordNumber == entry.recordNumber &&
+                memcmp(held.senderMac, entry.senderMac, 6) == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Peeks the oldest matches up to the first held one. Held matches at the
+    // front move to the back first, so they never block the ones behind them.
+    size_t peekUnheldMatches(size_t limit) {
+        FdnRecordStore::MatchRing& ring = fdnRecordStore->getMatchRecords();
+        const size_t stored = ring.peekOldest(matchBatch, FDN_MATCH_RECORD_CAPACITY);
+        size_t unheld = 0;
+        for (size_t index = 0; index < stored; ++index) {
+            if (!isHeld(matchBatch[index])) ++unheld;
+        }
+        if (unheld == 0) return 0;
+        for (size_t moved = 0; moved < stored; ++moved) {
+            FdnRecordStore::MatchRing::Entry front{};
+            if (ring.peekOldest(&front, 1) == 0 || !isHeld(front)) break;
+            ring.retireOldest(1);
+            ring.store(front);
+        }
+        size_t count = ring.peekOldest(matchBatch, limit);
+        for (size_t index = 0; index < count; ++index) {
+            if (isHeld(matchBatch[index])) count = index;
+        }
+        return count;
     }
 
     void onFailure(uint32_t cycle, const WirelessErrorInfo& error) {
@@ -205,8 +295,24 @@ private:
 
     void retireSent() {
         if (sentKind == RecordKind::MATCH) {
-            fdnRecordStore->getMatchRecords().retireOldest(sentCount);
+            FdnRecordStore::MatchRing& ring = fdnRecordStore->getMatchRecords();
+            ring.retireOldest(sentCount);
             probing = false;
+            // Back at the tail: the server keeps no result for these (owner ruling, RELAY-2).
+            // The batch just retired left room for each.
+            for (size_t index : eventRejected) {
+                if (!ring.store(matchBatch[index])) {
+                    LOG_E("FDN_UPLOAD", "Could not store match %u to hold it for its event",
+                          static_cast<unsigned>(matchBatch[index].recordNumber));
+                    continue;
+                }
+                HeldMatch held{};
+                memcpy(held.senderMac, matchBatch[index].senderMac, 6);
+                held.recordNumber = matchBatch[index].recordNumber;
+                heldMatches.push_back(held);
+                if (!heldRetryTimer.isRunning()) heldRetryTimer.setTimer(FDN_HELD_MATCH_RETRY_MS);
+            }
+            eventRejected.clear();
         } else {
             fdnRecordStore->getCrashRecords().retireOldest(sentCount);
         }
@@ -215,7 +321,7 @@ private:
     void endCycle() {
         ++generation;
         outcome = Outcome::NONE;
-        askingTime = false;
+        askingServer = false;
         cycleTimer.invalidate();
         intervalTimer.setTimer(FDN_UPLOAD_INTERVAL_MS);
         restTimer.setTimer(FDN_UPLOAD_FULL_STORE_REST_MS);
@@ -234,9 +340,20 @@ private:
     bool matchesHeld = false;
     // Set when the last cycle's matches failed (kept, or the cap hit while sending them).
     bool matchesFailed = false;
-    // Set while the time check is the request out; timeAsked keeps it to one per cycle.
-    bool askingTime = false;
+    // Set while a time or event check is the request out; each runs once a cycle.
+    bool askingServer = false;
     bool timeAsked = false;
+    bool eventAsked = false;
+    // Matches the server rejected for another event, kept in the ring (RELAY-2).
+    struct HeldMatch {
+        uint8_t senderMac[6];
+        uint32_t recordNumber;
+    };
+    std::vector<HeldMatch> heldMatches;
+    std::string heldEvent;
+    bool releaseHeld = false;
+    SimpleTimer heldRetryTimer;
+    std::vector<size_t> eventRejected;
     Outcome outcome = Outcome::NONE;
     uint32_t generation = 0;
     RecordKind sentKind = RecordKind::MATCH;

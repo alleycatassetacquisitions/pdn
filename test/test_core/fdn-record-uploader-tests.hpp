@@ -141,17 +141,46 @@ TEST_F(FdnRecordUploaderTests, rejectedEntriesRetireButAnotherEventsAreHeld) {
     uploader->sync();
 
     succeed(encodeUploadResponse(
-    {makeRejectionMessage(0, "00000000-0000-4000-8000-000000000001",
-                          alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_SAME_PLAYER),
+    {makeRejectionMessage(
+     0, "00000000-0000-4000-8000-000000000001",
+     alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_SAME_PLAYER),
      makeRejectionMessage(
      1, "00000000-0000-4000-8000-000000000002",
      alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE)}));
     EXPECT_EQ(storedMatches(), 1u) << "only the match of another event stays";
+    FdnRecordStore::MatchRing::Entry held{};
+    ASSERT_EQ(store->getMatchRecords().peekOldest(&held, 1), 1u);
+    EXPECT_EQ(held.recordNumber, 2u) << "the wrong match was held";
+
+    const std::string sameEvent = "{\"active_event\":{\"id\":\"e1\",\"name\":\"Event\"}}";
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_EQ(requests[1].path, FDN_GAME_STATE_ENDPOINT);
+    succeed(sameEvent);
+    ASSERT_EQ(requests.size(), 2u) << "the held match was sent in the cycle that held it";
 
     clock.advance(FDN_UPLOAD_INTERVAL_MS + 1);
     uploader->sync();
-    ASSERT_EQ(requests.size(), 2u);
-    EXPECT_EQ(requests[1].path, FDN_GAME_STATE_ENDPOINT) << "the held match was sent unasked";
+    ASSERT_EQ(requests.size(), 3u);
+    EXPECT_EQ(requests[2].path, FDN_GAME_STATE_ENDPOINT);
+    succeed(sameEvent);
+    EXPECT_EQ(requests.size(), 3u) << "the held match was sent while its event is not selected";
+    EXPECT_EQ(storedMatches(), 1u);
+}
+
+// Ruling 9: held, not deleted, however many there are.
+TEST_F(FdnRecordUploaderTests, everyMatchOfAnotherEventIsHeld) {
+    std::vector<alleycat_device_QuickdrawMatchRejection> rejections;
+    for (uint8_t match = 1; match <= 20; match++) {
+        storeMatch(match);
+        char id[UUIDBytes::TEXT_BUFFER_SIZE];
+        snprintf(id, sizeof(id), "00000000-0000-4000-8000-%012u", static_cast<unsigned>(match));
+        rejections.push_back(makeRejectionMessage(
+        match - 1u, id,
+        alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE));
+    }
+    uploader->sync();
+    succeed(encodeUploadResponse(rejections));
+    EXPECT_EQ(storedMatches(), 20u) << "a match of another event was retired";
 }
 
 TEST_F(FdnRecordUploaderTests, serverErrorConflictAndTimeoutKeep) {
