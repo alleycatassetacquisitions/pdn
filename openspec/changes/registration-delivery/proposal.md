@@ -23,4 +23,4 @@ Test-only. Not flashed to event devices until #485, #486 and #487 have landed to
 
 ## Capabilities
 
-New: `fdn-server-trust`, `fdn-band-reader`, `record-authentication`. Modified: `chain-roster`, `pdn-session-routing`, `quickdraw-match`, `match-collection`, `record-relay`, `player-provisioning`, `player-provider`, `fdn-apps`, `device-player-lookup`, `player-types`, `http-date-clock-sync`.
+New: `fdn-server-trust`, `fdn-band-reader`, `record-authentication`. Modified: `chain-roster`, `pdn-session-routing`, `quickdraw-match`, `match-collection`, `record-relay`, `player-provisioning`, `player-provider`, `fdn-apps`, `device-player-lookup`, `player-types`, `wireless-transport`, `http-date-clock-sync`.

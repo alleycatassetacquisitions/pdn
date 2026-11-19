@@ -9,7 +9,9 @@
 #include "wireless/crc16.hpp"
 
 #include <cstdint>
+#include <cstring>
 #include <limits>
+#include <utility>
 #include <vector>
 
 class SerialFrameParserTests : public testing::Test {
@@ -335,4 +337,108 @@ TEST_F(SerialFrameParserTests, splitPreambleAcrossFeeds) {
     feed(std::vector<uint8_t>(valid.begin() + 1, valid.end()));    // 0x55 + body
 
     EXPECT_EQ(frameCount, 1);
+}
+
+constexpr uint8_t TEST_FRAME_SOURCE[6] = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60};
+
+// An application frame's payload by hand: kind, TEST_FRAME_SOURCE, the byte
+// count, then the bytes.
+inline std::vector<uint8_t> applicationPayload(uint8_t kind, const std::vector<uint8_t>& bytes) {
+    std::vector<uint8_t> payload = {kind};
+    payload.insert(payload.end(), TEST_FRAME_SOURCE, TEST_FRAME_SOURCE + 6);
+    payload.push_back(static_cast<uint8_t>(bytes.size()));
+    payload.insert(payload.end(), bytes.begin(), bytes.end());
+    return payload;
+}
+
+// Collects application frames as (kind, bytes) in arrival order.
+struct ApplicationFrameLog {
+    std::vector<std::pair<uint8_t, std::vector<uint8_t>>> frames;
+    /** A handler that appends each frame to `frames`, checking its source. */
+    ApplicationFrameHandler handler() {
+        return [this](const ApplicationFrameHeader& header, const uint8_t* payload) {
+            EXPECT_EQ(0, memcmp(header.source, TEST_FRAME_SOURCE, 6));
+            frames.emplace_back(header.kind,
+                                std::vector<uint8_t>(payload, payload + header.length));
+        };
+    }
+};
+
+// The encoder agrees with a frame built by hand, and the parser hands up the
+// kind, source and exactly the bytes sent, full or empty, then still reads a HELLO.
+TEST_F(SerialFrameParserTests, applicationFrameRoundTripsKindAndBytes) {
+    ApplicationFrameLog log;
+    parser.setApplicationFrameHandler(log.handler());
+    int helloCount = 0;
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++helloCount; });
+
+    std::vector<uint8_t> full(APPLICATION_PAYLOAD_MAX_LEN);
+    for (size_t i = 0; i < full.size(); ++i) {
+        full[i] = static_cast<uint8_t>(0xA0 + i);
+    }
+    ApplicationFrameHeader header{};
+    header.kind = 0x42;
+    memcpy(header.source, TEST_FRAME_SOURCE, 6);
+    header.length = static_cast<uint8_t>(full.size());
+    ApplicationFrame frame{};
+    const size_t used = encodeApplicationFrame(header, full.data(), frame);
+    std::vector<uint8_t> stream(frame.begin(), frame.begin() + used);
+    ASSERT_EQ(stream, buildFrame(OP_APPLICATION, applicationPayload(0x42, full)));
+
+    const std::vector<uint8_t> empty = buildFrame(OP_APPLICATION, applicationPayload(0x07, {}));
+    const std::vector<uint8_t> hello = buildFrame(OP_HELLO, helloPayload());
+    stream.insert(stream.end(), empty.begin(), empty.end());
+    stream.insert(stream.end(), hello.begin(), hello.end());
+    feed(stream);
+
+    ASSERT_EQ(log.frames.size(), 2u);
+    EXPECT_EQ(log.frames[0].first, 0x42);
+    EXPECT_EQ(log.frames[0].second, full);
+    EXPECT_EQ(log.frames[1].first, 0x07);
+    EXPECT_TRUE(log.frames[1].second.empty());
+    EXPECT_EQ(helloCount, 1);
+}
+
+// A frame whose CRC fails is not handed up, and the frames behind it in the
+// same burst, with no gap, still are.
+TEST_F(SerialFrameParserTests, corruptApplicationFrameIsDroppedAndTheNextFramesParse) {
+    ApplicationFrameLog log;
+    parser.setApplicationFrameHandler(log.handler());
+    int helloCount = 0;
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++helloCount; });
+
+    std::vector<uint8_t> stream = {0x13, 0xAA, 0x00};
+    std::vector<uint8_t> corrupt = buildFrame(OP_APPLICATION, applicationPayload(0x42, {1, 2, 3}));
+    corrupt[3 + APPLICATION_HEADER_LEN] ^= 0x01;
+    const std::vector<uint8_t> good = buildFrame(OP_APPLICATION, applicationPayload(0x42, {9}));
+    const std::vector<uint8_t> hello = buildFrame(OP_HELLO, helloPayload());
+    stream.insert(stream.end(), corrupt.begin(), corrupt.end());
+    stream.insert(stream.end(), good.begin(), good.end());
+    stream.insert(stream.end(), hello.begin(), hello.end());
+    feed(stream);
+
+    ASSERT_EQ(log.frames.size(), 1u);
+    EXPECT_EQ(log.frames[0].second, std::vector<uint8_t>{9});
+    EXPECT_EQ(helloCount, 1);
+}
+
+// A length past the maximum is no frame, even with a valid CRC, and the
+// encoder will not make one.
+TEST_F(SerialFrameParserTests, applicationFrameLongerThanTheMaximumIsRefused) {
+    ApplicationFrameLog log;
+    parser.setApplicationFrameHandler(log.handler());
+
+    const std::vector<uint8_t> tooMany(APPLICATION_PAYLOAD_MAX_LEN + 1, 0x5A);
+    feed(buildFrame(OP_APPLICATION, applicationPayload(0x42, tooMany)));
+    EXPECT_TRUE(log.frames.empty());
+
+    feed(buildFrame(OP_APPLICATION, applicationPayload(0x42, {9})));
+    EXPECT_EQ(log.frames.size(), 1u);
+
+    ApplicationFrameHeader header{};
+    header.length = APPLICATION_PAYLOAD_MAX_LEN + 1;
+    ApplicationFrame frame{};
+    frame.fill(0xEE);
+    EXPECT_EQ(encodeApplicationFrame(header, tooMany.data(), frame), 0u);
+    EXPECT_EQ(frame[0], 0xEE) << "nothing written";
 }

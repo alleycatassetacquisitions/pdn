@@ -1,5 +1,6 @@
 #include "device/serial-frame-parser.hpp"
 
+#include "utils/secure-wipe.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/crc16.hpp"
 
@@ -27,6 +28,23 @@ std::vector<uint8_t> encodeFramed(const HelloPayload& hello) {
     return std::vector<uint8_t>(frame.begin(), frame.end());
 }
 
+size_t encodeApplicationFrame(const ApplicationFrameHeader& header, const uint8_t* payload,
+                              ApplicationFrame& frame) {
+    const size_t length = header.length;
+    if (length > APPLICATION_PAYLOAD_MAX_LEN) return 0;
+    frame[0] = FRAME_PREAMBLE_0;
+    frame[1] = FRAME_PREAMBLE_1;
+    frame[2] = OP_APPLICATION;
+    std::memcpy(&frame[3], &header, APPLICATION_HEADER_LEN);
+    if (length > 0) std::memcpy(&frame[3 + APPLICATION_HEADER_LEN], payload, length);
+    // CRC over opcode + header + payload, high byte first, as for HELLO.
+    const size_t crcAt = 3 + APPLICATION_HEADER_LEN + length;
+    const uint16_t crc = crc16(&frame[2], crcAt - 2);
+    frame[crcAt] = static_cast<uint8_t>(crc >> 8);
+    frame[crcAt + 1] = static_cast<uint8_t>(crc & 0xFF);
+    return crcAt + 2;
+}
+
 unsigned long SerialFrameParser::nowMs() {
     PlatformClock* clk = SimpleTimer::getPlatformClock();
     return clk != nullptr ? clk->milliseconds() : 0;
@@ -35,14 +53,17 @@ unsigned long SerialFrameParser::nowMs() {
 size_t SerialFrameParser::opcodePayloadLen(uint8_t opcode) {
     switch (opcode) {
         case OP_HELLO: return HELLO_PAYLOAD_LEN;
-        default:       return 0;
+        case OP_APPLICATION: return APPLICATION_HEADER_LEN;
+        default: return 0;
     }
 }
 
 void SerialFrameParser::resetParser() {
     parser.state = ParseState::SCAN_FOR_SYNC;
     parser.opcode = 0;
-    parser.payloadBuf.clear();
+    // An application payload may be a key, so it does not outlive its frame.
+    secureWipe(parser.payloadBuf.data(), parser.payloadLength);
+    parser.payloadLength = 0;
     parser.expectedPayloadLen = 0;
     parser.crcBytes[0] = 0;
     parser.crcBytes[1] = 0;
@@ -80,14 +101,17 @@ void SerialFrameParser::resyncFromConsumedBytes() {
     // bytes after the (already disproven) preamble and opcode lets an embedded
     // 0xAA 0x55 restart framing at the real frame start; a trailing lone 0xAA
     // ends in GOT_AA and pairs with whatever byte arrives next.
-    std::vector<uint8_t> replay = parser.payloadBuf;
-    replay.insert(replay.end(), parser.crcBytes, parser.crcBytes + parser.crcBytesRead);
+    std::array<uint8_t, PAYLOAD_CAPACITY + 2> replay;
+    const size_t replayLength = parser.payloadLength + parser.crcBytesRead;
+    std::memcpy(replay.data(), parser.payloadBuf.data(), parser.payloadLength);
+    std::memcpy(replay.data() + parser.payloadLength, parser.crcBytes, parser.crcBytesRead);
     resetParser();
-    // Re-entry depth is one: dropping the preamble and opcode leaves the replay
-    // shorter than a whole frame, so it cannot reach another CRC comparison.
-    for (uint8_t b : replay) {
-        consumeByte(b);
+    // Each replay drops the preamble and opcode it disproved, so a nested one
+    // is shorter than the replay that started it and the recursion ends.
+    for (size_t i = 0; i < replayLength; ++i) {
+        consumeByte(replay[i]);
     }
+    secureWipe(replay.data(), replayLength);
 }
 
 void SerialFrameParser::consumeByte(uint8_t b) {
@@ -109,23 +133,28 @@ void SerialFrameParser::consumeByte(uint8_t b) {
             }
             break;
         case ParseState::READING_OPCODE:
-            if (b != OP_HELLO) {  // HELLO is the sole serial opcode
+            parser.expectedPayloadLen = opcodePayloadLen(b);
+            if (parser.expectedPayloadLen == 0) {
                 resetParser();
                 break;
             }
             parser.opcode = b;
-            parser.expectedPayloadLen = opcodePayloadLen(b);
-            parser.payloadBuf.clear();
-            if (parser.expectedPayloadLen == 0) {
-                parser.state = ParseState::READING_CRC;
-                parser.crcBytesRead = 0;
-            } else {
-                parser.state = ParseState::READING_PAYLOAD;
-            }
+            parser.payloadLength = 0;
+            parser.state = ParseState::READING_PAYLOAD;
             break;
         case ParseState::READING_PAYLOAD:
-            parser.payloadBuf.push_back(b);
-            if (parser.payloadBuf.size() >= parser.expectedPayloadLen) {
+            parser.payloadBuf[parser.payloadLength++] = b;
+            if (parser.opcode == OP_APPLICATION && parser.payloadLength == APPLICATION_HEADER_LEN) {
+                // The length byte ends the header and frames the rest. A longer
+                // claim is no frame of ours, so the bytes are scanned afresh.
+                const size_t length = parser.payloadBuf[APPLICATION_HEADER_LEN - 1];
+                if (length > APPLICATION_PAYLOAD_MAX_LEN) {
+                    resyncFromConsumedBytes();
+                    break;
+                }
+                parser.expectedPayloadLen = APPLICATION_HEADER_LEN + length;
+            }
+            if (parser.payloadLength >= parser.expectedPayloadLen) {
                 parser.state = ParseState::READING_CRC;
                 parser.crcBytesRead = 0;
             }
@@ -137,21 +166,37 @@ void SerialFrameParser::consumeByte(uint8_t b) {
                 // CRC covers opcode + payload; fold the two spans into a
                 // running CRC to avoid a per-frame copy on the UART event task.
                 uint16_t expected = crc16(&parser.opcode, 1);
-                expected = crc16Update(expected, parser.payloadBuf.data(),
-                                       parser.payloadBuf.size());
+                expected = crc16Update(expected, parser.payloadBuf.data(), parser.payloadLength);
                 if (got != expected) {
                     resyncFromConsumedBytes();
                     break;
                 }
-                if (helloFrameHandler && parser.payloadBuf.size() == sizeof(HelloPayload)) {
-                    // The packed struct mirrors the wire byte-for-byte, so
-                    // the validated payload copies straight in.
-                    HelloPayload hello;
-                    std::memcpy(&hello, parser.payloadBuf.data(), sizeof(hello));
-                    helloFrameHandler(hello);
-                }
+                dispatchFrame();
                 resetParser();
             }
             break;
+    }
+}
+
+void SerialFrameParser::dispatchFrame() {
+    // The payload is exactly as long as its opcode framed it.
+    switch (parser.opcode) {
+        case OP_HELLO:
+            if (helloFrameHandler) {
+                // The packed struct mirrors the wire byte-for-byte, so
+                // the validated payload copies straight in.
+                HelloPayload hello;
+                std::memcpy(&hello, parser.payloadBuf.data(), sizeof(hello));
+                helloFrameHandler(hello);
+            }
+            break;
+        case OP_APPLICATION:
+            if (applicationFrameHandler) {
+                ApplicationFrameHeader header;
+                std::memcpy(&header, parser.payloadBuf.data(), APPLICATION_HEADER_LEN);
+                applicationFrameHandler(header, parser.payloadBuf.data() + APPLICATION_HEADER_LEN);
+            }
+            break;
+        default: break;
     }
 }

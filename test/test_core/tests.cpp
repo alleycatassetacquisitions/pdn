@@ -39,6 +39,8 @@
 #include "server-trust-tests.hpp"
 #include "sha256-tests.hpp"
 #include "text-lines-tests.hpp"
+#include "hmac-sha256-tests.hpp"
+#include "rdc-application-frame-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1920,6 +1922,24 @@ TEST_F(RDCHelloTests, contextOfAnotherKindDoesNotRetypeAConnectedPeer) {
 TEST_F(RDCHelloTests, fdnOnTheOutputJackEndsRelayedRingMembership) {
     rdcFdnOnTheOutputJackEndsRelayedRingMembership(this);
 }
+TEST_F(RDCHelloTests, applicationFrameRoutesByKindWithItsJack) {
+    rdcApplicationFrameRoutesByKindWithItsJack(this);
+}
+TEST_F(RDCHelloTests, applicationFrameCountsOnlyFromTheJacksHelloPeer) {
+    rdcApplicationFrameCountsOnlyFromTheJacksHelloPeer(this);
+}
+TEST_F(RDCHelloTests, applicationFrameFromAConnectingPeerWaitsForItToConnect) {
+    rdcApplicationFrameFromAConnectingPeerWaitsForItToConnect(this);
+}
+TEST_F(RDCHelloTests, applicationFrameIsWrittenAfterHelloToAConnectedJack) {
+    rdcApplicationFrameIsWrittenAfterHelloToAConnectedJack(this);
+}
+TEST_F(RDCHelloTests, applicationFrameIsDroppedWhenThePeerLeavesFirst) {
+    rdcApplicationFrameIsDroppedWhenThePeerLeavesFirst(this);
+}
+TEST(ApplicationFrameHandOff, keepsFramesWholeAcrossTwoThreads) {
+    applicationFrameHandOffKeepsFramesWholeAcrossTwoThreads();
+}
 TEST(RDCHelloStandalone, fdnNeverAdoptsItsPdnsChainHead) { rdcFdnNeverAdoptsItsPdnsChainHead(); }
 
 // ============================================
@@ -2239,6 +2259,20 @@ TEST(Sha256, matchesTheMillionAVector) { sha256MatchesTheMillionAVector(); }
 TEST(Sha256, matchesDigestsAtThePaddingBoundaries) { sha256MatchesDigestsAtThePaddingBoundaries(); }
 TEST(Sha256, padsOverABufferThatWasFilledBefore) { sha256PadsOverABufferThatWasFilledBefore(); }
 TEST(Sha256, isTheSameHoweverTheMessageIsSplit) { sha256IsTheSameHoweverTheMessageIsSplit(); }
+
+TEST(HmacSha256, matchesTheRfc4231VectorsForShortKeys) {
+    hmacSha256MatchesTheRfc4231VectorsForShortKeys();
+}
+TEST(HmacSha256, matchesTheRfc4231VectorsForKeysLongerThanABlock) {
+    hmacSha256MatchesTheRfc4231VectorsForKeysLongerThanABlock();
+}
+TEST(HmacSha256, hashesTheKeyOnlyWhenItIsLongerThanABlock) {
+    hmacSha256HashesTheKeyOnlyWhenItIsLongerThanABlock();
+}
+TEST(HmacSha256, tagsAnEmptyMessage) { hmacSha256TagsAnEmptyMessage(); }
+TEST(HmacSha256, refusesAMissingKeyOrANullMessageThatHasALength) {
+    hmacSha256RefusesAMissingKeyOrANullMessageThatHasALength();
+}
 
 TEST(ServerTrust, isHttpsAddressAcceptsOnlyTheHttpsScheme) {
     isHttpsAddressAcceptsOnlyTheHttpsScheme();
