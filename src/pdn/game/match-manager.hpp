@@ -166,6 +166,12 @@ public:
     void setBoostProvider(std::function<unsigned long()> provider);
 
     /**
+     * Installs the answer to "is this device idle?". Only an idle device primes a
+     * match from SEND_MATCH_ID; left unset, every state may.
+     */
+    void setIdleProvider(std::function<bool()> provider);
+
+    /**
      * Result-screen snapshot that outlives the match, taken whole by finalizeMatch.
      */
     const LastMatchDisplay& getLastMatchDisplay() const { return lastMatchDisplay; }
@@ -214,6 +220,7 @@ private:
     Player* player;
 
     std::function<unsigned long()> boostProvider;
+    std::function<bool()> idleProvider;
     RemoteDeviceCoordinator* rdc_ = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
 

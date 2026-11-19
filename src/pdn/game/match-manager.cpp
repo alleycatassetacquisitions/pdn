@@ -73,6 +73,10 @@ void MatchManager::setBoostProvider(std::function<unsigned long()> provider) {
     boostProvider = std::move(provider);
 }
 
+void MatchManager::setIdleProvider(std::function<bool()> provider) {
+    idleProvider = std::move(provider);
+}
+
 void MatchManager::setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc) {
     rdc_ = rdc;
 }
@@ -481,6 +485,12 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
                         player->isHunter());
             return;
         } else {
+            // Only Idle takes a ready match into the countdown; an ack sent from
+            // anywhere else strands the initiator.
+            if (idleProvider && !idleProvider()) {
+                LOG_W(MATCH_MANAGER_TAG, "Ignoring SEND_MATCH_ID: device is not idle");
+                return;
+            }
             receiveMatch(command.matchId, command.playerUuid, command.teamUuid, command.isHunter,
                          const_cast<uint8_t*>(command.wifiMacAddr));
         }

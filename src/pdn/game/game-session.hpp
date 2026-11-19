@@ -54,11 +54,17 @@ public:
 
 private:
     /**
-     * The mounted SupporterReady, or null when another state holds the device.
-     * Read from the mounted app rather than published into the session: which
-     * state is running is the app's fact, and a second copy of it can drift.
+     * The state the active app has mounted, or null when none is. Read from the
+     * mounted app rather than published into the session: which state is running
+     * is the app's fact, and a second copy of it can drift.
      */
+    State* getMountedState();
+
+    /** The mounted SupporterReady, or null when another state holds the device. */
     SupporterReady* getMountedSupporterReady();
+
+    /** True while Idle holds the device. */
+    bool isIdleMounted();
 
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);

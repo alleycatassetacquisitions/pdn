@@ -1929,3 +1929,56 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
     delete hub;
     delete session;
 }
+
+// Off Idle, a Bounty that acked would clear the match on its way to Sleep while the
+// Hunter draws alone.
+inline void gameSessionPrimesMatchInitiationOnlyFromIdle(GameSessionLifecycleTests* suite) {
+    suite->player->setIsHunter(false);
+    uint8_t hunter[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+
+    // A Bounty's opponent jack is INPUT.
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    rdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    rdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunter);
+    rdc.setPeerRole(SerialIdentifier::INPUT_JACK, true);
+
+    int acksSent = 0;
+    EXPECT_CALL(*suite->device.mockHaptics, off()).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kMatchCommand, _, _))
+    .WillRepeatedly([&acksSent](const uint8_t*, PktType, const uint8_t* data, const size_t length) {
+        MatchPacket packet{};
+        if (length == sizeof(packet)) memcpy(&packet, data, length);
+        if (packet.command == MatchCmd::MATCH_ID_ACK) acksSent++;
+        return 1;
+    });
+
+    GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
+    MatchManager* matchManager = session->getContext().matchManager;
+    HubApp* hub = new HubApp(session->getContext());
+    MatchApp* matchApp = new MatchApp(session->getContext());
+    AppConfig apps;
+    apps[StateId(HUB_APP_ID)] = hub;
+    apps[StateId(MATCH_APP_ID)] = matchApp;
+    suite->device.loadAppConfig(apps, StateId(HUB_APP_ID));
+
+    suite->device.setActiveApp(StateId(MATCH_APP_ID), StateId(LOSE));
+    ASSERT_EQ(suite->device.getActiveApp()->getCurrentState()->getStateId(), LOSE);
+    MatchCommand onLose(hunter, MatchCmd::SEND_MATCH_ID, "a1111111-2222-4000-8000-333333333333", 0,
+                        true);
+    matchManager->listenForMatchEvents(onLose);
+    EXPECT_FALSE(matchManager->getCurrentMatch().has_value());
+    EXPECT_EQ(acksSent, 0);
+
+    suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(IDLE));
+    ASSERT_EQ(suite->device.getActiveApp()->getCurrentState()->getStateId(), IDLE);
+    MatchCommand onIdle(hunter, MatchCmd::SEND_MATCH_ID, "b4444444-5555-4000-8000-666666666666", 0,
+                        true);
+    matchManager->listenForMatchEvents(onIdle);
+    EXPECT_TRUE(matchManager->getCurrentMatch().has_value());
+    EXPECT_EQ(acksSent, 1);
+
+    delete hub;
+    delete matchApp;
+    delete session;
+}
