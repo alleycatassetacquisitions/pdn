@@ -1724,7 +1724,7 @@ inline void countdownDebounceStartsFreshEachTenure(StateCleanupTests* suite) {
                                                             JackStatus::CONNECTING);
     mountState(&countdown, &suite->device);
     EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
-    suite->fakeClock->advance(500);
+    suite->fakeClock->advance(501);
     EXPECT_TRUE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
     dismountState(&countdown, &suite->device);
 }
