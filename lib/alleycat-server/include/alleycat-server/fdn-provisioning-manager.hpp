@@ -310,10 +310,9 @@ private:
         return jacksWithHeadMac == 1;
     }
 
-    // The turn is the head's: its MAC, still the peer on its jack.
+    // The queue follows the jack events, so its head is still the peer on its jack.
     bool isTurnOpenFor(const uint8_t* peerMac) const {
-        return isTurnOpen() && memcmp(queue[0].mac.data(), peerMac, queue[0].mac.size()) == 0 &&
-               isStillCabled(queue[0]);
+        return isTurnOpen() && memcmp(queue[0].mac.data(), peerMac, queue[0].mac.size()) == 0;
     }
 
     void announceTurn() {
@@ -424,7 +423,6 @@ private:
         // The coordinator reports every frame's outcome before another peer can
         // be Connected on the jack, so this wait needs no deadline.
         phase = LookupPhase::AWAITING_JACK;
-        phaseTimer.invalidate();
     }
 
     void onKeyFrameOutcome(SerialIdentifier jack, ApplicationFrameOutcome outcome) {

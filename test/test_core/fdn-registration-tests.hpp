@@ -443,6 +443,20 @@ inline void fdnRegistrationPassesAnUntappedTurnOn(FdnRegistrationTests* suite) {
     EXPECT_EQ(suite->lastTurnTo(PDN_B), RegistrationTurn::OPEN);
 }
 
+// The tapped PDN must hear its turn closed before Wi-Fi takes the radio: the
+// lookup waits for that context to be delivered, or TURN_CLOSE_MS at most.
+inline void fdnRegistrationClosesTheTurnBeforeTheLookupTakesTheRadio(FdnRegistrationTests* suite) {
+    suite->cable(suite->jack1, PDN_A);
+    suite->radioLosesFrames = true;
+    suite->reader.tapBand({0x04, 0xA2, 0x1B, 0x9C});
+    suite->step();
+    suite->step();
+    EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::CLOSED);
+    EXPECT_TRUE(suite->requests.empty()) << "the lookup took the radio before the turn closed";
+    suite->advance(FdnProvisioningManager::TURN_CLOSE_MS);
+    EXPECT_EQ(suite->requests.size(), 1u) << "a lost turn context held the lookup forever";
+}
+
 // A modified PDN on the other jack claims the MAC of the PDN waiting on jack 1:
 // a context told to that MAC could be tapped for either jack, so no turn opens
 // and no key can reach the impostor's jack.
