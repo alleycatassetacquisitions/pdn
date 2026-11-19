@@ -50,21 +50,19 @@ inline void matchManagerConcurrentDriverVsReader() {
 
     std::atomic<bool> running{true};
 
+    // The secret is on the cable first; the WiFi task repeats the initiation it signs.
+    const char* matchId = "aaaaaaaa-0000-4000-8000-000000000001";
+    const std::vector<uint8_t> secretFrame = matchSecretFrame(matchId, testMatchSecret(1));
+    mm.onMatchSecretFrame(SerialIdentifier::INPUT_JACK, secretFrame.data(), secretFrame.size());
+    MatchFrameAuth hunterAuth(testMatchSecret(1));
+    const MatchPacket initiation =
+    signedMatchFrame(hunterAuth, MatchCmd::SEND_MATCH_ID, matchId, true);
+
     // Simulates the WiFi task: only enqueues after the fix — never touches MatchManager.
     std::thread wifiTask([&]() {
-        int iter = 0;
         while (running.load(std::memory_order_relaxed)) {
-            char matchId[37] = {};
-            snprintf(matchId, sizeof(matchId), "match-%08d", iter++);
-
-            MatchPacket pkt = {};
-            strncpy(pkt.matchId,  matchId, sizeof(pkt.matchId) - 1);
-            pkt.command = MatchCmd::SEND_MATCH_ID;
-            pkt.isHunter       = true;
-            pkt.playerDrawTime = 0;
-
             driver.receivePacket(peerMac, PktType::kMatchCommand,
-                                 reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+                                 reinterpret_cast<const uint8_t*>(&initiation), sizeof(initiation));
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     });

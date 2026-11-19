@@ -119,6 +119,13 @@ public:
         return std::memcmp(mac, peerMac, 6) == 0;
     }
 
+    // The cable takes the match secret, so a fuzzed match is primed and its
+    // radio frames meet the signed-frame checks.
+    bool sendApplicationFrame(SerialIdentifier, ApplicationFrameKind, const uint8_t*,
+                              size_t) override {
+        return true;
+    }
+
 private:
     uint8_t peerMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
 };

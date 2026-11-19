@@ -1180,12 +1180,11 @@ inline void resultHunterWinsWithFasterTime(MatchResultTests* suite) {
 // Test: Bounty wins with faster time
 inline void resultBountyWinsWithFasterTime(MatchResultTests* suite) {
     suite->player->setIsHunter(false);
-    // Simulate hunter sending SEND_MATCH_ID; this bounty receives and creates the match.
-    // Use the fixture's stubbed RDC peer MAC so the SEND_MATCH_ID gate accepts it.
+    // As a verified SEND_MATCH_ID from the fixture's stubbed RDC peer MAC primes it.
     uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    MatchCommand sendMatchCmd(hunterMac, MatchCmd::SEND_MATCH_ID, "test-match-id-000000000000000",
-                              0, true);
-    suite->matchManager->listenForMatchEvents(sendMatchCmd);
+    suite->matchManager->receiveMatch("aaaaaaaa-0000-4000-8000-000000000001", UUIDBytes{},
+                                      UUIDBytes{}, true, hunterMac,
+                                      MatchFrameAuth(testMatchSecret(1)));
     suite->matchManager->setHunterDrawTime(250);
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedButtonPush();

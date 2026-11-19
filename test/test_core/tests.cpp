@@ -12,6 +12,7 @@
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
 #include "match-manager-tests.hpp"
+#include "match-frame-auth-tests.hpp"
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "quickdraw-state-graph-tests.hpp"
@@ -885,7 +886,7 @@ TEST_F(MatchManagerTestSuite, initializePreventsDoubleActive) {
 }
 
 TEST_F(MatchManagerTestSuite, bountyReceivesMatchViaHandshake) {
-    matchManagerBountyReceivesMatchViaHandshake(matchManager, player);
+    matchManagerBountyReceivesMatchViaHandshake(this);
 }
 
 TEST_F(MatchManagerTestSuite, hunterWinsWhenFaster) {
@@ -926,19 +927,17 @@ TEST_F(MatchManagerTestSuite, shootoutDrawSlotDecidesTheWinner) {
 }
 
 TEST_F(MatchManagerTestSuite, rejectsNeverPressedFromStranger) {
-    matchManagerRejectsNeverPressedFromStranger(matchManager, player);
+    matchManagerRejectsNeverPressedFromStranger(this);
 }
 
-TEST_F(MatchManagerTestSuite, rejectsWrongMatchId) {
-    matchManagerRejectsWrongMatchId(matchManager, player);
-}
+TEST_F(MatchManagerTestSuite, rejectsWrongMatchId) { matchManagerRejectsWrongMatchId(this); }
 
 TEST_F(MatchManagerTestSuite, acceptsResultFromOpponent) {
     matchManagerAcceptsResultFromOpponent(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, sendMatchIdRejectsUnknownPeer) {
-    matchManagerSendMatchIdRejectsUnknownPeer(matchManager, player);
+    matchManagerSendMatchIdRejectsUnknownPeer(this);
 }
 
 TEST_F(MatchManagerTestSuite, gracePeriodPath) {

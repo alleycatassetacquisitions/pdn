@@ -138,6 +138,11 @@ public:
                 ackLatencyMsSum, ackCount};
     }
 
+    /** The jack a device whose standing role is hunter when @p isHunter meets its opponent on. */
+    static SerialIdentifier opponentJackFor(bool isHunter) {
+        return isHunter ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK;
+    }
+
 private:
     // Delivery-time samples only; the retry counts live on the Resender.
     uint32_t ackLatencyMsSum = 0;

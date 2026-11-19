@@ -70,15 +70,14 @@ public:
         ON_CALL(peerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     }
 
-    /** Creates a packet as if sent by the local player's opponent. */
+    /** Creates a packet as if sent by the local player's opponent, signed as it signs. */
     MatchPacket createPacket(int command, long hunterTime = 0, long bountyTime = 0) {
-        if (player->isHunter()) {
-            // Opponent is the bounty: send bountyTime with isHunter=false
-            return createTestPacket(getMatchId(), command, bountyTime, false);
-        } else {
-            // Opponent is the hunter: send hunterTime with isHunter=true
-            return createTestPacket(getMatchId(), command, hunterTime, true);
-        }
+        // The opponent reports the other slot: bountyTime to a hunter, hunterTime to a bounty.
+        const bool opponentIsHunter = !player->isHunter();
+        MatchPacket packet = createTestPacket(
+        getMatchId(), command, opponentIsHunter ? hunterTime : bountyTime, opponentIsHunter);
+        if (opponentAuth.has_value()) opponentAuth->sign(packet);
+        return packet;
     }
 
     /** Delivers a packet into the test wireless manager from macAddr (or defaultMac). */
@@ -101,6 +100,8 @@ public:
     WirelessManager* deviceWirelessManager = nullptr;
     FakeRemoteDeviceCoordinator fakeRdc;
     FakePlatformClock* fakeClock = nullptr;
+    // Signs as the opponent of the active match does.
+    std::optional<MatchFrameAuth> opponentAuth;
 
 private:
     void setupClock() {
@@ -134,6 +135,7 @@ private:
         // Must match processPacket's defaultMac so isFromActiveMatchOpponent accepts delivered frames.
         uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         matchManager->initializeMatch(opponentMac);
+        opponentAuth.emplace(lastSentMatchSecret(fakeRdc));
         matchManager->setMatchLocalStartTime(DEFAULT_START_TIME);
     }
 
@@ -262,6 +264,7 @@ private:
         bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
         bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
+        carryMatchSecret(hunterFakeRdc, *bountyMatchManager);
         hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
         bountyWirelessManager->confirmLastSend();
 
@@ -344,7 +347,10 @@ inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suit
     suite->player->setIsHunter(false);
     uint8_t hunterMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     suite->matchManager->receiveMatch("a1111111-2222-4000-8000-333333333333", UUIDBytes{},
-                                      UUIDBytes{}, true, hunterMac);
+                                      UUIDBytes{}, true, hunterMac,
+                                      MatchFrameAuth(testMatchSecret(1)));
+    suite->opponentAuth.emplace(testMatchSecret(1));
+    suite->matchManager->setMatchLocalStartTime(SingleDeviceTestFixture::DEFAULT_START_TIME);
 
     MatchPacket packet = suite->createPacket(MatchCmd::DRAW_RESULT, 200, 0);
     suite->processPacket(packet);

@@ -1790,7 +1790,8 @@ inline void aTournamentResetLeavesACableMatchAlone(ShootoutManagerTests* suite) 
     suite->shootout->setMatchManager(&matchManager);
 
     matchManager.receiveMatch("b5f1c0de-0000-4000-8000-00000000cafe", UUIDBytes{}, UUIDBytes{},
-                              /*opponentIsHunter=*/true, opponent);
+                              /*opponentIsHunter=*/true, opponent,
+                              MatchFrameAuth(testMatchSecret(1)));
     ASSERT_TRUE(matchManager.getCurrentMatch().has_value());
 
     suite->shootout->resetToIdle();
