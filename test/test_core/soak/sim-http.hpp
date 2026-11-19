@@ -50,6 +50,26 @@ struct HttpFaults {
     bool offline = false;
 };
 
+inline bool decodeMatchEntry(pb_istream_t* stream, const pb_field_t* field, void** arg) {
+    (void)field;
+    alleycat_device_QuickdrawMatch match = alleycat_device_QuickdrawMatch_init_zero;
+    if (!pb_decode(stream, alleycat_device_QuickdrawMatch_fields, &match)) return false;
+    static_cast<std::vector<alleycat_device_QuickdrawMatch>*>(*arg)->push_back(match);
+    return true;
+}
+
+/** Decodes a WriteQuickdrawMatchesRequest body into @p batch; false on bad protobuf. */
+inline bool decodeMatchBatch(const std::string& body,
+                             std::vector<alleycat_device_QuickdrawMatch>& batch) {
+    alleycat_device_WriteQuickdrawMatchesRequest request =
+    alleycat_device_WriteQuickdrawMatchesRequest_init_zero;
+    request.matches.funcs.decode = &decodeMatchEntry;
+    request.matches.arg = &batch;
+    pb_istream_t stream =
+    pb_istream_from_buffer(reinterpret_cast<const pb_byte_t*>(body.data()), body.size());
+    return pb_decode(&stream, alleycat_device_WriteQuickdrawMatchesRequest_fields, &request);
+}
+
 // HttpClientInterface with the ESP32 driver's observable behaviour
 // (esp32-s3-http-client-driver.hpp): Wi-Fi association before the first request,
 // one request in flight, 2xx = success, other statuses fail at once as
@@ -62,13 +82,27 @@ public:
     static constexpr unsigned long WIFI_CONNECTION_TIMEOUT_MS = 12500;
     static constexpr int MAX_RETRIES = 1;
 
-    /** Requests go to @p backend; @p faults and @p rng belong to the FDN's world slot. */
+    /**
+     * Requests go to @p backend; @p faults and @p rng belong to the FDN's world slot.
+     * @p unconfirmed counts, per match id, uploads the server accepted that this FDN
+     * never heard succeed (lost response, cut or disconnect mid-request): each one is
+     * a report the FDN will send again.
+     */
     SimHttpClient(const std::string& name, HttpBackend& backend, HttpFaults& faults,
-                  std::mt19937_64& rng)
+                  std::mt19937_64& rng, std::map<std::string, uint64_t>& unconfirmed)
         : HttpClientDriverInterface(name)
         , backend(backend)
         , faults(faults)
-        , rng(rng) {}
+        , rng(rng)
+        , unconfirmed(unconfirmed) {}
+
+    /** A request the server accepted dies with the FDN unanswered. */
+    ~SimHttpClient() override { forfeitAccepted(); }
+
+    /** Not copyable: holds the world's ledgers. */
+    SimHttpClient(const SimHttpClient&) = delete;
+    /** Not assignable. */
+    SimHttpClient& operator=(const SimHttpClient&) = delete;
 
     /** Nothing to bring up until Wi-Fi mode. */
     int initialize() override { return 0; }
@@ -155,8 +189,20 @@ private:
         }
         result =
         backend.perform(request.method, request.path, request.contentType, request.payload);
+        std::vector<alleycat_device_QuickdrawMatch> batch;
+        if (result.status / 100 == 2 && request.path == "/quickdraw-matches" &&
+            decodeMatchBatch(request.payload, batch)) {
+            for (const alleycat_device_QuickdrawMatch& match : batch)
+                acceptedIds.push_back(match.id);
+        }
         // The server acted, but its answer never comes back: the timeout path.
         if (chance(faults.lostResponse)) completeAt = now + REQUEST_TIMEOUT_MS + 1000;
+    }
+
+    void forfeitAccepted() {
+        for (const std::string& id : acceptedIds)
+            unconfirmed[id]++;
+        acceptedIds.clear();
     }
 
     void finish() {
@@ -175,6 +221,7 @@ private:
     }
 
     void endAttempt(const WirelessErrorInfo& error) {
+        forfeitAccepted();
         HttpRequest& request = queue.front();
         request.inProgress = false;
         if (request.retryCount < MAX_RETRIES) {
@@ -187,6 +234,8 @@ private:
     }
 
     void completeFront(bool success, const WirelessErrorInfo& error) {
+        if (success) acceptedIds.clear();
+        forfeitAccepted();
         HttpRequest done = std::move(queue.front());
         queue.pop();
         retryAt = 0;
@@ -200,6 +249,9 @@ private:
     HttpBackend& backend;
     HttpFaults& faults;
     std::mt19937_64& rng;
+    std::map<std::string, uint64_t>& unconfirmed;
+    // Match ids of the attempt in flight that the server answered 2xx.
+    std::vector<std::string> acceptedIds;
     std::queue<HttpRequest> queue;
     HttpClientState state = HttpClientState::DISCONNECTED;
     bool wifiConnected = false;
@@ -221,6 +273,8 @@ struct ServerRow {
     uint64_t drawA = 0;
     uint64_t drawB = 0;
     int64_t occurredAtMs = 0;
+    // tie, scoring_disabled, unassigned_team, same_team or scoring, decided at insert.
+    std::string scoringStatus;
 };
 
 /** The event-scoped server surface the harness seeds and the checker reads. */
@@ -250,8 +304,10 @@ inline std::string formatUuid(const UUIDBytes& id) {
 
 // In-process model of alleycat-rs POST /quickdraw-matches (routes/quickdraw.rs
 // at a01a3fd): one active event, every entry kept as a raw report, entries
-// validated in the server's order, first accepted report wins, 204 when all are
-// accepted and 200 with protobuf rejections otherwise.
+// validated in the server's order, first accepted report wins (a duplicate skips
+// the reference check, as ON CONFLICT DO NOTHING does), 204 when all are accepted
+// and 200 with protobuf rejections otherwise. Scoring is one open period from
+// scoringFromMs.
 class FakeServer : public EventServer, public HttpBackend {
 public:
     /** Player and team ids come from @p seed, so a run replays. */
@@ -303,18 +359,11 @@ public:
                        const std::string& contentType, const std::string& body) override {
         if (method != "POST" || path != "/quickdraw-matches") return {true, 404, "Not Found"};
         if (contentType != "application/protobuf") return {true, 415, "Unsupported Media Type"};
-        if (!eventActive) return {true, 409, "No active event"};
+        // The body is decoded and sized before the event lock (quickdraw.rs:228-247).
         std::vector<alleycat_device_QuickdrawMatch> batch;
-        alleycat_device_WriteQuickdrawMatchesRequest request =
-        alleycat_device_WriteQuickdrawMatchesRequest_init_zero;
-        request.matches.funcs.decode = &FakeServer::decodeMatch;
-        request.matches.arg = &batch;
-        pb_istream_t stream =
-        pb_istream_from_buffer(reinterpret_cast<const pb_byte_t*>(body.data()), body.size());
-        if (!pb_decode(&stream, alleycat_device_WriteQuickdrawMatchesRequest_fields, &request)) {
-            return {true, 400, "bad protobuf"};
-        }
+        if (!decodeMatchBatch(body, batch)) return {true, 400, "bad protobuf"};
         if (batch.empty() || batch.size() > 100) return {true, 400, "Supply 1-100 matches"};
+        if (!eventActive) return {true, 409, "No active event"};
         std::vector<alleycat_device_QuickdrawMatchRejection> rejected;
         for (size_t i = 0; i < batch.size(); i++) {
             reports[batch[i].id]++;
@@ -332,17 +381,11 @@ public:
 
     // False answers 409 "No active event", as between events.
     bool eventActive = false;
+    // Where the event's one scoring period starts (PUT /scoring {"enabled":true}).
+    int64_t scoringFromMs = 0;
 
 private:
     using Code = alleycat_device_QuickdrawMatchErrorCode;
-
-    static bool decodeMatch(pb_istream_t* stream, const pb_field_t* field, void** arg) {
-        (void)field;
-        alleycat_device_QuickdrawMatch match = alleycat_device_QuickdrawMatch_init_zero;
-        if (!pb_decode(stream, alleycat_device_QuickdrawMatch_fields, &match)) return false;
-        static_cast<std::vector<alleycat_device_QuickdrawMatch>*>(*arg)->push_back(match);
-        return true;
-    }
 
     static bool encodeRejected(pb_ostream_t* stream, const pb_field_t* field, void* const* arg) {
         for (const alleycat_device_QuickdrawMatchRejection& rejection :
@@ -408,12 +451,30 @@ private:
             out, alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_WINNER,
             "winner_player_id");
         }
-        if (!match.has_occurred_at_unix_ms || !match.has_player_a_draw_time_ms ||
-            !match.has_player_b_draw_time_ms) {
-            return reject(
-            out, alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_MISSING_FIELD,
-            "occurred_at_unix_ms");
+        const Code missing =
+        alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_MISSING_FIELD;
+        const Code range =
+        alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_OUT_OF_RANGE;
+        if (!match.has_occurred_at_unix_ms) return reject(out, missing, "occurred_at_unix_ms");
+        // Year 0 to 9999 in Unix milliseconds (quickdraw.rs:114-122).
+        if (match.occurred_at_unix_ms < 0 || match.occurred_at_unix_ms > 253402300799999LL) {
+            return reject(out, range, "occurred_at_unix_ms");
         }
+        if (match.has_player_a_team_id && !isUuid(match.player_a_team_id)) {
+            return reject(out, invalidUuid, "player_a_team_id");
+        }
+        if (match.has_player_b_team_id && !isUuid(match.player_b_team_id)) {
+            return reject(out, invalidUuid, "player_b_team_id");
+        }
+        if (!match.has_player_a_draw_time_ms) return reject(out, missing, "player_a_draw_time_ms");
+        if (!match.has_player_b_draw_time_ms) return reject(out, missing, "player_b_draw_time_ms");
+        const uint64_t drawLimit = static_cast<uint64_t>(INT64_MAX);
+        if (match.player_a_draw_time_ms > drawLimit)
+            return reject(out, range, "player_a_draw_time_ms");
+        if (match.player_b_draw_time_ms > drawLimit)
+            return reject(out, range, "player_b_draw_time_ms");
+        // ON CONFLICT DO NOTHING: a duplicate never reaches the foreign keys.
+        if (rows.count(match.id) != 0) return true;
         if (players.count(match.player_a_id) == 0) return reject(out, reference, "player_a_id");
         if (players.count(match.player_b_id) == 0) return reject(out, reference, "player_b_id");
         if (match.has_player_a_team_id && teams.count(match.player_a_team_id) == 0) {
@@ -422,7 +483,6 @@ private:
         if (match.has_player_b_team_id && teams.count(match.player_b_team_id) == 0) {
             return reject(out, reference, "player_b_team_id");
         }
-        if (rows.count(match.id) != 0) return true;
         ServerRow row;
         row.id = match.id;
         row.playerA = match.player_a_id;
@@ -433,6 +493,17 @@ private:
         row.drawA = match.player_a_draw_time_ms;
         row.drawB = match.player_b_draw_time_ms;
         row.occurredAtMs = match.occurred_at_unix_ms;
+        if (row.winner.empty()) {
+            row.scoringStatus = "tie";
+        } else if (row.occurredAtMs < scoringFromMs) {
+            row.scoringStatus = "scoring_disabled";
+        } else if (row.teamA.empty() || row.teamB.empty()) {
+            row.scoringStatus = "unassigned_team";
+        } else if (row.teamA == row.teamB) {
+            row.scoringStatus = "same_team";
+        } else {
+            row.scoringStatus = "scoring";
+        }
         rows[row.id] = row;
         return true;
     }
@@ -648,6 +719,7 @@ public:
                 row.drawA = match["player_a_draw_time_ms"].as<uint64_t>();
                 row.drawB = match["player_b_draw_time_ms"].as<uint64_t>();
                 row.occurredAtMs = parseRfc3339Ms(match["occurred_at"] | "");
+                row.scoringStatus = match["scoring_status"] | "";
                 rows.push_back(row);
             }
             if (matches.size() < 100) return true;

@@ -22,10 +22,11 @@ public:
     // NVS stores a blob in 32-byte entries; a torn blob keeps whole entries only.
     static constexpr size_t WRITE_GRANULE = 32;
 
-    /** Arms a power cut at the @p k-th write from now (1 = the next one). */
+    /** Arms a power cut at the @p k-th write from now (1 = the next one); 0 disarms. */
     void armCut(uint32_t k, bool torn) {
         cutCountdown = k;
         cutTorn = torn;
+        if (k > 0) ++cutsArmed;
     }
 
     /** True once the armed cut fired: later writes report success and are dropped. */
@@ -42,7 +43,8 @@ public:
         if (frozen) return false;
         if (cutCountdown > 0 && --cutCountdown == 0) {
             frozen = true;
-            if (onCut) onCut();
+            ++cutsFired;
+            if (onCut) onCut(ns, key);
             const size_t kept = (bytes.size() / 2 / WRITE_GRANULE) * WRITE_GRANULE;
             if (!cutTorn || type != 'b' || kept == 0) return false;
             values[{ns, key}] = std::string(1, type) + bytes.substr(0, kept);
@@ -81,8 +83,13 @@ public:
     }
 
     WriteObserver onWrite;
-    // Fires the moment the armed write dies, so the world can silence the radio.
-    std::function<void()> onCut;
+    // Fires the moment the armed write dies, with the write it killed, so the world can
+    // silence the radio and tell what was lost.
+    std::function<void(const std::string& ns, const std::string& key)> onCut;
+    // Cuts ever armed and ever fired; an armed cut is dropped by a later arm, a disarm
+    // or a boot, so the difference is the cuts that never happened.
+    uint64_t cutsArmed = 0;
+    uint64_t cutsFired = 0;
 
 private:
     std::map<std::pair<std::string, std::string>, std::string> values;

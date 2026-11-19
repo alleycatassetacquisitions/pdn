@@ -159,10 +159,15 @@ class SimFdn {
 public:
     static constexpr unsigned long BEACON_INTERVAL_MS = 12000;
 
-    /** Builds and boots the FDN; call with its clock and logger installed. */
+    /**
+     * Builds and boots the FDN; call with its clock and logger installed. @p unconfirmed
+     * is the world's per-id count of uploads the server took but this FDN never heard succeed.
+     */
     SimFdn(const std::string& suffix, VirtualMedium& medium, const uint8_t* mac, SimNvs& nvs,
-           HttpBackend& backend, HttpFaults& faults, std::mt19937_64& rng)
-        : http(new SimHttpClient(HTTP_CLIENT_DRIVER_NAME + suffix, backend, faults, rng))
+           HttpBackend& backend, HttpFaults& faults, std::mt19937_64& rng,
+           std::map<std::string, uint64_t>& unconfirmed)
+        : http(
+          new SimHttpClient(HTTP_CLIENT_DRIVER_NAME + suffix, backend, faults, rng, unconfirmed))
         , radio(new SimRadio(PEER_COMMS_DRIVER_NAME + suffix, medium, mac))
         , serialIn(new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix))
         , serialInSecondary(new NativeSerialDriver(SERIAL_IN_SECONDARY_DRIVER_NAME + suffix)) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -22,8 +23,13 @@ inline constexpr uint64_t TICK_MS = 5;
 // retry window (100 ms resend, 500 ms context) and keeps the CI smoke runs short.
 inline constexpr uint64_t DRAIN_TICK_MS = 20;
 inline constexpr uint64_t HELLO_CADENCE_MS = 20;
-// The event's wall clock at virtual time zero (2026-11-18).
+// The event's wall clock at virtual time zero on the fake server (2026-11-18). A real
+// server run takes the real wall clock instead, so its scoring period covers the stamps.
 inline constexpr int64_t EVENT_EPOCH_MS = 1795000000000LL;
+// A stamp this far before the event's epoch is uptime, not UTC: the PDN's clock was not set.
+inline constexpr int64_t UPTIME_STAMP_BEFORE_MS = 86400000LL;
+// A PDN's chain frames kept for the boost check: far longer than one duel.
+inline constexpr uint64_t HEARD_KEPT_MS = 120000;
 // A synced PDN stamps occurred-at from a clock set by an FDN context that crossed
 // the medium. The context carries the FDN's time when it was first sent; the
 // Resender retransmits that same payload for up to RETRANSMIT_SPAN_MS, the medium
@@ -31,6 +37,10 @@ inline constexpr int64_t EVENT_EPOCH_MS = 1795000000000LL;
 // on, the PDN's drift (at most MAX_DRIFT_PPM) accrues. The FDN's own clock is exact.
 inline constexpr int32_t MAX_DRIFT_PPM = 100;
 inline constexpr uint32_t PITY_FLOOR_MS = 750;
+// How long after its first draw a duel can still be resolving: the 4 s draw window,
+// the 2.5 s post-push grace, and room for the two sides' countdowns to differ. A fault
+// later than this cannot explain a side that never finalized.
+inline constexpr uint64_t MATCH_OPEN_MS = 10000;
 
 struct SoakConfig {
     ScheduleConfig schedule;
@@ -119,6 +129,14 @@ private:
         bool down = false;
         uint64_t upAt = 0;
     };
+    // A posse frame that reached a PDN's radio: a supporter's confirm, a supporter's
+    // join naming this PDN, or a challenger's countdown. `from` is the PDN it speaks
+    // for (the confirm's originator, the joiner, the countdown's challenger).
+    struct Heard {
+        uint64_t at;
+        PktType type;
+        int from;
+    };
     struct PdnSlot : Slot<SimPdn> {
         PdnIdentity identity;
         bool powerLost = false;
@@ -127,6 +145,7 @@ private:
         uint64_t stateSince = 0;
         bool sawCountdown = false;
         std::string matchId;
+        // This PDN's clock at the tick the harness saw it enter MATCH.
         unsigned long matchStart = 0;
         bool planned = false;
         int64_t reaction = -1;
@@ -139,6 +158,16 @@ private:
         uint32_t matchOrdinal = 0;
         std::string committedThisTick;
         std::map<std::string, std::string> legacy;
+        // The tick of its last MATCH_COUNTDOWN entry: a challenger's roll call starts empty there.
+        uint64_t countdownAt = 0;
+        // Its first press on SUPPORTER_READY in the current activity.
+        bool supporterPressed = false;
+        uint64_t supporterPressAt = 0;
+        // The last time it went down (reboot or cut); -1 never.
+        int64_t downAt = -1;
+        // Its full ring refused a match; the next commit shows it stores again.
+        bool ringRefused = false;
+        std::vector<Heard> heard;
     };
     struct FdnSlot : Slot<SimFdn> {
         HttpFaults faults;
@@ -148,6 +177,9 @@ private:
         uint64_t httpErrorUntil = 0;
         // The last record frame seqId per sender, as the FDN's channel dedupes it.
         std::map<uint64_t, uint8_t> lastRecordSeq;
+        // The store's tail and fill level just before the frame being handled.
+        uint32_t tailBefore = 0;
+        uint32_t storedBefore = 0;
     };
     struct CableOp {
         uint64_t at;
@@ -162,19 +194,36 @@ private:
         std::vector<std::pair<JackRef, JackRef>> plugged;
         uint64_t deadline = 0;
         int cutSlot = -1;
+        uint64_t startedAt = 0;
+        // DUEL: the first id the hunter (0) and the bounty (1) drew in this activity.
+        bool drew[2] = {false, false};
+        std::string drawn[2];
+        // Injected faults that touched it: a member's reboot or cut, a loss burst.
+        std::set<std::string> causes;
     };
     struct Side {
         int slot = -1;
         bool pressed = false;
         bool finalized = false;
         uint32_t raw = 0;
+        // The boost the winner check uses: the harness's own count, or the
+        // firmware's when an injected fault explains the difference.
         uint32_t boost = 0;
+        // Why its finalize stored nothing, when allowed: ringFull or cutBeforeCommit.
+        std::string excuse;
     };
     struct TruthMatch {
         bool shootout = false;
         Side hunter;
         Side bounty;
-        std::string disturbed;
+        // Injected faults while it was open: reboot, cut, burst. Empty = undisturbed.
+        std::set<std::string> causes;
+        uint64_t drawAt = 0;
+
+        /** True while a side is unfinalized and the draw is recent enough to still resolve. */
+        bool isOpen(uint64_t now) const {
+            return (!hunter.finalized || !bounty.finalized) && now <= drawAt + MATCH_OPEN_MS;
+        }
     };
     struct Commit {
         int slot;
@@ -232,6 +281,15 @@ private:
             fail("server set-up failed (is the local server up?)");
             return false;
         }
+        // The real server's scoring period opened at its now; stamps start a little later.
+        if (fake == nullptr) {
+            epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::system_clock::now().time_since_epoch())
+                      .count() +
+                      5000;
+        } else {
+            fake->scoringFromMs = epochMs;
+        }
         pdns.resize(static_cast<size_t>(config.schedule.pdns));
         for (size_t i = 0; i < pdns.size(); i++) {
             PdnSlot& slot = pdns[i];
@@ -252,7 +310,9 @@ private:
             slot.nvs.onWrite = [this, index](const std::string& ns, const std::string& key) {
                 onPdnWrite(index, ns, key);
             };
-            slot.nvs.onCut = [this, index]() { medium.setMuted(pdns[index].mac, true); };
+            slot.nvs.onCut = [this, index](const std::string&, const std::string&) {
+                medium.setMuted(pdns[index].mac, true);
+            };
             if (rng() % 3 == 0) seedLegacyMatches(slot, rng);
             bootPdn(index);
         }
@@ -264,7 +324,10 @@ private:
             slot.rng.seed(seed ^ (0x44 + i));
             slot.faults = config.http;
             slot.clock = new VirtualClock(now, 0);
-            slot.nvs.onCut = [this, i]() { medium.setMuted(fdns[i].mac, true); };
+            slot.nvs.onCut = [this, i](const std::string& ns, const std::string& key) {
+                medium.setMuted(fdns[i].mac, true);
+                if (ns == FDN_RECORD_STORE_NAMESPACE && key == "m_head") onFdnHeadCut(i);
+            };
             bootFdn(static_cast<int>(i));
         }
         medium.onAir = [this](const uint8_t* src, PktType type, const std::vector<uint8_t>& data) {
@@ -274,6 +337,10 @@ private:
             MatchRecord record;
             memcpy(&record, data.data() + 6, sizeof(record));
             airIds.insert(formatUuid(record.matchUuid));
+        };
+        medium.onDelivered = [this](const uint8_t* src, const uint8_t* dst, PktType type,
+                                    const std::vector<uint8_t>& data) {
+            onDelivered(src, dst, type, data);
         };
         for (const Action& action : actions)
             note("plan " + formatAction(action));
@@ -317,13 +384,20 @@ private:
         FdnSlot& slot = fdns[static_cast<size_t>(index)];
         slot.clock->boot(true);
         // The FDN's wall clock is taken as right: it reads the server's Date header.
-        slot.clock->setUnixMilliseconds(EVENT_EPOCH_MS + static_cast<int64_t>(now));
+        slot.clock->setUnixMilliseconds(epochMs + static_cast<int64_t>(now));
         slot.nvs.thaw();
         medium.setMuted(slot.mac, now < slot.mutedUntil);
         enter(slot.clock, &slot.logger);
-        slot.device = new SimFdn("_f" + std::to_string(index), medium, slot.mac, slot.nvs,
-                                 server->deviceBackend(), slot.faults, slot.rng);
+        slot.device =
+        new SimFdn("_f" + std::to_string(index), medium, slot.mac, slot.nvs,
+                   server->deviceBackend(), slot.faults, slot.rng, unconfirmedUploads);
         slot.lastRecordSeq.clear();
+        slot.device->radio->beforeHandled = [this, index](const uint8_t*, PktType) {
+            FdnSlot& fdn = fdns[static_cast<size_t>(index)];
+            fdn.tailBefore = fdn.nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_tail", 0);
+            fdn.storedBefore =
+            fdn.tailBefore - fdn.nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_head", 0);
+        };
         slot.device->radio->onHandled =
         [this, index](const uint8_t* src, PktType type, const std::vector<uint8_t>& data,
                       bool acked) { onFdnFrame(index, src, type, data, acked); };
@@ -332,7 +406,8 @@ private:
     }
 
     // An FDN acks every new record frame it stores or already holds (fdn-record-store.hpp
-    // store()); it may stay silent only when its ring is full or the write failed (power cut).
+    // store()); it may stay silent only when its ring was full before the frame or the
+    // write failed (power cut). A frame it stored must be acked.
     void onFdnFrame(int index, const uint8_t* src, PktType type, const std::vector<uint8_t>& data,
                     bool acked) {
         if (type != PktType::kMatchRecord || data.size() != sizeof(MatchRecordFramePacket)) return;
@@ -342,15 +417,81 @@ private:
         uint8_t& last = slot.lastRecordSeq[macKey(src)];
         const bool repeat = frame.seqId != 0 && frame.seqId == last;
         last = frame.seqId;
+        const std::string what = "fdn " + std::to_string(index) + " record " +
+                                 std::to_string(frame.recordNumber) + " from pdn " +
+                                 std::to_string(src[4] << 8 | src[5]);
+        if (slot.nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_tail", 0) != slot.tailBefore) {
+            MatchRecord record;
+            memcpy(&record, data.data() + 6, sizeof(record));
+            const std::string id = formatUuid(record.matchUuid);
+            // A copy stored a second time, here after a retire or at another FDN, is
+            // uploaded again: a resend the server's report count may show.
+            const std::string key =
+            std::to_string(macKey(src)) + "/" + std::to_string(frame.recordNumber) + "/" + id;
+            if (!storedRecords.insert(key).second) {
+                resendAllowance[id]++;
+                counts["recordsStoredAgain"]++;
+            }
+            if (!acked && !slot.nvs.isFrozen()) fail(what + " stored without an ack");
+            return;
+        }
         if (acked || repeat) return;
-        const uint32_t head = slot.nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_head", 0);
-        const uint32_t tail = slot.nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_tail", 0);
-        if (slot.nvs.isFrozen() || tail - head >= FDN_MATCH_RECORD_CAPACITY) {
+        if (slot.nvs.isFrozen() || slot.storedBefore >= FDN_MATCH_RECORD_CAPACITY) {
             counts["allowedFdnRefusals"]++;
             return;
         }
-        fail("fdn " + std::to_string(index) + " left record " + std::to_string(frame.recordNumber) +
-             " from pdn " + std::to_string(src[4] << 8 | src[5]) + " unacked");
+        fail(what + " left unacked");
+    }
+
+    // The FDN lost its head write: after the reboot it uploads again what it had retired.
+    void onFdnHeadCut(size_t index) {
+        const SimNvs& nvs = fdns[index].nvs;
+        const uint32_t head = nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_head", 0);
+        const uint32_t tail = nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_tail", 0);
+        for (uint32_t i = head; i != tail; i++) {
+            std::string bytes;
+            FdnRecordStore::MatchRing::Entry entry;
+            if (!nvs.get(FDN_RECORD_STORE_NAMESPACE,
+                         "m_" + std::to_string(i % FDN_MATCH_RECORD_CAPACITY), 'b', bytes) ||
+                bytes.size() != sizeof(entry)) {
+                continue;
+            }
+            memcpy(&entry, bytes.data(), sizeof(entry));
+            MatchRecord record;
+            memcpy(&record, entry.content, sizeof(record));
+            resendAllowance[formatUuid(record.matchUuid)]++;
+        }
+        counts["fdnHeadWritesCut"]++;
+    }
+
+    /** The PDN slot behind @p mac, or -1. */
+    int pdnIndexOf(const uint8_t* mac) const {
+        if (mac[0] != 0x02 || mac[1] != 0x50 || mac[2] != 0 || mac[3] != 0) return -1;
+        const int index = mac[4] << 8 | mac[5];
+        return index < static_cast<int>(pdns.size()) ? index : -1;
+    }
+
+    // What each PDN heard of the posse traffic, for the harness's own boost count.
+    void onDelivered(const uint8_t* src, const uint8_t* dst, PktType type,
+                     const std::vector<uint8_t>& data) {
+        const int to = pdnIndexOf(dst);
+        if (to < 0) return;
+        Heard heard{now, type, -1};
+        if (type == PktType::kChainConfirm && data.size() == sizeof(ChainConfirmPayload)) {
+            heard.from = pdnIndexOf(data.data());
+        } else if (type == PktType::kChainJoin && data.size() == sizeof(ChainJoinPayload) &&
+                   memcmp(data.data(), dst, 6) == 0) {
+            heard.from = pdnIndexOf(src);
+        } else if (type == PktType::kChainGameEvent &&
+                   data.size() == sizeof(ChainGameEventPayload) &&
+                   data[0] == static_cast<uint8_t>(ChainGameEventType::COUNTDOWN)) {
+            heard.from = pdnIndexOf(data.data() + 2);
+        }
+        if (heard.from < 0) return;
+        std::vector<Heard>& list = pdns[static_cast<size_t>(to)].heard;
+        while (!list.empty() && list.front().at + HEARD_KEPT_MS < now)
+            list.erase(list.begin());
+        list.push_back(heard);
     }
 
     NativeSerialDriver* resolveJack(const JackRef& jack) {
@@ -392,7 +533,9 @@ private:
             if (hello) slot.device->pdn->getRemoteDeviceCoordinator()->emitHello();
             slot.device->pdn->loop();
             autopilot(static_cast<int>(i));
-            if (slot.nvs.isFrozen() || (slot.rebootAt != 0 && now >= slot.rebootAt)) {
+            const bool rebootDue = slot.rebootAt != 0 && now >= slot.rebootAt;
+            if (rebootDue && !slot.nvs.isFrozen()) counts["duelRebootsFired"]++;
+            if (slot.nvs.isFrozen() || rebootDue) {
                 takeDown(static_cast<int>(i), slot.nvs.isFrozen(), 0);
             }
         }
@@ -447,14 +590,20 @@ private:
         slot.rebootAt = 0;
         slot.rebootDelay = -1;
         slot.upAt = now + (downMs != 0 ? downMs : 1500);
+        slot.downAt = static_cast<int64_t>(now);
         medium.setMuted(slot.mac, true);
+        const char* cause = powerLost ? "cut" : "reboot";
         for (std::pair<const std::string, TruthMatch>& entry : truth) {
             TruthMatch& match = entry.second;
-            const bool open = (match.hunter.slot == index && !match.hunter.finalized) ||
-                              (match.bounty.slot == index && !match.bounty.finalized);
-            if (open && match.disturbed.empty()) match.disturbed = "reboot";
+            const bool principal = match.hunter.slot == index || match.bounty.slot == index;
+            if (principal && match.isOpen(now)) match.causes.insert(cause);
         }
-        note(std::string(powerLost ? "cut" : "reboot") + " pdn=" + std::to_string(index));
+        for (Activity& activity : activities) {
+            if (std::find(activity.pdns.begin(), activity.pdns.end(), index) != activity.pdns.end())
+                activity.causes.insert(cause);
+        }
+        counts[powerLost ? "pdnCutsTakenDown" : "pdnRebootsFired"]++;
+        note(std::string(cause) + " pdn=" + std::to_string(index));
     }
 
     void takeDownFdn(int index, uint64_t downMs) {
@@ -496,13 +645,18 @@ private:
                 i++;
                 continue;
             }
-            note(std::string(result != 0 ? "apply " : "skip ") + std::to_string(deferred[i]));
-            counts[result != 0 ? "actionsApplied" : "actionsSkipped"]++;
+            static const char* const VERDICTS[] = {"skip", "apply", "n/a"};
+            static const char* const COUNTS[] = {"actionsSkipped", "actionsApplied",
+                                                 "actionsNotApplicable"};
+            note(std::string(VERDICTS[result]) + " " + std::to_string(deferred[i]));
+            counts[COUNTS[result]]++;
+            counts[std::string(VERDICTS[result]) + "_" +
+                   ACTION_NAMES[static_cast<int>(action.type)]]++;
             deferred.erase(deferred.begin() + static_cast<long>(i));
         }
     }
 
-    // 1 applied, 0 not yet possible.
+    // 1 applied, 0 not yet possible, 2 this server cannot do it (never applied).
     int tryApply(size_t index) {
         const Action& action = actions[index];
         switch (action.type) {
@@ -551,13 +705,16 @@ private:
                 std::max(medium.burstUntil, now + static_cast<uint64_t>(action.get("dur")));
                 for (std::pair<const std::string, TruthMatch>& entry : truth) {
                     TruthMatch& match = entry.second;
-                    const bool open = !match.hunter.finalized || !match.bounty.finalized;
-                    if (open && match.disturbed.empty()) match.disturbed = "burst";
+                    if (match.isOpen(now)) match.causes.insert("burst");
                 }
+                for (Activity& activity : activities)
+                    activity.causes.insert("burst");
                 return 1;
             case ActionType::NO_EVENT:
-                // Only the fake can go between events; the real one belongs to the lead.
-                if (fake == nullptr) return 1;
+                // alleycat-rs at a01a3fd has no route that clears the active event, and
+                // selecting another one is not "between events": uploads there are
+                // rejected for unknown players and retired. Fake server only.
+                if (fake == nullptr) return 2;
                 fake->eventActive = false;
                 noEventUntil =
                 std::max(noEventUntil, now + static_cast<uint64_t>(action.get("dur")));
@@ -583,10 +740,13 @@ private:
         activity.action = index;
         activity.pdns = members;
         activity.deadline = now + deadlineMs;
+        activity.startedAt = now;
+        if (now < medium.burstUntil) activity.causes.insert("burst");
         for (int pdn : members) {
             PdnSlot& slot = pdns[static_cast<size_t>(pdn)];
             slot.activity = static_cast<int>(index);
             slot.sawCountdown = slot.planned = slot.confirm = slot.clicked = false;
+            slot.supporterPressed = false;
         }
         return activity;
     }
@@ -630,6 +790,7 @@ private:
             slot.mash = action.get(side == 0 ? "mh" : "mb");
             if (action.params.count("reboot") && action.get("reboot") == side) {
                 slot.rebootDelay = action.get("rebootdelay");
+                counts["duelRebootsPlanned"]++;
             }
             if (action.params.count("cut") && action.get("cut") == side)
                 activity.cutSlot = sides[side];
@@ -706,6 +867,7 @@ private:
             over = over || allSettled;
         }
         if (!over) return false;
+        if (action.type == ActionType::DUEL) checkDuelDraws(activity);
         for (const std::pair<JackRef, JackRef>& cable : activity.plugged)
             cables.unplug(cable.first);
         for (int pdn : activity.pdns) {
@@ -718,6 +880,34 @@ private:
             pdns[static_cast<size_t>(activity.cutSlot)].nvs.armCut(0, false);
         }
         return true;
+    }
+
+    // Both principals of a DUEL must draw the same id; a split or a one-sided draw needs
+    // an injected fault on the activity to explain it.
+    void checkDuelDraws(const Activity& activity) {
+        if (!activity.drew[0] && !activity.drew[1]) {
+            counts["duelsNeverDrawn"]++;
+            return;
+        }
+        if (activity.drew[0] && activity.drew[1] && activity.drawn[0] == activity.drawn[1]) return;
+        const std::string what =
+        "duel action " + std::to_string(activity.action) + ": hunter drew " +
+        (activity.drew[0] ? activity.drawn[0] : "nothing") + ", bounty drew " +
+        (activity.drew[1] ? activity.drawn[1] : "nothing");
+        if (activity.causes.empty()) {
+            fail(what + ", with nothing disturbing it");
+            return;
+        }
+        counts["splitDraw_" + *activity.causes.begin()]++;
+        note(what);
+    }
+
+    Activity* activityOf(int pdn) {
+        const int action = pdns[static_cast<size_t>(pdn)].activity;
+        for (Activity& activity : activities) {
+            if (action >= 0 && activity.action == static_cast<size_t>(action)) return &activity;
+        }
+        return nullptr;
     }
 
     bool isSettled(int pdn) const {
@@ -755,6 +945,10 @@ private:
             recordPress(index, static_cast<uint32_t>(ms - slot.matchStart + 75 * slot.mashDone));
             slot.device->press();
         } else if (state == SUPPORTER_READY && slot.confirm) {
+            if (!slot.supporterPressed) {
+                slot.supporterPressed = true;
+                slot.supporterPressAt = now;
+            }
             slot.device->press();
         } else if (state == SHOOTOUT_PROPOSAL && slot.confirm && !slot.clicked &&
                    now - slot.stateSince >= 400) {
@@ -768,6 +962,7 @@ private:
         MatchManager* matchManager = slot.device->context().matchManager;
         if (state == MATCH_COUNTDOWN) {
             slot.sawCountdown = true;
+            slot.countdownAt = now;
             slot.mashDone = 0;
             if (!slot.planned) {
                 const uint64_t h = mix(static_cast<uint64_t>(index), ++slot.matchOrdinal);
@@ -777,8 +972,15 @@ private:
             slot.planned = false;
         } else if (state == MATCH && matchManager->getCurrentMatch().has_value()) {
             slot.matchId = canonicalId(matchManager->getCurrentMatch()->getMatchId());
-            slot.matchStart = matchManager->getMatchLocalStartTime();
+            // The draw starts on this tick, by this PDN's own clock.
+            slot.matchStart = slot.clock->milliseconds();
+            if (matchManager->getMatchLocalStartTime() != slot.matchStart) {
+                fail("pdn " + std::to_string(index) + " entered MATCH at " +
+                     std::to_string(slot.matchStart) + " ms but its match starts at " +
+                     std::to_string(matchManager->getMatchLocalStartTime()) + " ms");
+            }
             TruthMatch& match = truth[slot.matchId];
+            if (match.hunter.slot < 0 && match.bounty.slot < 0) match.drawAt = now;
             match.shootout = slot.matchId.rfind(kShootoutMatchIdPrefix, 0) == 0;
             if (match.shootout) {
                 UUIDBytes stored;
@@ -786,7 +988,16 @@ private:
                 shootoutIds.insert(formatUuid(stored));
             }
             (slot.identity.hunter ? match.hunter : match.bounty).slot = index;
-            if (now < medium.burstUntil && match.disturbed.empty()) match.disturbed = "burst";
+            if (now < medium.burstUntil) match.causes.insert("burst");
+            Activity* activity = activityOf(index);
+            if (activity != nullptr && actions[activity->action].type == ActionType::DUEL) {
+                const Action& action = actions[activity->action];
+                const int side = index == action.a[0] ? 0 : index == action.b[0] ? 1 : -1;
+                if (side >= 0 && !activity->drew[side]) {
+                    activity->drew[side] = true;
+                    activity->drawn[side] = slot.matchId;
+                }
+            }
             if (slot.rebootDelay >= 0)
                 slot.rebootAt = now + static_cast<uint64_t>(slot.rebootDelay) + 1;
             note("draw pdn=" + std::to_string(index) + " id=" + slot.matchId);
@@ -800,35 +1011,114 @@ private:
         return legacyIds.count(id) != 0 ? " (older firmware)" : "";
     }
 
+    // Whether supporter @p s's confirm counts toward challenger @p c's boost on this tick,
+    // from what the harness made happen and what reached each radio (chain-roster spec:
+    // a confirm pressed after the challenger's countdown, from a member of its posse):
+    // 2 surely, 1 only if a frame on a boundary tick was handled first, 0 not, with @p cause.
+    int confirmCounts(int c, int s, bool direct, const Activity& activity,
+                      std::string& cause) const {
+        const PdnSlot& challenger = pdns[static_cast<size_t>(c)];
+        const PdnSlot& supporter = pdns[static_cast<size_t>(s)];
+        if (!supporter.confirm) {
+            cause = "notTold";
+            return 0;
+        }
+        if (!supporter.supporterPressed) {
+            cause = "neverReady";
+            return 0;
+        }
+        const uint64_t until = now;
+        const auto within = [until](uint64_t at, uint64_t from) {
+            if (at < from || at > until) return 0;
+            return at == from || at == until ? 1 : 2;
+        };
+        // The cable makes the first supporter a member; one further down joins by radio.
+        int member = direct ? 2 : 0;
+        for (const Heard& heard : challenger.heard) {
+            if (heard.type == PktType::kChainJoin && heard.from == s)
+                member = std::max(member, within(heard.at, activity.startedAt));
+        }
+        if (member == 0) {
+            cause = "joinNotHeard";
+            return 0;
+        }
+        bool armed = false;
+        for (const Heard& heard : supporter.heard) {
+            armed = armed || (heard.type == PktType::kChainGameEvent && heard.from == c &&
+                              heard.at >= challenger.countdownAt);
+        }
+        int confirmed = 0;
+        const uint64_t from = std::max(challenger.countdownAt, supporter.supporterPressAt);
+        for (const Heard& heard : challenger.heard) {
+            if (heard.type == PktType::kChainConfirm && heard.from == s)
+                confirmed = std::max(confirmed, within(heard.at, from));
+        }
+        if (confirmed == 0) {
+            cause = armed ? "confirmNotHeard" : "countdownNotHeard";
+            return 0;
+        }
+        return std::min(member, confirmed);
+    }
+
     void recordPress(int index, uint32_t raw) {
         PdnSlot& slot = pdns[static_cast<size_t>(index)];
         TruthMatch& match = truth[slot.matchId];
         Side& side = slot.identity.hunter ? match.hunter : match.bounty;
         side.pressed = true;
         side.raw = raw;
-        side.boost = static_cast<uint32_t>(
+        const uint32_t firmware = static_cast<uint32_t>(
         std::min(slot.device->context().posseManager->getBoostMs(), PosseManager::getMaxBoostMs()));
-        if (slot.activity < 0 ||
-            actions[static_cast<size_t>(slot.activity)].type != ActionType::DUEL)
-            return;
-        // What the scheduler meant: each supporter told to confirm adds 15 ms. The
-        // firmware's own count decides the winner; a gap means a confirm was lost or late.
-        const Action& action = actions[static_cast<size_t>(slot.activity)];
-        const std::vector<int>& team = action.a[0] == index ? action.a : action.b;
-        unsigned long planned = 0;
-        for (size_t i = 1; i < team.size(); i++) {
-            planned +=
-            pdns[static_cast<size_t>(team[i])].confirm ? PosseManager::BOOST_PER_SUPPORTER_MS : 0;
+        side.boost = firmware;
+        const Activity* activity = activityOf(index);
+        if (activity == nullptr || match.shootout) return;
+        const Action& action = actions[activity->action];
+        if (action.type != ActionType::DUEL) return;
+        const std::vector<int>* team = action.a[0] == index   ? &action.a
+                                       : action.b[0] == index ? &action.b
+                                                              : nullptr;
+        if (team == nullptr) return;
+        // The boost the harness itself expects: 15 ms per supporter it cabled into this
+        // challenger's chain and made press, whose confirm reached it before this press.
+        unsigned long sure = 0;
+        unsigned long most = 0;
+        std::string supporters;
+        for (size_t i = 1; i < team->size(); i++) {
+            const int supporter = (*team)[i];
+            std::string cause;
+            const int counted = confirmCounts(index, supporter, i == 1, *activity, cause);
+            sure += counted == 2 ? PosseManager::BOOST_PER_SUPPORTER_MS : 0;
+            most += counted >= 1 ? PosseManager::BOOST_PER_SUPPORTER_MS : 0;
+            if (counted == 0 && cause != "notTold") counts["confirmMissed_" + cause]++;
+            supporters += " " + std::to_string(supporter) + ":" +
+                          (counted == 2   ? "counted"
+                           : counted == 1 ? "boundary"
+                                          : cause);
         }
-        counts[std::min(planned, PosseManager::getMaxBoostMs()) == side.boost ? "boostAsPlanned"
-                                                                              : "boostOffPlan"]++;
+        const uint32_t low = static_cast<uint32_t>(std::min(sure, PosseManager::getMaxBoostMs()));
+        const uint32_t high = static_cast<uint32_t>(std::min(most, PosseManager::getMaxBoostMs()));
+        if (firmware >= low && firmware <= high) {
+            counts["boostAsExpected"]++;
+            return;
+        }
+        const std::string what =
+        "pdn " + std::to_string(index) + " drew " + slot.matchId + " with a " +
+        std::to_string(firmware) + " ms boost, the harness counts " + std::to_string(low) +
+        (high != low ? ".." + std::to_string(high) : "") + " ms (supporters" + supporters + ")";
+        if (!activity->causes.empty()) {
+            counts["boostExplained_" + *activity->causes.begin()]++;
+            note(what);
+            return;
+        }
+        side.boost = low;
+        fail(what);
     }
 
     // The device mounted MatchResult, so finalizeMatch ran this tick.
     void onFinalize(int index) {
         PdnSlot& slot = pdns[static_cast<size_t>(index)];
         TruthMatch& match = truth[slot.matchId];
-        (slot.identity.hunter ? match.hunter : match.bounty).finalized = true;
+        Side& side = slot.identity.hunter ? match.hunter : match.bounty;
+        side.finalized = true;
         const std::string id = slot.matchId;
         slot.matchId.clear();
         if (match.shootout || slot.committedThisTick == id) return;
@@ -838,12 +1128,15 @@ private:
         // spec "full ring refuses"); a power cut before "seq" is written loses the match by design
         // (seq moves last, match-manager.cpp:366-371).
         if (seq - std::min(collected, seq) >= MatchManager::MATCH_RING_CAPACITY) {
-            counts["allowedRingFull"]++;
+            side.excuse = "ringFull";
+            slot.ringRefused = true;
         } else if (slot.nvs.isFrozen()) {
-            counts["allowedCutBeforeCommit"]++;
+            side.excuse = "cutBeforeCommit";
         } else {
             fail("pdn " + std::to_string(index) + " finalized " + id + " but stored nothing");
+            return;
         }
+        counts[side.excuse == "ringFull" ? "allowedRingFull" : "allowedCutBeforeCommit"]++;
     }
 
     void onPdnWrite(int index, const std::string& ns, const std::string& key) {
@@ -865,9 +1158,11 @@ private:
         commit.id = formatUuid(commit.record.matchUuid);
         commit.synced = slot.clock->synced;
         commit.sinceSyncMs = slot.clock->millisecondsSinceSync();
-        commit.trueUnixMs = EVENT_EPOCH_MS + static_cast<int64_t>(now);
+        commit.trueUnixMs = epochMs + static_cast<int64_t>(now);
         commits.push_back(commit);
         slot.committedThisTick = commit.id;
+        if (slot.ringRefused) counts["ringStoredAgainAfterFull"]++;
+        slot.ringRefused = false;
         note("commit pdn=" + std::to_string(index) + " seq=" + std::to_string(seq) +
              " id=" + commit.id);
     }
@@ -927,13 +1222,15 @@ private:
             return;
         }
         const TruthMatch& match = found->second;
+        if (commit.slot != match.hunter.slot && commit.slot != match.bounty.slot) {
+            fail(where + ": stored by a PDN that is not a principal of that duel");
+        }
         const MatchRecord& record = commit.record;
         const Side* sides[2] = {&match.hunter, &match.bounty};
         const UUIDBytes* players[2] = {&record.hunterPlayerId, &record.bountyPlayerId};
         const UUIDBytes* teams[2] = {&record.hunterTeamId, &record.bountyTeamId};
         const uint32_t times[2] = {record.hunterDrawTimeMs, record.bountyDrawTimeMs};
-        const bool clean =
-        match.disturbed.empty() && match.hunter.finalized && match.bounty.finalized;
+        const bool clean = match.causes.empty() && match.hunter.finalized && match.bounty.finalized;
         for (int i = 0; i < 2; i++) {
             if (sides[i]->slot < 0) continue;
             if (formatUuid(*players[i]) != identityOf(sides[i]->slot, false) ||
@@ -949,7 +1246,11 @@ private:
                 fail(where + ": never-pressed side has time " + std::to_string(times[i]));
             }
         }
-        if (clean) {
+        // A disturbed copy that carries both pressed times got both results, so its
+        // winner follows from them as a clean one's does.
+        const bool bothTimes = match.hunter.pressed && match.bounty.pressed &&
+                               times[0] == match.hunter.raw && times[1] == match.bounty.raw;
+        if (clean || bothTimes) {
             bool hunterWins = false;
             if (match.hunter.pressed && match.bounty.pressed) {
                 hunterWins = static_cast<int64_t>(match.hunter.raw) - match.hunter.boost <
@@ -961,23 +1262,74 @@ private:
                 (hunterWins ? record.hunterPlayerId : record.bountyPlayerId)) {
                 fail(where + ": winner disagrees with raw - boost");
             }
-            counts["cleanCopiesChecked"]++;
-        } else {
-            counts["disturbedCopies"]++;
+        }
+        counts[clean       ? "cleanCopiesChecked"
+               : bothTimes ? "disturbedCopiesWinnerChecked"
+                           : "disturbedCopies"]++;
+        // An unset clock stamps uptime (#518). The RTC survives a soft reboot and is lost
+        // with power, so a PDN an FDN synced in this power-on must stamp UTC.
+        const bool uptimeStamp = record.occurredAtUnixMs < epochMs - UPTIME_STAMP_BEFORE_MS;
+        if (uptimeStamp) {
+            if (commit.synced) {
+                fail(where + ": uptime stamp " + std::to_string(record.occurredAtUnixMs) +
+                     " from a PDN whose clock an FDN set in this power-on");
+            } else {
+                counts["knownUnsyncedStamp518"]++;
+            }
+            return;
         }
         if (!commit.synced) {
-            counts["knownUnsyncedStamp518"]++;
+            fail(where + ": UTC stamp " + std::to_string(record.occurredAtUnixMs) +
+                 " from a PDN no FDN synced in this power-on");
             return;
         }
         counts["syncedStampsChecked"]++;
-        const int64_t bound =
+        // The context carries the FDN's time at its first send and is read on a later
+        // tick, so a stamp trails the truth by up to the retransmit span plus the air,
+        // and leads it only by the PDN's drift since the sync.
+        const int64_t drift =
+        static_cast<int64_t>(commit.sinceSyncMs) * MAX_DRIFT_PPM / 1000000 + 1;
+        const int64_t trail =
         static_cast<int64_t>(Resender::RETRANSMIT_SPAN_MS + config.medium.maxDelayMs +
                              config.medium.maxReorderDelayMs + TICK_MS) +
-        static_cast<int64_t>(commit.sinceSyncMs) * MAX_DRIFT_PPM / 1000000;
-        if (std::llabs(record.occurredAtUnixMs - commit.trueUnixMs) > bound) {
-            fail(where + ": occurred-at off by " +
-                 std::to_string(record.occurredAtUnixMs - commit.trueUnixMs) + " ms (bound " +
-                 std::to_string(bound) + ")");
+        drift;
+        const int64_t offset = record.occurredAtUnixMs - commit.trueUnixMs;
+        if (offset < -trail || offset > drift) {
+            fail(where + ": occurred-at off by " + std::to_string(offset) + " ms (allowed -" +
+                 std::to_string(trail) + "..+" + std::to_string(drift) + ")");
+        }
+    }
+
+    // Every played duel is accounted for: each principal that drew stores its record,
+    // unless a classified cause explains why not (quickdraw-match spec: abandonment on a
+    // disconnect or reboot, the 4 s timeout when neither pressed, the full ring, a power
+    // cut before "seq").
+    void checkDuelsAccounted() {
+        std::map<std::pair<int, std::string>, int> stored;
+        for (const Commit& commit : commits) {
+            if (++stored[{commit.slot, commit.id}] == 2) {
+                fail("pdn " + std::to_string(commit.slot) + " stored " + commit.id + " twice");
+            }
+        }
+        for (const std::pair<const std::string, TruthMatch>& entry : truth) {
+            const TruthMatch& match = entry.second;
+            if (match.shootout || match.hunter.slot < 0 || match.bounty.slot < 0) continue;
+            counts["duelsBothDrew"]++;
+            const bool neitherPressed = !match.hunter.pressed && !match.bounty.pressed;
+            for (const Side* side : {&match.hunter, &match.bounty}) {
+                if (stored.count({side->slot, entry.first}) != 0) continue;
+                // A finalize that stored nothing unexcused already failed in onFinalize.
+                if (side->finalized && side->excuse.empty()) continue;
+                std::string cause = side->excuse;
+                if (cause.empty() && neitherPressed) cause = "neitherPressed";
+                if (cause.empty() && !match.causes.empty()) cause = *match.causes.begin();
+                if (cause.empty()) {
+                    fail("pdn " + std::to_string(side->slot) + " drew " + entry.first +
+                         " and never finalized it, with nothing disturbing it");
+                    continue;
+                }
+                counts["noRecord_" + cause]++;
+            }
         }
     }
 
@@ -1020,11 +1372,35 @@ private:
                 same = same || rowMatches(*row->second, commit->record);
             if (!same) fail("server row " + entry.first + " differs from every stored copy");
             const int extra = reports[entry.first] - static_cast<int>(entry.second.size());
-            if (extra > 0) counts["extraReports"] += static_cast<uint64_t>(extra);
+            if (extra <= 0) continue;
+            counts["extraReports"] += static_cast<uint64_t>(extra);
+            // Each extra report needs a counted resend: a copy an FDN stored again, an
+            // upload the server took that the FDN never heard succeed, a lost FDN head write.
+            const uint64_t explained =
+            resendAllowance[entry.first] + unconfirmedUploads[entry.first];
+            if (static_cast<uint64_t>(extra) > explained) {
+                counts["extraReportsUnexplained"] += static_cast<uint64_t>(extra) - explained;
+                fail("server got " + std::to_string(extra) + " extra reports of " + entry.first +
+                     ", " + std::to_string(explained) + " explained by counted resends");
+            }
         }
         for (const std::string& id : airIds) {
             if (copies.count(id) == 0 || shootoutIds.count(id) != 0) {
                 fail("relayed " + id + describe(id) + " was never stored as a duel");
+            }
+        }
+        // With scoring on from before the first stamp, a decided match stamped in UTC
+        // scores and one stamped in uptime (#518) falls outside the period.
+        for (const ServerRow& row : rows) {
+            if (row.scoringStatus.empty()) continue;
+            counts["scoring_" + row.scoringStatus]++;
+            const bool uptimeStamp = row.occurredAtMs < epochMs - UPTIME_STAMP_BEFORE_MS;
+            const char* expected = row.winner.empty() ? "tie"
+                                   : uptimeStamp      ? "scoring_disabled"
+                                                      : "scoring";
+            if (row.scoringStatus != expected) {
+                fail("server row " + row.id + " is " + row.scoringStatus + ", expected " +
+                     expected);
             }
         }
         counts["serverRows"] = rows.size();
@@ -1073,16 +1449,40 @@ private:
         if (ready) {
             for (const Commit& commit : commits)
                 checkCommit(commit);
+            checkDuelsAccounted();
             checkServer();
             checkInvariants(drained);
             if (!drained) fail("drain did not quiesce within the cap");
+            if (config.schedule.fdnBlackoutMs > 0 && counts["allowedRingFull"] == 0)
+                fail("ring-fill mode: no PDN ring ever filled");
+            if (config.schedule.fdnBlackoutMs > 0 && counts["ringStoredAgainAfterFull"] == 0)
+                fail("ring-fill mode: no PDN stored a match again after its full ring refused one");
         }
+        uint64_t cutsArmed = 0;
+        uint64_t cutsFired = 0;
+        for (const PdnSlot& slot : pdns) {
+            cutsArmed += slot.nvs.cutsArmed;
+            cutsFired += slot.nvs.cutsFired;
+        }
+        for (const FdnSlot& slot : fdns) {
+            cutsArmed += slot.nvs.cutsArmed;
+            cutsFired += slot.nvs.cutsFired;
+        }
+        counts["cutsArmed"] = cutsArmed;
+        counts["cutsFired"] = cutsFired;
+        counts["cutsArmedNeverFired"] = cutsArmed - cutsFired;
+        counts["duelRebootsNeverFired"] = counts["duelRebootsPlanned"] - counts["duelRebootsFired"];
         // Printed even when zero: the #518 class and the wrap evidence are read per seed.
-        for (const char* key : {"knownUnsyncedStamp518", "syncedStampsChecked", "pdnRingsWrapped",
-                                "fdnStoresWrapped", "allowedRingFull", "allowedCutBeforeCommit",
-                                "storedMatches", "serverRows", "allowedFdnRefusals"}) {
+        for (const char* key :
+             {"knownUnsyncedStamp518", "syncedStampsChecked", "pdnRingsWrapped", "fdnStoresWrapped",
+              "allowedRingFull", "allowedCutBeforeCommit", "storedMatches", "serverRows",
+              "allowedFdnRefusals", "boostAsExpected", "extraReports", "extraReportsUnexplained",
+              "actionsSkipped", "actionsNotApplicable"}) {
             counts[key] += 0;
         }
+        const uint64_t stamps = counts["knownUnsyncedStamp518"] + counts["syncedStampsChecked"];
+        counts["unsyncedStampPercent"] =
+        stamps == 0 ? 0 : counts["knownUnsyncedStamp518"] * 100 / stamps;
         counts["commits"] = commits.size();
         counts["framesSent"] = medium.framesSent;
         counts["framesLost"] = medium.framesLost;
@@ -1130,6 +1530,8 @@ private:
     EventServer* server = nullptr;
     FakeServer* fake = nullptr;
     uint64_t noEventUntil = 0;
+    // The wall clock at virtual time zero: fixed on the fake, the real clock on a real server.
+    int64_t epochMs = EVENT_EPOCH_MS;
     std::vector<PdnSlot> pdns;
     std::vector<FdnSlot> fdns;
     std::vector<Activity> activities;
@@ -1137,6 +1539,12 @@ private:
     std::vector<size_t> deferred;
     std::map<std::string, TruthMatch> truth;
     std::vector<Commit> commits;
+    // Extra server reports each match id may show: copies stored again by an FDN (here
+    // after a retire, or at a second FDN) and records an FDN re-uploads after losing its
+    // head write; and uploads the server took that the FDN never heard succeed.
+    std::map<std::string, uint64_t> resendAllowance;
+    std::map<std::string, uint64_t> unconfirmedUploads;
+    std::set<std::string> storedRecords;
     std::set<std::string> airIds;
     std::set<std::string> legacyIds;
     // Shootout ids as a stored record would carry them (uuidStringToBytes of "SHT-...").

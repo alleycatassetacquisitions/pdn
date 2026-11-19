@@ -98,6 +98,8 @@ class VirtualMedium {
 public:
     using AirObserver =
     std::function<void(const uint8_t* src, PktType type, const std::vector<uint8_t>& data)>;
+    using DeliveryObserver = std::function<void(const uint8_t* src, const uint8_t* dst,
+                                                PktType type, const std::vector<uint8_t>& data)>;
 
     /** Seeds the medium's own stream, so its faults replay with the run. */
     VirtualMedium(uint64_t seed, const uint64_t& worldNow)
@@ -149,6 +151,8 @@ public:
     // Until then every record ack is lost: the FDN stored, the PDN never hears so.
     uint64_t dropAcksUntil = 0;
     AirObserver onAir;
+    // Each frame that reached an enabled radio, so the world can tell what a device heard.
+    DeliveryObserver onDelivered;
     uint64_t framesSent = 0;
     uint64_t framesLost = 0;
 
@@ -222,6 +226,7 @@ public:
             } else if (state == PeerCommsState::ENABLED) {
                 std::map<PktType, PacketHandler>::iterator it = handlers.find(event.type);
                 if (it != handlers.end()) {
+                    if (beforeHandled) beforeHandled(event.mac, event.type);
                     const uint64_t acksBefore = acksSent;
                     it->second.callback(event.mac, event.data.data(), event.data.size(),
                                         it->second.context);
@@ -301,6 +306,8 @@ public:
     uint64_t getInstance() const { return instance; }
 
     static constexpr uint8_t BROADCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    // Before each received frame's handler, so the world can snapshot what it is about to change.
+    std::function<void(const uint8_t* src, PktType type)> beforeHandled;
     // After each received frame's handler: whether it sent a record ack meanwhile.
     std::function<void(const uint8_t* src, PktType type, const std::vector<uint8_t>& data,
                        bool acked)>
@@ -384,6 +391,7 @@ inline void VirtualMedium::deliverDue() {
             delivered = dst->second->receive(frame->src, frame->type, frame->data);
         }
         if (!delivered) ++framesLost;
+        if (delivered && onDelivered) onDelivered(frame->src, frame->dst, frame->type, frame->data);
         std::map<uint64_t, SimRadio*>::iterator src = radios.find(macKey(frame->src));
         if (frame->wantsStatus && src != radios.end() &&
             src->second->getInstance() == frame->senderInstance) {
