@@ -25,6 +25,10 @@ inline constexpr unsigned long FDN_UPLOAD_FULL_STORE_REST_MS = 30000;
 // alleycat-rs answers a batch naming a match it already holds under another
 // event with 409 and this text; the server has that match, so the copy can go.
 inline constexpr const char FDN_CROSS_EVENT_409_TEXT[] = "already belongs to another event";
+// Names the server's active event; a change there releases held matches.
+inline constexpr const char FDN_GAME_STATE_ENDPOINT[] = "/game-state";
+// A match held for another event is also retried this long after it was held.
+inline constexpr unsigned long FDN_HELD_MATCH_RETRY_MS = 1800000;
 static_assert(FDN_MATCH_RECORD_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH,
               "a full match ring goes up in one batch");
 

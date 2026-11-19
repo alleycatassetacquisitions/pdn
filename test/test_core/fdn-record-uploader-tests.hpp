@@ -133,19 +133,25 @@ TEST_F(FdnRecordUploaderTests, noContentRetiresTheBatchAndReturnsTheRadio) {
     EXPECT_EQ(wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
 }
 
-TEST_F(FdnRecordUploaderTests, rejectedEntriesRetireNeverRetry) {
+// Owner ruling (RELAY-2): a rejected entry retires and is never retried, except
+// one rejected because the server has another event selected, which is held.
+TEST_F(FdnRecordUploaderTests, rejectedEntriesRetireButAnotherEventsAreHeld) {
     storeMatch(1);
     storeMatch(2);
     uploader->sync();
 
-    succeed(encodeUploadResponse({makeRejectionMessage(
-    0, "00000000-0000-4000-8000-000000000001",
-    alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE)}));
+    succeed(encodeUploadResponse(
+    {makeRejectionMessage(0, "00000000-0000-4000-8000-000000000001",
+                          alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_SAME_PLAYER),
+     makeRejectionMessage(
+     1, "00000000-0000-4000-8000-000000000002",
+     alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE)}));
+    EXPECT_EQ(storedMatches(), 1u) << "only the match of another event stays";
+
     clock.advance(FDN_UPLOAD_INTERVAL_MS + 1);
     uploader->sync();
-
-    EXPECT_EQ(storedMatches(), 0u);
-    EXPECT_EQ(requests.size(), 1u);
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_EQ(requests[1].path, FDN_GAME_STATE_ENDPOINT) << "the held match was sent unasked";
 }
 
 TEST_F(FdnRecordUploaderTests, serverErrorConflictAndTimeoutKeep) {
