@@ -9,17 +9,14 @@
 #include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <mbedtls/ssl.h>
-#include <mbedtls/x509_crt.h>
+#include <esp_crt_bundle.h>
+#include <esp_netif_sntp.h>
 #include <esp_mac.h>
 #include <esp_http_client.h>
 #include <queue>
-#include <strings.h>
-#include <sys/time.h>
 #include "device/drivers/driver-interface.hpp"
+#include "wireless/tls-clock-gate.hpp"
 #include "wireless/wireless-types.hpp"
-#include "utils/http-date.hpp"
-#include "utils/server-key-pin.hpp"
 #include "utils/simple-timer.hpp"
 
 // Forward declaration for the event handler
@@ -44,8 +41,8 @@ public:
     static const uint8_t MAX_RETRIES = 1;
 
     Esp32S3HttpClient(const std::string& name, WifiConfig* config)
-        : HttpClientDriverInterface(name) {
-        useConfig(config);
+        : HttpClientDriverInterface(name)
+        , wifiConfig(config) {
     }
 
     ~Esp32S3HttpClient() override {
@@ -61,7 +58,7 @@ public:
     }
 
     void setWifiConfig(WifiConfig* config) override {
-        useConfig(config);
+        wifiConfig = config;
         wifiConnected = false;
         httpClientInitialized = false;
         wifiGivenUp = false;
@@ -77,16 +74,15 @@ public:
 
     /**
      * Takes ownership of @p request; a large payload is moved, not copied.
-     * Without an `https://` address and a well-formed pin the request fails at
-     * once with SERVER_NOT_TRUSTED and nothing is sent.
+     * Unless the server address is `https://` the request fails at once with
+     * SERVER_NOT_TRUSTED and nothing is sent.
      */
     bool queueRequest(HttpRequest&& request) override {
-        if (!serverTrusted) {
-            LOG_E(HTTP_TAG,
-                  "Request refused: BASE_URL is not https:// with a valid SERVER_KEY_SHA256");
+        if (!isHttpsAddress(wifiConfig->baseUrl)) {
+            LOG_E(HTTP_TAG, "Request refused: BASE_URL is not https://");
             if (request.onError) {
                 request.onError(
-                {WirelessError::SERVER_NOT_TRUSTED, "No trusted server configured"});
+                {WirelessError::SERVER_NOT_TRUSTED, "Server address is not https://"});
             }
             return false;
         }
@@ -122,6 +118,7 @@ public:
         httpClientInitialized = false;
         wifiGivenUp = false;
         connectionAttemptTimer.invalidate();
+        clockGate.reset();
         httpClientState = HttpClientState::DISCONNECTED;
     }
 
@@ -129,7 +126,7 @@ public:
         bool needsReconnect = wifiConnected &&
                               (config->ssid != wifiConfig->ssid || config->password != wifiConfig->password);
 
-        useConfig(config);
+        wifiConfig = config;
 
         if (needsReconnect) {
             disconnect();
@@ -185,6 +182,7 @@ public:
         if (isStationConnected()) {
             wifiConnected = true;
             wifiGivenUp = false;
+            startClockSync();
             channel = stationChannel();
             LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d",
                   stationIpString().c_str(), channel);
@@ -201,11 +199,22 @@ public:
     friend esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt);
 
 private:
-    // The trust verdict is worked out once per configuration, never per response.
-    void useConfig(WifiConfig* config) {
-        wifiConfig = config;
-        serverKeyPin = ServerKeyPin(config->serverKeySha256);
-        serverTrusted = serverKeyPin.allowsRequestsTo(config->baseUrl);
+    // SNTP starts on the first Wi-Fi connection and lwIP re-polls on its own.
+    // A later connection while the clock is still unset asks again at once.
+    void startClockSync() {
+        if (clockSyncStarted) {
+            if (!TlsClockGate::isClockSet()) {
+                esp_netif_sntp_start();
+            }
+            return;
+        }
+        // lwIP keeps this pointer, not a copy; the FDN never frees its WifiConfig.
+        esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(wifiConfig->ntpServer.c_str());
+        config.wait_for_sync = false;
+        clockSyncStarted = esp_netif_sntp_init(&config) == ESP_OK;
+        if (!clockSyncStarted) {
+            LOG_E(HTTP_TAG, "SNTP did not start (%s)", wifiConfig->ntpServer.c_str());
+        }
     }
 
     /**
@@ -345,6 +354,7 @@ private:
             LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", stationIpString().c_str(), channel);
             wifiConnected = true;
             wifiGivenUp = false;
+            startClockSync();
             connectionAttemptTimer.invalidate();
             httpClientInitialized = initializeHttpClient();
             // Leave auto-reconnect ON so WiFi recovers from disconnections
@@ -378,20 +388,16 @@ private:
     }
 
     bool initializeHttpClient() {
-        // The attach hook below has no context argument, so it finds the
-        // client through this; a device builds one HTTP client.
-        tlsClient = this;
-
         esp_http_client_config_t config = {};
         config.event_handler = esp32_http_event_handler;
         config.timeout_ms = 10000;
         config.user_data = this;
         config.keep_alive_enable = true;
         config.url = wifiConfig->baseUrl.c_str();
-        // Trust comes from the pinned key alone, checked by our own hook in
-        // place of IDF's CA bundle; no public CA vouches for anything.
-        config.crt_bundle_attach = attachServerKeyCheck;
-        // Every hop of a redirect would need the pin checked; a redirect is
+        // The server certificate is checked against the CA bundle compiled into
+        // IDF, hostname included.
+        config.crt_bundle_attach = esp_crt_bundle_attach;
+        // A redirect could lead away from https, so none is followed; it is
         // answered as a failed request instead (httpStatusFailure).
         config.disable_auto_redirect = true;
         config.is_async = true;
@@ -405,41 +411,11 @@ private:
         return httpClient != nullptr;
     }
 
-    // esp-tls calls this per TLS connection after setting VERIFY_REQUIRED and
-    // ignores the return; mbedTLS refuses a handshake with no CA chain, so an
-    // empty placeholder stands in (as esp_crt_bundle does) and
-    // verifyServerCertificate alone decides. SNI is still sent: esp-tls sets
-    // it from the URL's host before this runs.
-    static esp_err_t attachServerKeyCheck(void* conf) {
-        auto* sslConfig = static_cast<mbedtls_ssl_config*>(conf);
-        mbedtls_ssl_conf_ca_chain(sslConfig, &placeholderCa, nullptr);
-        mbedtls_ssl_conf_verify(sslConfig, &verifyServerCertificate, tlsClient);
-        return ESP_OK;
-    }
-
-    // ServerKeyPin::verifiedFlags holds the rule; a matching leaf clears host-name
-    // and date flags since the venue may lack DNS or a clock.
-    static int verifyServerCertificate(void* context, mbedtls_x509_crt* certificate, int depth,
-                                       uint32_t* flags) {
-        auto* client = static_cast<Esp32S3HttpClient*>(context);
-        bool keyMatches = false;
-        if (depth == 0) {
-            keyMatches = client->serverKeyPin.matchesKey(
-            certificate->pk_raw.p, certificate->pk_raw.len, client->presentedKeyHash);
-            client->serverKeyRefused = !keyMatches;
-        }
-        *flags =
-        ServerKeyPin::verifiedFlags(depth, keyMatches, *flags, MBEDTLS_X509_BADCERT_NOT_TRUSTED);
-        return 0;
-    }
-
     void cleanupHttpClient() {
         if (httpClient) {
             esp_http_client_cleanup(httpClient);
             httpClient = nullptr;
         }
-        // The connection whose handshake set this is gone with the handle.
-        serverKeyRefused = false;
     }
 
     // Headers persist on the reused handle. Delete by name: delete_all would drop Host/User-Agent.
@@ -487,6 +463,16 @@ private:
         // Signed difference, so the comparison survives the clock wrapping.
         if (retryAt != 0 && static_cast<long>(now - retryAt) < 0) {
             return;
+        }
+        // Certificate dates are checked against the wall clock, so nothing is
+        // sent until SNTP has set it.
+        switch (clockGate.check()) {
+            case TlsClockGate::Decision::HOLD: return;
+            case TlsClockGate::Decision::GIVE_UP:
+                LOG_E(HTTP_TAG, "Clock not set by SNTP from %s", wifiConfig->ntpServer.c_str());
+                completeFront(false, {WirelessError::TIMEOUT, "Clock not set"});
+                return;
+            case TlsClockGate::Decision::SEND: break;
         }
         initiateHttpRequest(httpQueue.front());
     }
@@ -549,13 +535,17 @@ private:
         }
         HttpRequest& request = httpQueue.front();
         if (err != ESP_OK) {
-            if (serverKeyRefused) {
-                LOG_E(HTTP_TAG, "Server presented key %s, not the pinned one (%s)",
-                      presentedKeyHash, request.path.c_str());
+            // esp-tls records the certificate verification flags of a refused
+            // handshake (CA, host name or dates); they go with the handle.
+            int tlsFlags = 0;
+            esp_http_client_get_and_clear_last_tls_error(httpClient, nullptr, &tlsFlags);
+            if (tlsFlags != 0) {
+                LOG_E(HTTP_TAG, "Server certificate not verified (flags 0x%x, %s)", tlsFlags,
+                      request.path.c_str());
                 resetHttpClient();
-                // No retry: the same server presents the same key.
+                // No retry: the same server presents the same certificate.
                 completeFront(
-                false, {WirelessError::SERVER_NOT_TRUSTED, "Server key does not match the pin"});
+                false, {WirelessError::SERVER_NOT_TRUSTED, "Server certificate not verified"});
                 return;
             }
             LOG_E(HTTP_TAG, "Request failed: %s (%s)", esp_err_to_name(err), request.path.c_str());
@@ -655,38 +645,15 @@ private:
     HttpClientState httpClientState = HttpClientState::DISCONNECTED;
     // When the front request may be attempted again after a failure; 0 = now.
     unsigned long retryAt = 0;
-    // Parsed from wifiConfig whenever the configuration is set.
-    ServerKeyPin serverKeyPin;
-    bool serverTrusted = false;
-    // Set when this connection's handshake refused the server's key.
-    bool serverKeyRefused = false;
-    // The SHA-256 of the key the server presented, for the log.
-    char presentedKeyHash[SERVER_KEY_PIN_HEX_LENGTH + 1] = {};
-
-    // The client the TLS hooks report to; see initializeHttpClient.
-    static inline Esp32S3HttpClient* tlsClient = nullptr;
-    // Satisfies mbedTLS's need for a CA chain; nothing chains to it.
-    static inline mbedtls_x509_crt placeholderCa{};
+    TlsClockGate clockGate;
+    bool clockSyncStarted = false;
 };
 
-// Defined after the class: syncs clock from the Date header, collects the
-// response body; outcomes are decided from perform()'s return in exec().
+// Defined after the class: collects the response body; outcomes are decided
+// from perform()'s return in exec().
 inline esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt) {
     auto* client = static_cast<Esp32S3HttpClient*>(evt->user_data);
-    if (evt->event_id == HTTP_EVENT_ON_HEADER && evt->header_key != nullptr &&
-        strcasecmp(evt->header_key, "Date") == 0) {
-        const std::optional<int64_t> epochSec = parseHttpDate(evt->header_value);
-        if (epochSec.has_value()) {
-            struct timeval tv = {};
-            tv.tv_sec = static_cast<time_t>(*epochSec);
-            settimeofday(&tv, nullptr);
-            PlatformClock* clock = SimpleTimer::getPlatformClock();
-            LOG_I(HTTP_TAG, "Synced clock from HTTP Date: %lld (unixMs=%lld, uptimeMs=%lu)",
-                  static_cast<long long>(*epochSec),
-                  static_cast<long long>(clock ? clock->unixMilliseconds() : 0),
-                  clock ? clock->milliseconds() : 0UL);
-        }
-    } else if (evt->event_id == HTTP_EVENT_ON_DATA && client->currentRequest != nullptr) {
+    if (evt->event_id == HTTP_EVENT_ON_DATA && client->currentRequest != nullptr) {
         client->handleHttpData(client->currentRequest, evt->data, evt->data_len);
     }
     return ESP_OK;

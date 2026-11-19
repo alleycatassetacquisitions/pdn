@@ -351,14 +351,14 @@ TEST_F(FdnRecordUploaderTests, legacyMatchesNamespaceUntouched) {
 }
 
 // Catches a refused request that still raises Wi-Fi or loses records: the
-// client refuses every request as the ESP32 driver does without a trusted
-// server, the radio stays on ESP-NOW, and the records wait for the next cycle.
-TEST_F(FdnRecordUploaderTests, refusedAsUntrustedKeepsRecordsAndTheRadio) {
+// client refuses every request as the ESP32 driver does when the server
+// address is not https://, the radio stays on ESP-NOW, and the records wait.
+TEST_F(FdnRecordUploaderTests, refusedAddressKeepsRecordsAndTheRadio) {
     int refused = 0;
     ON_CALL(httpClient, queueRequest(testing::_))
     .WillByDefault(testing::Invoke([&refused](HttpRequest&& request) {
         ++refused;
-        request.onError({WirelessError::SERVER_NOT_TRUSTED, "No trusted server configured"});
+        request.onError({WirelessError::SERVER_NOT_TRUSTED, "Server address is not https://"});
         return false;
     }));
     EXPECT_CALL(httpClient, setHttpClientState(testing::_)).Times(0);
