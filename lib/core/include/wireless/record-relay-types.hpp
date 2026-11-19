@@ -5,7 +5,7 @@
 
 #include "device/crash/crash-record.hpp"
 #include "device/drivers/peer-comms-types.hpp"
-#include "game/record-tag.hpp"
+#include "game/match.hpp"
 
 /// What a record frame carries. The kind byte travels in the frame so the ack
 /// can name it; each kind has its own packet type as well.

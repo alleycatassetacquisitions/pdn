@@ -21,3 +21,21 @@ Every completed standalone 1v1 match SHALL be persisted on the PDN in a bounded 
 #### Scenario: A slot without a tag is not sent
 - **WHEN** a PDN's ring holds, in the slot of pending match `1`, a `112`-byte record with no tag written by an earlier test build, and match `2` stored with its tag
 - **THEN** on an FDN beacon the PDN sends only match `2`
+
+### Requirement: PDN-to-FDN match transfer, FDN spool bounds, and watermark advancement
+
+A PDN with pending match records SHALL deliver them to any FDN it hears by beacon, Connected on a jack or not, as record frames (`record-relay`):
+
+- The PDN SHALL send pending match records oldest first, from `max(collected_high_water_mark + 1, match_sequence_number - 31)` to `match_sequence_number`.
+- The PDN SHALL advance its persisted `collected_high_water_mark` to a match's sequence number only on that FDN's stored acknowledgement for the record (`record-relay`), never on an acknowledgement from any other sender.
+- The FDN SHALL stage received match records in a capacity-bounded non-volatile store of up to `27` match records awaiting upload (`139` bytes each with the sender and tag, sized to the default NVS partition). If the store is full, the FDN SHALL withhold the stored acknowledgement so the PDN keeps the records pending.
+- If contact ends before all pending matches are acknowledged, `collected_high_water_mark` SHALL reflect the last acknowledged match so only the rest are sent on the next contact.
+
+#### Scenario: Partial FDN collection advances watermark only for acknowledged matches
+- **WHEN** a PDN has pending matches `1..5` and leaves an FDN's range after the FDN acknowledges matches `1`, `2`, and `3`
+- **THEN** the PDN's `collected_high_water_mark` advances to `3`, and on the next FDN beacon the PDN sends only matches `4` and `5`
+
+#### Scenario: Spoofed wireless acknowledgement from uncabled sender is ignored
+- **WHEN** a PDN that sent match `1` to an FDN receives a stored acknowledgement for match `1` from a different sender MAC
+- **THEN** the PDN ignores the acknowledgement and leaves `collected_high_water_mark` unchanged
+
