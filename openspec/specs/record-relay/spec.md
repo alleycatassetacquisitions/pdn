@@ -15,7 +15,7 @@ A PDN SHALL send each crash record or match record as one peer-to-peer frame car
 
 ### Requirement: Relay target and triggers
 
-A PDN SHALL send its lowest pending record of each kind to an FDN when it hears that FDN's beacon, and the next one after that FDN's stored acknowledgement. It SHALL act only on a beacon that identifies its sender as an FDN; no jack connection is needed. It SHALL NOT send while a match or shootout is active on it.
+A PDN SHALL send its lowest pending record of each kind to an FDN when it hears that FDN's beacon, and the next one after that FDN's stored acknowledgement. It SHALL act only on a beacon that identifies its sender as an FDN; no jack connection is needed. It SHALL NOT send while a match or shootout is active on it. It SHALL NOT send a match record whose occurrence time is unset (`match-collection`); it passes over it.
 
 #### Scenario: A PDN that is not plugged in delivers on a beacon
 - **WHEN** a PDN with nothing Connected on its jacks and a pending crash record hears an FDN's beacon

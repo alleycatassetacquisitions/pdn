@@ -42,7 +42,8 @@ public:
 
 private:
     unsigned long currentTime;
-    int64_t unixTimeMs = 0;
+    // A set clock (2025-11-15) unless a test unsets it: an unset PDN clock reads uptime.
+    int64_t unixTimeMs = 1763200000000LL;
 };
 
 // ============================================

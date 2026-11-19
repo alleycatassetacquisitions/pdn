@@ -66,10 +66,18 @@ Updating the UTC wall clock SHALL NOT alter the monotonic millisecond clock.
 
 An FDN whose UTC wall clock has been synchronized (at least `2025-01-01T00:00:00Z`) SHALL propagate its current UTC epoch milliseconds to PDNs Connected on a physical serial jack:
 
-- A PDN SHALL accept a UTC wall-clock update only from the verified MAC address of an FDN currently Connected on a physical serial jack (never from an unauthenticated wireless broadcast beacon).
+- A PDN SHALL accept a UTC wall-clock update only from the verified MAC address of an FDN currently Connected on a physical serial jack, or, while its own clock is unset, from the cabled peer of a match handshake (`quickdraw-match`); never from an unauthenticated wireless broadcast beacon.
 - When the timestamp from the Connected FDN is within the valid range (`>= 1735689600000` and `<= 253402300799999`), the PDN SHALL update its local UTC wall clock to that timestamp without altering its monotonic millisecond clock.
 - An FDN whose own UTC wall clock has not yet been synchronized (`< 2025-01-01`) SHALL advertise `0` (unsynchronized) so a PDN never overwrites a valid clock with an unsynchronized value.
 
 #### Scenario: PDN syncs UTC wall clock from Connected FDN
 - **WHEN** a PDN connects on a serial jack to an FDN whose UTC wall clock is at `1792359000000` ms
 - **THEN** the PDN sets its UTC wall clock to `1792359000000` ms for stamping match occurrence timestamps while its monotonic clock remains unchanged
+
+### Requirement: PDN-to-PDN UTC propagation at the match handshake
+
+At the cabled match handshake each PDN SHALL send its UTC time, or `0` when its clock is unset. A PDN whose clock is unset SHALL set it from a valid time in the handshake frame of its cabled peer; a set clock SHALL NOT change. Time spreads from the FDN at the desk through duels.
+
+#### Scenario: Bounty without the time takes the Hunter's
+- **WHEN** a Hunter whose clock reads `1792359000000` ms initiates a match with a cabled Bounty whose clock is unset
+- **THEN** the Bounty's UTC wall clock reads `1792359000000` ms and the Hunter's clock is unchanged

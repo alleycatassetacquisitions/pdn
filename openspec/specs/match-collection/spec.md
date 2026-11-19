@@ -8,7 +8,7 @@ This specification states the required outcomes, invariants, and environmental c
 
 Terms used throughout:
 
-- **Match record**: the durable record of a completed standalone 1v1 match, containing the 16-byte match UUID, both players' 16-byte UUIDs, both players' 16-byte team UUIDs (or nil UUID when unassigned), both players' 6-byte MAC addresses, the 16-byte winner player UUID (determined from the players' posse-boosted effective draw times), both players' raw reaction times in milliseconds, and the UTC occurrence timestamp in epoch milliseconds.
+- **Match record**: the durable record of a completed standalone 1v1 match, containing the 16-byte match UUID, both players' 16-byte UUIDs, both players' 16-byte team UUIDs (or nil UUID when unassigned), both players' 6-byte MAC addresses, the 16-byte winner player UUID (determined from the players' posse-boosted effective draw times), both players' raw reaction times in milliseconds, and the UTC occurrence timestamp in epoch milliseconds (`0`, unset, when the PDN did not yet know the time).
 - **Match sequence number**: a monotonically increasing 1-based unsigned integer assigned to each standalone match persisted on a PDN.
 - **Collected high-water mark**: the highest match sequence number confirmed ingested by an FDN from a PDN.
 
@@ -22,11 +22,16 @@ Every completed standalone 1v1 match SHALL be persisted on the PDN in a bounded 
 - Binary match records containing raw 16-byte UUIDs (which may include `0x00` bytes) SHALL round-trip through non-volatile storage without null-byte truncation.
 - While `32` matches are pending, the PDN SHALL NOT persist a new match and SHALL log the refusal; a pending match is never overwritten, and gameplay is not blocked.
 - A shootout match SHALL NOT be persisted. Every other finalized match SHALL be persisted as recorded, including one with a nil player UUID, the same player UUID on both sides, or no agreed winner; the server rejects or flags those.
+- A match finished before the PDN's clock is set SHALL be stored with occurrence time `0`. When the PDN learns the time in the same power-on, it SHALL re-date each such match to `now - (uptime now - uptime at the match)` before relaying it. A match still at `0`, such as one from an earlier power-on, SHALL NOT be relayed; a later match's acknowledgement moves the mark past it. When the ring is full and its oldest pending matches are still at `0` from an earlier power-on, the PDN SHALL move the mark past them before storing a new match, so the new match takes the oldest one's slot.
 - The PDN SHALL persist a separate `collected_high_water_mark` (`0` initially), clamped to `match_sequence_number` if larger. Match `N` is pending whenever `N > collected_high_water_mark` and `N > match_sequence_number - 32`. Advancing the mark to `M` marks matches `<= M` as collected and leaves newer matches pending.
 
 #### Scenario: 33rd match overwrites oldest slot without losing newer uncollected matches
 - **WHEN** a PDN has 32 pending matches (`1..32`) and finishes a 33rd standalone match before encountering an FDN
 - **THEN** the 33rd match is not stored, `match_sequence_number` stays `32`, and matches `1..32` remain pending in ascending order
+
+#### Scenario: Match played before the clock is set is re-dated before relay
+- **WHEN** a PDN whose clock is unset finishes a match at uptime `95,000 ms` and is told the UTC time `T` at uptime `100,000 ms`
+- **THEN** the match is not relayed before that, and is relayed with occurrence time `T - 5,000 ms`
 
 #### Scenario: Binary UUIDs containing zero bytes round-trip intact through storage
 - **WHEN** a match record whose 16-byte match UUID, player UUIDs, or team UUIDs contain `0x00` bytes is written to and read back from non-volatile storage
@@ -53,6 +58,7 @@ A PDN with pending match records SHALL deliver them to any FDN it hears by beaco
 
 An FDN holding stored match records SHALL upload them to the central server in batches over HTTPS, at boot, every `300,000 ms` while records wait, and as soon as its match store is full but no sooner than `30,000 ms` after its last upload ended and not after an upload whose matches failed, never while a jack is Connected, sending its match batch before crash records:
 
+- The FDN SHALL NOT upload match records while its own UTC clock is unset (`fdn-apps`).
 - Each upload batch SHALL contain between `1` and `100` match records; a request with `0` or more than `100` matches SHALL be rejected locally without queuing an HTTP request.
 - The FDN SHALL encode the batch via the quickdraw-match protobuf codec as a `POST /quickdraw-matches` request with content type `application/protobuf`. On a `400`, `413` or `415` response it SHALL send the oldest record alone and retire it on any response, so one rejected record cannot block the store. A `409` whose body says a match ID already belongs to another event SHALL be handled the same way: the server already holds that match under the earlier event.
 - For each match record in the batch, the codec SHALL write:
