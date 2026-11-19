@@ -399,7 +399,9 @@ private:
             case ProvisionLookupResult::KEY_NOT_ISSUED:
                 endLookup(RegistrationOutcome::KEY_NOT_ISSUED);
                 return;
-            case ProvisionLookupResult::NO_PLAYER: endLookup(RegistrationOutcome::NO_PLAYER); return;
+            case ProvisionLookupResult::NO_PLAYER:
+                endLookup(RegistrationOutcome::NO_PLAYER);
+                return;
             case ProvisionLookupResult::SERVER_NOT_TRUSTED:
                 endLookup(RegistrationOutcome::SERVER_NOT_TRUSTED);
                 return;
