@@ -1709,8 +1709,8 @@ inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* 
 // The spec abandons only after the jack stays disconnected past the debounce.
 inline void countdownDebounceStartsFreshEachTenure(StateCleanupTests* suite) {
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
-    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
-        SerialIdentifier::OUTPUT_JACK, JackStatus::DISCONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(SerialIdentifier::OUTPUT_JACK,
+                                                            JackStatus::DISCONNECTED);
     MatchCountdown countdown(suite->ctx);
 
     mountState(&countdown, &suite->device);
@@ -1720,8 +1720,8 @@ inline void countdownDebounceStartsFreshEachTenure(StateCleanupTests* suite) {
     dismountState(&countdown, &suite->device);
 
     suite->fakeClock->advance(70000);
-    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(
-        SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTING);
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(SerialIdentifier::OUTPUT_JACK,
+                                                            JackStatus::CONNECTING);
     mountState(&countdown, &suite->device);
     EXPECT_FALSE(matchReturnsToIdle(countdown, suite->ctx.shootoutManager));
     suite->fakeClock->advance(500);
