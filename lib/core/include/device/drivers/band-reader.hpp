@@ -23,11 +23,10 @@ using BandTapHandler = std::function<void(const BandUid& uid)>;
 /**
  * A reader for ISO/IEC 14443-A bands and cards that reports UIDs and nothing
  * else: it never authenticates to, reads or writes a block, so the FDN holds no
- * card keys. The driver's exec() polls the reader each tick and reports a band
- * that enters the field as one tap until it leaves. A driver whose initialize()
- * boot check fails stays registered, so ask isResponding(). No hardware driver
- * exists until the part and its pins are confirmed, so an FDN registers none and
- * Device::getPeripheral finds no reader.
+ * card keys. The driver's exec() polls the reader each tick. A driver whose
+ * initialize() boot check fails stays registered, so ask isResponding(). No
+ * hardware driver exists until the part and its pins are confirmed, so an FDN
+ * registers none and Device::getPeripheral finds no reader.
  */
 class BandReader {
 public:
