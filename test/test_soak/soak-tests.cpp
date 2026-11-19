@@ -9,7 +9,9 @@
 // The long soak: seeds from the environment (see [env:native_soak] in
 // platformio.ini). Each seed prints one summary line; a failing one writes its
 // action log and findings under SOAK_LOG_DIR and, with SOAK_SHRINK=1, a
-// minimised action list that SOAK_REPLAY plays back.
+// minimised action list that SOAK_REPLAY plays back. SOAK_BLACKOUT_MINUTES=<m>
+// is ring-fill mode: every FDN is out of radio range for the first m minutes, so
+// PDN rings fill and refuse (give SOAK_MINUTES about m + 15 for the refill).
 
 namespace {
 
@@ -39,6 +41,7 @@ soak::SoakConfig configFor(uint64_t seed) {
     config.http.serverError = 0.05;
     config.http.transportFail = 0.02;
     config.http.lostResponse = 0.03;
+    config.schedule.fdnBlackoutMs = std::stoull(environment("SOAK_BLACKOUT_MINUTES", "0")) * 60000;
     return config;
 }
 
