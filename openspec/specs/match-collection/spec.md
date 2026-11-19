@@ -87,12 +87,17 @@ When the FDN receives a response (bounded in size so an oversized response body 
 - **Partial acceptance with per-entry rejections (non-empty `200 OK` body)**:
   - The FDN SHALL validate and decode the protobuf rejection list in response order, where each rejection carries `match_index`, `match_id` (`8-4-4-4-12` hexadecimal UUID text), up to `2` offending field names, and a rejection error code (mapping unrecognized future numeric codes to an unknown-error placeholder while preserving the raw numeric code).
   - Because the server commits all valid entries in the batch via per-match savepoints and permanently rejects the listed entries, the FDN SHALL retire the processed batch from its pending upload spool so rejected entries do not wedge or poison subsequent uploads, and SHALL log or surface the rejected entries.
+  - Except an entry rejected with `INVALID_EVENT_REFERENCE` (its players belong to an event that is not the server's active one): the FDN SHALL hold it in its store, behind the matches still to send, and SHALL NOT send it again until `GET /game-state` names a different active event, `30` minutes pass after the first currently held match was held, or the FDN restarts (the held set is kept in RAM). Held matches count toward the store's `32`; a store full of held matches withholds acknowledgements, so the PDNs keep their copies.
 - **Undecodable response or transport/batch-wide error (network error, timeout, `409 Conflict` when no active event is running, or `5xx`)**:
   - If a non-empty response body is malformed (such as a non-UUID `match_id` or more than `2` field names in a rejection) or the HTTP request fails with a transport or batch-wide error, the FDN SHALL retain the entire batch in its spool for retry on a subsequent upload cycle.
 
 #### Scenario: Partial rejection retires processed batch without poisoning future uploads
 - **WHEN** an FDN uploads a batch of 10 matches and the server responds with `200 OK` listing 1 rejected match (`SAME_PLAYER` on `player_a_id` and `player_b_id`)
 - **THEN** the FDN decodes and logs the rejection, retires the processed batch so the 1 rejected entry is not re-sent endlessly, and continues uploading subsequent batches
+
+#### Scenario: Match rejected for another event is held until that event is selected
+- **WHEN** an FDN uploads matches `1` and `2` and the server stores match `2` and rejects match `1` with `INVALID_EVENT_REFERENCE`
+- **THEN** the FDN holds match `1`, does not send it while `GET /game-state` names the same event, and sends it in the first cycle after the active event changes
 
 #### Scenario: Transient network or 5xx failure retains batch for retry
 - **WHEN** an FDN's `POST /quickdraw-matches` request times out or receives an HTTP 503 error
@@ -105,3 +110,10 @@ A PDN SHALL keep matches stored by older firmware in their original storage unch
 #### Scenario: Update over older-firmware matches
 - **WHEN** this firmware first boots on a PDN holding 5 matches stored by older firmware and plays a match
 - **THEN** the 5 older matches are still stored byte for byte and none was sent
+
+## Residual gaps
+
+These are decisions, not oversights.
+
+- **The FDN keeps its held matches in RAM only.** After a restart every held match goes up in the first batch and is held again if the server still rejects it. Re-sending is harmless: the server keeps one match per match ID.
+- **Held matches rotate through non-volatile storage.** Each cycle that has newer matches behind them moves every held match to the back of the store, at about 3 writes per held match. A power cut between taking a held match off the front and storing it at the back loses that match. Both costs are accepted.

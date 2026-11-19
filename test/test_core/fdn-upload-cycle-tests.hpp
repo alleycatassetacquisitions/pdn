@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -49,6 +50,61 @@ public:
     std::set<std::string> storedUnderAnEarlierEvent;
     std::set<std::string> accepted;
     size_t matchRequests = 0;
+};
+
+// alleycat-rs with two events. An ID stored under another event fails the whole
+// batch with the cross-event 409; otherwise a match whose players belong to the
+// other event is rejected alone with INVALID_EVENT_REFERENCE and the rest are
+// stored. GET /game-state names the active event.
+class TwoEventServer {
+public:
+    /** The id GET /game-state gives event @p event. */
+    static std::string eventId(int event) {
+        return "00000000-0000-4000-8000-0000000e000" + std::to_string(event);
+    }
+
+    /** Answers request @p request the way the server would. */
+    void answer(HttpRequest& request) {
+        if (request.path == FDN_GAME_STATE_ENDPOINT) {
+            request.onSuccess("{\"active_event\":{\"id\":\"" + eventId(activeEvent) +
+                              "\",\"name\":\"Event\"},\"scoring\":null}");
+            return;
+        }
+        if (request.path != MatchesApi::POST_QUICKDRAW_MATCHES_ENDPOINT) {
+            request.onSuccess("");
+            return;
+        }
+        const std::vector<alleycat_device_QuickdrawMatch> matches =
+        decodeTestRequest(request.payload);
+        for (const alleycat_device_QuickdrawMatch& match : matches) {
+            ++offered[match.id];
+            const std::map<std::string, int>::const_iterator stored = storedUnder.find(match.id);
+            if (stored != storedUnder.end() && stored->second != activeEvent) {
+                request.onError(
+                {WirelessError::INVALID_RESPONSE, "HTTP Error: 409", 409, CROSS_EVENT_409_BODY});
+                return;
+            }
+        }
+        std::vector<alleycat_device_QuickdrawMatchRejection> rejections;
+        for (size_t index = 0; index < matches.size(); ++index) {
+            if (playedIn.at(matches[index].id) != activeEvent) {
+                rejections.push_back(makeRejectionMessage(
+                static_cast<uint32_t>(index), matches[index].id,
+                alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE));
+                continue;
+            }
+            storedUnder[matches[index].id] = activeEvent;
+        }
+        request.onSuccess(rejections.empty() ? "" : encodeUploadResponse(rejections));
+    }
+
+    int activeEvent = 2;
+    // The event whose players each match names.
+    std::map<std::string, int> playedIn;
+    // Completed results the server holds, by the event they were stored under.
+    std::map<std::string, int> storedUnder;
+    // How many times each match id was sent.
+    std::map<std::string, int> offered;
 };
 
 class UploadCycleTests : public FdnRecordUploaderTests {
@@ -260,4 +316,70 @@ TEST_F(RelayUploadEndToEndTests, crossEventLeftoverDoesNotStopThePdnHandingMatch
     EXPECT_LT(store->getMatchRecords().getStoredCount(), FDN_MATCH_RECORD_CAPACITY)
     << "the FDN's match ring is full, so it acks nothing";
     EXPECT_EQ(pendingOnThePdn(), 0u) << "every match handed over should have been acknowledged";
+}
+
+// Owner ruling (RELAY-2): a match rejected because the server has another event
+// selected is held, not retired. Match 1 belongs to event 1 while event 2 runs.
+inline void storeOneMatchOfEachEvent(UploadCycleTests* suite, TwoEventServer& server) {
+    const std::string first = "00000000-0000-4000-8000-000000000001";
+    const std::string second = "00000000-0000-4000-8000-000000000002";
+    server.playedIn = {{first, 1}, {second, 2}};
+    suite->storeMatch(1);
+    suite->storeMatch(2);
+}
+
+TEST_F(UploadCycleTests, matchRejectedForAnotherEventIsHeldAndNotResentWhileItRuns) {
+    TwoEventServer server;
+    storeOneMatchOfEachEvent(this, server);
+    runCycle(server);
+    EXPECT_EQ(server.storedUnder.count("00000000-0000-4000-8000-000000000002"), 1u);
+    EXPECT_EQ(storedMatches(), 1u) << "the match of the other event was retired";
+
+    runCycle(server);
+    runCycle(server);
+    EXPECT_EQ(server.offered["00000000-0000-4000-8000-000000000001"], 1)
+    << "a held match was sent again while the same event ran";
+    EXPECT_EQ(storedMatches(), 1u);
+}
+
+TEST_F(UploadCycleTests, heldMatchGoesUpWhenTheServerSelectsItsEvent) {
+    TwoEventServer server;
+    storeOneMatchOfEachEvent(this, server);
+    runCycle(server);
+    server.activeEvent = 1;
+    runCycle(server);
+    EXPECT_EQ(server.storedUnder["00000000-0000-4000-8000-000000000001"], 1);
+    EXPECT_EQ(storedMatches(), 0u);
+}
+
+TEST_F(UploadCycleTests, heldMatchIsRetriedOnTheSlowTimer) {
+    TwoEventServer server;
+    storeOneMatchOfEachEvent(this, server);
+    runCycle(server);
+    clock.advance(FDN_HELD_MATCH_RETRY_MS);
+    runCycle(server);
+    EXPECT_EQ(server.offered["00000000-0000-4000-8000-000000000001"], 2);
+    EXPECT_EQ(storedMatches(), 1u) << "rejected again, it is held again";
+}
+
+// Clearing #526's 409 by selecting the earlier event again must not cost the
+// running event's matches: the server rejects them for the wrong event then.
+TEST_F(UploadCycleTests, reselectingTheEarlierEventCostsNoMatches) {
+    const std::string leftover = "00000000-0000-4000-8000-000000000001";
+    const std::string second = "00000000-0000-4000-8000-000000000002";
+    const std::string third = "00000000-0000-4000-8000-000000000003";
+    TwoEventServer server;
+    server.playedIn = {{leftover, 1}, {second, 2}, {third, 2}};
+    server.storedUnder[leftover] = 1;  // the opponent's copy went up during event 1
+    server.activeEvent = 1;
+    storeMatch(1);
+    storeMatch(2);
+    storeMatch(3);
+
+    runCycle(server);
+    server.activeEvent = 2;
+    runCycle(server);
+
+    EXPECT_EQ(server.storedUnder.count(second), 1u) << "match 2 of the running event is gone";
+    EXPECT_EQ(server.storedUnder.count(third), 1u) << "match 3 of the running event is gone";
 }
