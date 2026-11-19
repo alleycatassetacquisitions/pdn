@@ -106,6 +106,9 @@ private:
     struct RxSeqRecord {
         std::array<uint8_t, 6> mac;
         uint8_t lastSeqId;
+        // Armed when a seqId is accepted; past STALE_AFTER_MS no copy of that frame
+        // can still arrive, so an equal seqId is a new frame.
+        SimpleTimer staleTimer;
     };
     OnAbandon onAbandon;
     // Seeded at construction so a rebooted peer does not systematically restart

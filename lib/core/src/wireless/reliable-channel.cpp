@@ -86,14 +86,16 @@ bool ReliableChannelBase::isDuplicateReliableRx(const uint8_t* fromMac, uint8_t 
     if (seqId == 0 || fromMac == nullptr) return false;
     for (RxSeqRecord& r : rxSeq) {
         if (std::memcmp(r.mac.data(), fromMac, 6) == 0) {
-            if (r.lastSeqId == seqId) return true;
+            if (r.lastSeqId == seqId && !r.staleTimer.expired()) return true;
             r.lastSeqId = seqId;
+            r.staleTimer.setTimer(Resender::STALE_AFTER_MS);
             return false;
         }
     }
     RxSeqRecord rec;
     std::memcpy(rec.mac.data(), fromMac, 6);
     rec.lastSeqId = seqId;
+    rec.staleTimer.setTimer(Resender::STALE_AFTER_MS);
     if (rxSeq.size() >= MAX_RX_SENDERS) {
         rxSeq.erase(rxSeq.begin());
     }

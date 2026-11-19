@@ -77,6 +77,26 @@ TEST(ReliableChannelBaseTest, duplicateSeqIdRemainsSuppressedAndFreshSeedDeliver
     EXPECT_TRUE(ch.isDuplicateReliableRx(peer.data(), 42));
 }
 
+TEST(ReliableChannelBaseTest, staleCursorDoesNotSuppressAnEqualSeqId) {
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    clock.setTime(1000);
+    Resender resender(nullptr);
+    ProbeChannel ch(nullptr, &resender, PktType::kRoleAnnounce, [](uint8_t, const uint8_t*) {});
+    std::array<uint8_t, 6> peer = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+
+    EXPECT_FALSE(ch.isDuplicateReliableRx(peer.data(), 24));
+    clock.advance(Resender::STALE_AFTER_MS);
+    EXPECT_TRUE(ch.isDuplicateReliableRx(peer.data(), 24));
+
+    clock.advance(1);
+    EXPECT_FALSE(ch.isDuplicateReliableRx(peer.data(), 24));
+    // The new frame re-arms the window: its own retransmit is still a duplicate.
+    clock.advance(Resender::STALE_AFTER_MS);
+    EXPECT_TRUE(ch.isDuplicateReliableRx(peer.data(), 24));
+    SimpleTimer::setPlatformClock(nullptr);
+}
+
 TEST(ReliableChannelBaseTest, rxDedupEvictsOldestSenderWhenFull) {
     // The per-channel RX dedup cursor table is capped (kMaxRxSenders=32). Senders
     // come and go across a session, so when a 33rd distinct sender arrives the
