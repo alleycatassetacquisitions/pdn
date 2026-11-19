@@ -8,20 +8,21 @@ An FDN SHALL set its system UTC wall clock by SNTP from the NTP server in its bu
 - **WHEN** a cold-booted FDN joins Wi-Fi for its first upload cycle
 - **THEN** it asks the configured NTP server for the time and sets its UTC wall clock from the answer
 
-## MODIFIED Requirements
+### Requirement: Wall-clock updates leave the monotonic clock alone
 
-### Requirement: Monotonic timer isolation
-
-Updating the UTC wall clock SHALL NOT alter the monotonic millisecond clock.
-
-- The monotonic clock SHALL continue to report elapsed milliseconds since boot, used by protocol timers, HTTP request timeouts, and match draw-time measurements.
-- The UTC wall clock SHALL report signed 64-bit UTC milliseconds since `1970-01-01T00:00:00Z`.
+Setting the UTC wall clock SHALL NOT alter the monotonic millisecond clock, which reports milliseconds since boot for protocol timers, HTTP request timeouts and match draw-time measurements. The UTC wall clock SHALL report signed 64-bit UTC milliseconds since `1970-01-01T00:00:00Z`.
 
 #### Scenario: In-flight HTTP request does not time out when SNTP sets the clock
 - **WHEN** an HTTP request starts when the monotonic clock is at `5000` ms and SNTP sets the UTC wall clock to `1792359000000` ms while the request is in flight
 - **THEN** the UTC wall clock jumps to `1792359000000` ms, while the monotonic clock remains near `5000` ms and the in-flight request does not spuriously time out
 
 ## REMOVED Requirements
+
+### Requirement: Monotonic timer isolation
+
+**Reason**: Its only scenario has the `Date` header setting the clock, which no longer happens.
+
+**Migration**: The same rule, with an SNTP scenario, is "Wall-clock updates leave the monotonic clock alone".
 
 ### Requirement: IMF-fixdate parsing
 
