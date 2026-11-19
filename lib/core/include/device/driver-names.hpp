@@ -17,3 +17,4 @@ inline const std::string PLATFORM_CLOCK_DRIVER_NAME       = "platform_clock";
 inline const std::string LOGGER_DRIVER_NAME               = "logger";
 inline const std::string STORAGE_DRIVER_NAME              = "storage";
 inline const std::string FIRMWARE_STORE_DRIVER_NAME = "firmware_store";
+inline const std::string BAND_READER_DRIVER_NAME = "band_reader";
