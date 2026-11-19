@@ -51,8 +51,6 @@ bool containsIgnoreCase(const char* haystack, const char* needle) {
 
 bool teamNameIsHunter(const char* teamName) { return equalsIgnoreCase(teamName, "Hunter"); }
 
-bool teamNameIsBounty(const char* teamName) { return equalsIgnoreCase(teamName, "Bounty"); }
-
 Allegiance allegianceFromAffiliationName(const char* affiliationName) {
     if (affiliationName == nullptr || affiliationName[0] == '\0') {
         return Allegiance::ALLEYCAT;
@@ -63,7 +61,8 @@ Allegiance allegianceFromAffiliationName(const char* affiliationName) {
     if (containsIgnoreCase(affiliationName, "Helix")) {
         return Allegiance::HELIX;
     }
-    if (containsIgnoreCase(affiliationName, "Resistance")) {
+    if (containsIgnoreCase(affiliationName, "Resistance") ||
+        containsIgnoreCase(affiliationName, "Reboot")) {
         return Allegiance::RESISTANCE;
     }
     return Allegiance::ALLEYCAT;
@@ -283,18 +282,11 @@ void Player::syncLegacyFieldsFromRegistration() {
         symbol.updateFromUserIdString(id);
     }
 
-    if (teamNameIsHunter(registrationTeam.name)) {
-        hunter = true;
-    } else if (teamNameIsBounty(registrationTeam.name)) {
-        hunter = false;
-    } else if (hasTeam()) {
-        hunter = true;
-        LOG_W(TAG, "Unknown team name '%s'; defaulting to hunter", registrationTeam.name);
-    }
+    // Only "Hunter" hunts: "Bounty", no team or a team this build does not know is Bounty.
+    hunter = teamNameIsHunter(registrationTeam.name);
 
-    if (!registrationAffiliations.empty()) {
-        const Affiliation& primary = registrationAffiliations.front();
-        setAllegiance(allegianceFromAffiliationName(primary.affiliationName));
-        faction = primary.affiliationName;
-    }
+    const bool hasAffiliation = !registrationAffiliations.empty();
+    setAllegiance(allegianceFromAffiliationName(
+    hasAffiliation ? registrationAffiliations.front().affiliationName : nullptr));
+    if (hasAffiliation) faction = registrationAffiliations.front().affiliationName;
 }

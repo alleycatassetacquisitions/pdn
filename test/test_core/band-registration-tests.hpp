@@ -453,9 +453,8 @@ inline void bandRegistrationKeyOnlyFromTheConnectedFdnsJack(BandRegistrationTest
     suite->cableForgedPeer(OTHER_FDN_MAC, DeviceType::FDN);
     suite->sendProfile(suite->fdnMac, "Ada");
     BandRegistrationTests::sendKey(suite->pdnIn, OTHER_FDN_MAC, 0x22);
-    suite->step();
-    EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
-    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld())
+    suite->advance(100);
+    EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER)
     << "a key from another FDN's jack joined the attempt";
 
     BandRegistrationTests::sendKey(suite->pdnOut, suite->fdnMac, 0x33);
@@ -492,7 +491,6 @@ inline void bandRegistrationOnePieceTimesOutAndIsWiped(BandRegistrationTests* su
     BandRegistrationTests::sendKey(suite->pdnOut, suite->fdnMac, 0x55);
     suite->step();
     ASSERT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
-    ASSERT_TRUE(suite->holdsKeyOf(0x55));
 
     suite->advance(USER_DATA_FETCH_TIMEOUT_MS + 100);
     EXPECT_TRUE(suite->shows("Unable to"));
@@ -503,17 +501,36 @@ inline void bandRegistrationOnePieceTimesOutAndIsWiped(BandRegistrationTests* su
     EXPECT_FALSE(suite->playerProvider.hasPlayer());
     EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
 
-    // The next attempt starts clean: a profile timed out, then a key from
-    // another FDN is a first piece, not the pair.
+    // The next attempt starts clean: the FDN's retransmit of the profile the
+    // failure page refused counts, times out alone, then a key from another
+    // FDN is a first piece, not the pair.
+    --suite->forgedSeqId;
     suite->sendProfile(suite->fdnMac, "Ada");
+    suite->step();
+    ASSERT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
     suite->advance(USER_DATA_FETCH_TIMEOUT_MS + FETCH_FAILURE_PAGE_TIMEOUT_MS + 200);
     ASSERT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
     suite->cableForgedPeer(OTHER_FDN_MAC, DeviceType::FDN);
     BandRegistrationTests::sendKey(suite->pdnIn, OTHER_FDN_MAC, 0x56);
     suite->advance(100);
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
-    EXPECT_TRUE(suite->holdsKeyOf(0x56));
     EXPECT_FALSE(suite->playerProvider.hasPlayer());
+}
+
+// A profile refused because no FDN was Connected yet still counts when the FDN
+// retransmits it (same seqId) once the cable is up.
+inline void bandRegistrationEarlyProfileCountsOnRetransmit(BandRegistrationTests* suite) {
+    suite->fdnCabled = false;
+    suite->advance(100);
+    suite->sendProfile(suite->fdnMac, "Ada");
+    suite->fdnCabled = true;
+    suite->advance(200);
+    ASSERT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
+    --suite->forgedSeqId;
+    suite->sendProfile(suite->fdnMac, "Ada");
+    BandRegistrationTests::sendKey(suite->pdnOut, suite->fdnMac, 0x57);
+    suite->advance(100);
+    EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::WELCOME);
 }
 
 // A lookup that issues no key: the FDN reports a failure, the PDN shows it,

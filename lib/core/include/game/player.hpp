@@ -21,7 +21,7 @@ enum class Allegiance {
  * symbol. */
 class Player {
 public:
-    /** Fires after the hunter/bounty role flips or a registration profile is applied or cleared. */
+    /** Fires on a role flip and on a registration profile applied or cleared (despite its name). */
     using RoleChangedCallback = std::function<void()>;
 
     Player() = default;
@@ -36,9 +36,9 @@ public:
     void toggleHunter();
 
     /**
-     * Registers the role-flip observer (one slot). Fires only on an actual
-     * flip, never on a set that reasserts the current role, and once for each
-     * registration profile applied or cleared.
+     * Registers the observer (one slot): fires on a hunter/bounty flip (not on a
+     * set that reasserts it), on every registration profile applied, and on a
+     * clear while a profile is held.
      */
     void setOnRoleChanged(RoleChangedCallback callback);
 
@@ -133,8 +133,7 @@ public:
 
     /**
      * Replaces registration fields and syncs legacy gameplay fields, then fires
-     * the role-changed observer once. Used by the device player codec and
-     * demo registration paths.
+     * the role-changed observer once.
      */
     void applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
                                   const Team& team, const std::vector<Affiliation>& affiliations);

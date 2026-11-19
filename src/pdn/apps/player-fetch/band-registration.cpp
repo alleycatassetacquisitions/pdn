@@ -4,7 +4,6 @@
 #include "device/drivers/logger.hpp"
 
 #include <cstring>
-#include <optional>
 
 static const char TAG[] = "BandRegistration";
 
@@ -18,6 +17,12 @@ BandRegistration::BandRegistration(WirelessManager* wirelessManager,
     ApplicationFrameKind::RECORD_KEY,
     [this](SerialIdentifier jack, const uint8_t* payload, size_t length) {
         onRecordKey(jack, payload, length);
+    });
+    // Refused ahead of duplicate detection, so a frame that came too early does
+    // not use up the seqId its retransmit carries.
+    provisionChannel.setAdmitFilter([this](const uint8_t* fromMac, const PlayerProvisionPacket&) {
+        return phase == Phase::OPEN && fdnJackOf(fromMac).has_value() ? FrameAdmission::DEDUPLICATE
+                                                                      : FrameAdmission::REFUSE;
     });
     provisionChannel.onReceive([this](const uint8_t* fromMac, const PlayerProvisionPacket& packet) {
         onProvision(fromMac, packet);
@@ -33,76 +38,66 @@ BandRegistration::~BandRegistration() {
 
 void BandRegistration::open() {
     dropPieces();
-    isOpen = true;
-    answer = Answer::NONE;
+    phase = Phase::OPEN;
 }
 
-void BandRegistration::close(bool keepKey) {
+void BandRegistration::close(bool commitKey) {
+    if (commitKey && pendingKey.isHeld())
+        playerProvider->getRecordKey()->set(pendingKey.getBytes());
     dropPieces();
-    if (!keepKey) playerProvider->getRecordKey()->clear();
-    isOpen = false;
-    answer = Answer::NONE;
+    phase = Phase::CLOSED;
 }
-
-BandRegistration::Answer BandRegistration::getAnswer() const { return answer; }
 
 const Player* BandRegistration::getFoundPlayer() const {
-    return answer == Answer::FOUND ? &heldProfile : nullptr;
+    return pendingKey.isHeld() && heldProfile.hasRegistrationProfile() ? &heldProfile : nullptr;
 }
 
-void BandRegistration::setOnAnswerChanged(std::function<void()> callback) {
-    onAnswerChanged = std::move(callback);
+bool BandRegistration::hasFailed() const { return phase == Phase::FAILED; }
+
+void BandRegistration::setOnPieceTaken(std::function<void()> callback) {
+    onPieceTaken = std::move(callback);
 }
 
 void BandRegistration::onRecordKey(SerialIdentifier jack, const uint8_t* payload, size_t length) {
-    if (!isOpen) return;
+    if (phase != Phase::OPEN) return;
     if (length != RECORD_KEY_SIZE) {
         LOG_W(TAG, "Ignoring a record key of %u bytes", static_cast<unsigned>(length));
         return;
     }
     // A frame names no sender; the jack's Connected peer is who wrote it.
-    const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(jack);
-    if (peerMac == nullptr || !isConnectedFdn(jack, peerMac)) {
+    if (!isConnectedFdn(jack)) {
         LOG_W(TAG, "Ignoring a record key from a jack without a Connected FDN");
         return;
     }
-    if (!bindAttempt(jack, peerMac)) return;
-    playerProvider->getRecordKey()->set(payload);
-    setAnswer(profileIsHeld ? Answer::FOUND : Answer::PARTIAL);
+    if (!bindAttempt(jack, remoteDeviceCoordinator->getPeerMac(jack))) return;
+    pendingKey.set(payload);
+    if (onPieceTaken) onPieceTaken();
 }
 
 void BandRegistration::onProvision(const uint8_t* fromMac, const PlayerProvisionPacket& packet) {
-    if (!isOpen) return;
-    std::optional<SerialIdentifier> fdnJack;
-    for (SerialIdentifier jack : RemoteDeviceCoordinator::HELLO_JACKS) {
-        if (isConnectedFdn(jack, fromMac)) fdnJack = jack;
-    }
-    if (!fdnJack.has_value()) {
-        LOG_W(TAG, "Ignoring a provision packet from a sender not Connected as an FDN");
-        return;
-    }
-    if (!bindAttempt(*fdnJack, fromMac)) return;
-
-    // The failure ends the attempt; FetchUser wipes what it held as it shows it.
+    // The admit filter let it through, so the sender is an FDN Connected on a jack.
+    if (!bindAttempt(*fdnJackOf(fromMac), fromMac)) return;
     if (packet.status == static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED)) {
         LOG_E(TAG, "The FDN reported the band lookup failed");
-        isOpen = false;
-        setAnswer(Answer::FAILED);
-        return;
-    }
-    if (!PlayerProvisionCodec::decode(packet, heldProfile)) {
+        phase = Phase::FAILED;
+    } else if (!PlayerProvisionCodec::decode(packet, heldProfile)) {
         LOG_W(TAG, "Ignoring an undecodable provision packet");
         return;
     }
-    profileIsHeld = true;
-    setAnswer(playerProvider->getRecordKey()->isHeld() ? Answer::FOUND : Answer::PARTIAL);
+    if (onPieceTaken) onPieceTaken();
 }
 
-bool BandRegistration::isConnectedFdn(SerialIdentifier jack, const uint8_t* mac) const {
-    const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(jack);
+bool BandRegistration::isConnectedFdn(SerialIdentifier jack) const {
     return remoteDeviceCoordinator->getJackStatus(jack) == JackStatus::CONNECTED &&
-           remoteDeviceCoordinator->getPeerDeviceType(jack) == DeviceType::FDN &&
-           peerMac != nullptr && memcmp(peerMac, mac, 6) == 0;
+           remoteDeviceCoordinator->getPeerDeviceType(jack) == DeviceType::FDN;
+}
+
+std::optional<SerialIdentifier> BandRegistration::fdnJackOf(const uint8_t* mac) const {
+    for (SerialIdentifier jack : RemoteDeviceCoordinator::HELLO_JACKS) {
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(jack);
+        if (isConnectedFdn(jack) && peerMac != nullptr && memcmp(peerMac, mac, 6) == 0) return jack;
+    }
+    return std::nullopt;
 }
 
 bool BandRegistration::bindAttempt(SerialIdentifier jack, const uint8_t* mac) {
@@ -121,11 +116,6 @@ bool BandRegistration::bindAttempt(SerialIdentifier jack, const uint8_t* mac) {
 
 void BandRegistration::dropPieces() {
     heldProfile.clearRegistrationProfile();
-    profileIsHeld = false;
+    pendingKey.clear();
     attemptIsBound = false;
-}
-
-void BandRegistration::setAnswer(Answer changed) {
-    answer = changed;
-    if (onAnswerChanged) onAnswerChanged();
 }

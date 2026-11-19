@@ -28,7 +28,7 @@ void AwaitBandState::onStateMounted(PDN* pdn) {
     playerProvider->clear();
     bandRegistration->open();
     // A hold seen in a later loop yields to the attempt; see onStateLoop.
-    bandRegistration->setOnAnswerChanged([this]() { transitionToFetchUserState = true; });
+    bandRegistration->setOnPieceTaken([this]() { transitionToFetchUserState = true; });
     sinceMount.setTimer(0);
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->setEligible(true);
@@ -53,7 +53,7 @@ void AwaitBandState::onStateLoop(PDN* pdn) {
 }
 
 void AwaitBandState::onStateDismounted(PDN* pdn) {
-    bandRegistration->setOnAnswerChanged(nullptr);
+    bandRegistration->setOnPieceTaken(nullptr);
     // FetchUser carries the attempt on; any other exit ends it.
     if (!transitionToFetchUserState) {
         bandRegistration->close(false);

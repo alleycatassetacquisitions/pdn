@@ -23,14 +23,15 @@ void FetchUserState::onStateMounted(PDN* pdn) {
     transitionToAwaitBandState = false;
     showLoadingGlyphs(pdn);
     fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
-    // The piece that led here, or the whole pair, may already be in.
-    bandRegistration->setOnAnswerChanged([this]() { answerChanged = true; });
-    answerChanged = true;
+    // The piece that led here, or the whole pair, may already be in. Applying a
+    // profile resends the context, so it waits for the loop, out of the callback.
+    bandRegistration->setOnPieceTaken([this]() { pieceTaken = true; });
+    pieceTaken = true;
 }
 
 void FetchUserState::onStateLoop(PDN* pdn) {
-    if (answerChanged) {
-        answerChanged = false;
+    if (pieceTaken) {
+        pieceTaken = false;
         takeAnswer();
     }
 
@@ -59,13 +60,13 @@ void FetchUserState::onStateLoop(PDN* pdn) {
 }
 
 void FetchUserState::onStateDismounted(PDN* pdn) {
-    bandRegistration->setOnAnswerChanged(nullptr);
-    // The key stays only with the profile it came with.
+    bandRegistration->setOnPieceTaken(nullptr);
+    // The key goes to the provider only with the profile it came with.
     bandRegistration->close(transitionToWelcomeState);
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     showingFailurePage = false;
     failurePagePending = false;
-    answerChanged = false;
+    pieceTaken = false;
     transitionToWelcomeState = false;
     transitionToAwaitBandState = false;
     fetchTimer.invalidate();
@@ -73,10 +74,10 @@ void FetchUserState::onStateDismounted(PDN* pdn) {
 }
 
 void FetchUserState::takeAnswer() {
-    if (bandRegistration->getAnswer() == BandRegistration::Answer::FOUND) {
-        onPlayerFound(*bandRegistration->getFoundPlayer());
-    } else if (bandRegistration->getAnswer() == BandRegistration::Answer::FAILED) {
+    if (bandRegistration->hasFailed()) {
         onPlayerLookupFailed();
+    } else if (const Player* found = bandRegistration->getFoundPlayer()) {
+        onPlayerFound(*found);
     }
 }
 

@@ -57,7 +57,7 @@ Once the FDN decodes a valid player profile with its record key (or a lookup fai
 - **WHEN** an unprovisioned PDN receives a wireless profile-delivery or lookup-failure frame from a sender MAC that is not Connected as an FDN on a physical serial jack
 - **THEN** the PDN ignores the frame and remains on the provisioning screen
 
-#### Scenario: Record key from a jack without a Connected FDN is ignored
+#### Scenario: Record key from a jack other than the attempt's FDN is ignored
 - **WHEN** a PDN on the band waiting screen receives a record-key frame on a jack whose Connected peer is a PDN, or, once a profile from the FDN on its other jack started the attempt, on that other FDN's jack
 - **THEN** the PDN holds no record key from it
 

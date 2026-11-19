@@ -131,37 +131,54 @@ inline void playerReactionTimeAverageCalculatesCorrectly(Player* player) {
 
 // The role-flip observer is what drives the connection-context re-broadcast, so
 // it must fire on every real flip and stay silent on a set that reasserts the
-// current role — an idle re-registration would otherwise put a redundant frame
-// on the air for every peer. A profile applied or cleared changes the context's
-// `registered` byte, so each fires it once, however many fields moved.
-inline void playerRoleChangeFiresOnlyOnFlip(Player* player) {
-    int flips = 0;
+// current role. Every profile applied, and a clear of a held one, fires once.
+inline void playerRoleChangeFiresOnFlipAndProfileChange(Player* player) {
+    int fires = 0;
     player->setIsHunter(true);
-    player->setOnRoleChanged([&flips]() { flips++; });
+    player->setOnRoleChanged([&fires]() { fires++; });
 
     player->setIsHunter(true);
-    EXPECT_EQ(flips, 0);
+    EXPECT_EQ(fires, 0);
 
     player->setIsHunter(false);
-    EXPECT_EQ(flips, 1);
+    EXPECT_EQ(fires, 1);
     EXPECT_FALSE(player->isHunter());
 
     player->toggleHunter();
-    EXPECT_EQ(flips, 2);
+    EXPECT_EQ(fires, 2);
     EXPECT_TRUE(player->isHunter());
 
     Team bountyTeam;
     std::snprintf(bountyTeam.name, sizeof(bountyTeam.name), "%s", "Bounty");
     player->applyRegistrationProfile(UUIDBytes{}, "Ada", bountyTeam, {});
-    EXPECT_EQ(flips, 3) << "a profile that flips the role fires once";
+    EXPECT_EQ(fires, 3) << "a profile that flips the role fires once";
     EXPECT_FALSE(player->isHunter());
     player->applyRegistrationProfile(UUIDBytes{}, "Ada", bountyTeam, {});
-    EXPECT_EQ(flips, 4);
+    EXPECT_EQ(fires, 4);
 
     player->clearRegistrationProfile();
-    EXPECT_EQ(flips, 5);
+    EXPECT_EQ(fires, 5);
     player->clearRegistrationProfile();
-    EXPECT_EQ(flips, 5) << "clearing with no profile held changes nothing";
+    EXPECT_EQ(fires, 5) << "clearing with no profile held changes nothing";
+}
+
+// Only "Hunter" hunts; a team this build does not know, or none, is Bounty.
+// "Reboot" is Resistance, and no affiliation is Alleycat.
+inline void playerProfileMapsRoleAndAllegiance(Player* player) {
+    Team strangeTeam;
+    strangeTeam.id.bytes[0] = 1;
+    std::snprintf(strangeTeam.name, sizeof(strangeTeam.name), "%s", "Goats");
+    Affiliation reboot;
+    std::snprintf(reboot.affiliationName, sizeof(reboot.affiliationName), "%s", "Reboot Crew");
+    player->setIsHunter(true);
+    player->applyRegistrationProfile(UUIDBytes{}, "Ada", strangeTeam, {reboot});
+    EXPECT_FALSE(player->isHunter());
+    EXPECT_EQ(player->getAllegiance(), Allegiance::RESISTANCE);
+
+    player->setIsHunter(true);
+    player->applyRegistrationProfile(UUIDBytes{}, "Ada", Team(), {});
+    EXPECT_FALSE(player->isHunter()) << "no team";
+    EXPECT_EQ(player->getAllegiance(), Allegiance::ALLEYCAT);
 }
 
 // toProfile is what a peer decodes out of the connection context, so gameRole

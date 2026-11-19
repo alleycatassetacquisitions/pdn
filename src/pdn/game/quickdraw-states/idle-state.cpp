@@ -137,7 +137,7 @@ void Idle::renderStats(PDN* pdn) {
     pdn->getDisplay()->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
 
     if (statsIndex == NAME_SCREEN_INDEX) {
-        // A nil player UUID has no name to show; the first screen says so instead.
+        // A nil player UUID is unregistered, whatever name it holds.
         // "UNREGISTERED" is wider than the stats panel, so it takes two lines.
         pdn->getDisplay()
         ->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)

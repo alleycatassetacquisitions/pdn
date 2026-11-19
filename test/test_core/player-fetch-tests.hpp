@@ -185,18 +185,12 @@ inline void fetchUserFailedLookupShowsFailurePage(PlayerFetchTestSuite* suite) {
     expectFailurePageThenAwaitBand(suite, &fetch);
 }
 
-// A timed-out attempt drops the key it got at once, not when the failure page ends.
+// The 10 s without the pair ends on the failure page.
 inline void fetchUserTimeoutShowsFailurePage(PlayerFetchTestSuite* suite) {
     EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Unable to"), _, _));
     FetchUserState fetch(&suite->playerProvider, &suite->bandRegistration);
     mountFetchUser(suite, &fetch);
-    const uint8_t key[RECORD_KEY_SIZE] = {0x5A};
-    suite->playerProvider.getRecordKey()->set(key);
-    suite->fakeClock->advance(USER_DATA_FETCH_TIMEOUT_MS);
+    suite->fakeClock->advance(USER_DATA_FETCH_TIMEOUT_MS + 1);
     fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(suite->playerProvider.getRecordKey()->isHeld()) << "not yet timed out";
-    suite->fakeClock->advance(1);
-    fetch.onStateLoop(&suite->device);
-    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
     expectFailurePageThenAwaitBand(suite, &fetch);
 }

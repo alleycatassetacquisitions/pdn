@@ -29,7 +29,8 @@ constexpr int WELCOME_MESSAGE_TIMEOUT_MS = 5000;
 class AwaitBandState : public ConnectState<PDN> {
 public:
     /**
-     * The band waiting screen. Opens @p bandRegistration for its tenure; while it is up,
+     * The band waiting screen. Opens @p bandRegistration on mount and closes it on any exit
+     * but the one to FetchUser; while it is up,
      * @p firmwareUpdateManager (may be null) takes updates.
      */
     AwaitBandState(RemoteDeviceCoordinator* remoteDeviceCoordinator, PlayerProvider* playerProvider,
@@ -119,7 +120,7 @@ private:
     bool transitionToAwaitBandState = false;
     bool showingFailurePage = false;
     bool failurePagePending = false;
-    bool answerChanged = false;
+    bool pieceTaken = false;
 };
 
 class ChooseTeamState : public TypedState<PDN> {

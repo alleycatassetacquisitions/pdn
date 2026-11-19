@@ -671,8 +671,12 @@ TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
 // PLAYER TESTS
 // ============================================
 
-TEST_F(PlayerTestSuite, roleChangeFiresOnlyOnFlip) {
-    playerRoleChangeFiresOnlyOnFlip(player);
+TEST_F(PlayerTestSuite, roleChangeFiresOnFlipAndProfileChange) {
+    playerRoleChangeFiresOnFlipAndProfileChange(player);
+}
+
+TEST_F(PlayerTestSuite, profileMapsRoleAndAllegiance) {
+    playerProfileMapsRoleAndAllegiance(player);
 }
 
 TEST_F(PlayerTestSuite, profileCarriesRoleAndIdentity) {
@@ -1166,6 +1170,9 @@ TEST_F(BandRegistrationTests, profileOnlyFromAConnectedFdn) {
 }
 TEST_F(BandRegistrationTests, onePieceTimesOutAndIsWiped) {
     bandRegistrationOnePieceTimesOutAndIsWiped(this);
+}
+TEST_F(BandRegistrationTests, earlyProfileCountsOnRetransmit) {
+    bandRegistrationEarlyProfileCountsOnRetransmit(this);
 }
 TEST_F(BandRegistrationTests, lookupFailureShowsTheFailurePageThenWaits) {
     bandRegistrationLookupFailureShowsTheFailurePageThenWaits(this);

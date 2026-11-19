@@ -426,8 +426,7 @@ bool MatchManager::appendRecordToStorage(const Match& match) {
     matchSlotKey(nextSeq, key);
     TaggedMatchRecord record{};
     match.serialize(reinterpret_cast<uint8_t*>(&record.record));
-    // Tagged once, here, under the key held now. Practice matches never get
-    // here; a match between two players with no key is stored with a zero tag.
+    // Tagged once, here, under the key held now.
     if (!tagMatchRecord(recordKey, record)) {
         LOG_W(MATCH_MANAGER_TAG, "Match %s has no record key; its tag is zero", match.getMatchId());
     }
