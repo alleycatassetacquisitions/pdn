@@ -21,6 +21,8 @@ public:
     void SetUp() override {
         SimpleTimer::setPlatformClock(&clock);
         clock.setTime(1);
+        // A set wall clock, as after SNTP: cycles get the plain cap.
+        clock.setUnixTimeMs(1792359000000LL);
         ON_CALL(httpClient, queueRequest(testing::_))
         .WillByDefault(testing::Invoke([this](HttpRequest&& request) {
             requests.push_back(std::move(request));
@@ -312,6 +314,24 @@ TEST_F(FdnRecordUploaderTests, cycleCapReturnsTheRadioAndIgnoresALateAnswer) {
     EXPECT_EQ(storedMatches(), 1u) << "kept: the answer came after the cap";
 }
 
+// Catches a first cycle after a cold boot that the cap ends while the HTTP
+// client still waits for SNTP: without a set clock the cycle also gets the
+// client's clock wait before it gives the radio back.
+TEST_F(FdnRecordUploaderTests, cycleBeforeTheClockIsSetAllowsTheClockWait) {
+    clock.setUnixTimeMs(0);
+    storeMatch(1);
+    uploader->sync();
+
+    clock.advance(FDN_UPLOAD_CYCLE_CAP_MS + 1);
+    uploader->sync();
+    EXPECT_EQ(wirelessManager->getCurrentMode(), WirelessMode::WIFI)
+    << "capped before the clock wait";
+
+    clock.advance(TlsClockGate::CLOCK_WAIT_MS);
+    uploader->sync();
+    EXPECT_EQ(wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
+}
+
 TEST_F(FdnRecordUploaderTests, skipsWhileCabledThenUploadsOnceUnplugged) {
     storeMatch(1);
     cabled = true;
@@ -351,14 +371,14 @@ TEST_F(FdnRecordUploaderTests, legacyMatchesNamespaceUntouched) {
 }
 
 // Catches a refused request that still raises Wi-Fi or loses records: the
-// client refuses every request as the ESP32 driver does without a trusted
-// server, the radio stays on ESP-NOW, and the records wait for the next cycle.
-TEST_F(FdnRecordUploaderTests, refusedAsUntrustedKeepsRecordsAndTheRadio) {
+// client refuses every request as the ESP32 driver does when the server
+// address is not https://, the radio stays on ESP-NOW, and the records wait.
+TEST_F(FdnRecordUploaderTests, refusedAddressKeepsRecordsAndTheRadio) {
     int refused = 0;
     ON_CALL(httpClient, queueRequest(testing::_))
     .WillByDefault(testing::Invoke([&refused](HttpRequest&& request) {
         ++refused;
-        request.onError({WirelessError::SERVER_NOT_TRUSTED, "No trusted server configured"});
+        request.onError({WirelessError::SERVER_NOT_TRUSTED, "Server address is not https://"});
         return false;
     }));
     EXPECT_CALL(httpClient, setHttpClientState(testing::_)).Times(0);

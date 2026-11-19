@@ -19,8 +19,8 @@ enum class ProvisionLookupResult : uint8_t {
     // The server answered 404: no player is linked to the band. The server
     // cannot tell an unknown band from an unlinked one.
     NO_PLAYER,
-    // No trusted server is configured, or the server presented a key other
-    // than the pinned one, so nothing it sent was used.
+    // The server address is not https://, or the server failed TLS
+    // verification, so nothing it sent was used.
     SERVER_NOT_TRUSTED,
     // Any other failure: transport, another status, an undecodable answer, or a
     // UID of a length anticollision never returns.
