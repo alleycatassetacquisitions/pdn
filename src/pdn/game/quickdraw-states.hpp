@@ -118,6 +118,9 @@ private:
     bool displayIsDirty = false;
     int statsIndex = 0;
     int statsCount = 7;
+    // A nil player UUID opens the stats cycle on this page, and the cycle wraps to it.
+    static constexpr int UNREGISTERED_PAGE = -1;
+    int getFirstStatsPage() const;
     size_t lastPosseCount = 0;
 
     bool isPrimaryRequired() override;
@@ -203,6 +206,10 @@ inline void renderLastMatchStats(Display* display, const LastMatchDisplay& stats
     }
     snprintf(line, sizeof(line), "Opp:%4ld", stats.opponentTimeMs);
     display->drawText(line, 2, (hasBoost && hasPenalty) ? 48 : 44);
+    // The card has room for one more line, not for "NOT SCORED" beside it.
+    if (stats.isPractice) {
+        display->drawText("PRACTICE", 2, 60);
+    }
 }
 
 class MatchCountdown : public ConnectState<PDN> {
@@ -253,6 +260,8 @@ private:
     };
 
     ImageType getImageIdForStep(CountdownStep step);
+    /** Draws one countdown step; a practice match blanks the art's left half for its label. */
+    void renderStep(PDN* pdn, CountdownStep step);
 
     Player* player;
     SimpleTimer countdownTimer;

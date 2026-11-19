@@ -184,6 +184,12 @@ public:
         ON_CALL(bountyPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     }
 
+    /** Runs the handshake again, so its frames carry identities applied after SetUp. */
+    void replayHandshake() {
+        cleanupMatches();
+        setupMatches();
+    }
+
     void hunterSendsToBounty() {
         uint8_t macAddr[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
         bountyWirelessManager->deliverFrameFrom(
