@@ -18,11 +18,13 @@ BandRegistration::BandRegistration(WirelessManager* wirelessManager,
     [this](SerialIdentifier jack, const uint8_t* payload, size_t length) {
         onRecordKey(jack, payload, length);
     });
-    // Refused ahead of duplicate detection, so a frame that came too early does
-    // not use up the seqId its retransmit carries.
+    // From an FDN that is not Connected yet, refused ahead of duplicate detection
+    // so its retransmit still counts. From a Connected FDN outside an open attempt,
+    // its seqId is spent, so a retransmit cannot join a later attempt and pair with
+    // another tap's key.
     provisionChannel.setAdmitFilter([this](const uint8_t* fromMac, const PlayerProvisionPacket&) {
-        return phase == Phase::OPEN && fdnJackOf(fromMac).has_value() ? FrameAdmission::DEDUPLICATE
-                                                                      : FrameAdmission::REFUSE;
+        return fdnJackOf(fromMac).has_value() ? FrameAdmission::DEDUPLICATE
+                                              : FrameAdmission::REFUSE;
     });
     provisionChannel.onReceive([this](const uint8_t* fromMac, const PlayerProvisionPacket& packet) {
         onProvision(fromMac, packet);
@@ -53,6 +55,10 @@ const Player* BandRegistration::getFoundPlayer() const {
 }
 
 bool BandRegistration::hasFailed() const { return phase == Phase::FAILED; }
+
+bool BandRegistration::hasPieces() const {
+    return pendingKey.isHeld() || heldProfile.hasRegistrationProfile();
+}
 
 void BandRegistration::setOnPieceTaken(std::function<void()> callback) {
     onPieceTaken = std::move(callback);

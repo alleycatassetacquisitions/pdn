@@ -36,10 +36,10 @@ struct JackConnectionState {
 /*
  * The coordinator's two jack observer slots are single, and the mounted ConnectState holds both.
  * That works because StateMachine dismounts the outgoing state before mounting the
- * incoming one, handing the slot over cleanly; a second ConnectState mounted without
- * that dismount would take the slot and leave the first one permanently deaf.
+ * incoming one, handing the slots over cleanly; a second ConnectState mounted without
+ * that dismount would take both slots and leave the first one permanently deaf.
  *
- * `subscribed` records that this state registered, not that it still holds the slot
+ * `subscribed` records that this state registered, not that it still holds the slots
  * — the coordinator arbitrates nothing — so the two clear paths below are only safe
  * under that same dismount-before-mount ordering.
  */

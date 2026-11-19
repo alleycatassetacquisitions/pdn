@@ -430,7 +430,7 @@ inline void bandRegistrationShortKeyIgnoredAndBothPiecesInOneTick(BandRegistrati
                                 suite->fdnMac, std::vector<uint8_t>(RECORD_KEY_SIZE - 1, 0x12)));
     suite->step();
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
-    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld()) << "a short key was taken";
+    EXPECT_FALSE(suite->bandRegistration->hasPieces()) << "a short key was taken";
 
     suite->sendProfile(suite->fdnMac, "Ada");
     BandRegistrationTests::sendKey(suite->pdnOut, suite->fdnMac, 0x13);
@@ -448,7 +448,7 @@ inline void bandRegistrationKeyOnlyFromTheConnectedFdnsJack(BandRegistrationTest
     BandRegistrationTests::sendKey(suite->pdnIn, OTHER_PDN_MAC, 0x11);
     suite->step();
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
-    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld()) << "a PDN peer's key was taken";
+    EXPECT_FALSE(suite->bandRegistration->hasPieces()) << "a PDN peer's key was taken";
 
     suite->cableForgedPeer(OTHER_FDN_MAC, DeviceType::FDN);
     suite->sendProfile(suite->fdnMac, "Ada");
@@ -494,27 +494,31 @@ inline void bandRegistrationOnePieceTimesOutAndIsWiped(BandRegistrationTests* su
 
     suite->advance(USER_DATA_FETCH_TIMEOUT_MS + 100);
     EXPECT_TRUE(suite->shows("Unable to"));
-    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+    EXPECT_FALSE(suite->bandRegistration->hasPieces()) << "the key outlived the failure page";
     suite->sendProfile(suite->fdnMac, "Ada");
     suite->advance(FETCH_FAILURE_PAGE_TIMEOUT_MS + 100);
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
     EXPECT_FALSE(suite->playerProvider.hasPlayer());
-    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+    EXPECT_FALSE(suite->bandRegistration->hasPieces());
 
-    // The next attempt starts clean: the FDN's retransmit of the profile the
-    // failure page refused counts, times out alone, then a key from another
-    // FDN is a first piece, not the pair.
+    // No carry-over: the FDN's retransmit of the profile the failure page
+    // refused is spent, so the next tap's key cannot pair with it.
     --suite->forgedSeqId;
     suite->sendProfile(suite->fdnMac, "Ada");
-    suite->step();
-    ASSERT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
+    suite->advance(100);
+    EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND) << "the refused profile came back";
+    BandRegistrationTests::sendKey(suite->pdnOut, suite->fdnMac, 0x58);
+    suite->advance(100);
+    EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
+    EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "one tap's profile met another's key";
+
+    // After that attempt times out, a key from another FDN is a first piece.
     suite->advance(USER_DATA_FETCH_TIMEOUT_MS + FETCH_FAILURE_PAGE_TIMEOUT_MS + 200);
     ASSERT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
     suite->cableForgedPeer(OTHER_FDN_MAC, DeviceType::FDN);
     BandRegistrationTests::sendKey(suite->pdnIn, OTHER_FDN_MAC, 0x56);
     suite->advance(100);
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
-    EXPECT_FALSE(suite->playerProvider.hasPlayer());
 }
 
 // A profile refused because no FDN was Connected yet still counts when the FDN
@@ -546,7 +550,7 @@ bandRegistrationLookupFailureShowsTheFailurePageThenWaits(BandRegistrationTests*
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
     EXPECT_TRUE(suite->shows("Tap band"));
     EXPECT_FALSE(suite->playerProvider.hasPlayer());
-    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+    EXPECT_FALSE(suite->bandRegistration->hasPieces());
 
     // Nothing after a reported failure counts, even a profile in the same tick.
     BandRegistrationTests::sendKey(suite->pdnOut, suite->fdnMac, 0x21);
@@ -594,7 +598,7 @@ inline void bandRegistrationDemoHoldLeadsToChooseTeamThenWelcome(BandRegistratio
 
     BandRegistrationTests::sendKey(suite->pdnOut, suite->fdnMac, 0x77);
     suite->step();
-    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld()) << "a key reached the demo";
+    EXPECT_FALSE(suite->bandRegistration->hasPieces()) << "a key reached the demo";
 
     ASSERT_NE(suite->secondaryPress, nullptr);
     suite->secondaryPress(suite->secondaryCtx);

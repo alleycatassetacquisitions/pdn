@@ -47,6 +47,9 @@ public:
     /** @return true once the FDN reported the lookup failed; nothing more is taken. */
     bool hasFailed() const;
 
+    /** @return true while any piece of the attempt (key or profile) is held. */
+    bool hasPieces() const;
+
     /**
      * One slot, told after each piece taken. It runs inside the radio or jack
      * callback that delivered the piece, so it only records.
