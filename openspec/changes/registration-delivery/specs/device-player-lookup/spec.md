@@ -68,7 +68,7 @@ If a successful HTTP response body cannot be decoded as `DevicePlayerResponse`, 
 ## ADDED Requirements
 
 ### Requirement: Lookup errors are classified
-If the HTTP layer reports an error, the client SHALL end the lookup as: not found for status `404` (no player is linked to the band, or no active event); untrusted server for `SERVER_NOT_TRUSTED`, including a request the client refuses when no trusted server is configured; failed for anything else, including `400` and a device with no HTTP client. Each answer SHALL end the lookup exactly once, handing on a profile and key only when found.
+If the HTTP layer reports an error, the client SHALL end the lookup as: not found for status `404` (no player is linked to the band, or no active event); untrusted server for `SERVER_NOT_TRUSTED` (the server failed TLS verification), including a request the client refuses because the server address is not `https://`; failed for anything else, including `400` and a device with no HTTP client. Each answer SHALL end the lookup exactly once, handing on a profile and key only when found.
 
 #### Scenario: Unknown band
 - **WHEN** the HTTP layer reports status `404` for the lookup request
