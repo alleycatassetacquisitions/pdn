@@ -41,6 +41,7 @@
 #include "text-lines-tests.hpp"
 #include "hmac-sha256-tests.hpp"
 #include "rdc-application-frame-tests.hpp"
+#include "fdn-registration-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -2330,6 +2331,40 @@ TEST(ServerKeyPin, allowsRequestsOnlyToHttpsWithAPin) {
     serverKeyPinAllowsRequestsOnlyToHttpsWithAPin();
 }
 TEST(ServerKeyPin, httpStatusFailureRefusesRedirects) { httpStatusFailureRefusesRedirects(); }
+
+// ============================================
+// FDN REGISTRATION BY BAND TAP
+// ============================================
+
+TEST_F(FdnRegistrationTests, turnIsOnlyWithTheFirstPdn) {
+    fdnRegistrationTurnIsOnlyWithTheFirstPdn(this);
+}
+TEST_F(FdnRegistrationTests, tapSendsKeyThenProfileToTheTurnsPdn) {
+    fdnRegistrationTapSendsKeyThenProfileToTheTurnsPdn(this);
+}
+TEST_F(FdnRegistrationTests, withoutKeySendsNoKeyAndNoProfile) {
+    fdnRegistrationWithoutKeySendsNoKeyAndNoProfile(this);
+}
+TEST_F(FdnRegistrationTests, sendsNothingToAPdnThatLeftDuringLookup) {
+    fdnRegistrationSendsNothingToAPdnThatLeftDuringLookup(this);
+}
+TEST_F(FdnRegistrationTests, ignoresTapsDuringTheResultHold) {
+    fdnRegistrationIgnoresTapsDuringTheResultHold(this);
+}
+TEST_F(FdnRegistrationTests, turnNeverOpensWithoutAReader) {
+    fdnRegistrationTurnNeverOpensWithoutAReader(this);
+}
+TEST_F(FdnRegistrationTests, resendsTheTurnAfterAnAbandonedContext) {
+    fdnRegistrationResendsTheTurnAfterAnAbandonedContext(this);
+}
+TEST_F(FdnRegistrationTests, passesAnUntappedTurnOn) { fdnRegistrationPassesAnUntappedTurnOn(this); }
+TEST_F(FdnRegistrationTests, lookupWithoutAnswerTimesOut) {
+    fdnRegistrationLookupWithoutAnswerTimesOut(this);
+}
+TEST(FdnRegistration, screenText) { fdnRegistrationScreenText(); }
+TEST(FdnRegistration, provisionCodecRoundTripsAndBoundsTheWire) {
+    playerProvisionCodecRoundTripsAndBoundsTheWire();
+}
 
 // ============================================
 // MAIN
