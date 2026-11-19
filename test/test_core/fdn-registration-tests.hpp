@@ -232,6 +232,10 @@ inline void fdnRegistrationTurnIsOnlyWithTheFirstPdn(FdnRegistrationTests* suite
     EXPECT_EQ(suite->lastTurnTo(PDN_B), RegistrationTurn::OPEN) << "the turn did not move on";
     EXPECT_EQ(suite->lastTurnTo(PDN_C), RegistrationTurn::CLOSED);
     EXPECT_EQ(suite->view.jack, SerialIdentifier::INPUT_JACK_SECONDARY);
+
+    suite->unplug(PDN_B);
+    EXPECT_EQ(suite->lastTurnTo(PDN_C), RegistrationTurn::CLOSED) << "a registered PDN got a turn";
+    EXPECT_EQ(suite->view.screen, RegistrationScreen::NONE);
 }
 
 // The tap registers the PDN holding the turn and nobody else: its key goes over
@@ -309,10 +313,16 @@ inline void fdnRegistrationSendsNothingToAPdnThatLeftDuringLookup(FdnRegistratio
     EXPECT_FALSE(suite->view.registered);
 }
 
-// Taps during the result hold are ignored and no turn is open; afterwards the
-// PDN still waiting gets its turn back.
+// A UID of no anticollision length is not looked up and the turn stays. Taps
+// during the result hold are ignored and no turn is open; afterwards the PDN
+// still waiting gets its turn back.
 inline void fdnRegistrationIgnoresTapsDuringTheResultHold(FdnRegistrationTests* suite) {
     suite->cable(suite->jack1, PDN_A);
+    suite->reader.tapBand({0x04, 0xA2, 0x1B});
+    suite->step();
+    EXPECT_TRUE(suite->requests.empty());
+    EXPECT_EQ(suite->view.screen, RegistrationScreen::TAP_BAND);
+
     suite->tap();
     suite->requests[0].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404", 404});
     suite->advance(1000);
@@ -326,10 +336,15 @@ inline void fdnRegistrationIgnoresTapsDuringTheResultHold(FdnRegistrationTests* 
     EXPECT_EQ(suite->requests.size(), 2u);
 }
 
-// With no reader answering, the turn never opens and the screen says why.
+// Turns are open only while the registration screen is shown and the reader
+// answers; with no reader the screen says why.
 inline void fdnRegistrationTurnNeverOpensWithoutAReader(FdnRegistrationTests* suite) {
-    suite->reader.setResponding(false);
+    suite->manager->setRegistrationScreenShown(false);
     suite->cable(suite->jack1, PDN_A);
+    EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::CLOSED) << "turn open off the screen";
+
+    suite->reader.setResponding(false);
+    suite->manager->setRegistrationScreenShown(true);
     suite->advance(200);
     EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::CLOSED);
     EXPECT_EQ(suite->view.screen, RegistrationScreen::NO_READER);
@@ -454,7 +469,7 @@ inline void playerProvisionCodecRoundTripsAndBoundsTheWire() {
     EXPECT_EQ(strlen(decoded.getServerPlayerName()), PlayerLimits::NAME_BUFFER_SIZE - 1);
 
     Player untouched;
-    PlayerProvisionPacket failed{};
+    PlayerProvisionPacket failed = PlayerProvisionCodec::encode(player);
     failed.status = static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED);
     EXPECT_FALSE(PlayerProvisionCodec::decode(failed, untouched));
     PlayerProvisionPacket nilPlayer = PlayerProvisionCodec::encode(Player());
