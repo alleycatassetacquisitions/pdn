@@ -411,7 +411,7 @@ inline void bandRegistrationTapRegistersAndTheFdnLetsThePdnGo(BandRegistrationTe
 inline void bandRegistrationProfileBeforeKeyRegisters(BandRegistrationTests* suite) {
     suite->advance(200);
     suite->sendProfile(suite->fdnMac, "Ada");
-    suite->step();
+    suite->advance(100);
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
     EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "a profile was applied without its key";
 
@@ -476,6 +476,11 @@ inline void bandRegistrationProfileOnlyFromAConnectedFdn(BandRegistrationTests* 
 
     BandRegistrationTests::sendKey(suite->pdnOut, suite->fdnMac, 0x44);
     suite->step();
+    suite->cableForgedPeer(OTHER_FDN_MAC, DeviceType::FDN);
+    suite->sendProfile(OTHER_FDN_MAC, "Mallory");
+    suite->step();
+    EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER)
+    << "another FDN's profile joined the attempt";
     suite->advance(USER_DATA_FETCH_TIMEOUT_MS + 100);
     EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "a stranger's profile was held";
 }
@@ -497,6 +502,18 @@ inline void bandRegistrationOnePieceTimesOutAndIsWiped(BandRegistrationTests* su
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
     EXPECT_FALSE(suite->playerProvider.hasPlayer());
     EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+
+    // The next attempt starts clean: a profile timed out, then a key from
+    // another FDN is a first piece, not the pair.
+    suite->sendProfile(suite->fdnMac, "Ada");
+    suite->advance(USER_DATA_FETCH_TIMEOUT_MS + FETCH_FAILURE_PAGE_TIMEOUT_MS + 200);
+    ASSERT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
+    suite->cableForgedPeer(OTHER_FDN_MAC, DeviceType::FDN);
+    BandRegistrationTests::sendKey(suite->pdnIn, OTHER_FDN_MAC, 0x56);
+    suite->advance(100);
+    EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
+    EXPECT_TRUE(suite->holdsKeyOf(0x56));
+    EXPECT_FALSE(suite->playerProvider.hasPlayer());
 }
 
 // A lookup that issues no key: the FDN reports a failure, the PDN shows it,
@@ -513,6 +530,16 @@ bandRegistrationLookupFailureShowsTheFailurePageThenWaits(BandRegistrationTests*
     EXPECT_TRUE(suite->shows("Tap band"));
     EXPECT_FALSE(suite->playerProvider.hasPlayer());
     EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
+
+    // Nothing after a reported failure counts, even a profile in the same tick.
+    BandRegistrationTests::sendKey(suite->pdnOut, suite->fdnMac, 0x21);
+    suite->step();
+    ASSERT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
+    suite->sendProfile(suite->fdnMac, "Mallory", /*lookupFailed=*/true);
+    suite->sendProfile(suite->fdnMac, "Mallory");
+    suite->advance(100);
+    EXPECT_TRUE(suite->shows("Unable to"));
+    EXPECT_FALSE(suite->playerProvider.hasPlayer());
 }
 
 // Once applied, a second profile or key from the same FDN changes nothing.
@@ -526,6 +553,12 @@ inline void bandRegistrationLateProfileAfterApplyIsIgnored(BandRegistrationTests
     suite->step();
     EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Alex");
     EXPECT_TRUE(suite->holdsKeyOf(0xA5));
+
+    // Shown again (as the CLI reboot does), the waiting screen starts unregistered.
+    suite->pdn.setActiveApp(StateId(PLAYER_FETCH_APP_ID), StateId(PlayerFetchStateId::AWAIT_BAND));
+    suite->step();
+    EXPECT_FALSE(suite->playerProvider.hasPlayer());
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld());
 }
 
 // The 5 s primary hold is the demo: role picker, Welcome, no key; the FDN is
