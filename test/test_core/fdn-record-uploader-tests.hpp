@@ -299,7 +299,7 @@ TEST_F(FdnRecordUploaderTests, refusedCrashRecordRetiresAfterAGoodUpload) {
     fail(WirelessError::INVALID_RESPONSE, 400);
     EXPECT_EQ(storedCrashes(), 2u);
     ASSERT_EQ(requests.size(), 2u);
-    succeed();  // crash 6 alone went up
+    succeed();                                   // crash 6 alone went up
     fail(WirelessError::INVALID_RESPONSE, 400);  // crash 5 alone, again
     EXPECT_EQ(storedCrashes(), 1u);
 }
@@ -311,7 +311,8 @@ TEST_F(FdnRecordUploaderTests, blanketRefusalKeepsEverythingAndBacksOff) {
     storeMatch(2);
     storeCrash(5);
     uploader->sync();
-    for (int answer = 0; answer < 3; ++answer) fail(WirelessError::INVALID_RESPONSE, 400);
+    for (int answer = 0; answer < 3; ++answer)
+        fail(WirelessError::INVALID_RESPONSE, 400);
 
     EXPECT_EQ(requests.size(), 3u) << "batch, oldest alone, the next alone";
     EXPECT_EQ(storedMatches(), 2u);
@@ -322,6 +323,47 @@ TEST_F(FdnRecordUploaderTests, blanketRefusalKeepsEverythingAndBacksOff) {
     clock.advance(FDN_UPLOAD_INTERVAL_MS);
     uploader->sync();
     EXPECT_EQ(requests.size(), 4u);
+}
+
+// The record behind a refused one meets the server's own cross-event 409: the
+// server is reachable, so the refused head goes, and only the head.
+TEST_F(FdnRecordUploaderTests, crossEventAnswerForTheNextRecordBlamesOnlyTheHead) {
+    storeMatch(1);
+    storeMatch(2);
+    uploader->sync();
+    fail(WirelessError::INVALID_RESPONSE, 400);  // the batch
+    fail(WirelessError::INVALID_RESPONSE, 400);  // match 1 alone
+    ASSERT_EQ(requests.size(), 3u);
+    requests.back().onError(
+    {WirelessError::INVALID_RESPONSE, "test", 409, "Match ID already belongs to another event"});
+    uploader->sync();
+    EXPECT_EQ(storedMatches(), 2u) << "a record was retired on the next record's answer";
+
+    ASSERT_EQ(requests.size(), 4u) << "match 1 was not sent alone again";
+    fail(WirelessError::INVALID_RESPONSE, 400);
+    FdnRecordStore::MatchRing::Entry left{};
+    ASSERT_EQ(store->getMatchRecords().peekOldest(&left, 1), 1u);
+    EXPECT_EQ(left.recordNumber, 2u) << "the wrong match was retired";
+}
+
+// A kept answer (503) for the record behind a refused one is not a refusal:
+// crash records still go and the next cycle comes at the usual interval.
+TEST_F(FdnRecordUploaderTests, keptAnswerForTheNextRecordIsNotABlanketRefusal) {
+    storeMatch(1);
+    storeMatch(2);
+    storeCrash(5);
+    uploader->sync();
+    fail(WirelessError::INVALID_RESPONSE, 400);
+    fail(WirelessError::INVALID_RESPONSE, 400);
+    fail(WirelessError::SERVER_ERROR, 503);
+
+    ASSERT_EQ(requests.size(), 4u);
+    EXPECT_EQ(requests[3].path, CrashApi::POST_DEVICE_LOGS_ENDPOINT);
+    succeed();
+    EXPECT_EQ(storedMatches(), 2u);
+    clock.advance(FDN_UPLOAD_INTERVAL_MS + 1);
+    uploader->sync();
+    EXPECT_EQ(requests.size(), 5u) << "a kept answer backed the FDN off";
 }
 
 TEST_F(FdnRecordUploaderTests, keptMatchesStillLetCrashRecordsGo) {
