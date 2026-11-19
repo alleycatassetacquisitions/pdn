@@ -39,6 +39,7 @@ public:
         uint8_t defaultHunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
         fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, defaultHunterMac);
         matchManager->setRemoteDeviceCoordinator(&fakeRdc);
+        matchManager->setHandshakeOpen(true);  // as on its idle screen
         matchManager->clearCurrentMatch();
     }
 
@@ -410,6 +411,21 @@ inline void matchManagerSendMatchIdRejectsUnknownPeer(MatchManager* mm, Player* 
     mm->listenForMatchEvents(cmd);
 
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
+}
+
+// #527: off its idle screen a bounty primes nothing and acks nothing for a
+// cabled hunter's SEND_MATCH_ID.
+inline void matchManagerClosedHandshakeIgnoresSendMatchId(MatchManager* mm, Player* player,
+                                                          QuickdrawRadioTap& radioTap) {
+    mm->setHandshakeOpen(false);
+    player->setIsHunter(false);
+    uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    MatchCommand cmd(hunterMac, MatchCmd::SEND_MATCH_ID, "match-id-closed-000000000000000000000", 0,
+                     true);
+    mm->listenForMatchEvents(cmd);
+
+    EXPECT_FALSE(mm->getCurrentMatch().has_value());
+    EXPECT_EQ(radioTap.lastFrame(), nullptr) << "a closed handshake sent an ack";
 }
 
 // Legitimate path: command with correct MAC + matchId is accepted.

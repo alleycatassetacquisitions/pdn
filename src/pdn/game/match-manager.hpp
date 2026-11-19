@@ -175,6 +175,12 @@ public:
     // SEND_MATCH_ID is refused — no match initiation from an unknown MAC.
     void setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc);
 
+    /**
+     * Opens or closes this PDN to a hunter's SEND_MATCH_ID. Idle opens it on
+     * mount and closes it on dismount: off the idle screen the PDN cannot play.
+     */
+    void setHandshakeOpen(bool open) { handshakeIsOpen = open; }
+
     // Shootout tournament suppresses the hunter/bounty role-mismatch rejection
     // so same-role matches in the bracket proceed. Injected by GameSession after
     // both managers are built.
@@ -216,6 +222,7 @@ private:
     std::function<unsigned long()> boostProvider;
     RemoteDeviceCoordinator* rdc_ = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
+    bool handshakeIsOpen = false;
 
     ActiveMatchState activeMatchState;
     LastMatchDisplay lastMatchDisplay;

@@ -100,9 +100,8 @@ TEST_F(IdleHandshakeTests, hunterPluggedIntoABountyOnItsResultScreenIsNotGivenAD
     40000))
     << "the bounty never came back to its idle screen";
 
-    EXPECT_EQ(bountyStateAtCountdown, -1)
-    << "hunter 2 was counted down while the bounty showed "
-    << cli::getStateName(bountyStateAtCountdown);
+    EXPECT_EQ(bountyStateAtCountdown, -1) << "hunter 2 was counted down while the bounty showed "
+                                          << cli::getStateName(bountyStateAtCountdown);
     EXPECT_EQ(devices[2].player->getLosses(), 0)
     << "hunter 2 was given a loss by a bounty that was not idle";
     EXPECT_EQ(matchManagers[2]->getMatchSequenceNumber(), 0u)
@@ -132,10 +131,17 @@ TEST_F(IdleHandshakeTests, bountyAsleepIgnoresAHandshakeAndDuelsOnlyOnceIdle) {
 
     // Both players of one duel count down together. Three ticks cover the one
     // frame between the bounty's delivery report and the hunter reading the ack.
-    if (stepUntil([this]() { return stateOf(1) == MATCH_COUNTDOWN; }, 2400)) {
-        for (int tick = 0; tick < 3; tick++) step();
-        EXPECT_EQ(stateOf(2), MATCH_COUNTDOWN)
-        << "the bounty woke into a countdown while hunter 2 showed "
-        << cli::getStateName(stateOf(2));
-    }
+    ASSERT_TRUE(stepUntil([this]() { return stateOf(1) == MATCH_COUNTDOWN; }, 2400))
+    << "the idle bounty never took hunter 2's retry";
+    for (int tick = 0; tick < 3; tick++)
+        step();
+    EXPECT_EQ(stateOf(2), MATCH_COUNTDOWN)
+    << "the bounty counted down while hunter 2 showed " << cli::getStateName(stateOf(2));
+    EXPECT_TRUE(stepUntil(
+    [this]() {
+        return matchManagers[1]->getMatchSequenceNumber() == 2 &&
+               matchManagers[2]->getMatchSequenceNumber() == 1;
+    },
+    20000))
+    << "the duel after the bounty woke was not stored by both";
 }

@@ -480,10 +480,16 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
             sendCommand(command.wifiMacAddr, MatchCmd::MATCH_ROLE_MISMATCH, command.matchId, 0, 0,
                         player->isHunter());
             return;
-        } else {
-            receiveMatch(command.matchId, command.playerUuid, command.teamUuid, command.isHunter,
-                         const_cast<uint8_t*>(command.wifiMacAddr));
         }
+        // Only the idle screen primes a match (spec quickdraw-match: "an idle
+        // Bounty challenger"). Ignored, not refused: the hunter's initiation
+        // timeout clears and retries.
+        if (!handshakeIsOpen) {
+            LOG_W(MATCH_MANAGER_TAG, "Ignoring SEND_MATCH_ID: not on the idle screen");
+            return;
+        }
+        receiveMatch(command.matchId, command.playerUuid, command.teamUuid, command.isHunter,
+                     const_cast<uint8_t*>(command.wifiMacAddr));
     } else if (command.command == MatchCmd::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;

@@ -129,6 +129,7 @@ private:
             fakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, stubMac);
             fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, stubMac);
             matchManager->setRemoteDeviceCoordinator(&fakeRdc);
+            matchManager->setHandshakeOpen(true);
         }
 
         // Must match processPacket's defaultMac so isFromActiveMatchOpponent accepts delivered frames.
@@ -248,6 +249,7 @@ private:
         bountyMatchManager = new MatchManager(bountyDeviceWirelessManager);
         bountyMatchManager->initialize(bounty, &bountyStorage);
         bountyMatchManager->setRemoteDeviceCoordinator(&bountyFakeRdc);
+        bountyMatchManager->setHandshakeOpen(true);  // as on its idle screen
     }
 
     void setupMatches() {

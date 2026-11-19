@@ -43,6 +43,7 @@ public:
         bountyMatchManager = new MatchManager(bountyDevice.wirelessManager);
         bountyMatchManager->initialize(bounty, &bountyStorage);
         bountyMatchManager->setRemoteDeviceCoordinator(&bountyFakeRdc);
+        bountyMatchManager->setHandshakeOpen(true);  // as on its idle screen
     }
 
     void TearDown() override {

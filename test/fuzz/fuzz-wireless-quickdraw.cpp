@@ -151,6 +151,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     matchManager.initialize(&player, &storage);
     matchManager.setRemoteDeviceCoordinator(&rdc);
+    matchManager.setHandshakeOpen(true);  // so fuzz input reaches the bounty-side handshake
     remotePlayerManager.StartBroadcastingPlayerInfo(&player, 5000, DeviceType::PDN);
     wirelessManager.setEspNowPacketHandler(
         PktType::kPlayerInfoBroadcast,
