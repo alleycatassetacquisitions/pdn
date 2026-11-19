@@ -21,6 +21,8 @@ public:
     void SetUp() override {
         SimpleTimer::setPlatformClock(&clock);
         clock.setTime(1);
+        // A set wall clock, as after SNTP: cycles get the plain cap.
+        clock.setUnixTimeMs(1792359000000LL);
         ON_CALL(httpClient, queueRequest(testing::_))
         .WillByDefault(testing::Invoke([this](HttpRequest&& request) {
             requests.push_back(std::move(request));
@@ -310,6 +312,24 @@ TEST_F(FdnRecordUploaderTests, cycleCapReturnsTheRadioAndIgnoresALateAnswer) {
 
     succeed();
     EXPECT_EQ(storedMatches(), 1u) << "kept: the answer came after the cap";
+}
+
+// Catches a first cycle after a cold boot that the cap ends while the HTTP
+// client still waits for SNTP: without a set clock the cycle also gets the
+// client's clock wait before it gives the radio back.
+TEST_F(FdnRecordUploaderTests, cycleBeforeTheClockIsSetAllowsTheClockWait) {
+    clock.setUnixTimeMs(0);
+    storeMatch(1);
+    uploader->sync();
+
+    clock.advance(FDN_UPLOAD_CYCLE_CAP_MS + 1);
+    uploader->sync();
+    EXPECT_EQ(wirelessManager->getCurrentMode(), WirelessMode::WIFI)
+    << "capped before the clock wait";
+
+    clock.advance(TlsClockGate::CLOCK_WAIT_MS);
+    uploader->sync();
+    EXPECT_EQ(wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
 }
 
 TEST_F(FdnRecordUploaderTests, skipsWhileCabledThenUploadsOnceUnplugged) {

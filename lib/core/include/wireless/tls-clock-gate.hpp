@@ -1,7 +1,7 @@
 #pragma once
 
-#include "utils/http-date.hpp"
-#include "utils/simple-timer.hpp"
+#include "utils/debounced-condition.hpp"
+#include "utils/utc-clock-range.hpp"
 
 /**
  * Holds HTTPS requests until the wall clock is set. Certificate dates are
@@ -21,22 +21,16 @@ public:
      * CLOCK_WAIT_MS. The next held request starts a wait of its own.
      */
     Decision check() {
-        if (isClockSet()) {
-            waitTimer.invalidate();
-            return Decision::SEND;
+        const bool clockSet = isClockSet();
+        if (clockUnset.heldFor(!clockSet, CLOCK_WAIT_MS)) {
+            clockUnset.reset();
+            return Decision::GIVE_UP;
         }
-        if (!waitTimer.isRunning()) {
-            waitTimer.setTimer(CLOCK_WAIT_MS);
-        }
-        if (!waitTimer.expired()) {
-            return Decision::HOLD;
-        }
-        waitTimer.invalidate();
-        return Decision::GIVE_UP;
+        return clockSet ? Decision::SEND : Decision::HOLD;
     }
 
     /** Drops a wait in progress, for when the held request is gone. */
-    void reset() { waitTimer.invalidate(); }
+    void reset() { clockUnset.reset(); }
 
     /** Whether the wall clock reads a time from 2025 on, as only a set clock does. */
     static bool isClockSet() {
@@ -45,5 +39,5 @@ public:
     }
 
 private:
-    SimpleTimer waitTimer;
+    DebouncedCondition clockUnset;
 };

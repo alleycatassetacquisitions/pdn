@@ -14,10 +14,17 @@
 #include <esp_mac.h>
 #include <esp_http_client.h>
 #include <queue>
+#include <sdkconfig.h>
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/tls-clock-gate.hpp"
 #include "wireless/wireless-types.hpp"
 #include "utils/simple-timer.hpp"
+
+// Without this mbedTLS ignores certificate dates, and the SNTP clock hold
+// below guards nothing; sdkconfig.defaults.fdn sets it.
+#if !CONFIG_MBEDTLS_HAVE_TIME_DATE
+#error "CONFIG_MBEDTLS_HAVE_TIME_DATE is off: the FDN would accept expired certificates"
+#endif
 
 // Forward declaration for the event handler
 class Esp32S3HttpClient;
@@ -47,6 +54,9 @@ public:
 
     ~Esp32S3HttpClient() override {
         disconnect();
+        if (clockSyncStarted) {
+            esp_netif_sntp_deinit();
+        }
     }
 
     int initialize() override {
@@ -199,21 +209,26 @@ public:
     friend esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt);
 
 private:
-    // SNTP starts on the first Wi-Fi connection and lwIP re-polls on its own.
-    // A later connection while the clock is still unset asks again at once.
+    // SNTP starts on the first Wi-Fi connection and lwIP re-polls on its own. A
+    // later connection asks again at once while the clock is unset, and restarts
+    // SNTP if the configuration now names another server.
     void startClockSync() {
-        if (clockSyncStarted) {
+        if (clockSyncStarted && sntpServer == wifiConfig->ntpServer) {
             if (!TlsClockGate::isClockSet()) {
                 esp_netif_sntp_start();
             }
             return;
         }
-        // lwIP keeps this pointer, not a copy; the FDN never frees its WifiConfig.
-        esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(wifiConfig->ntpServer.c_str());
+        if (clockSyncStarted) {
+            esp_netif_sntp_deinit();
+        }
+        // lwIP keeps this pointer, not a copy, so the driver owns the string.
+        sntpServer = wifiConfig->ntpServer;
+        esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(sntpServer.c_str());
         config.wait_for_sync = false;
         clockSyncStarted = esp_netif_sntp_init(&config) == ESP_OK;
         if (!clockSyncStarted) {
-            LOG_E(HTTP_TAG, "SNTP did not start (%s)", wifiConfig->ntpServer.c_str());
+            LOG_E(HTTP_TAG, "SNTP did not start (%s)", sntpServer.c_str());
         }
     }
 
@@ -647,6 +662,8 @@ private:
     unsigned long retryAt = 0;
     TlsClockGate clockGate;
     bool clockSyncStarted = false;
+    // The NTP server SNTP was started with; lwIP points into it.
+    std::string sntpServer;
 };
 
 // Defined after the class: collects the response body; outcomes are decided
