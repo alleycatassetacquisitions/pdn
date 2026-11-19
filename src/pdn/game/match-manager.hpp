@@ -329,7 +329,7 @@ private:
     // Writes @p record to the next slot, then moves "seq" to it.
     bool appendRingSlot(const TaggedMatchRecord& record);
     // Moves the pending records of the ring @p previous holds into this ring;
-    // erases that ring only once all of them have moved.
+    // erases that ring only once every readable one has moved.
     void moveRingRecordsFrom(StorageInterface* previous);
 
     // True when the frame names the currently-active match and was sent by

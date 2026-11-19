@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include "device/drivers/native/native-prefs-driver.hpp"
+#include "device/drivers/nvs-partition-range.hpp"
 #include "device/drivers/unknown-storage-namespace-exception.hpp"
 #include "game/match-manager.hpp"
 
@@ -40,4 +41,31 @@ inline void storageUIntAndBytesRoundTripInRegisteredNamespace() {
     ASSERT_EQ(storage.readBytes(MATCH_RING_PREFS_NAMESPACE, "blob", restored, sizeof(restored)),
               sizeof(restored));
     EXPECT_EQ(memcmp(rawBytes, restored, sizeof(rawBytes)), 0);
+}
+
+// The match ring's range as the PDN gives it, and the source each table yields.
+inline constexpr NvsPartitionRange TEST_RING_RANGE = {"records", 0x7E1000, 0x1F000};
+
+TEST(NvsPartitionSourceTests, rangeNotInTheTableIsRegistered) {
+    EXPECT_EQ(chooseNvsPartitionSource(false, 0, 0, &TEST_RING_RANGE),
+              NvsPartitionSource::REGISTER);
+}
+
+TEST(NvsPartitionSourceTests, tableListingTheRangeIsUsed) {
+    EXPECT_EQ(chooseNvsPartitionSource(true, 0x7E1000, 0x1F000, &TEST_RING_RANGE),
+              NvsPartitionSource::TABLE);
+}
+
+// Either field off would put test-table devices on a range no deployed device uses.
+TEST(NvsPartitionSourceTests, tableListingTheLabelElsewhereIsRefused) {
+    EXPECT_EQ(chooseNvsPartitionSource(true, 0x7E0000, 0x1F000, &TEST_RING_RANGE),
+              NvsPartitionSource::NONE);
+    EXPECT_EQ(chooseNvsPartitionSource(true, 0x7E1000, 0x1E000, &TEST_RING_RANGE),
+              NvsPartitionSource::NONE);
+}
+
+// The default partition has no range: only the table can hold it.
+TEST(NvsPartitionSourceTests, partitionWithoutARangeComesOnlyFromTheTable) {
+    EXPECT_EQ(chooseNvsPartitionSource(true, 0x9000, 0x5000, nullptr), NvsPartitionSource::TABLE);
+    EXPECT_EQ(chooseNvsPartitionSource(false, 0, 0, nullptr), NvsPartitionSource::NONE);
 }

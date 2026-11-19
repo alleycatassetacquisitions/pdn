@@ -6,23 +6,12 @@
 #include <vector>
 #include "device/drivers/driver-interface.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/drivers/nvs-partition-range.hpp"
 #include "device/drivers/unknown-storage-namespace-exception.hpp"
 
 #include <esp_partition.h>
 #include <nvs.h>
 #include <nvs_flash.h>
-
-/**
- * An NVS partition a driver opens by label. When the flashed partition table
- * lacks it, the driver registers `size` bytes at `offset` under that label for
- * the boot, so a deployed table needs no USB flash; a table that lists it must
- * list this range.
- */
-struct NvsPartitionRange {
-    const char* label;
-    uint32_t offset;
-    uint32_t size;
-};
 
 /**
  * NVS-backed storage driver for ESP32-S3.
@@ -224,19 +213,14 @@ private:
     bool findOrRegisterPartition() {
         const esp_partition_t* found = esp_partition_find_first(
         ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, partitionLabel);
-        if (found != nullptr) {
-            // A table listing the label elsewhere would split devices across two ranges.
-            if (range && (found->address != range->offset || found->size != range->size)) {
-                LOG_E(
-                name.c_str(), "Partition %s is at 0x%lx+0x%lx, not 0x%lx+0x%lx", partitionLabel,
-                static_cast<unsigned long>(found->address), static_cast<unsigned long>(found->size),
-                static_cast<unsigned long>(range->offset), static_cast<unsigned long>(range->size));
-                return false;
-            }
+        const NvsPartitionSource source =
+        chooseNvsPartitionSource(found != nullptr, found != nullptr ? found->address : 0,
+                                 found != nullptr ? found->size : 0, range ? &*range : nullptr);
+        if (source == NvsPartitionSource::TABLE) {
             return true;
         }
-        if (!range) {
-            LOG_E(name.c_str(), "The partition table has no partition %s", partitionLabel);
+        if (source == NvsPartitionSource::NONE) {
+            LOG_E(name.c_str(), "Partition %s is not in the table at its range", partitionLabel);
             return false;
         }
         // Refused when the range overlaps a partition of the flashed table or
