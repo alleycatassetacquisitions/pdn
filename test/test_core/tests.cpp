@@ -36,7 +36,8 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
-#include "server-key-pin-tests.hpp"
+#include "server-trust-tests.hpp"
+#include "sha256-tests.hpp"
 #include "text-lines-tests.hpp"
 
 #if defined(ARDUINO)
@@ -825,18 +826,6 @@ TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
 
 TEST_F(TimerTestSuite, unaffectedByWallClockJump) {
     timerUnaffectedByWallClockJump(fakeClock);
-}
-
-TEST(HttpDate, parsesValidImfFixdate) {
-    httpDateParsesValidImfFixdate();
-}
-
-TEST(HttpDate, handlesLeapYearsCorrectly) {
-    httpDateHandlesLeapYearsCorrectly();
-}
-
-TEST(HttpDate, rejectsPre2025AndMalformedStrings) {
-    httpDateRejectsPre2025AndMalformedStrings();
 }
 
 TEST(TextLines, keepAShortNameOnOneLine) { textLinesKeepAShortNameOnOneLine(); }
@@ -2251,14 +2240,10 @@ TEST(Sha256, matchesDigestsAtThePaddingBoundaries) { sha256MatchesDigestsAtThePa
 TEST(Sha256, padsOverABufferThatWasFilledBefore) { sha256PadsOverABufferThatWasFilledBefore(); }
 TEST(Sha256, isTheSameHoweverTheMessageIsSplit) { sha256IsTheSameHoweverTheMessageIsSplit(); }
 
-TEST(ServerKeyPin, trustsTheKeyItWasComputedFrom) { serverKeyPinTrustsTheKeyItWasComputedFrom(); }
-TEST(ServerKeyPin, refusesAKeyOneBitAway) { serverKeyPinRefusesAKeyOneBitAway(); }
-TEST(ServerKeyPin, thatIsMalformedTrustsNothing) { serverKeyPinThatIsMalformedTrustsNothing(); }
-TEST(ServerKeyPin, flagsFollowOnlyTheLeafKey) { serverKeyPinFlagsFollowOnlyTheLeafKey(); }
-TEST(ServerKeyPin, allowsRequestsOnlyToHttpsWithAPin) {
-    serverKeyPinAllowsRequestsOnlyToHttpsWithAPin();
+TEST(ServerTrust, isHttpsAddressAcceptsOnlyTheHttpsScheme) {
+    isHttpsAddressAcceptsOnlyTheHttpsScheme();
 }
-TEST(ServerKeyPin, httpStatusFailureRefusesRedirects) { httpStatusFailureRefusesRedirects(); }
+TEST(ServerTrust, httpStatusFailureRefusesRedirects) { httpStatusFailureRefusesRedirects(); }
 
 // ============================================
 // MAIN

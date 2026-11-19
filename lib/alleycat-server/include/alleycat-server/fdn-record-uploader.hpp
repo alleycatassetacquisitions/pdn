@@ -13,10 +13,12 @@
 #include "device/wireless-manager.hpp"
 #include "game/match.hpp"
 #include "utils/simple-timer.hpp"
+#include "wireless/tls-clock-gate.hpp"
 #include "wireless/wireless-types.hpp"
 
 inline constexpr unsigned long FDN_UPLOAD_INTERVAL_MS = 300000;
 // With no AP in range a queued request never answers; the cycle gives the radio back.
+// A cycle that starts before the clock is set also allows the HTTP client's clock wait.
 inline constexpr unsigned long FDN_UPLOAD_CYCLE_CAP_MS = 15000;
 static_assert(FDN_MATCH_RECORD_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH,
               "a full match ring goes up in one batch");
@@ -81,7 +83,9 @@ private:
         // Checked each tick until the cable comes out; the cycle stays due.
         if (isCabled()) return;
         matchesHeld = false;
-        cycleTimer.setTimer(FDN_UPLOAD_CYCLE_CAP_MS);
+        const unsigned long clockWaitMs =
+        TlsClockGate::isClockSet() ? 0 : TlsClockGate::CLOCK_WAIT_MS;
+        cycleTimer.setTimer(FDN_UPLOAD_CYCLE_CAP_MS + clockWaitMs);
         sendNext();
     }
 
