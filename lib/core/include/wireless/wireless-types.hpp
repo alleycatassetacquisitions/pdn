@@ -13,8 +13,8 @@ enum class WirelessError {
     SERVER_ERROR,
     WIFI_NOT_CONNECTED,
     INVALID_STATE,
-    // The FDN refused to send, or the server presented a key other than the
-    // pinned one; retrying reaches the same server with the same key.
+    // The FDN refused to send to an address that is not https://, or the server
+    // failed TLS verification (CA bundle or host name); a retry meets the same.
     SERVER_NOT_TRUSTED
 };
 
@@ -26,9 +26,12 @@ struct WirelessErrorInfo {
     int httpStatus = 0;
 };
 
+/** Whether @p baseUrl is an https:// address, the only kind the FDN sends to. */
+inline bool isHttpsAddress(const std::string& baseUrl) { return baseUrl.rfind("https://", 0) == 0; }
+
 /**
  * The failure an HTTP @p status means, or none for a 2xx. A 3xx fails too:
- * redirects are not followed, since each hop would need its key checked.
+ * redirects are not followed, since one could lead away from https.
  */
 inline std::optional<WirelessErrorInfo> httpStatusFailure(int status) {
     if (status >= 200 && status < 300) return std::nullopt;
@@ -44,17 +47,16 @@ struct WifiConfig {
     std::string ssid;
     std::string password;
     std::string baseUrl;
-    // The server key pin: SHA-256 of the server's DER SubjectPublicKeyInfo as
-    // 64 hex digits; anything else trusts no server.
-    std::string serverKeySha256;
+    // The NTP server SNTP sets the clock from before the first TLS connection.
+    std::string ntpServer;
 
-    /** Holds the build-time Wi-Fi credentials, server address and server key pin. */
+    /** Holds the build-time Wi-Fi credentials, server address and NTP server. */
     WifiConfig(const std::string& ssid, const std::string& password, const std::string& baseUrl,
-               const std::string& serverKeySha256)
+               const std::string& ntpServer)
         : ssid(ssid)
         , password(password)
         , baseUrl(baseUrl)
-        , serverKeySha256(serverKeySha256) {}
+        , ntpServer(ntpServer) {}
 };
 
 // Callback definitions

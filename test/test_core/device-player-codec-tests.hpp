@@ -381,7 +381,7 @@ inline void playerApiClassifiesLookupErrors(AlleycatApiTestSuite* suite) {
      ProvisionLookupResult::LOOKUP_FAILED},
     {{WirelessError::SERVER_ERROR, "HTTP Error: 500", 500}, ProvisionLookupResult::LOOKUP_FAILED},
     {{WirelessError::TIMEOUT, "Request timed out"}, ProvisionLookupResult::LOOKUP_FAILED},
-    {{WirelessError::SERVER_NOT_TRUSTED, "Server key does not match the pin"},
+    {{WirelessError::SERVER_NOT_TRUSTED, "Server certificate not verified"},
      ProvisionLookupResult::SERVER_NOT_TRUSTED},
     };
     TestBandLookup lookup;
@@ -394,12 +394,12 @@ inline void playerApiClassifiesLookupErrors(AlleycatApiTestSuite* suite) {
     }
 }
 
-// With no trusted server configured the client refuses at queue time; the lookup
-// still ends exactly once.
+// With a server address that is not https:// the client refuses at queue time;
+// the lookup still ends exactly once.
 inline void playerApiReportsRefusedLookupAsUntrustedOnce(AlleycatApiTestSuite* suite) {
     ON_CALL(suite->httpClient, queueRequest(testing::_))
     .WillByDefault(testing::Invoke([](HttpRequest&& request) {
-        request.onError({WirelessError::SERVER_NOT_TRUSTED, "No trusted server configured"});
+        request.onError({WirelessError::SERVER_NOT_TRUSTED, "Server address is not https://"});
         return false;
     }));
     TestBandLookup lookup;
