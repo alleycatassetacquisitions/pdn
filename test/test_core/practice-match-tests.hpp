@@ -26,6 +26,7 @@
 /** Every string a mock display was asked to draw, and the glyph mode it was left in. */
 class ScreenText {
 public:
+    /** Records every string and glyph mode @p device's display is given. */
     explicit ScreenText(MockDevice& device) {
         MockDisplay* display = device.mockDisplay;
         ON_CALL(*display, invalidateScreen()).WillByDefault(Return(display));
@@ -44,12 +45,15 @@ public:
         }));
     }
 
+    /** @return true when @p text was drawn since the last clear. */
     bool shows(const char* text) const {
         return std::find(lines.begin(), lines.end(), text) != lines.end();
     }
 
+    /** Forgets the strings drawn so far. */
     void clear() { lines.clear(); }
 
+    /** @return the glyph mode the display was last set to. */
     FontMode getGlyphMode() const { return glyphMode; }
 
 private:
@@ -59,6 +63,7 @@ private:
 
 class PracticeMatchTests : public TwoDeviceTestFixture {
 public:
+    /** Adds a posse manager and state context for each PDN. */
     void SetUp() override {
         TwoDeviceTestFixture::SetUp();
         hunterPosse = new PosseManager(hunter, hunterDeviceWirelessManager, &hunterFakeRdc);
@@ -67,6 +72,7 @@ public:
         bountyCtx = contextFor(bounty, bountyMatchManager, &bountyFakeRdc, bountyPosse);
     }
 
+    /** Frees the posse managers, then the two PDNs. */
     void TearDown() override {
         delete bountyPosse;
         delete hunterPosse;
