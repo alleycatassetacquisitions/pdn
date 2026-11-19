@@ -110,3 +110,10 @@ A PDN SHALL keep matches stored by older firmware in their original storage unch
 #### Scenario: Update over older-firmware matches
 - **WHEN** this firmware first boots on a PDN holding 5 matches stored by older firmware and plays a match
 - **THEN** the 5 older matches are still stored byte for byte and none was sent
+
+## Residual gaps
+
+These are decisions, not oversights.
+
+- **The FDN keeps its held matches in RAM only.** After a restart every held match goes up in the first batch and is held again if the server still rejects it. Re-sending is harmless: the server keeps one match per match ID.
+- **Held matches rotate through non-volatile storage.** Each cycle that has newer matches behind them moves every held match to the back of the store, at about 3 writes per held match. A power cut between taking a held match off the front and storing it at the back loses that match. Both costs are accepted.
