@@ -52,6 +52,7 @@ public:
         if (outcome == Outcome::WAITING) {
             if (cycleTimer.expired()) {
                 LOG_W("FDN_UPLOAD", "Upload cycle hit its cap; records stay for the next cycle");
+                if (sentKind == RecordKind::MATCH) matchesFailed = true;
                 endCycle();
             }
             return;
@@ -59,6 +60,7 @@ public:
         const Outcome answered = outcome;
         outcome = Outcome::NONE;
         if (answered == Outcome::KEEP) {
+            if (sentKind == RecordKind::MATCH) matchesFailed = true;
             // The server answered the matches (409: no active event); crash records don't depend on
             // it.
             if (sentKind != RecordKind::MATCH || answeredStatus == 0) {
@@ -87,14 +89,17 @@ private:
         // Checked each tick until the cable comes out; the cycle stays due.
         if (isCabled()) return;
         matchesHeld = false;
+        matchesFailed = false;
         cycleTimer.setTimer(FDN_UPLOAD_CYCLE_CAP_MS);
         sendNext();
     }
 
     // A full match store refuses relayed matches, so it goes up early, but no
-    // sooner than FDN_UPLOAD_FULL_STORE_REST_MS after the last cycle ended.
+    // sooner than FDN_UPLOAD_FULL_STORE_REST_MS after the last cycle ended, and
+    // not after a cycle whose matches failed: a failing server waits its interval.
     bool isFullAndRested() {
-        return fdnRecordStore->getMatchRecords().getStoredCount() >= FDN_MATCH_RECORD_CAPACITY &&
+        return !matchesFailed &&
+               fdnRecordStore->getMatchRecords().getStoredCount() >= FDN_MATCH_RECORD_CAPACITY &&
                (!restTimer.isRunning() || restTimer.expired());
     }
 
@@ -191,6 +196,8 @@ private:
     bool probing = false;
     // Set when the server kept the matches this cycle; the crash records still go.
     bool matchesHeld = false;
+    // Set when the last cycle's matches failed (kept, or the cap hit while sending them).
+    bool matchesFailed = false;
     Outcome outcome = Outcome::NONE;
     uint32_t generation = 0;
     RecordKind sentKind = RecordKind::MATCH;
