@@ -52,10 +52,6 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
         if (hw != nullptr) hw->setByteCallback(nullptr);
         delete helloByJack[jackIndex(jack)].machine;
         helloByJack[jackIndex(jack)].machine = nullptr;
-        // With the writer gone a frame still waiting is this side's to clear.
-        // Nothing is reported: the observers are going with the coordinator.
-        ApplicationFrameOutcome unreported = ApplicationFrameOutcome::DROPPED;
-        helloByJack[jackIndex(jack)].applicationFrameHandOff.drop(unreported);
     }
     // Owns the channels; deletes them and their driver rx bindings.
     delete transport;
@@ -166,9 +162,9 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
         JackHelloLink& link = helloByJack[jackIndex(jack)];
         // Ahead of the link machine: a frame written since the last tick is
         // reported while the link it went out on still stands, if it does.
-        if (link.applicationFrameHandOff.takeWritten()) {
-            reportApplicationFrameOutcome(jack, link.applicationFrameHandOff.getKind(),
-                                          ApplicationFrameOutcome::WRITTEN);
+        if (std::optional<SettledApplicationFrame> written =
+            link.applicationFrameHandOff.takeWritten()) {
+            reportApplicationFrameOutcome(jack, *written);
         }
         if (link.machine) link.machine->onStateLoop(PDN);
     }
@@ -268,8 +264,8 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         link.parser.setHelloFrameHandler(
             [this, jack](const HelloPayload& hello) { onHelloReceived(jack, hello); });
         link.parser.setApplicationFrameHandler(
-        [this, jack](uint8_t kind, const uint8_t* payload, size_t length) {
-            onApplicationFrameReceived(jack, kind, payload, length);
+        [this, jack](const ApplicationFrameHeader& header, const uint8_t* payload) {
+            onApplicationFrameReceived(jack, header, payload);
         });
         // exec() runs on the main loop, so the parser is fed single-threaded.
         hw->setByteCallback([this, jack](uint8_t b) {
@@ -305,7 +301,15 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             // and still reads CONNECTED, so the chain state a subscriber would
             // read is the one that just stopped being true. onLinkDown below
             // reports that edge instead, from Idle, where the accessors agree.
-            if (connected) notifyChainChange();
+            if (!connected) return;
+            notifyChainChange();
+            // After the connect, so a receiver already sees the peer Connected.
+            JackHelloLink::HeldApplicationFrame& held =
+            helloByJack[jackIndex(j)].heldApplicationFrame;
+            if (held.held) {
+                deliverApplicationFrame(j, held.kind, held.payload.data(), held.length);
+                held.clear();
+            }
         };
         // Every link-death path mounts Idle; the initial mount fires this too, a
         // no-op on zero state.
@@ -314,9 +318,12 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             // The peer a waiting frame was for is gone. Settled here, where the
             // jack already reads Idle, so its outcome cannot outlive the link
             // and a send from inside the outcome observer is refused.
-            ApplicationFrameHandOff& handOff = helloByJack[jackIndex(jack)].applicationFrameHandOff;
-            ApplicationFrameOutcome outcome = ApplicationFrameOutcome::DROPPED;
-            if (handOff.drop(outcome)) reportApplicationFrameOutcome(j, handOff.getKind(), outcome);
+            JackHelloLink& link = helloByJack[jackIndex(jack)];
+            if (std::optional<SettledApplicationFrame> settled =
+                link.applicationFrameHandOff.drop()) {
+                reportApplicationFrameOutcome(j, *settled);
+            }
+            link.heldApplicationFrame.clear();
             if (MacToUInt64(mac.data()) != 0) {
                 const bool wasFdn = getPeerDeviceType(j) == DeviceType::FDN;
                 releaseHelloPeer(j, mac.data());
@@ -386,7 +393,7 @@ static_assert(RemoteDeviceCoordinator::HELLO_CADENCE_MS +
               RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS,
               "an application frame between two HELLO frames must fit the silent-link window");
 
-bool RemoteDeviceCoordinator::sendApplicationFrame(SerialIdentifier jack, uint8_t kind,
+bool RemoteDeviceCoordinator::sendApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
                                                    const uint8_t* payload, size_t length) {
     if (length > APPLICATION_PAYLOAD_MAX_LEN || (payload == nullptr && length > 0)) {
         LOG_E("RDC", "application frame refused: %u bytes", static_cast<unsigned>(length));
@@ -397,66 +404,73 @@ bool RemoteDeviceCoordinator::sendApplicationFrame(SerialIdentifier jack, uint8_
         LOG_E("RDC", "application frame refused: no peer Connected on the jack");
         return false;
     }
-    if (!link.applicationFrameHandOff.offer(kind, payload, length)) {
+    ApplicationFrameHeader header{};
+    header.kind = static_cast<uint8_t>(kind);
+    memcpy(header.source, selfMac.data(), sizeof(header.source));
+    header.length = static_cast<uint8_t>(length);
+    if (!link.applicationFrameHandOff.offer(header, payload)) {
         LOG_E("RDC", "application frame refused: the jack's last one is not finished");
         return false;
     }
     return true;
 }
 
-void RemoteDeviceCoordinator::onApplicationFrameReceived(SerialIdentifier jack, uint8_t kind,
-                                                         const uint8_t* payload, size_t length) {
-    // A sender queues a frame only behind its HELLO, so one on a jack with no
-    // HELLO peer is line noise or a stranger's.
-    if (getPeerMac(jack) == nullptr) {
-        LOG_W("RDC", "application frame dropped: no HELLO peer on the jack");
+void RemoteDeviceCoordinator::onApplicationFrameReceived(SerialIdentifier jack,
+                                                         const ApplicationFrameHeader& header,
+                                                         const uint8_t* payload) {
+    // Only the jack's HELLO peer counts. That drops this device's own frame,
+    // echoed as the plug leaves (no peer is ever this device), and a stranger's.
+    const uint8_t* peer = getPeerMac(jack);
+    if (peer == nullptr || memcmp(header.source, peer, sizeof(header.source)) != 0) {
+        LOG_W("RDC", "application frame dropped: not from the jack's HELLO peer");
         return;
     }
-    ApplicationFrameKindSlot* slot = findApplicationFrameKind(kind);
-    if (slot == nullptr || !slot->onFrame) {
-        LOG_W("RDC", "application frame of kind %u dropped: no receiver", kind);
+    if (header.kind >= APPLICATION_FRAME_KIND_COUNT) {
+        LOG_W("RDC", "application frame of unknown kind %u dropped", header.kind);
         return;
     }
+    const ApplicationFrameKind kind = static_cast<ApplicationFrameKind>(header.kind);
+    JackHelloLink& link = helloByJack[jackIndex(jack)];
+    if (link.machine->currentStateId() == HELLO_LINK_CONNECTED) {
+        deliverApplicationFrame(jack, kind, payload, header.length);
+        return;
+    }
+    // The sender connects on our context, which can be before we have its
+    // own; hold the frame for the Connected edge rather than lose it.
+    JackHelloLink::HeldApplicationFrame& held = link.heldApplicationFrame;
+    held.held = true;
+    held.kind = kind;
+    held.length = header.length;
+    memcpy(held.payload.data(), payload, header.length);
+}
+
+void RemoteDeviceCoordinator::deliverApplicationFrame(SerialIdentifier jack,
+                                                      ApplicationFrameKind kind,
+                                                      const uint8_t* payload, size_t length) {
     // Copied before the call: a receiver that removes itself would otherwise
     // destroy the std::function whose operator() frame is still live.
-    ApplicationFrameCallback receiver = slot->onFrame;
-    receiver(jack, payload, length);
+    ApplicationFrameCallback receiver = applicationFrameOwners[static_cast<size_t>(kind)].onFrame;
+    if (receiver) receiver(jack, payload, length);
 }
 
-void RemoteDeviceCoordinator::reportApplicationFrameOutcome(SerialIdentifier jack, uint8_t kind,
-                                                            ApplicationFrameOutcome outcome) {
-    ApplicationFrameKindSlot* slot = findApplicationFrameKind(kind);
-    if (slot == nullptr || !slot->onOutcome) return;
-    ApplicationFrameOutcomeCallback observer = slot->onOutcome;
-    observer(jack, outcome);
+void RemoteDeviceCoordinator::reportApplicationFrameOutcome(
+SerialIdentifier jack, const SettledApplicationFrame& settled) {
+    ApplicationFrameOutcomeCallback observer =
+    applicationFrameOwners[static_cast<size_t>(settled.kind)].onOutcome;
+    if (observer) observer(jack, settled.outcome);
 }
 
-RemoteDeviceCoordinator::ApplicationFrameKindSlot*
-RemoteDeviceCoordinator::findApplicationFrameKind(uint8_t kind) {
-    for (ApplicationFrameKindSlot& slot : applicationFrameKinds) {
-        if (!slot.isFree() && slot.kind == kind) return &slot;
-    }
-    return nullptr;
-}
-
-bool RemoteDeviceCoordinator::setOnApplicationFrame(uint8_t kind, ApplicationFrameCallback onFrame,
+bool RemoteDeviceCoordinator::setOnApplicationFrame(ApplicationFrameKind kind,
+                                                    ApplicationFrameCallback onFrame,
                                                     ApplicationFrameOutcomeCallback onOutcome) {
-    ApplicationFrameKindSlot* slot = findApplicationFrameKind(kind);
-    if (!onFrame && !onOutcome) {
-        if (slot != nullptr) *slot = ApplicationFrameKindSlot{};
-        return true;
-    }
-    if (slot != nullptr) {
-        LOG_E("RDC", "application frame kind %u refused: already registered", kind);
+    ApplicationFrameOwner& owner = applicationFrameOwners[static_cast<size_t>(kind)];
+    if ((onFrame || onOutcome) && (owner.onFrame || owner.onOutcome)) {
+        LOG_E("RDC", "application frame kind %u refused: already registered",
+              static_cast<unsigned>(kind));
         return false;
     }
-    for (ApplicationFrameKindSlot& candidate : applicationFrameKinds) {
-        if (!candidate.isFree()) continue;
-        candidate = ApplicationFrameKindSlot{kind, std::move(onFrame), std::move(onOutcome)};
-        return true;
-    }
-    LOG_E("RDC", "application frame kind %u refused: every slot is taken", kind);
-    return false;
+    owner = ApplicationFrameOwner{std::move(onFrame), std::move(onOutcome)};
+    return true;
 }
 
 void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const HelloPayload& hello) {

@@ -1936,8 +1936,11 @@ TEST_F(RDCHelloTests, fdnOnTheOutputJackEndsRelayedRingMembership) {
 TEST_F(RDCHelloTests, applicationFrameRoutesByKindWithItsJack) {
     rdcApplicationFrameRoutesByKindWithItsJack(this);
 }
-TEST_F(RDCHelloTests, applicationFrameWithoutAHelloPeerIsDropped) {
-    rdcApplicationFrameWithoutAHelloPeerIsDropped(this);
+TEST_F(RDCHelloTests, applicationFrameCountsOnlyFromTheJacksHelloPeer) {
+    rdcApplicationFrameCountsOnlyFromTheJacksHelloPeer(this);
+}
+TEST_F(RDCHelloTests, applicationFrameFromAConnectingPeerWaitsForItToConnect) {
+    rdcApplicationFrameFromAConnectingPeerWaitsForItToConnect(this);
 }
 TEST_F(RDCHelloTests, applicationFrameIsWrittenAfterHelloToAConnectedJack) {
     rdcApplicationFrameIsWrittenAfterHelloToAConnectedJack(this);

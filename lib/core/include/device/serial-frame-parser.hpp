@@ -23,14 +23,7 @@ constexpr size_t HELLO_PAYLOAD_LEN = 14;
 constexpr size_t HELLO_FRAME_LEN = 2 + 1 + HELLO_PAYLOAD_LEN + 2;
 // 0x01 is reserved.
 constexpr uint8_t OP_APPLICATION = 0x02;
-// An application frame's payload is a kind byte, a length byte, then that many
-// bytes, at most APPLICATION_PAYLOAD_MAX_LEN. The serial layer gives neither
-// the kind nor the bytes a meaning: each kind's number and layout belong to the
-// layer that sends and receives it.
-constexpr size_t APPLICATION_HEADER_LEN = 2;
 constexpr size_t APPLICATION_PAYLOAD_MAX_LEN = 32;
-constexpr size_t APPLICATION_FRAME_MAX_LEN =
-2 + 1 + APPLICATION_HEADER_LEN + APPLICATION_PAYLOAD_MAX_LEN + 2;
 
 // Set once this device's context exchange with the head it currently holds has
 // been delivered; cleared by a head change until re-confirmed under the new one.
@@ -55,6 +48,19 @@ struct HelloPayload {
 static_assert(sizeof(HelloPayload) == HELLO_PAYLOAD_LEN,
               "HelloPayload must match the 14-byte HELLO wire layout");
 
+// An application frame's payload: this header, then `length` bytes, at most
+// APPLICATION_PAYLOAD_MAX_LEN. The parser reads only `length`, to frame it;
+// the kind and the bytes mean something only to the coordinator's consumers.
+struct ApplicationFrameHeader {
+    uint8_t kind;
+    uint8_t source[6];  // the sender's WiFi MAC, as in HELLO
+    uint8_t length;
+} __attribute__((packed));
+
+constexpr size_t APPLICATION_HEADER_LEN = sizeof(ApplicationFrameHeader);
+constexpr size_t APPLICATION_FRAME_MAX_LEN =
+2 + 1 + APPLICATION_HEADER_LEN + APPLICATION_PAYLOAD_MAX_LEN + 2;
+
 std::array<uint8_t, HELLO_FRAME_LEN> encodeHelloFrame(const HelloPayload& hello);
 std::vector<uint8_t> encodeFramed(const HelloPayload& hello);
 
@@ -63,16 +69,16 @@ using HelloFrameHandler = std::function<void(const HelloPayload&)>;
 using ApplicationFrame = std::array<uint8_t, APPLICATION_FRAME_MAX_LEN>;
 
 /**
- * Frames one application frame of `kind` carrying `length` bytes of `payload`
- * into the front of `frame`. Returns the bytes used, or 0, writing nothing,
- * when `length` exceeds APPLICATION_PAYLOAD_MAX_LEN.
+ * Frames `header` and its `header.length` bytes of `payload` into the front of
+ * `frame`. Returns the bytes used, or 0, writing nothing, when `header.length`
+ * exceeds APPLICATION_PAYLOAD_MAX_LEN.
  */
-size_t encodeApplicationFrame(uint8_t kind, const uint8_t* payload, size_t length,
+size_t encodeApplicationFrame(const ApplicationFrameHeader& header, const uint8_t* payload,
                               ApplicationFrame& frame);
 
 /** Receives a CRC-valid application frame; `payload` is valid only for the call. */
 using ApplicationFrameHandler =
-std::function<void(uint8_t kind, const uint8_t* payload, size_t length)>;
+std::function<void(const ApplicationFrameHeader& header, const uint8_t* payload)>;
 
 // Parses one jack's serial byte stream into framed binary frames
 // (preamble 0xAA 0x55 + opcode + payload + CRC-16). One instance per jack.
@@ -114,10 +120,16 @@ private:
         READING_CRC,
     };
 
+    // The largest payload any opcode frames: an application header and payload.
+    // A fixed buffer, so a key never leaves copies behind in reallocated heap.
+    static constexpr size_t PAYLOAD_CAPACITY = APPLICATION_HEADER_LEN + APPLICATION_PAYLOAD_MAX_LEN;
+    static_assert(HELLO_PAYLOAD_LEN <= PAYLOAD_CAPACITY, "the payload buffer must hold a HELLO");
+
     struct ParserState {
         ParseState state = ParseState::SCAN_FOR_SYNC;
         uint8_t opcode = 0;
-        std::vector<uint8_t> payloadBuf;
+        std::array<uint8_t, PAYLOAD_CAPACITY> payloadBuf{};
+        size_t payloadLength = 0;
         size_t expectedPayloadLen = 0;
         uint8_t crcBytes[2] = {0, 0};
         size_t crcBytesRead = 0;
@@ -142,8 +154,8 @@ private:
     void consumeByte(uint8_t b);
     void resyncFromConsumedBytes();
     void dispatchFrame();
-    // The one place that says what is an opcode and how many payload bytes
-    // frame it (for an application frame, the header that gives its length).
+    // Opcode whitelist and each opcode's initial payload length; an application
+    // frame's length byte extends it in consumeByte().
     static bool isKnownOpcode(uint8_t opcode, size_t& payloadLen);
     static unsigned long nowMs();
 };

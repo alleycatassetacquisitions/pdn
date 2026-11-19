@@ -148,9 +148,9 @@ public:
     }
 
     // ---- Per-jack HELLO connectivity ----
-    // HELLO carries discovery, liveness and hop-by-hop chain context, and is all
-    // a jack carries apart from the application frame further down. Each jack
-    // runs an independent link SM fed by the real exec()-driven RX byte pump.
+    // HELLO carries discovery, liveness and hop-by-hop chain context; the only
+    // other jack traffic is the application frame. Each jack runs an
+    // independent link SM fed by the real exec()-driven RX byte pump.
 
     // The jacks that can carry a HELLO link, in the order sync() drives them.
     static constexpr std::array<SerialIdentifier, 3> HELLO_JACKS = {
@@ -245,10 +245,10 @@ public:
     bool isContextSendPending(const uint8_t* mac) const;
 
     // ---- Application frame ----
-    // The one frame a jack carries besides HELLO: a kind byte and up to
+    // The one frame a jack carries besides HELLO: a kind and up to
     // APPLICATION_PAYLOAD_MAX_LEN bytes for the peer on that jack, for bytes
     // that must not cross the radio. RDC routes it by kind with the jack and
-    // never reads it; kind numbers belong to the layers that use them.
+    // never reads the payload.
 
     /** One received frame of the registered kind; `payload` is valid for the call. */
     using ApplicationFrameCallback =
@@ -258,34 +258,31 @@ public:
     using ApplicationFrameOutcomeCallback =
     std::function<void(SerialIdentifier jack, ApplicationFrameOutcome outcome)>;
 
-    // Kinds that can be registered at once.
-    static constexpr size_t APPLICATION_FRAME_KIND_SLOTS = 4;
-
     /**
      * Registers the one owner of `kind`: its receiver, its outcome observer,
-     * either may be null. Both null removes the kind. False, with a LOG_E and
-     * the owner kept, when `kind` is already registered or every slot is
-     * taken. Frames are handed up on the main loop only from a jack holding a
-     * HELLO peer; a kind with no receiver is dropped. A frame carries no
-     * source: a device can receive its own, echoed as the plug leaves. Each
-     * accepted send is reported once: WRITTEN at the sync() after every byte
-     * went to the UART (nothing confirms the peer parsed it), or DROPPED at
-     * link-down for a frame not yet begun; every outcome is out before another
-     * peer can be Connected on the jack.
+     * either may be null. Both null removes it. False, with a LOG_E and the
+     * owner kept, when `kind` already has one. Receivers get, on the main
+     * loop, only frames whose source is the jack's HELLO peer (never this
+     * device's own echo), and only once that peer is Connected: a frame from
+     * a peer still Connecting is held, latest wins, until it connects, and
+     * wiped if it leaves first. Each accepted send is reported once: WRITTEN
+     * at the sync() after every byte went to the UART (nothing confirms the
+     * peer parsed it), or DROPPED at link-down for a frame not yet begun;
+     * every outcome is out before another peer can be Connected on the jack.
      */
-    bool setOnApplicationFrame(uint8_t kind, ApplicationFrameCallback onFrame,
+    bool setOnApplicationFrame(ApplicationFrameKind kind, ApplicationFrameCallback onFrame,
                                ApplicationFrameOutcomeCallback onOutcome = nullptr);
 
     /**
      * Queues one frame of `kind` carrying `length` bytes of `payload` for the
      * peer Connected on `jack`, written whole straight after that jack's next
      * HELLO. Main loop only. False, with a LOG_E, when `length` exceeds
-     * APPLICATION_PAYLOAD_MAX_LEN, no peer is Connected on `jack`, or the
-     * jack's last frame has no outcome reported yet. The coordinator's copy
-     * is wiped once written or dropped.
+     * APPLICATION_PAYLOAD_MAX_LEN or `payload` is null with a length, no peer
+     * is Connected on `jack`, or the jack's last frame has no outcome reported
+     * yet. The coordinator's copy is wiped once written or dropped.
      */
-    bool sendApplicationFrame(SerialIdentifier jack, uint8_t kind, const uint8_t* payload,
-                              size_t length);
+    bool sendApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                              const uint8_t* payload, size_t length);
 
     /**
      * Native/test hook: suppress the FreeRTOS emit-task spawn so the caller
@@ -346,10 +343,12 @@ private:
     void notifyChainChange();
     void recordJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
                            uint16_t peerUserId, const uint8_t* profile, size_t len);
-    void onApplicationFrameReceived(SerialIdentifier jack, uint8_t kind, const uint8_t* payload,
-                                    size_t length);
-    void reportApplicationFrameOutcome(SerialIdentifier jack, uint8_t kind,
-                                       ApplicationFrameOutcome outcome);
+    void onApplicationFrameReceived(SerialIdentifier jack, const ApplicationFrameHeader& header,
+                                    const uint8_t* payload);
+    void deliverApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                                 const uint8_t* payload, size_t length);
+    void reportApplicationFrameOutcome(SerialIdentifier jack,
+                                       const SettledApplicationFrame& settled);
 
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
@@ -375,6 +374,19 @@ private:
         uint16_t peerUserId = PEER_USER_ID_NONE;
         SimpleTimer contextResendThrottleTimer;
         ApplicationFrameHandOff applicationFrameHandOff;
+        // The latest frame from a peer still Connecting, handed up on its
+        // Connected edge and wiped at link-down.
+        struct HeldApplicationFrame {
+            bool held = false;
+            ApplicationFrameKind kind = ApplicationFrameKind::RECORD_KEY;
+            size_t length = 0;
+            std::array<uint8_t, APPLICATION_PAYLOAD_MAX_LEN> payload{};
+            /** Lets go of the frame and wipes its bytes. */
+            void clear() {
+                held = false;
+                secureWipe(payload.data(), payload.size());
+            }
+        } heldApplicationFrame;
     };
     std::array<JackHelloLink, NUM_JACKS> helloByJack;
     bool externalConnectivityTask = false;
@@ -383,16 +395,11 @@ private:
     std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 
-    // A kind's owner.
-    struct ApplicationFrameKindSlot {
-        uint8_t kind = 0;
+    struct ApplicationFrameOwner {
         ApplicationFrameCallback onFrame;
         ApplicationFrameOutcomeCallback onOutcome;
-        /** True while the slot holds neither callback, so no kind. */
-        bool isFree() const { return !onFrame && !onOutcome; }
     };
-    std::array<ApplicationFrameKindSlot, APPLICATION_FRAME_KIND_SLOTS> applicationFrameKinds;
-    ApplicationFrameKindSlot* findApplicationFrameKind(uint8_t kind);
+    std::array<ApplicationFrameOwner, APPLICATION_FRAME_KIND_COUNT> applicationFrameOwners;
 
     // Owned reliable transport + one context channel per device-type PktType.
     // Device-level, not per-jack: on receive the source MAC is matched back to a

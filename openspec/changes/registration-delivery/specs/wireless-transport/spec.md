@@ -2,7 +2,7 @@
 
 ### Requirement: Serial jack application frame
 
-Besides HELLO a serial jack SHALL carry one application frame: a kind byte, a length byte and at most `32` payload bytes, framed and CRC-checked like HELLO. A frame that fails its CRC or claims more than `32` bytes SHALL be dropped and its bytes rescanned for the next frame. The transport SHALL give the kind and payload no meaning; each kind's number and layout belong to the layer that sends and receives it.
+Besides HELLO a serial jack SHALL carry one application frame: a kind byte, the sender's MAC, a length byte and at most `32` payload bytes, framed and CRC-checked like HELLO. A frame that fails its CRC or claims more than `32` bytes SHALL be dropped and its bytes rescanned for the next frame. The serial parser SHALL give the kind and payload no meaning. Every kind value SHALL be listed once, shared by both ends of a jack: `0` the record key, `1` the match secret.
 
 #### Scenario: Frame arrives whole
 - **WHEN** a device receives a CRC-valid application frame of kind `k` carrying `n ≤ 32` bytes
@@ -38,7 +38,7 @@ A device SHALL queue an application frame only for a peer Connected on that jack
 
 ### Requirement: Application frame routing by kind
 
-A device SHALL hand a received application frame, with the jack it arrived on, only to the one receiver registered for its kind, and only while that jack holds a HELLO peer. A frame of a kind with no receiver SHALL be dropped. A second receiver or outcome observer for a kind already held SHALL be refused, leaving the first in place.
+A device SHALL hand a received application frame, with the jack it arrived on, only to the one receiver registered for its kind, and only if its source is the jack's HELLO peer. A frame from a peer still Connecting SHALL be held, the latest only, until the peer is Connected, and wiped if it leaves first. A frame of an unknown or unregistered kind SHALL be dropped. A second owner for a kind already held SHALL be refused.
 
 #### Scenario: Frame reaches only its kind's receiver
 - **WHEN** receivers are registered for kinds `A` and `B` and a frame of kind `B` arrives on the input jack
@@ -51,6 +51,14 @@ A device SHALL hand a received application frame, with the jack it arrived on, o
 #### Scenario: Frame before HELLO is dropped
 - **WHEN** an application frame arrives on a jack that holds no HELLO peer
 - **THEN** no receiver gets it
+
+#### Scenario: Own echo and strangers are dropped
+- **WHEN** a frame arrives whose source is this device or a MAC other than the jack's HELLO peer
+- **THEN** no receiver gets it
+
+#### Scenario: Frame from a Connecting peer waits
+- **WHEN** a frame from the jack's HELLO peer arrives while that peer is still Connecting
+- **THEN** the receiver gets it once the peer is Connected, or never if the peer leaves first
 
 #### Scenario: Second receiver for a kind is refused
 - **WHEN** a receiver is registered for a kind that already has one
