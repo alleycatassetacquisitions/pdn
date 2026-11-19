@@ -124,8 +124,9 @@ public:
     bool isPracticeMatch() const;
 
     /**
-     * Finalizes the active match and clears active match state. A standalone match
-     * that is not practice is tagged and appended to the ring, unless 32 records already wait there.
+     * Finalizes the active match and clears active match state. A standalone
+     * match that is not practice is tagged and appended to the ring, unless 32
+     * records already wait there.
      */
     bool finalizeMatch();
 
