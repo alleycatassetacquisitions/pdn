@@ -170,9 +170,9 @@ public:
      */
     const LastMatchDisplay& getLastMatchDisplay() const { return lastMatchDisplay; }
 
-    // Required for SEND_MATCH_ID to be accepted: sender MAC must match one
-    // of the RDC's direct-peer MACs (cable-established neighbor). If unset,
-    // SEND_MATCH_ID is refused — no match initiation from an unknown MAC.
+    // Required for SEND_MATCH_ID to be accepted: the sender must be the
+    // Connected PDN on this device's opponent jack. If unset, SEND_MATCH_ID is
+    // refused — no match initiation from an unknown MAC.
     void setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc);
 
     // Shootout tournament suppresses the hunter/bounty role-mismatch rejection
@@ -214,7 +214,7 @@ private:
     Player* player;
 
     std::function<unsigned long()> boostProvider;
-    RemoteDeviceCoordinator* rdc_ = nullptr;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
 
     ActiveMatchState activeMatchState;

@@ -74,7 +74,7 @@ void MatchManager::setBoostProvider(std::function<unsigned long()> provider) {
 }
 
 void MatchManager::setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc) {
-    rdc_ = rdc;
+    remoteDeviceCoordinator = rdc;
 }
 
 void MatchManager::setShootoutManager(ShootoutManager* shootoutManager) {
@@ -467,11 +467,18 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
     LOG_I(MATCH_MANAGER_TAG, "Received command: %d", command.command);
 
     if (command.command == MatchCmd::SEND_MATCH_ID) {
-        // Gate on RDC peering — no active match exists yet, so the sender
-        // must be authenticated via the cable-established direct peer.
+        // Connected, not Connecting: a Connecting jack can still fail its context
+        // exchange and drop to Idle mid-countdown, leaving the hunter to play alone.
         LOG_I(MATCH_MANAGER_TAG, "Received SEND_MATCH_ID command from opponent");
-        if (!rdc_ || !rdc_->isDirectPeer(command.wifiMacAddr)) {
-            LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
+        const SerialIdentifier opponentJack =
+        player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK;
+        const uint8_t* opponentPeer =
+        remoteDeviceCoordinator ? remoteDeviceCoordinator->getPeerMac(opponentJack) : nullptr;
+        if (opponentPeer == nullptr || memcmp(opponentPeer, command.wifiMacAddr, 6) != 0 ||
+            remoteDeviceCoordinator->getJackStatus(opponentJack) != JackStatus::CONNECTED ||
+            remoteDeviceCoordinator->getPeerDeviceType(opponentJack) != DeviceType::PDN) {
+            LOG_W(MATCH_MANAGER_TAG,
+                  "Ignoring SEND_MATCH_ID: sender not the Connected opponent PDN");
             return;
         }
         bool shootoutActive = shootoutManager_ && shootoutManager_->active();
