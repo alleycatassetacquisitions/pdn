@@ -38,7 +38,7 @@ The FDN SHALL follow no redirect, since one could lead away from `https://`: an 
 
 ### Requirement: Clock set before the first TLS connection
 
-The FDN SHALL start no TLS connection until its wall clock is set (2025 or later), since certificate dates are checked against it. A request SHALL wait at most `10000 ms` with Wi-Fi up for the clock and then fail, not as untrusted.
+The FDN SHALL start no TLS connection until its wall clock is set (2025 or later), since certificate dates are checked against it. A request SHALL wait at most `10000 ms` with Wi-Fi up for the clock and then fail, not as untrusted. An upload cycle that starts with the clock unset SHALL add that wait to its `15,000 ms` window.
 
 #### Scenario: No clock, no TLS request
 - **WHEN** an upload cycle starts after a cold boot and SNTP has not set the clock
@@ -47,6 +47,10 @@ The FDN SHALL start no TLS connection until its wall clock is set (2025 or later
 #### Scenario: Clock set, request proceeds
 - **WHEN** SNTP sets the clock while a request waits
 - **THEN** the request is sent at once
+
+#### Scenario: First cycle after a cold boot gets the clock wait
+- **WHEN** an upload cycle starts before SNTP has set the clock
+- **THEN** the cycle keeps Wi-Fi for up to `25,000 ms` before it gives the radio back
 
 ### Requirement: Every server request uses the same trust
 

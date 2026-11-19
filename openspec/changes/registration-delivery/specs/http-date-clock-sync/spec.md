@@ -17,7 +17,7 @@ Updating the UTC wall clock SHALL NOT alter the monotonic millisecond clock.
 - The monotonic clock SHALL continue to report elapsed milliseconds since boot, used by protocol timers, HTTP request timeouts, and match draw-time measurements.
 - The UTC wall clock SHALL report signed 64-bit UTC milliseconds since `1970-01-01T00:00:00Z`.
 
-#### Scenario: In-flight HTTP request does not time out when Date header arrives
+#### Scenario: In-flight HTTP request does not time out when SNTP sets the clock
 - **WHEN** an HTTP request starts when the monotonic clock is at `5000` ms and SNTP sets the UTC wall clock to `1792359000000` ms while the request is in flight
 - **THEN** the UTC wall clock jumps to `1792359000000` ms, while the monotonic clock remains near `5000` ms and the in-flight request does not spuriously time out
 
