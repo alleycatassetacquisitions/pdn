@@ -1034,16 +1034,17 @@ void cliDuelStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
 
     const UUIDBytes& hunterId = suite->devices[0].player->getServerPlayerId();
     const UUIDBytes& bountyId = suite->devices[1].player->getServerPlayerId();
-    MatchRecord records[2] = {};
+    TaggedMatchRecord records[2] = {};
     for (int i = 0; i < 2; i++) {
         ASSERT_EQ(matchManagers[i]->getMatchSequenceNumber(), 1u) << "device " << i;
         ASSERT_TRUE(matchManagers[i]->readRecord(1, records[i]));
-        EXPECT_EQ(records[i].hunterPlayerId, hunterId);
-        EXPECT_EQ(records[i].bountyPlayerId, bountyId);
-        EXPECT_TRUE(records[i].winnerPlayerId == hunterId || records[i].winnerPlayerId == bountyId);
+        EXPECT_EQ(records[i].record.hunterPlayerId, hunterId);
+        EXPECT_EQ(records[i].record.bountyPlayerId, bountyId);
+        EXPECT_TRUE(records[i].record.winnerPlayerId == hunterId ||
+                    records[i].record.winnerPlayerId == bountyId);
     }
-    EXPECT_EQ(records[0].matchUuid, records[1].matchUuid);
-    EXPECT_EQ(records[0].winnerPlayerId, records[1].winnerPlayerId);
+    EXPECT_EQ(records[0].record.matchUuid, records[1].record.matchUuid);
+    EXPECT_EQ(records[0].record.winnerPlayerId, records[1].record.winnerPlayerId);
 }
 
 // Test: after the duel, one FDN beacon in the simulator takes both PDNs' records into a real store

@@ -101,7 +101,10 @@ private:
             MatchesApi::uploadQuickdrawMatches(
             wirelessManager, sentCount,
             [this](size_t index, MatchRecord& record) {
-                memcpy(&record, matchBatch[index].content, sizeof(record));
+                TaggedMatchRecord tagged{};
+                memcpy(&tagged, matchBatch[index].content, sizeof(tagged));
+                // The tag is not uploaded until the server takes the raw record and tag.
+                record = tagged.record;
                 return true;
             },
             [](const QuickdrawMatchRejection& rejection) {

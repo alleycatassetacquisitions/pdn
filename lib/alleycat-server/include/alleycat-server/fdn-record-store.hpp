@@ -13,11 +13,14 @@
 #include "wireless/reliable-channel.hpp"
 
 inline constexpr const char FDN_RECORD_STORE_NAMESPACE[] = "fdn_records";
-// Sized to fit the default NVS partition next to the FDN's other namespaces.
-inline constexpr size_t FDN_MATCH_RECORD_CAPACITY = 32;
+// Sized to fit the 504 usable entries of the default 20 KB NVS partition next
+// to the crash log, PHY calibration and Wi-Fi: a 139-byte match entry takes 7
+// NVS entries, so 27 take 189, within the 192 that 32 untagged entries took.
+inline constexpr size_t FDN_MATCH_RECORD_CAPACITY = 27;
 inline constexpr size_t FDN_CRASH_RECORD_CAPACITY = 16;
 
-/// One stored record: the MAC it came from, then the frame's kind, number and content.
+/// One stored record: the MAC it came from, then the frame's kind, number and
+/// content. A match record's content ends with its tag, which the FDN never checks.
 template <size_t CONTENT_SIZE> struct FdnStoredEntry {
     uint8_t senderMac[6];
     uint8_t kind;
@@ -181,7 +184,7 @@ private:
 class FdnRecordStore {
 public:
     using CrashRing = FdnRecordRing<CRASH_RECORD_SIZE, FDN_CRASH_RECORD_CAPACITY>;
-    using MatchRing = FdnRecordRing<MATCH_BINARY_SIZE, FDN_MATCH_RECORD_CAPACITY>;
+    using MatchRing = FdnRecordRing<MatchRecordTraits::RECORD_SIZE, FDN_MATCH_RECORD_CAPACITY>;
 
     /** Loads what storage holds and claims the record and ack packet types. */
     FdnRecordStore(WirelessManager* wirelessManager, StorageInterface* storage)

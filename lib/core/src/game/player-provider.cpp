@@ -17,7 +17,10 @@ void PlayerProvider::clear() {
     player.clearRegistrationProfile();
     registrationPin[0] = '\0';
     pinStored = false;
+    recordKey.clear();
 }
+
+RecordKey* PlayerProvider::getRecordKey() { return &recordKey; }
 
 void PlayerProvider::setRegistrationPin(const char* pin) {
     if (pin == nullptr) {

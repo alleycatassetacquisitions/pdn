@@ -1951,7 +1951,7 @@ public:
 // destructor failed to empty is called here with a freed `this`.
 inline void gameSessionCtorDtorDoesNotLeak(GameSessionLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
+        GameSession* session = new GameSession(suite->player, nullptr, &suite->device, nullptr);
         delete session;
         suite->device.loop();
     }
@@ -1981,7 +1981,7 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
             return 1;
         });
 
-    auto* session = new GameSession(suite->player, &suite->device, nullptr);
+    auto* session = new GameSession(suite->player, nullptr, &suite->device, nullptr);
     PosseManager* posseManager = session->getContext().posseManager;
 
     posseManager->onRoleAnnounceReceived(challenger, challenger);
@@ -2020,7 +2020,7 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
     rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
-    GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
+    GameSession* session = new GameSession(suite->player, nullptr, &suite->device, nullptr);
     PosseManager* posseManager = session->getContext().posseManager;
     posseManager->onRoleAnnounceReceived(challenger, challenger);
     ASSERT_TRUE(posseManager->isSupporter());

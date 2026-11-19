@@ -1085,6 +1085,10 @@ TEST(PlayerProvider, overwriteReplacesProfile) { playerProviderOverwriteReplaces
 
 TEST(PlayerProvider, clearDropsProfile) { playerProviderClearDropsProfile(); }
 
+TEST(PlayerProvider, clearDropsAndOverwritesRecordKey) {
+    playerProviderClearDropsAndOverwritesRecordKey();
+}
+
 TEST(PlayerRegistrationShim, mapsHelixAffiliation) { playerLegacyShimMapsHelixAffiliation(); }
 
 TEST(PlayerRegistrationShim, mapsHunterTeamName) { playerLegacyShimMapsHunterTeamName(); }

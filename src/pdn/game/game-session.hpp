@@ -32,10 +32,10 @@ public:
      * Builds the shared managers, wires every RDC callback and ESP-NOW handler
      * that feeds them, and installs its own per-tick pump. The device and its
      * wireless manager outlive the session, so the destructor empties every slot
-     * holding `this`.
+     * holding `this`. @p recordKey is borrowed, may be null, and must outlive the
+     * session: finished matches are tagged with the key it holds.
      */
-    GameSession(Player* player,
-                Device* pdn,
+    GameSession(Player* player, const RecordKey* recordKey, Device* pdn,
                 SymbolWirelessManager* symbolWirelessManager);
     /** Drops the callbacks that capture `this`, then frees the managers it owns. */
     ~GameSession();

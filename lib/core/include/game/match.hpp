@@ -23,6 +23,15 @@ struct MatchRecord {
 constexpr size_t MATCH_BINARY_SIZE = sizeof(MatchRecord);
 static_assert(MATCH_BINARY_SIZE == 112, "stored records use this layout");
 
+constexpr size_t RECORD_TAG_SIZE = 16;
+
+/// A match record as a PDN stores and relays it: the 112 record bytes, then their tag.
+struct TaggedMatchRecord {
+    MatchRecord record;
+    uint8_t tag[RECORD_TAG_SIZE];
+} __attribute__((packed));
+static_assert(sizeof(TaggedMatchRecord) == 128, "a ring slot holds the record, then its tag");
+
 /**
  * A match between a hunter and a bounty: its text id for the handshake and the
  * record it is stored as.

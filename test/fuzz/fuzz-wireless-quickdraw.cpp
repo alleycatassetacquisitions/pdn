@@ -266,7 +266,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                     }
                 }
                 if (matchManager.finalizeMatch()) {
-                    MatchRecord record{};
+                    TaggedMatchRecord record{};
                     (void)matchManager.readRecord(matchManager.getMatchSequenceNumber(), record);
                 }
                 break;

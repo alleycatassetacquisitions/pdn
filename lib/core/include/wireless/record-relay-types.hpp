@@ -29,8 +29,10 @@ template <size_t CONTENT_SIZE> struct RecordFramePacket {
 using CrashRecordFramePacket = RecordFramePacket<CRASH_RECORD_SIZE>;
 static_assert(sizeof(CrashRecordFramePacket) == 48, "CrashRecordFramePacket wire size");
 
-using MatchRecordFramePacket = RecordFramePacket<MATCH_BINARY_SIZE>;
-static_assert(sizeof(MatchRecordFramePacket) == 118, "MatchRecordFramePacket wire size");
+/// A match record frame's content is the 112 record bytes, then their 16-byte
+/// tag; a crash record carries no tag.
+using MatchRecordFramePacket = RecordFramePacket<sizeof(TaggedMatchRecord)>;
+static_assert(sizeof(MatchRecordFramePacket) == 134, "MatchRecordFramePacket wire size");
 
 // What has to agree for one record kind, so a relay lane or a record source is
 // written against a kind and cannot mix one kind's packet type or size with another's.
@@ -43,14 +45,14 @@ struct CrashRecordTraits {
 
 struct MatchRecordTraits {
     static constexpr RecordKind KIND = RecordKind::MATCH;
-    static constexpr size_t RECORD_SIZE = MATCH_BINARY_SIZE;
+    static constexpr size_t RECORD_SIZE = sizeof(TaggedMatchRecord);
     static constexpr PktType FRAME_PACKET_TYPE = PktType::kMatchRecord;
     using Frame = MatchRecordFramePacket;
 };
 
 /// FDN-to-PDN over kRecordAck, sent only once the record is in the FDN's NVS.
-/// contentCrc is crc16() over the content and names the exact frame stored; it
-/// identifies, it does not authenticate.
+/// contentCrc is crc16() over the content, a match record's tag included, and
+/// names the exact frame stored; it identifies, it does not authenticate.
 struct RecordAckPacket {
     uint8_t seqId;
     uint8_t kind;

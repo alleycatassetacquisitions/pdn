@@ -73,6 +73,8 @@ void MatchManager::setBoostProvider(std::function<unsigned long()> provider) {
     boostProvider = std::move(provider);
 }
 
+void MatchManager::setRecordKey(const RecordKey* recordKey) { this->recordKey = recordKey; }
+
 void MatchManager::setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc) {
     rdc_ = rdc;
 }
@@ -302,7 +304,7 @@ uint32_t MatchManager::getCollectedHighWaterMark() {
                     getMatchSequenceNumber());
 }
 
-bool MatchManager::readRecord(uint32_t sequenceNumber, MatchRecord& record) {
+bool MatchManager::readRecord(uint32_t sequenceNumber, TaggedMatchRecord& record) {
     const uint32_t newest = getMatchSequenceNumber();
     if (sequenceNumber == 0 || sequenceNumber > newest ||
         newest - sequenceNumber >= MATCH_RING_CAPACITY) {
@@ -310,8 +312,10 @@ bool MatchManager::readRecord(uint32_t sequenceNumber, MatchRecord& record) {
     }
     char key[16];
     matchSlotKey(sequenceNumber, key);
+    // A slot of another size, such as an untagged 112-byte record from an
+    // earlier test build, reads as unreadable.
     return storage->readBytes(MATCH_RING_PREFS_NAMESPACE, key, reinterpret_cast<uint8_t*>(&record),
-                              sizeof(MatchRecord)) == sizeof(MatchRecord);
+                              sizeof(record)) == sizeof(record);
 }
 
 bool MatchManager::markCollected(uint32_t sequenceNumber) {
@@ -330,13 +334,13 @@ bool MatchManager::markCollected(uint32_t sequenceNumber) {
 bool MatchManager::readLowestPending(uint32_t& recordNumber,
                                      uint8_t (&recordBytes)[MatchRecordTraits::RECORD_SIZE]) {
     // A scratch copy, so a short read leaves the caller's buffer untouched.
-    MatchRecord record{};
+    TaggedMatchRecord record{};
     if (!findLowestReadableRecord(
         getCollectedHighWaterMark(), getMatchSequenceNumber(), MATCH_RING_CAPACITY,
         highestUnreadableReported, recordNumber,
         [this, &record](uint32_t number) { return readRecord(number, record); },
         [](uint32_t number) {
-            LOG_W(MATCH_MANAGER_TAG, "Stored match %u cannot be read",
+            LOG_E(MATCH_MANAGER_TAG, "Stored match %u cannot be read; passing over it",
                   static_cast<unsigned>(number));
         })) {
         return false;
@@ -357,10 +361,15 @@ bool MatchManager::appendRecordToStorage(const Match& match) {
     const uint32_t nextSeq = newest + 1;
     char key[16];
     matchSlotKey(nextSeq, key);
-    uint8_t record[sizeof(MatchRecord)];
-    match.serialize(record);
-    if (storage->writeBytes(MATCH_RING_PREFS_NAMESPACE, key, record, sizeof(record)) !=
-        sizeof(record)) {
+    TaggedMatchRecord record{};
+    match.serialize(reinterpret_cast<uint8_t*>(&record.record));
+    // Tagged once, here, under the key held now. A match with no key is still
+    // stored, with a zero tag, until #498 settles whether it should be.
+    if (!tagMatchRecord(recordKey, record)) {
+        LOG_W(MATCH_MANAGER_TAG, "Match %s has no record key; its tag is zero", match.getMatchId());
+    }
+    if (storage->writeBytes(MATCH_RING_PREFS_NAMESPACE, key, reinterpret_cast<uint8_t*>(&record),
+                            sizeof(record)) != sizeof(record)) {
         LOG_E(MATCH_MANAGER_TAG, "Failed to save match record at key %s", key);
         return false;
     }
