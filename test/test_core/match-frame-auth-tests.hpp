@@ -345,3 +345,18 @@ TEST_F(MatchManagerTestSuite, supporterPeerInitiationDoesNotDisplaceTheHuntersOn
     matchManager->onMatchSecretFrame(SerialIdentifier::INPUT_JACK, frame.data(), frame.size());
     EXPECT_TRUE(matchManager->getCurrentMatch().has_value());
 }
+
+// A running match answers no initiation: a same-role one from its own
+// opponent gets no role mismatch, which would go out signed for this match.
+TEST_F(MatchManagerTestSuite, aRunningMatchAnswersNoInitiation) {
+    setupMatchAsBounty();
+    MatchPacket sameRole{};
+    IdGenerator::copyId(sameRole.matchId, "dddddddd-0000-4000-8000-000000000004");
+    sameRole.command = MatchCmd::SEND_MATCH_ID;
+    sameRole.isHunter = 0;
+    sameRole.seqId = 9;
+    radioTap.deliverFrameFrom(FRAME_AUTH_HUNTER_MAC, &sameRole);
+    ASSERT_NE(radioTap.lastFrame(), nullptr);
+    EXPECT_EQ(radioTap.lastFrame()->command, MatchCmd::MATCH_ID_ACK);
+    EXPECT_TRUE(matchManager->isMatchReady());
+}
