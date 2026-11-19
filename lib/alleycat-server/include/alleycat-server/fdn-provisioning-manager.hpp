@@ -233,6 +233,7 @@ private:
         SerialIdentifier jack = SerialIdentifier::INPUT_JACK;
         std::array<uint8_t, 6> mac{};
 
+        /** @return true for the same jack and MAC. */
         bool operator==(const QueuedPdn& other) const {
             return jack == other.jack && mac == other.mac;
         }

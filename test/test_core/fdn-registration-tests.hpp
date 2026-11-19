@@ -113,7 +113,8 @@ public:
         context.seqId = ++contextSeqId;
         context.player.userId = RemoteDeviceCoordinator::PEER_USER_ID_NONE;
         context.player.registered = registered ? 1 : 0;
-        const auto& handler = packetHandlers[PktType::kPdnConnectionContext];
+        const std::pair<PeerCommsInterface::PacketCallback, void*>& handler =
+        packetHandlers[PktType::kPdnConnectionContext];
         handler.first(mac, reinterpret_cast<const uint8_t*>(&context), sizeof(context),
                       handler.second);
         step();
@@ -142,7 +143,8 @@ public:
         std::vector<SentFrame> settling;
         settling.swap(unacked);
         for (const SentFrame& frame : settling) {
-            const auto& handler = sendStatusHandlers[frame.type];
+            const std::pair<PeerCommsInterface::SendStatusCallback, void*>& handler =
+            sendStatusHandlers[frame.type];
             if (handler.first && !radioLosesFrames) {
                 handler.first(frame.to.data(), frame.data.data(), frame.data.size(), true,
                               handler.second);

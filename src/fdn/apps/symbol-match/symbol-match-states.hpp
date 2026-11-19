@@ -18,6 +18,7 @@ enum SymbolMatchStateId {
 // ── Selection ────────────────────────────────────────────────────────────────
 class Selection : public FDNConnectState {
 public:
+    /** Refreshes the symbols and gives way to Registration while a PDN waits to register. */
     Selection(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
               SymbolWirelessManager* symbolWirelessManager,
               FdnProvisioningManager* fdnProvisioningManager);
@@ -44,6 +45,7 @@ private:
 // ── SymbolIdle ───────────────────────────────────────────────────────────────
 class SymbolIdle : public FDNConnectState {
 public:
+    /** Runs a symbol round and gives way to Registration while a PDN waits to register. */
     SymbolIdle(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
                SymbolWirelessManager* symbolWirelessManager,
                FdnProvisioningManager* fdnProvisioningManager);
