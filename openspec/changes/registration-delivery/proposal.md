@@ -13,14 +13,15 @@ A PDN today takes any PIN and plays as a nil or test identity, the first upload 
 - The FDN reads a band UID through a reader interface (no hardware driver yet), looks the player up by band over verified HTTPS, hands the key over the jack, then the profile. No key, no registration.
 - The PDN's first screen becomes the band waiting screen ("Tap band" only while its jack holds the FDN's turn); it applies a profile only with its record key, from the FDN on its jack, within 10 s, and then tells that FDN it registered. A 5 s hold enters the demo.
 - Practice matches (#498, merged from #543): only a match between two real, distinct player IDs is stored, tagged when a key is held; idle opens on `UNREGISTERED` in place of the name for a nil player ID.
+- The PDN's match ring moves to its own flash range at the end of flash, registered at boot so deployed partition tables need no USB flash; only the test build's table lists it. Without the range the ring stays in the default storage.
 
 ## Non-goals
 
-A band-reader hardware driver (#485 Q1). Server totals on the PDN (#487 Q1–Q4). Each side's posse boost and supporter-side support records in a new record layout, and ties under tags (#486 Q4, Q5). Upload of the raw record, tag or originating MAC (#486 Q2, Q3). Storage partitions (#463, #472) are separate PRs.
+A band-reader hardware driver (#485 Q1). Server totals on the PDN (#487 Q1–Q4). Each side's posse boost and supporter-side support records in a new record layout, and ties under tags (#486 Q4, Q5). Upload of the raw record, tag or originating MAC (#486 Q2, Q3). The FDN's record store partition (#463) is a separate PR.
 
 ## Roll-out gate
 
-Test-only. Not flashed to event devices until #485, #486 and #487 have landed together. Event devices stay on tag `event-firmware-2026-11b` (`main` @ `2f7d3957`). This replaces the "server verifies tags" gate of the earlier record-authentication design. Lifting the gate also needs a reader driver, server keys and the storage partitions.
+Test-only. Not flashed to event devices until #485, #486 and #487 have landed together. Event devices stay on tag `event-firmware-2026-11b` (`main` @ `2f7d3957`). This replaces the "server verifies tags" gate of the earlier record-authentication design. Lifting the gate also needs a reader driver, server keys and the FDN's storage partition (#463).
 
 ## Capabilities
 
