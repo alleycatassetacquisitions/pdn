@@ -919,8 +919,8 @@ TEST_F(MatchManagerTestSuite, finalizeTagsTheRecordUnderTheHeldKey) {
     EXPECT_EQ(memcmp(stored.tag, hmac, RECORD_TAG_SIZE), 0);
 }
 
-// Whether a match with no key is kept waits on #498; until then it is stored
-// as before, with a zero tag.
+// #498: only a match between two distinct players is stored; one with no key
+// is still stored, with a zero tag.
 TEST_F(MatchManagerTestSuite, matchWithNoRecordKeyIsStoredWithAZeroTag) {
     holdRecordKey();
     recordKey.clear();
@@ -960,35 +960,62 @@ TEST_F(MatchManagerTestSuite, shootoutMatchIsNotStored) {
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 0u);
 }
 
-// The server rejects or flags these records; the PDN keeps them as computed.
-TEST_F(MatchManagerTestSuite, nilOpponentIsStored) {
-    ASSERT_TRUE(playHunterWin(UUIDBytes{}));
-    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
-    Match stored = storedMatch(1);
-    EXPECT_EQ(stored.getHunterPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
-    EXPECT_TRUE(stored.getBountyPlayerId().isZero());
-    EXPECT_EQ(stored.getWinnerPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
+// A practice match is played to a result but leaves the ring and the older
+// firmware's matches exactly as they were, even with a record key held to tag
+// it. `play` finalizes one match.
+inline void expectPracticeLeavesStorageAlone(MatchManagerTestSuite* suite,
+                                             const std::function<void()>& play) {
+    NativePrefsDriver& storage = suite->storage;
+    const std::string legacy = R"({"match_id":"a","hunter":"1111","bounty":"2222"})";
+    storage.writeUChar(LEGACY_MATCHES_NAMESPACE, "count", 1);
+    storage.write(LEGACY_MATCHES_NAMESPACE, "match_0", legacy);
+    suite->holdRecordKey();
+    ASSERT_TRUE(suite->playHunterWin());
+    TaggedMatchRecord before{};
+    ASSERT_TRUE(suite->matchManager->readRecord(1, before));
+
+    play();
+
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_EQ(suite->matchManager->getMatchSequenceNumber(), 1u) << "a practice match was stored";
+    uint8_t nextSlot[sizeof(TaggedMatchRecord)];
+    EXPECT_EQ(storage.readBytes(MATCH_RING_PREFS_NAMESPACE, "match_1", nextSlot, sizeof(nextSlot)),
+              0u);
+    TaggedMatchRecord after{};
+    ASSERT_TRUE(suite->matchManager->readRecord(1, after));
+    EXPECT_EQ(memcmp(&before, &after, sizeof(TaggedMatchRecord)), 0);
+    EXPECT_EQ(storage.readUChar(LEGACY_MATCHES_NAMESPACE, "count", 0), 1);
+    EXPECT_EQ(storage.read(LEGACY_MATCHES_NAMESPACE, "match_0", ""), legacy);
+    EXPECT_EQ(storage.read(LEGACY_MATCHES_NAMESPACE, "match_1", "absent"), "absent");
 }
 
-TEST_F(MatchManagerTestSuite, unregisteredLocalPlayerIsStored) {
+TEST_F(MatchManagerTestSuite, nilOpponentIsPractice) {
+    expectPracticeLeavesStorageAlone(this, [this]() { playHunterWin(UUIDBytes{}); });
+}
+
+TEST_F(MatchManagerTestSuite, nilHunterOnTheBountySideIsPractice) {
+    expectPracticeLeavesStorageAlone(this, [this]() {
+        setupMatchAsBounty("84444444-2222-4000-8000-333333333333", UUIDBytes{});
+        matchManager->setHunterDrawTime(300);
+        matchManager->setBountyDrawTime(200);
+        matchManager->setReceivedButtonPush();
+        matchManager->setReceivedDrawResult();
+        matchManager->finalizeMatch();
+    });
+}
+
+TEST_F(MatchManagerTestSuite, unregisteredLocalPlayerIsPractice) {
     Player unregistered;
-    matchManager->initialize(&unregistered, &storage);
-    ASSERT_TRUE(playHunterWin());
-    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
-    Match stored = storedMatch(1);
-    EXPECT_TRUE(stored.getHunterPlayerId().isZero());
-    EXPECT_EQ(stored.getBountyPlayerId(), makeTestUuid(OPPONENT_PLAYER_UUID));
-    EXPECT_TRUE(stored.getWinnerPlayerId().isZero());
-    matchManager->initialize(player, &storage);
+    expectPracticeLeavesStorageAlone(this, [this, &unregistered]() {
+        matchManager->initialize(&unregistered, &storage);
+        playHunterWin();
+        matchManager->initialize(player, &storage);
+    });
 }
 
-TEST_F(MatchManagerTestSuite, samePlayerOnBothSidesIsStored) {
-    ASSERT_TRUE(playHunterWin(makeTestUuid(LOCAL_PLAYER_UUID)));
-    ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
-    Match stored = storedMatch(1);
-    EXPECT_EQ(stored.getHunterPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
-    EXPECT_EQ(stored.getBountyPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
-    EXPECT_EQ(stored.getWinnerPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
+TEST_F(MatchManagerTestSuite, samePlayerOnBothSidesIsPractice) {
+    expectPracticeLeavesStorageAlone(this,
+                                     [this]() { playHunterWin(makeTestUuid(LOCAL_PLAYER_UUID)); });
 }
 
 // Each device names itself the winner when neither pressed.

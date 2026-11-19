@@ -197,7 +197,8 @@ inline void recordIdleDrawnTexts(IdleStateTests* suite, std::vector<std::string>
 }
 
 inline void registerIdlePlayerName(IdleStateTests* suite, const char* name) {
-    suite->player->applyRegistrationProfile(UUIDBytes(), name, Team(), {});
+    suite->player->applyRegistrationProfile(makeTestUuid("11111111-1111-4111-8111-111111111111"),
+                                            name, Team(), {});
 }
 
 // A new holder reads whose PDN it is from the first idle screen, so it shows
@@ -218,11 +219,25 @@ inline void idleFirstScreenShowsThePlayerName(IdleStateTests* suite) {
 inline void idleNameScreenWithoutANameShowsTheLabelAlone(IdleStateTests* suite) {
     std::vector<std::string> drawnTexts;
     recordIdleDrawnTexts(suite, &drawnTexts);
+    registerIdlePlayerName(suite, "");
 
     suite->idleState->onStateMounted(&suite->device);
     suite->idleState->onStateLoop(&suite->device);
 
     EXPECT_THAT(drawnTexts, testing::ElementsAre("Player"));
+}
+
+// A nil player UUID (the release demo profile) has no registered name, so the
+// first screen says UNREGISTERED in its place, whatever name the profile holds.
+inline void idleNilPlayerOpensOnUnregisteredNotTheName(IdleStateTests* suite) {
+    std::vector<std::string> drawnTexts;
+    recordIdleDrawnTexts(suite, &drawnTexts);
+    suite->player->applyRegistrationProfile(UUIDBytes(), "Demo", Team(), {});
+
+    suite->idleState->onStateMounted(&suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+
+    EXPECT_THAT(drawnTexts, testing::ElementsAre("UNREGIS-", "TERED"));
 }
 
 inline void idleOneClickShowsWins(IdleStateTests* suite) {
