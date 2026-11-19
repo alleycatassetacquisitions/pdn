@@ -7,8 +7,8 @@ When a PDN connects to the FDN on an upstream serial jack, the FDN SHALL inspect
 - **Unprovisioned PDN (its connection context reports no applied profile)**:
   - While an unprovisioned PDN is Connected on an FDN serial jack, the FDN SHALL show the registration screen (Registration screen for band taps). When a band is tapped at the FDN's reader while that PDN's jack holds the registration turn (`player-provisioning`), the FDN SHALL execute the player-provisioning lookup and delivery flow (`player-provisioning`): switching to Wi-Fi station mode to fetch the player's protobuf profile from `GET /device/players/by-band/{uid}` (`device-player-lookup`) from a server that presents the pinned key (`fdn-server-trust`), updating the FDN's UTC wall clock from the HTTP `Date` header (`http-date-clock-sync`), re-enabling the peer-to-peer radio, and delivering the record key over that PDN's jack and then the resolved profile, or the lookup failure, to the cabled PDN.
 - **Provisioned PDN (its connection context reports an applied profile, the demo profile included)**:
-  - When a provisioned PDN is Connected on an FDN serial jack, the FDN SHALL transition to the `symbol-match` app (`symbol-match`) so connected players can play the dual-jack symbol-matching hacking puzzle and reveal the FDN's codeword.
-  - When no provisioned PDN remains Connected on either upstream serial jack (outside the 30-second codeword success hold), the FDN SHALL return to the `idle` app.
+  - The FDN boots into the `symbol-match` app (`symbol-match`) and stays in it, so connected provisioned players can play the dual-jack symbol-matching hacking puzzle and reveal the FDN's codeword; the registration screen gives way to it once no PDN waits to register, no lookup runs and no result holds.
+  - The registration screen SHALL NOT interrupt the 30-second codeword success hold.
 
 #### Scenario: Unprovisioned PDN connected to FDN is provisioned on credential scan
 - **WHEN** an unprovisioned PDN (its context reports no applied profile) is Connected on an FDN serial jack that holds the registration turn and the player taps a band linked to them at the FDN
@@ -16,7 +16,7 @@ When a PDN connects to the FDN on an upstream serial jack, the FDN SHALL inspect
 
 #### Scenario: Provisioned PDN connected to FDN routes to symbol-match app
 - **WHEN** a provisioned PDN connects to an FDN serial jack
-- **THEN** the FDN mounts the `symbol-match` app for puzzle play
+- **THEN** symbol match runs on the FDN for puzzle play
 
 ## ADDED Requirements
 
