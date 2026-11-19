@@ -145,8 +145,9 @@ public:
     bool markCollected(uint32_t sequenceNumber);
 
     /**
-     * The oldest waiting record that can be read. An unreadable one is passed
-     * over and stays uncollected.
+     * The oldest waiting record that can be read and has a real time; this
+     * power-on's undated matches are re-dated first once the time is known. An
+     * unreadable or undated one is passed over and stays uncollected.
      */
     bool readLowestPending(uint32_t& recordNumber,
                            uint8_t (&recordBytes)[MatchRecordTraits::RECORD_SIZE]) override;
@@ -249,6 +250,8 @@ private:
     void redateUnsetMatches();
     // Takes a cabled peer's UTC when this PDN has none.
     void adoptPeerTime(int64_t peerUtcUnixMs);
+    // At a full ring, moves the mark past leading matches no time can reach.
+    void passOverUndatableMatches();
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake match commands

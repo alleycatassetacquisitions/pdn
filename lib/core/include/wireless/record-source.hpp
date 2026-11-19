@@ -12,9 +12,9 @@ public:
 
     /**
      * Writes the lowest-numbered record above the mark into @p recordBytes and
-     * its number into @p recordNumber. Reading changes nothing: the mark moves
+     * its number into @p recordNumber. Reading never moves the mark: it moves
      * only in advanceMark, so a record is never retired without an
-     * acknowledgement. A record the source cannot read is passed over.
+     * acknowledgement. A record the source cannot offer is passed over.
      * @return false when nothing can be offered; the outputs are then untouched.
      */
     virtual bool readLowestPending(uint32_t& recordNumber,

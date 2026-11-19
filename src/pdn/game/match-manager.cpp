@@ -257,7 +257,6 @@ bool MatchManager::finalizeMatch() {
         LOG_I(MATCH_MANAGER_TAG, "Stored match %s", match.getMatchId());
         PlatformClock* clock = SimpleTimer::getPlatformClock();
         if (occurredAtUnixMs == 0 && clock != nullptr) {
-            if (unsetSinceBoot.size() >= MATCH_RING_CAPACITY) unsetSinceBoot.erase(unsetSinceBoot.begin());
             unsetSinceBoot.push_back({getMatchSequenceNumber(), clock->milliseconds()});
         }
     }
@@ -394,6 +393,7 @@ void MatchManager::adoptPeerTime(int64_t peerUtcUnixMs) {
 bool MatchManager::appendRecordToStorage(const Match& match) {
     const uint32_t newest = getMatchSequenceNumber();
     // Every slot holds a record no FDN has taken yet; overwriting one would lose it.
+    if (newest - getCollectedHighWaterMark() >= MATCH_RING_CAPACITY) passOverUndatableMatches();
     if (newest - getCollectedHighWaterMark() >= MATCH_RING_CAPACITY) {
         LOG_E(MATCH_MANAGER_TAG, "Match %s not stored: %u matches wait for an FDN",
               match.getMatchId(), MATCH_RING_CAPACITY);
@@ -417,6 +417,26 @@ bool MatchManager::appendRecordToStorage(const Match& match) {
         return false;
     }
     return true;
+}
+
+// A full ring led by matches whose time died with an earlier power-on could
+// never drain: they can be neither re-dated nor relayed. The mark moves past
+// them, so the next match takes the oldest one's slot.
+void MatchManager::passOverUndatableMatches() {
+    const uint32_t mark = getCollectedHighWaterMark();
+    const uint32_t newest = getMatchSequenceNumber();
+    uint32_t passed = mark;
+    MatchRecord record{};
+    while (passed < newest && readRecord(passed + 1, record) &&
+           !isValidUtcUnixMs(record.occurredAtUnixMs) &&
+           std::none_of(unsetSinceBoot.begin(), unsetSinceBoot.end(),
+                        [&](const UnsetMatch& unset) { return unset.sequenceNumber == passed + 1; })) {
+        ++passed;
+    }
+    if (passed > mark && markCollected(passed)) {
+        LOG_W(MATCH_MANAGER_TAG, "%u matches from an earlier power-on had no time; passed over",
+              static_cast<unsigned>(passed - mark));
+    }
 }
 
 parameterizedCallbackFunction MatchManager::getButtonMasher() {

@@ -118,6 +118,29 @@ TEST_F(MatchTimeTests, matchFromAnEarlierPowerOnIsNeverHandedOn) {
     EXPECT_EQ(storedMatch(1).getOccurredAtUnixMs(), 0);
 }
 
+// A ring full of matches from an earlier power-on with no time could never
+// drain; the next match must still be stored and handed on.
+TEST_F(MatchTimeTests, ringFullOfUndatableMatchesStillTakesTheNextOne) {
+    for (uint32_t played = 0; played < MATCH_RING_CAPACITY; played++) {
+        unsetClockAt(95000 + played * 1000);
+        ASSERT_TRUE(playHunterWin());
+    }
+
+    delete matchManager;  // power cycle: the ring stays, the uptime is gone
+    matchManager = new MatchManager(device.wirelessManager);
+    matchManager->initialize(player, &storage);
+    matchManager->setRemoteDeviceCoordinator(&fakeRdc);
+    unsetClockAt(2000);
+    fakeClock->setUnixTimeMs(SYNCED_UTC_MS);
+    ASSERT_TRUE(playHunterWin());
+
+    uint32_t recordNumber = 0;
+    uint8_t bytes[MatchRecordTraits::RECORD_SIZE];
+    ASSERT_TRUE(matchManager->readLowestPending(recordNumber, bytes))
+    << "the match after a ring of undatable ones was not stored";
+    EXPECT_EQ(recordNumber, MATCH_RING_CAPACITY + 1);
+}
+
 // The handshake is cabled, so it carries time the way an FDN's context does: a
 // PDN without the time takes its peer's; one with the time keeps its own.
 TEST_F(MatchTimeTests, bountyWithoutTheTimeTakesTheHuntersAtTheHandshake) {
@@ -163,7 +186,7 @@ TEST_F(FdnRecordUploaderTests, fdnWithoutTheTimeAsksAtBootEvenWithNothingStored)
     clock.setUnixTimeMs(0);
     uploader->sync();
     ASSERT_EQ(requests.size(), 1u);
-    EXPECT_EQ(requests[0].path, FDN_TIME_CHECK_ENDPOINT);
+    EXPECT_EQ(requests[0].path, HealthApi::GET_HEALTH_CHECK_ENDPOINT);
     EXPECT_EQ(requests[0].method, "GET");
 }
 
@@ -183,4 +206,16 @@ TEST_F(FdnRecordUploaderTests, fdnHoldsMatchesUntilItsClockIsSet) {
     uploader->sync();
     ASSERT_EQ(requests.size(), 3u);
     EXPECT_EQ(requests[2].path, MatchesApi::POST_QUICKDRAW_MATCHES_ENDPOINT);
+}
+
+// A failed time check (no AP, no answer) still lets the crash records go.
+TEST_F(FdnRecordUploaderTests, failedTimeCheckStillSendsCrashRecords) {
+    clock.setUnixTimeMs(0);
+    storeMatch(1);
+    storeCrash(1);
+    uploader->sync();
+    fail(WirelessError::TIMEOUT, 0);
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_EQ(requests[1].path, CrashApi::POST_DEVICE_LOGS_ENDPOINT);
+    EXPECT_EQ(storedMatches(), 1u);
 }

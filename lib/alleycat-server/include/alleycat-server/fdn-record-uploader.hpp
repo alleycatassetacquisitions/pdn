@@ -7,6 +7,7 @@
 
 #include "alleycat-server/crash-api.hpp"
 #include "alleycat-server/fdn-record-store.hpp"
+#include "alleycat-server/health-api.hpp"
 #include "alleycat-server/matches-api.hpp"
 #include "device/crash/crash-record.hpp"
 #include "device/drivers/logger.hpp"
@@ -24,8 +25,6 @@ inline constexpr unsigned long FDN_UPLOAD_FULL_STORE_REST_MS = 30000;
 // alleycat-rs answers a batch naming a match it already holds under another
 // event with 409 and this text; the server has that match, so the copy can go.
 inline constexpr const char FDN_CROSS_EVENT_409_TEXT[] = "already belongs to another event";
-// An FDN without the time asks here; the answer's Date header sets its clock.
-inline constexpr const char FDN_TIME_CHECK_ENDPOINT[] = "/health_check";
 static_assert(FDN_MATCH_RECORD_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH,
               "a full match ring goes up in one batch");
 
@@ -173,12 +172,12 @@ private:
     void askTime() {
         timeAsked = true;
         askingTime = true;
-        wirelessManager->queueHttpRequest(HttpRequest(
-        FDN_TIME_CHECK_ENDPOINT, "GET", "", "",
+        HealthApi::healthCheck(
+        wirelessManager,
         [this, cycle = generation](const std::string&) { answer(cycle, Outcome::RETIRE, 0); },
         [this, cycle = generation](const WirelessErrorInfo& error) {
             answer(cycle, Outcome::KEEP, error.httpStatus);
-        }));
+        });
     }
 
     void onFailure(uint32_t cycle, const WirelessErrorInfo& error) {

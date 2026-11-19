@@ -125,13 +125,16 @@ public:
         relay->setCrashRecordSource(&crashSource);
     }
 
-    /** Appends a match record of all @p fill bytes to the PDN's ring, as MatchManager does. */
+    /** Appends a match record of all @p fill bytes but a real time to the PDN's ring, as
+     * MatchManager does: a match without a time is never relayed (#518). */
     void storeMatch(uint8_t fill) {
         const uint32_t number = pdnStorage.readUInt(MATCH_RING_PREFS_NAMESPACE, "seq", 0) + 1;
-        uint8_t record[MATCH_BINARY_SIZE];
-        memset(record, fill, sizeof(record));
+        MatchRecord record;
+        memset(&record, fill, sizeof(record));
+        record.occurredAtUnixMs = 1792359000000LL;
         const std::string key = "match_" + std::to_string((number - 1) % 32);
-        pdnStorage.writeBytes(MATCH_RING_PREFS_NAMESPACE, key, record, sizeof(record));
+        pdnStorage.writeBytes(MATCH_RING_PREFS_NAMESPACE, key, reinterpret_cast<uint8_t*>(&record),
+                              sizeof(record));
         pdnStorage.writeUInt(MATCH_RING_PREFS_NAMESPACE, "seq", number);
     }
 
@@ -493,12 +496,17 @@ TEST_F(GameSessionLifecycleTests, sessionRelaysBothKindsOnAnFdnBeaconAndRetriesF
         if (type == PktType::kCrashRecord || type == PktType::kMatchRecord) frames.push_back(type);
         return 0;
     });
-    // Match 1 waits in the ring.
+    // Match 1 waits in the ring, with a time (#518: an undated match is not relayed).
     ON_CALL(*device.mockStorage,
             readUInt(testing::Eq(MATCH_RING_PREFS_NAMESPACE), testing::Eq(std::string("seq")), _))
     .WillByDefault(Return(1));
     ON_CALL(*device.mockStorage, readBytes(testing::Eq(MATCH_RING_PREFS_NAMESPACE), _, _, _))
-    .WillByDefault(Return(MATCH_BINARY_SIZE));
+    .WillByDefault([](const std::string&, const std::string&, uint8_t* buffer, size_t) {
+        MatchRecord record{};
+        record.occurredAtUnixMs = 1792359000000LL;
+        memcpy(buffer, &record, sizeof(record));
+        return MATCH_BINARY_SIZE;
+    });
     FakeCrashSource crashSource;
     crashSource.newest = 1;
 
