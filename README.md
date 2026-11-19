@@ -68,7 +68,7 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    ```bash
    cp wifi_credentials.ini.example wifi_credentials.ini
    ```
-   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL (`https://` only), the FDN's symbol-match codeword, and `SERVER_KEY_SHA256`: the SHA-256 of the server's public key, the only key the FDN trusts (the example file shows how to compute it). Without both, the FDN sends no request. Only FDN builds need the file and only FDN images embed its values: a PDN has no Wi-Fi. This file is excluded from version control for security.
+   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL (`https://` only: the FDN sends nothing to any other address), the NTP server the FDN sets its clock from before its first HTTPS request (`pool.ntp.org` unless a closed venue network needs its own), and the FDN's symbol-match codeword. Only FDN builds need the file and only FDN images embed its values: a PDN has no Wi-Fi. This file is excluded from version control for security.
 
 5. Build the project using PlatformIO:
    ```bash
