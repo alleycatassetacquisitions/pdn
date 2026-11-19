@@ -34,10 +34,10 @@ public:
         applyTestRegistration(player, LOCAL_PLAYER_UUID, "Local");
         matchManager->initialize(player, &storage);
         // Bounty-side tests that feed SEND_MATCH_ID via setupMatchAsBounty use
-        // this dummyMac as the fake hunter. Stub the RDC to accept it as a
-        // direct peer so the MAC-peering gate passes.
+        // this dummyMac as the fake hunter. Stub it as the Connected PDN on the
+        // bounty's opponent jack so the initiation gate passes.
         uint8_t defaultHunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-        fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, defaultHunterMac);
+        fakeRdc.setConnectedPdn(SerialIdentifier::INPUT_JACK, defaultHunterMac);
         matchManager->setRemoteDeviceCoordinator(&fakeRdc);
         matchManager->clearCurrentMatch();
     }
@@ -399,9 +399,9 @@ inline void matchManagerRejectsWrongMatchId(MatchManager* mm, Player* player) {
     EXPECT_FALSE(mm->getHasReceivedDrawResult());
 }
 
-// SEND_MATCH_ID from a MAC that isn't an RDC direct peer must be rejected.
-// The fixture stubs INPUT_JACK peer to 0x01,0x02,...; this test sends from a
-// different MAC and verifies the gate refuses it.
+// SEND_MATCH_ID from a MAC other than the Connected PDN on the opponent jack must
+// be rejected. The fixture stubs the INPUT_JACK peer as 0x01,0x02,...; this test
+// sends from a different MAC.
 inline void matchManagerSendMatchIdRejectsUnknownPeer(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
     uint8_t strangerMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
@@ -410,6 +410,60 @@ inline void matchManagerSendMatchIdRejectsUnknownPeer(MatchManager* mm, Player* 
     mm->listenForMatchEvents(cmd);
 
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
+}
+
+// Initiation needs the opponent jack to report Connected, not Connecting.
+inline void matchManagerSendMatchIdIgnoredUntilOpponentJackConnected(MatchManagerTestSuite* suite) {
+    suite->player->setIsHunter(false);
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTING);
+    MatchCommand early(hunterMac, MatchCmd::SEND_MATCH_ID, "match-id-early", 0, true);
+    suite->matchManager->listenForMatchEvents(early);
+
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value())
+    << "the bounty primed a match over a Connecting jack";
+    EXPECT_TRUE(suite->radioTap.sentFrames.empty()) << "the bounty acked over a Connecting jack";
+
+    suite->fakeRdc.setJackStatus(SerialIdentifier::INPUT_JACK, JackStatus::CONNECTED);
+    MatchCommand retry(hunterMac, MatchCmd::SEND_MATCH_ID, "match-id-retry", 0, true);
+    suite->matchManager->listenForMatchEvents(retry);
+
+    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_STREQ(suite->matchManager->getCurrentMatch()->getMatchId(), "match-id-retry");
+    ASSERT_EQ(suite->radioTap.sentFrames.size(), 1u);
+    EXPECT_EQ(suite->radioTap.sentFrames[0].command, MatchCmd::MATCH_ID_ACK);
+}
+
+// The sender must sit on the receiver's opponent jack: input for a bounty, output
+// for a hunter. A Connected PDN on the other jack is a supporter, not an opponent.
+inline void matchManagerSendMatchIdIgnoredFromOtherJack(MatchManagerTestSuite* suite) {
+    static const uint8_t senderMac[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    suite->fakeRdc.setConnectedPdn(SerialIdentifier::OUTPUT_JACK, senderMac);
+    suite->player->setIsHunter(false);
+    MatchCommand toBounty(senderMac, MatchCmd::SEND_MATCH_ID, "match-id-bounty", 0, true);
+    suite->matchManager->listenForMatchEvents(toBounty);
+
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_TRUE(suite->radioTap.sentFrames.empty()) << "a bounty answered its output jack";
+
+    static const uint8_t inputMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->player->setIsHunter(true);
+    MatchCommand toHunter(inputMac, MatchCmd::SEND_MATCH_ID, "match-id-hunter", 0, true);
+    suite->matchManager->listenForMatchEvents(toHunter);
+
+    EXPECT_TRUE(suite->radioTap.sentFrames.empty()) << "a hunter answered its input jack";
+}
+
+// Only a PDN initiates a match; another device kind on the opponent jack is ignored.
+inline void matchManagerSendMatchIdIgnoredFromNonPdnPeer(MatchManagerTestSuite* suite) {
+    suite->player->setIsHunter(false);
+    suite->fakeRdc.setPeerDeviceType(SerialIdentifier::INPUT_JACK, DeviceType::FDN);
+    static const uint8_t peerMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    MatchCommand cmd(peerMac, MatchCmd::SEND_MATCH_ID, "match-id-fdn", 0, true);
+    suite->matchManager->listenForMatchEvents(cmd);
+
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_TRUE(suite->radioTap.sentFrames.empty());
 }
 
 // Legitimate path: command with correct MAC + matchId is accepted.
@@ -578,6 +632,9 @@ inline void matchManagerBountyReadiesWhenItsAckIsDelivered(MatchManagerTestSuite
 inline void matchManagerBountyIgnoresDeliveryOfAnotherFrame(MatchManagerTestSuite* suite) {
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->player->setIsHunter(true);
+    // Same-role sender on the hunter's opponent (output) jack: the gate passes and
+    // the role-mismatch reply goes out.
+    suite->fakeRdc.setConnectedPdn(SerialIdentifier::OUTPUT_JACK, dummyMac);
     MatchCommand sameRole(dummyMac, MatchCmd::SEND_MATCH_ID, "match-id-aaa", 0, true);
     suite->matchManager->listenForMatchEvents(sameRole);
     suite->player->setIsHunter(false);

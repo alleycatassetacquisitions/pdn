@@ -25,8 +25,8 @@ using ::testing::SaveArg;
 using ::testing::NiceMock;
 using ::testing::DoAll;
 
-// Stubs a fixture's RDC to accept the conventional test MAC as a direct peer
-// so MatchManager's SEND_MATCH_ID gate passes. Called once per fixture SetUp.
+// Wires the fixture's fake RDC into MatchManager with the conventional test MAC on
+// both jacks. A test feeding SEND_MATCH_ID marks the sender with setConnectedPdn.
 inline void wireFixtureRdcForMatchManager(MockDevice& device, MatchManager* mm) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, dummyMac);
@@ -1063,8 +1063,10 @@ inline void resultHunterWinsWithFasterTime(MatchResultTests* suite) {
 inline void resultBountyWinsWithFasterTime(MatchResultTests* suite) {
     suite->player->setIsHunter(false);
     // Simulate hunter sending SEND_MATCH_ID; this bounty receives and creates the match.
-    // Use the fixture's stubbed RDC peer MAC so the SEND_MATCH_ID gate accepts it.
+    // Mark the hunter the Connected PDN on the input jack so the SEND_MATCH_ID gate accepts it.
     uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->device.fakeRemoteDeviceCoordinator.setConnectedPdn(SerialIdentifier::INPUT_JACK,
+                                                              hunterMac);
     MatchCommand sendMatchCmd(hunterMac, MatchCmd::SEND_MATCH_ID, "test-match-id-000000000000000",
                               0, true);
     suite->matchManager->listenForMatchEvents(sendMatchCmd);

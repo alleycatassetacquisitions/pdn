@@ -299,21 +299,17 @@ public:
         }
     }
 
+    /** Stubs `mac` as a Connected PDN on `id`, as a finished context exchange leaves it. */
+    void setConnectedPdn(SerialIdentifier id, const uint8_t* mac) {
+        setPeerMac(id, mac);
+        setJackStatus(id, JackStatus::CONNECTED);
+        setPeerDeviceType(id, DeviceType::PDN);
+    }
+
     const uint8_t* getPeerMac(SerialIdentifier id) const override {
         if (id == SerialIdentifier::OUTPUT_JACK && outputPeerSet) return outputPeerMac;
         if (id == SerialIdentifier::INPUT_JACK && inputPeerSet) return inputPeerMac;
         return nullptr;
-    }
-
-    // Production RDC reads its per-jack link machines. The fake stubs peer MACs
-    // directly without standing any up, so iterate the jacks here.
-    bool isDirectPeer(const uint8_t* mac) const override {
-        if (!mac) return false;
-        for (SerialIdentifier jack : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
-            const uint8_t* peer = getPeerMac(jack);
-            if (peer && memcmp(peer, mac, 6) == 0) return true;
-        }
-        return false;
     }
 
 private:

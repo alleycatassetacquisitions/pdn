@@ -926,6 +926,18 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsUnknownPeer) {
     matchManagerSendMatchIdRejectsUnknownPeer(matchManager, player);
 }
 
+TEST_F(MatchManagerTestSuite, sendMatchIdIgnoredUntilOpponentJackConnected) {
+    matchManagerSendMatchIdIgnoredUntilOpponentJackConnected(this);
+}
+
+TEST_F(MatchManagerTestSuite, sendMatchIdIgnoredFromOtherJack) {
+    matchManagerSendMatchIdIgnoredFromOtherJack(this);
+}
+
+TEST_F(MatchManagerTestSuite, sendMatchIdIgnoredFromNonPdnPeer) {
+    matchManagerSendMatchIdIgnoredFromNonPdnPeer(this);
+}
+
 TEST_F(MatchManagerTestSuite, gracePeriodPath) {
     matchManagerGracePeriodPath(matchManager, player);
 }
