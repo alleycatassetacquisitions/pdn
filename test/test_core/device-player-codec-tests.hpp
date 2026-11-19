@@ -260,10 +260,12 @@ struct TestBandLookup {
     IssuedRecordKey recordKey;
     std::vector<ProvisionLookupResult> results;
 
+    /** Starts a lookup for @p uid through the suite's manager. */
     void start(AlleycatApiTestSuite* suite, const BandUid& uid) {
         startOn(suite->wirelessManager, uid);
     }
 
+    /** Starts a lookup for @p uid through @p wirelessManager. */
     void startOn(WirelessManager* wirelessManager, const BandUid& uid) {
         PlayerApi::getDevicePlayerByBand(
         wirelessManager, uid,
@@ -416,6 +418,7 @@ inline void playerApiEndsLookupWithoutHttpClient(AlleycatApiTestSuite* suite) {
 /** Keeps every formatted log line, for checking what a log would show. */
 class CapturingLogger : public LoggerInterface {
 public:
+    /** Keeps the formatted line, prefixed with @p tag. */
     void vlog(LogLevel level, const char* tag, const char* file, int line, const char* format,
               va_list args) override {
         (void)level;
