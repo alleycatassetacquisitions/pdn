@@ -56,11 +56,11 @@ A PDN with pending match records SHALL deliver them to any FDN it hears by beaco
 
 ### Requirement: FDN protobuf batch encoding and upload to server
 
-An FDN holding stored match records SHALL upload them to the central server in batches over HTTPS, at boot, every `300,000 ms` while records wait, and as soon as its match store is full but no sooner than `30,000 ms` after its last upload ended and not after an upload whose matches failed, never while a jack is Connected, sending its match batch before crash records:
+An FDN holding stored match records SHALL upload them to the central server in batches over HTTPS, at boot, every `300,000 ms` while records wait, and as soon as its match store is full but no sooner than `30,000 ms` after its last upload ended, not after an upload whose matches failed, and not during a back-off after a blanket refusal (which lasts until an upload succeeds), never while a jack is Connected, sending its match batch before crash records:
 
 - The FDN SHALL NOT upload match records while its own UTC clock is unset (`fdn-apps`).
 - Each upload batch SHALL contain between `1` and `100` match records; a request with `0` or more than `100` matches SHALL be rejected locally without queuing an HTTP request.
-- The FDN SHALL encode the batch via the quickdraw-match protobuf codec as a `POST /quickdraw-matches` request with content type `application/protobuf`. On a `400`, `413` or `415` response it SHALL send the oldest record alone and retire it on any response, so one rejected record cannot block the store. A `409` whose body says a match ID already belongs to another event SHALL be handled the same way: the server already holds that match under the earlier event.
+- The FDN SHALL encode the batch via the quickdraw-match protobuf codec as a `POST /quickdraw-matches` request with content type `application/protobuf`. On a `400`, `413` or `415` response it SHALL send the oldest record alone. It SHALL retire a record the server refuses alone only if another upload succeeded earlier in the same cycle; before one has, it SHALL first send the next record alone, and if that is refused too it SHALL keep every record, end the cycle and double the interval before the next one (up to `40` minutes), so a proxy or captive portal that refuses everything never empties the store. A `409` whose body says a match ID already belongs to another event SHALL be handled the same way, except that a record refused alone with it is retired without waiting for a good upload: only the server sends that answer, and it already holds that match under the earlier event. That answer for the next record counts as a good upload, so the oldest record is sent alone again and retired if refused; a kept answer (no response, `5xx`, a no-active-event `409`) for the next record retires nothing and does not back off. Only the oldest record is ever retired for a refusal.
 - For each match record in the batch, the codec SHALL write:
   - the match UUID, both player UUIDs (`player_a_id` and `player_b_id`), and the winner UUID (`winner_player_id`) formatted as lowercase `8-4-4-4-12` hexadecimal text;
   - each player's team UUID (`player_a_team_id`, `player_b_team_id`) as lowercase `8-4-4-4-12` hexadecimal text if and only if that team UUID is not nil;
@@ -77,6 +77,10 @@ An FDN holding stored match records SHALL upload them to the central server in b
 #### Scenario: A match the server holds under an earlier event does not block the batch
 - **WHEN** an FDN holds matches `1..3` and the server answers every batch naming match `1` with `409` "Match ID already belongs to another event"
 - **THEN** matches `2` and `3` reach the server and match `1` is retired
+
+#### Scenario: A refusal of every request empties nothing
+- **WHEN** something between an FDN holding matches `1` and `2` and the server answers every request with `400`
+- **THEN** the FDN sends the batch, match `1` alone and match `2` alone, keeps both, and waits `10` minutes before its next cycle
 
 ### Requirement: Server batch acceptance and per-entry rejection handling
 

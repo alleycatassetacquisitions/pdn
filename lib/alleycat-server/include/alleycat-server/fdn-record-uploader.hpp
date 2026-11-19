@@ -29,6 +29,8 @@ inline constexpr const char FDN_CROSS_EVENT_409_TEXT[] = "already belongs to ano
 inline constexpr const char FDN_GAME_STATE_ENDPOINT[] = "/game-state";
 // A match held for another event is also retried this long after it was held.
 inline constexpr unsigned long FDN_HELD_MATCH_RETRY_MS = 1800000;
+// After a blanket refusal the interval doubles, up to this many times (40 minutes).
+inline constexpr unsigned FDN_UPLOAD_MAX_BACKOFF_SHIFT = 3;
 static_assert(FDN_MATCH_RECORD_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH,
               "a full match ring goes up in one batch");
 
@@ -47,7 +49,7 @@ inline std::string activeEventIdFrom(const std::string& body) {
 
 // Uploads the FDN's stored records: one cycle at boot, then one every
 // FDN_UPLOAD_INTERVAL_MS while records wait, or sooner once the match store is
-// full. A cycle owns Wi-Fi until it ends
+// full (not during a back-off). A cycle owns Wi-Fi until it ends
 // or hits FDN_UPLOAD_CYCLE_CAP_MS, then hands the radio back to ESP-NOW. It
 // sends the match batch first, then crash records oldest first, one at a time.
 class FdnRecordUploader {
@@ -84,6 +86,7 @@ public:
             return;
         }
         if (answered == Outcome::KEEP) {
+            probingNext = false;  // a kept answer blames nothing
             if (sentKind == RecordKind::MATCH) matchesFailed = true;
             // The server answered the matches (409: no active event); crash records don't depend on
             // it.
@@ -93,11 +96,35 @@ public:
             }
             matchesHeld = true;
         } else if (answered == Outcome::RETIRE) {
-            retireSent();
-        } else if (sentCount == 1) {
+            uploadSucceeded = true;
+            blanketRefusals = 0;
+            // The record behind a refused one went up alone; it stays for the next batch.
+            if (probingNext) {
+                probingNext = false;
+            } else {
+                retireSent();
+            }
+        } else if (probingNext) {
+            probingNext = false;
+            if (answered != Outcome::CONFLICT) {
+                backOff();
+                return;
+            }
+            // The server's own 409 for the record behind: requests reach it, so
+            // the refused one is to blame. Only the head is ever retired.
+            uploadSucceeded = true;
+        } else if (sentCount == 1 && (uploadSucceeded || answered == Outcome::CONFLICT)) {
             LOG_E("FDN_UPLOAD", "Server refused record %u alone (HTTP %d); retiring it",
                   static_cast<unsigned>(sentNumber), answeredStatus);
             retireSent();
+        } else if (sentCount == 1 && !probedNext) {
+            // No upload has worked yet this cycle: try the record behind it before blaming it.
+            probedNext = true;
+            probingNext = true;
+            probedKind = sentKind;
+        } else if (sentCount == 1) {
+            backOff();
+            return;
         } else {
             // A batch the server refused whole: find the bad record one at a time.
             probing = true;
@@ -106,7 +133,9 @@ public:
     }
 
 private:
-    enum class Outcome { NONE, WAITING, RETIRE, REFUSED, KEEP };
+    // CONFLICT: the server's own cross-event 409, which no proxy sends, so a
+    // record refused alone with it needs no earlier good upload to be blamed.
+    enum class Outcome { NONE, WAITING, RETIRE, REFUSED, CONFLICT, KEEP };
 
     void startCycleIfDue() {
         if (intervalTimer.isRunning() && !intervalTimer.expired() && !isFullAndRested()) return;
@@ -116,17 +145,21 @@ private:
         matchesFailed = false;
         timeAsked = false;
         eventAsked = false;
+        uploadSucceeded = false;
+        probedNext = false;
+        probingNext = false;
         cycleTimer.setTimer(FDN_UPLOAD_CYCLE_CAP_MS);
         sendNext();
     }
 
     // A full match store refuses relayed matches, so it goes up early, but no
-    // sooner than FDN_UPLOAD_FULL_STORE_REST_MS after the last cycle ended, and
-    // not after a cycle whose matches failed: a failing server waits its interval.
-    // A store full of held matches has nothing to send early.
+    // sooner than FDN_UPLOAD_FULL_STORE_REST_MS after the last cycle ended, not
+    // after a cycle whose matches failed (a failing server waits its interval),
+    // and not in a back-off, which lasts until an upload succeeds. A store full
+    // of held matches has nothing to send early.
     bool isFullAndRested() {
         const size_t stored = fdnRecordStore->getMatchRecords().getStoredCount();
-        return !matchesFailed && stored >= FDN_MATCH_RECORD_CAPACITY &&
+        return !matchesFailed && blanketRefusals == 0 && stored >= FDN_MATCH_RECORD_CAPACITY &&
                heldMatches.size() < stored && (!restTimer.isRunning() || restTimer.expired());
     }
 
@@ -150,9 +183,19 @@ private:
             heldRetryTimer.invalidate();
             releaseHeld = false;
         }
-        const size_t limit = probing ? 1 : FDN_MATCH_RECORD_CAPACITY;
+        const bool nextMatch = probingNext && probedKind == RecordKind::MATCH;
+        const bool nextCrash = probingNext && probedKind == RecordKind::CRASH;
+        const size_t limit = nextMatch ? 2 : probing ? 1 : FDN_MATCH_RECORD_CAPACITY;
         // A match goes up only with the FDN's clock set (#518).
-        sentCount = matchesHeld || !isClockSet() ? 0 : peekUnheldMatches(limit);
+        sentCount = matchesHeld || !isClockSet() || nextCrash ? 0 : peekUnheldMatches(limit);
+        if (nextMatch) {
+            if (sentCount < 2) {
+                backOff();
+                return;
+            }
+            matchBatch[0] = matchBatch[1];
+            sentCount = 1;
+        }
         if (sentCount > 0) {
             sentKind = RecordKind::MATCH;
             sentNumber = matchBatch[0].recordNumber;
@@ -184,12 +227,21 @@ private:
             });
             return;
         }
-        FdnRecordStore::CrashRing::Entry crash{};
-        sentCount = fdnRecordStore->getCrashRecords().peekOldest(&crash, 1);
+        FdnRecordStore::CrashRing::Entry crashes[2] = {};
+        sentCount = fdnRecordStore->getCrashRecords().peekOldest(crashes, nextCrash ? 2 : 1);
+        if (nextCrash) {
+            if (sentCount < 2) {
+                backOff();
+                return;
+            }
+            crashes[0] = crashes[1];
+            sentCount = 1;
+        }
         if (sentCount == 0) {
             endCycle();
             return;
         }
+        const FdnRecordStore::CrashRing::Entry& crash = crashes[0];
         sentKind = RecordKind::CRASH;
         sentNumber = crash.recordNumber;
         CrashPacket packet{};
@@ -203,6 +255,15 @@ private:
     static bool isClockSet() {
         PlatformClock* clock = SimpleTimer::getPlatformClock();
         return clock != nullptr && isValidUtcUnixMs(clock->unixMilliseconds());
+    }
+
+    // Every record was refused alike before any upload worked: something between
+    // the FDN and the server refuses everything, so nothing is retired.
+    void backOff() {
+        LOG_W("FDN_UPLOAD", "Records refused alike (HTTP %d); keeping them all", answeredStatus);
+        if (blanketRefusals < FDN_UPLOAD_MAX_BACKOFF_SHIFT) ++blanketRefusals;
+        endCycle();
+        intervalTimer.setTimer(FDN_UPLOAD_INTERVAL_MS << blanketRefusals);
     }
 
     // Once a cycle, without the time: the answer's Date header sets the clock.
@@ -278,11 +339,16 @@ private:
         LOG_W("FDN_UPLOAD", "Upload failed: %s", error.message.c_str());
         // A 409 is batch-wide "no active event" unless its text names a match
         // the server already holds under another event: that copy is refused.
+        const bool conflict =
+        error.httpStatus == 409 &&
+        error.responseBody.find(FDN_CROSS_EVENT_409_TEXT) != std::string::npos;
         const bool refused =
-        error.httpStatus == 400 || error.httpStatus == 413 || error.httpStatus == 415 ||
-        (error.httpStatus == 409 &&
-         error.responseBody.find(FDN_CROSS_EVENT_409_TEXT) != std::string::npos);
-        answer(cycle, refused ? Outcome::REFUSED : Outcome::KEEP, error.httpStatus);
+        error.httpStatus == 400 || error.httpStatus == 413 || error.httpStatus == 415;
+        answer(cycle,
+               conflict  ? Outcome::CONFLICT
+               : refused ? Outcome::REFUSED
+                         : Outcome::KEEP,
+               error.httpStatus);
     }
 
     // Records and returns: sync() acts on it, outside the HTTP client's call.
@@ -344,6 +410,14 @@ private:
     bool askingServer = false;
     bool timeAsked = false;
     bool eventAsked = false;
+    // A refusal retires a record only after another upload worked this cycle (RELAY-4).
+    bool uploadSucceeded = false;
+    // Set when a lone refusal sends the record behind it alone, once a cycle.
+    bool probingNext = false;
+    bool probedNext = false;
+    RecordKind probedKind = RecordKind::MATCH;
+    // Consecutive blanket refusals; each doubles the interval.
+    unsigned blanketRefusals = 0;
     // Matches the server rejected for another event, kept in the ring (RELAY-2).
     struct HeldMatch {
         uint8_t senderMac[6];
