@@ -59,6 +59,7 @@ void Idle::onStateMounted(PDN* pdn) {
     pdn->getSecondaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
 
     displayIsDirty = true;
+    matchManager->setHandshakeOpen(true);
 }
 
 void Idle::onStateLoop(PDN* pdn) {
@@ -89,6 +90,7 @@ void Idle::onStateLoop(PDN* pdn) {
 }
 
 void Idle::onStateDismounted(PDN* pdn) {
+    matchManager->setHandshakeOpen(false);
     ShootoutManager* shMgr = matchManager->getShootoutManager();
     if (!matchManager->isMatchReady() || (shMgr && shMgr->shouldEnterProposal())) {
         matchManager->clearCurrentMatch();

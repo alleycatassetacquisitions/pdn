@@ -926,6 +926,10 @@ TEST_F(MatchManagerTestSuite, sendMatchIdRejectsUnknownPeer) {
     matchManagerSendMatchIdRejectsUnknownPeer(matchManager, player);
 }
 
+TEST_F(MatchManagerTestSuite, closedHandshakeIgnoresSendMatchId) {
+    matchManagerClosedHandshakeIgnoresSendMatchId(matchManager, player, radioTap);
+}
+
 TEST_F(MatchManagerTestSuite, gracePeriodPath) {
     matchManagerGracePeriodPath(matchManager, player);
 }

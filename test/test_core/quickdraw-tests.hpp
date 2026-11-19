@@ -32,6 +32,7 @@ inline void wireFixtureRdcForMatchManager(MockDevice& device, MatchManager* mm) 
     device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, dummyMac);
     device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::OUTPUT_JACK, dummyMac);
     mm->setRemoteDeviceCoordinator(&device.fakeRemoteDeviceCoordinator);
+    mm->setHandshakeOpen(true);  // as on its idle screen
 }
 
 static const uint8_t kTestMacBytes[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};

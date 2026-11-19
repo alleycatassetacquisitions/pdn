@@ -46,6 +46,7 @@ inline void matchManagerConcurrentDriverVsReader() {
     ON_CALL(storage, readUChar(_, _, _)).WillByDefault(::testing::Return(0));
     mm.initialize(&player, &storage);
     mm.setRemoteDeviceCoordinator(&rdc);
+    mm.setHandshakeOpen(true);
     mm.clearCurrentMatch();
 
     std::atomic<bool> running{true};
