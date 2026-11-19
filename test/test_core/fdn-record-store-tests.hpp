@@ -314,6 +314,86 @@ TEST_F(FdnRecordStoreTests, storeSurvivesRestartAndStillDedupes) {
     EXPECT_EQ(store->getMatchRecords().getStoredCount(), 1u);
 }
 
+TEST_F(FdnRecordStoreTests, resendAfterRetireIsAckedAndNotStoredAgain) {
+    MatchRecordFramePacket match = matchFrame(9, 0x33);
+    CrashRecordFramePacket crash = crashFrame(4, 0x44);
+    deliver(pdnA, match);
+    deliver(pdnA, crash);
+    store->getMatchRecords().retireOldest(1);
+    store->getCrashRecords().retireOldest(1);
+    acks.clear();
+
+    match.seqId = nextSeqId++;
+    crash.seqId = nextSeqId++;
+    deliver(pdnA, match);
+    deliver(pdnA, crash);
+
+    ASSERT_EQ(acks.size(), 2u);
+    EXPECT_EQ(acks[0].recordNumber, 9u);
+    EXPECT_EQ(acks[1].recordNumber, 4u);
+    FdnRecordStore::MatchRing::Entry matches[1];
+    FdnRecordStore::CrashRing::Entry crashes[1];
+    EXPECT_EQ(store->getMatchRecords().peekOldest(matches, 1), 0u);
+    EXPECT_EQ(store->getCrashRecords().peekOldest(crashes, 1), 0u);
+}
+
+TEST_F(FdnRecordStoreTests, resendAfterRetireAndRestartIsAckedAndNotStoredAgain) {
+    // A full lap first, so tail has passed CAPACITY when record 100 is retired.
+    for (uint32_t number = 0; number < FDN_MATCH_RECORD_CAPACITY; ++number) {
+        deliver(pdnA, matchFrame(number, static_cast<uint8_t>(number)));
+    }
+    store->getMatchRecords().retireOldest(FDN_MATCH_RECORD_CAPACITY);
+    const MatchRecordFramePacket frame = matchFrame(100, 0xAB);
+    deliver(pdnA, frame);
+    store->getMatchRecords().retireOldest(1);
+
+    restart();
+    acks.clear();
+    deliver(pdnA, matchFrame(100, 0xAB));
+    deliver(pdnA, matchFrame(FDN_MATCH_RECORD_CAPACITY - 1, FDN_MATCH_RECORD_CAPACITY - 1));
+
+    ASSERT_EQ(acks.size(), 2u);
+    EXPECT_EQ(acks[0].recordNumber, 100u);
+    EXPECT_EQ(store->getMatchRecords().getStoredCount(), 0u);
+}
+
+// A PDN whose ring was erased reuses its record numbers for new records.
+TEST_F(FdnRecordStoreTests, newBytesUnderARetiredNumberAreStored) {
+    deliver(pdnA, matchFrame(9, 0x33));
+    store->getMatchRecords().retireOldest(1);
+    restart();
+
+    deliver(pdnA, matchFrame(9, 0x44));
+
+    EXPECT_EQ(acks.size(), 2u);
+    FdnRecordStore::MatchRing::Entry entries[1];
+    ASSERT_EQ(store->getMatchRecords().peekOldest(entries, 1), 1u);
+    EXPECT_EQ(entries[0].content[0], 0x44);
+}
+
+// The next store's slot holds the oldest retired record until a store
+// overwrites it; a blob whose tail commit failed must not count as held.
+TEST_F(FdnRecordStoreTests, uncommittedBlobInTheNextSlotIsNotADuplicate) {
+    for (uint32_t number = 0; number < FDN_MATCH_RECORD_CAPACITY; ++number) {
+        deliver(pdnA, matchFrame(number, static_cast<uint8_t>(number)));
+    }
+    store->getMatchRecords().retireOldest(FDN_MATCH_RECORD_CAPACITY);
+    // Lands in slot 0, under the retired record 0's remembered key.
+    storage.refuseUInt = true;
+    deliver(pdnA, matchFrame(0, 0x77));
+    storage.refuseUInt = false;
+    deliver(pdnA, matchFrame(0, 0x77));
+    // Lands in slot 1; the restart reads the slots back.
+    storage.refuseUInt = true;
+    deliver(pdnA, matchFrame(5, 0x77));
+    storage.refuseUInt = false;
+    restart();
+    deliver(pdnA, matchFrame(5, 0x77));
+
+    EXPECT_EQ(acks.size(), FDN_MATCH_RECORD_CAPACITY + 2);
+    EXPECT_EQ(store->getMatchRecords().getStoredCount(), 2u);
+}
+
 TEST_F(FdnRecordStoreTests, unreadableHeadIsRetired) {
     deliver(pdnA, matchFrame(1, 0x01));
     deliver(pdnA, matchFrame(2, 0x02));

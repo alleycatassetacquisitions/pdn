@@ -51,8 +51,12 @@ While its peer-to-peer radio is enabled an FDN SHALL accept a record frame from 
 
 ### Requirement: FDN duplicates and full storage
 
-An FDN SHALL treat a frame as a duplicate only when it holds a record with the same sender, kind, number and bytes, and SHALL acknowledge a duplicate again without storing it twice. When its store is full for that kind it SHALL send no stored acknowledgement.
+An FDN SHALL treat a frame as a duplicate only when it holds a record with the same sender, kind, number and bytes, or has uploaded and retired such a record and has not reused its slot or made it the next one written, and SHALL acknowledge a duplicate again without storing it twice. When its store is full for that kind it SHALL send no stored acknowledgement.
 
 #### Scenario: A resent record is acknowledged again and stored once
 - **WHEN** an FDN receives an identical record frame from the same PDN again
 - **THEN** it sends the stored acknowledgement and still holds one copy
+
+#### Scenario: A record resent after its upload is acknowledged and not stored again
+- **WHEN** an FDN that uploaded and retired the last record it stored, then restarted, receives the identical frame from the same PDN
+- **THEN** it sends the stored acknowledgement and neither stores nor uploads the record again
