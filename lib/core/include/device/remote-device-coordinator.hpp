@@ -345,10 +345,8 @@ private:
                            uint16_t peerUserId, const uint8_t* profile, size_t len);
     void onApplicationFrameReceived(SerialIdentifier jack, const ApplicationFrameHeader& header,
                                     const uint8_t* payload);
-    void deliverApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
-                                 const uint8_t* payload, size_t length);
     void reportApplicationFrameOutcome(SerialIdentifier jack,
-                                       const SettledApplicationFrame& settled);
+                                       std::optional<SettledApplicationFrame> settled);
 
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
@@ -378,9 +376,10 @@ private:
         // Connected edge and wiped at link-down.
         struct HeldApplicationFrame {
             bool held = false;
-            ApplicationFrameKind kind = ApplicationFrameKind::RECORD_KEY;
-            size_t length = 0;
+            ApplicationFrameHeader header{};
             std::array<uint8_t, APPLICATION_PAYLOAD_MAX_LEN> payload{};
+            /** Wipes a frame still held. */
+            ~HeldApplicationFrame() { clear(); }
             /** Lets go of the frame and wipes its bytes. */
             void clear() {
                 held = false;

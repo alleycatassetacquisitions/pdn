@@ -1,5 +1,7 @@
 #include "utils/sha256.hpp"
 
+#include "utils/secure-wipe.hpp"
+
 #include <cstring>
 
 namespace {
@@ -72,7 +74,6 @@ void Sha256::finish(uint8_t (&digest)[SHA256_DIGEST_SIZE]) {
         pendingBlock[LENGTH_FIELD_OFFSET + i] = static_cast<uint8_t>(messageBits >> (56 - 8 * i));
     }
     processBlock(pendingBlock);
-    pendingLength = 0;
 
     for (size_t i = 0; i < 8; ++i) {
         digest[4 * i] = static_cast<uint8_t>(state[i] >> 24);
@@ -80,6 +81,8 @@ void Sha256::finish(uint8_t (&digest)[SHA256_DIGEST_SIZE]) {
         digest[4 * i + 2] = static_cast<uint8_t>(state[i] >> 8);
         digest[4 * i + 3] = static_cast<uint8_t>(state[i]);
     }
+    // The state and pending block derive from the message, which may be a key.
+    secureWipe(this, sizeof(*this));
 }
 
 void Sha256::processBlock(const uint8_t* block) {
@@ -132,4 +135,5 @@ void Sha256::processBlock(const uint8_t* block) {
     state[5] += f;
     state[6] += g;
     state[7] += h;
+    secureWipe(schedule, sizeof(schedule));
 }

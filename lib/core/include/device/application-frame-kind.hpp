@@ -10,7 +10,8 @@
 enum class ApplicationFrameKind : uint8_t {
     RECORD_KEY = 0,    // FDN to PDN at registration: the player's record key
     MATCH_SECRET = 1,  // Hunter to Bounty: the match ID and the per-match secret
-    COUNT,
 };
 
-constexpr size_t APPLICATION_FRAME_KIND_COUNT = static_cast<size_t>(ApplicationFrameKind::COUNT);
+// No kind value outside the enum exists, so kind-indexed tables cannot be overrun.
+constexpr size_t APPLICATION_FRAME_KIND_COUNT =
+static_cast<size_t>(ApplicationFrameKind::MATCH_SECRET) + 1;

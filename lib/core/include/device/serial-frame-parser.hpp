@@ -154,8 +154,6 @@ private:
     void consumeByte(uint8_t b);
     void resyncFromConsumedBytes();
     void dispatchFrame();
-    // Opcode whitelist and each opcode's initial payload length; an application
-    // frame's length byte extends it in consumeByte().
-    static bool isKnownOpcode(uint8_t opcode, size_t& payloadLen);
+    static size_t opcodePayloadLen(uint8_t opcode);
     static unsigned long nowMs();
 };

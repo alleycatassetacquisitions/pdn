@@ -30,8 +30,6 @@ bool computeHmacSha256(const uint8_t* key, size_t keyLength, const uint8_t* mess
         Sha256 keyHash;
         keyHash.update(key, keyLength);
         keyHash.finish(digest);
-        // A spent hash still holds its digest, here the key's.
-        secureWipe(&keyHash, sizeof(keyHash));
         std::memcpy(keyBlock, digest, sizeof(digest));
     } else {
         std::memcpy(keyBlock, key, keyLength);
@@ -44,7 +42,6 @@ bool computeHmacSha256(const uint8_t* key, size_t keyLength, const uint8_t* mess
     inner.update(keyBlock, sizeof(keyBlock));
     inner.update(message, messageLength);
     inner.finish(digest);
-    secureWipe(&inner, sizeof(inner));
 
     // The block is the key under the inner pad; this leaves it under the outer one.
     for (size_t i = 0; i < sizeof(keyBlock); ++i) {

@@ -50,11 +50,11 @@ unsigned long SerialFrameParser::nowMs() {
     return clk != nullptr ? clk->milliseconds() : 0;
 }
 
-bool SerialFrameParser::isKnownOpcode(uint8_t opcode, size_t& payloadLen) {
+size_t SerialFrameParser::opcodePayloadLen(uint8_t opcode) {
     switch (opcode) {
-        case OP_HELLO: payloadLen = HELLO_PAYLOAD_LEN; return true;
-        case OP_APPLICATION: payloadLen = APPLICATION_HEADER_LEN; return true;
-        default: return false;
+        case OP_HELLO: return HELLO_PAYLOAD_LEN;
+        case OP_APPLICATION: return APPLICATION_HEADER_LEN;
+        default: return 0;
     }
 }
 
@@ -133,7 +133,8 @@ void SerialFrameParser::consumeByte(uint8_t b) {
             }
             break;
         case ParseState::READING_OPCODE:
-            if (!isKnownOpcode(b, parser.expectedPayloadLen)) {
+            parser.expectedPayloadLen = opcodePayloadLen(b);
+            if (parser.expectedPayloadLen == 0) {
                 resetParser();
                 break;
             }

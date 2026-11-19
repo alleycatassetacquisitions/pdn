@@ -162,10 +162,7 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
         JackHelloLink& link = helloByJack[jackIndex(jack)];
         // Ahead of the link machine: a frame written since the last tick is
         // reported while the link it went out on still stands, if it does.
-        if (std::optional<SettledApplicationFrame> written =
-            link.applicationFrameHandOff.takeWritten()) {
-            reportApplicationFrameOutcome(jack, *written);
-        }
+        reportApplicationFrameOutcome(jack, link.applicationFrameHandOff.takeWritten());
         if (link.machine) link.machine->onStateLoop(PDN);
     }
     // Three separate sites move the derived role: a link commits to CONNECTED in
@@ -307,7 +304,8 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             JackHelloLink::HeldApplicationFrame& held =
             helloByJack[jackIndex(j)].heldApplicationFrame;
             if (held.held) {
-                deliverApplicationFrame(j, held.kind, held.payload.data(), held.length);
+                // The link now reads Connected, so this hands it straight up.
+                onApplicationFrameReceived(j, held.header, held.payload.data());
                 held.clear();
             }
         };
@@ -319,10 +317,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             // jack already reads Idle, so its outcome cannot outlive the link
             // and a send from inside the outcome observer is refused.
             JackHelloLink& link = helloByJack[jackIndex(jack)];
-            if (std::optional<SettledApplicationFrame> settled =
-                link.applicationFrameHandOff.drop()) {
-                reportApplicationFrameOutcome(j, *settled);
-            }
+            reportApplicationFrameOutcome(j, link.applicationFrameHandOff.drop());
             link.heldApplicationFrame.clear();
             if (MacToUInt64(mac.data()) != 0) {
                 const bool wasFdn = getPeerDeviceType(j) == DeviceType::FDN;
@@ -429,35 +424,28 @@ void RemoteDeviceCoordinator::onApplicationFrameReceived(SerialIdentifier jack,
         LOG_W("RDC", "application frame of unknown kind %u dropped", header.kind);
         return;
     }
-    const ApplicationFrameKind kind = static_cast<ApplicationFrameKind>(header.kind);
     JackHelloLink& link = helloByJack[jackIndex(jack)];
     if (link.machine->currentStateId() == HELLO_LINK_CONNECTED) {
-        deliverApplicationFrame(jack, kind, payload, header.length);
+        // Copied before the call: a receiver that removes itself would otherwise
+        // destroy the std::function whose operator() frame is still live.
+        ApplicationFrameCallback receiver = applicationFrameOwners[header.kind].onFrame;
+        if (receiver) receiver(jack, payload, header.length);
         return;
     }
     // The sender connects on our context, which can be before we have its
     // own; hold the frame for the Connected edge rather than lose it.
     JackHelloLink::HeldApplicationFrame& held = link.heldApplicationFrame;
     held.held = true;
-    held.kind = kind;
-    held.length = header.length;
+    held.header = header;
     memcpy(held.payload.data(), payload, header.length);
 }
 
-void RemoteDeviceCoordinator::deliverApplicationFrame(SerialIdentifier jack,
-                                                      ApplicationFrameKind kind,
-                                                      const uint8_t* payload, size_t length) {
-    // Copied before the call: a receiver that removes itself would otherwise
-    // destroy the std::function whose operator() frame is still live.
-    ApplicationFrameCallback receiver = applicationFrameOwners[static_cast<size_t>(kind)].onFrame;
-    if (receiver) receiver(jack, payload, length);
-}
-
 void RemoteDeviceCoordinator::reportApplicationFrameOutcome(
-SerialIdentifier jack, const SettledApplicationFrame& settled) {
+SerialIdentifier jack, std::optional<SettledApplicationFrame> settled) {
+    if (!settled) return;
     ApplicationFrameOutcomeCallback observer =
-    applicationFrameOwners[static_cast<size_t>(settled.kind)].onOutcome;
-    if (observer) observer(jack, settled.outcome);
+    applicationFrameOwners[static_cast<size_t>(settled->kind)].onOutcome;
+    if (observer) observer(jack, settled->outcome);
 }
 
 bool RemoteDeviceCoordinator::setOnApplicationFrame(ApplicationFrameKind kind,
