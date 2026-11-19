@@ -123,6 +123,64 @@ TEST_F(UploadCycleTests, oneCrossEventMatchDoesNotFillTheStore) {
     EXPECT_GE(server.accepted.size(), 59u) << "matches 2..60 should all be on the server";
 }
 
+// #528: the server is up and nothing is cabled. A full store must not refuse
+// relayed matches until the 5-minute timer comes round; it uploads once it is
+// full, at least 30 s after the last cycle ended.
+TEST_F(UploadCycleTests, fullStoreUploadsWithoutWaitingForTheTimer) {
+    CrossEventServer server;
+    serve(server);  // the boot cycle: nothing waits yet
+
+    // Ten minutes of play near one FDN: one match record every 5 seconds.
+    uint32_t refusedByAFullStore = 0;
+    for (uint32_t number = 1; number <= 120; ++number) {
+        if (!offerMatch(number)) ++refusedByAFullStore;
+        for (int second = 0; second < 5; ++second) {
+            clock.advance(1000);
+            serve(server);
+        }
+    }
+
+    EXPECT_EQ(refusedByAFullStore, 0u)
+    << "relayed matches refused (never acked) while the server was reachable";
+    EXPECT_GE(server.accepted.size(), 88u) << "all but the last ring-full should be uploaded";
+}
+
+// #528: the early upload still rests 30 s after a cycle, so a store that fills
+// at once does not keep ESP-NOW switched off.
+TEST_F(UploadCycleTests, fullStoreWaitsThirtySecondsAfterTheLastCycle) {
+    CrossEventServer server;
+    serve(server);
+    for (uint32_t number = 1; number <= FDN_MATCH_RECORD_CAPACITY; ++number) {
+        ASSERT_TRUE(offerMatch(number));
+    }
+    clock.advance(29000);
+    serve(server);
+    EXPECT_EQ(server.matchRequests, 0u) << "uploaded within 30 s of the last cycle";
+
+    clock.advance(2000);
+    serve(server);
+    EXPECT_EQ(server.matchRequests, 1u);
+    EXPECT_EQ(storedMatches(), 0u);
+}
+
+// #528: a full store whose matches failed (5xx) waits for the interval, so a
+// failing server does not keep ESP-NOW off every 45 seconds.
+TEST_F(UploadCycleTests, fullStoreAfterAFailedCycleWaitsForTheInterval) {
+    for (uint32_t number = 1; number <= FDN_MATCH_RECORD_CAPACITY; ++number) {
+        ASSERT_TRUE(offerMatch(number));
+    }
+    uploader->sync();
+    fail(WirelessError::SERVER_ERROR, 503);
+    ASSERT_EQ(requests.size(), 1u);
+
+    clock.advance(FDN_UPLOAD_INTERVAL_MS - 1);
+    uploader->sync();
+    EXPECT_EQ(requests.size(), 1u) << "a full store retried a failing server early";
+    clock.advance(2);
+    uploader->sync();
+    EXPECT_EQ(requests.size(), 2u);
+}
+
 // #526 end to end: a real PDN relay, FDN store and uploader. The PDN carries one
 // leftover match from the earlier event and plays on; every match it hands over
 // must be acknowledged, and neither the FDN's ring nor the PDN's may fill.

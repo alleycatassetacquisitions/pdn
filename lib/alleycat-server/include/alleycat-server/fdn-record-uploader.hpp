@@ -18,6 +18,8 @@
 inline constexpr unsigned long FDN_UPLOAD_INTERVAL_MS = 300000;
 // With no AP in range a queued request never answers; the cycle gives the radio back.
 inline constexpr unsigned long FDN_UPLOAD_CYCLE_CAP_MS = 15000;
+// The shortest gap between cycles when a full match store starts one early.
+inline constexpr unsigned long FDN_UPLOAD_FULL_STORE_REST_MS = 30000;
 // alleycat-rs answers a batch naming a match it already holds under another
 // event with 409 and this text; the server has that match, so the copy can go.
 inline constexpr const char FDN_CROSS_EVENT_409_TEXT[] = "already belongs to another event";
@@ -25,7 +27,8 @@ static_assert(FDN_MATCH_RECORD_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_
               "a full match ring goes up in one batch");
 
 // Uploads the FDN's stored records: one cycle at boot, then one every
-// FDN_UPLOAD_INTERVAL_MS while records wait. A cycle owns Wi-Fi until it ends
+// FDN_UPLOAD_INTERVAL_MS while records wait, or sooner once the match store is
+// full. A cycle owns Wi-Fi until it ends
 // or hits FDN_UPLOAD_CYCLE_CAP_MS, then hands the radio back to ESP-NOW. It
 // sends the match batch first, then crash records oldest first, one at a time.
 class FdnRecordUploader {
@@ -49,6 +52,7 @@ public:
         if (outcome == Outcome::WAITING) {
             if (cycleTimer.expired()) {
                 LOG_W("FDN_UPLOAD", "Upload cycle hit its cap; records stay for the next cycle");
+                if (sentKind == RecordKind::MATCH) matchesFailed = true;
                 endCycle();
             }
             return;
@@ -56,6 +60,7 @@ public:
         const Outcome answered = outcome;
         outcome = Outcome::NONE;
         if (answered == Outcome::KEEP) {
+            if (sentKind == RecordKind::MATCH) matchesFailed = true;
             // The server answered the matches (409: no active event); crash records don't depend on
             // it.
             if (sentKind != RecordKind::MATCH || answeredStatus == 0) {
@@ -80,12 +85,22 @@ private:
     enum class Outcome { NONE, WAITING, RETIRE, REFUSED, KEEP };
 
     void startCycleIfDue() {
-        if (intervalTimer.isRunning() && !intervalTimer.expired()) return;
+        if (intervalTimer.isRunning() && !intervalTimer.expired() && !isFullAndRested()) return;
         // Checked each tick until the cable comes out; the cycle stays due.
         if (isCabled()) return;
         matchesHeld = false;
+        matchesFailed = false;
         cycleTimer.setTimer(FDN_UPLOAD_CYCLE_CAP_MS);
         sendNext();
+    }
+
+    // A full match store refuses relayed matches, so it goes up early, but no
+    // sooner than FDN_UPLOAD_FULL_STORE_REST_MS after the last cycle ended, and
+    // not after a cycle whose matches failed: a failing server waits its interval.
+    bool isFullAndRested() {
+        return !matchesFailed &&
+               fdnRecordStore->getMatchRecords().getStoredCount() >= FDN_MATCH_RECORD_CAPACITY &&
+               (!restTimer.isRunning() || restTimer.expired());
     }
 
     void sendNext() {
@@ -167,6 +182,7 @@ private:
         outcome = Outcome::NONE;
         cycleTimer.invalidate();
         intervalTimer.setTimer(FDN_UPLOAD_INTERVAL_MS);
+        restTimer.setTimer(FDN_UPLOAD_FULL_STORE_REST_MS);
         wirelessManager->enablePeerCommsMode();
     }
 
@@ -175,10 +191,13 @@ private:
     std::function<bool()> isCabled;
     SimpleTimer cycleTimer;
     SimpleTimer intervalTimer;
+    SimpleTimer restTimer;
     // Set by a refused batch: send only the oldest match until one retires.
     bool probing = false;
     // Set when the server kept the matches this cycle; the crash records still go.
     bool matchesHeld = false;
+    // Set when the last cycle's matches failed (kept, or the cap hit while sending them).
+    bool matchesFailed = false;
     Outcome outcome = Outcome::NONE;
     uint32_t generation = 0;
     RecordKind sentKind = RecordKind::MATCH;
