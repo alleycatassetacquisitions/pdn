@@ -14,6 +14,7 @@ struct MatchPacket {
     uint32_t boostMs;     // posse boost the sender earned; 0 without supporters
     int command;
     uint8_t seqId;
+    int64_t utcUnixMs;  // the sender's UTC wall clock; 0 when it has none
 } __attribute__((packed));
 
 namespace MatchCmd {
@@ -33,6 +34,7 @@ struct MatchCommand {
     bool isHunter;
     long playerDrawTime;
     unsigned long boostMs = 0;
+    int64_t utcUnixMs = 0;
 
     /** Decoded match frame received from macAddress. */
     MatchCommand(const uint8_t* macAddress, int command, const char* matchId, long playerDrawTime,
