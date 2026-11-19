@@ -4,6 +4,7 @@
 #include "game/posse-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
+#include "utils/http-date.hpp"
 #include <optional>
 #include <algorithm>
 #include <cstring>
@@ -14,6 +15,13 @@ static constexpr const char* PREF_MATCH_KEY = "match_";
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
+// The UTC time when this PDN has been told it, else 0 (an unset PDN clock reads uptime).
+static int64_t knownUtcUnixMs() {
+    PlatformClock* clock = SimpleTimer::getPlatformClock();
+    const int64_t now = clock != nullptr ? clock->unixMilliseconds() : 0;
+    return isValidUtcUnixMs(now) ? now : 0;
+}
+
 MatchManager::MatchManager(WirelessManager* wirelessManager)
     : player(nullptr)
     , storage(nullptr)
@@ -23,6 +31,7 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
         MatchCommand command(fromMac, p.command, p.matchId, p.playerDrawTime, p.isHunter,
                              p.playerUuid, p.teamUuid);
         command.boostMs = p.boostMs;
+        command.utcUnixMs = p.utcUnixMs;
         listenForMatchEvents(command);
     });
     // Ready only on SEND_SUCCESS for the ack: the hunter's radio has then taken it.
@@ -58,6 +67,7 @@ uint8_t MatchManager::sendCommand(const uint8_t* mac, int command, const char* m
     IdGenerator::copyId(packet.matchId, matchId);
     packet.playerUuid = player->getServerPlayerId();
     packet.teamUuid = player->getRegistrationTeam().id;
+    packet.utcUnixMs = knownUtcUnixMs();
 
     LOG_I(MATCH_MANAGER_TAG, "Sending command %i to %s", command, MacToString(mac));
     return matchChannel.sendReliable(mac, packet);
@@ -222,9 +232,9 @@ bool MatchManager::finalizeMatch() {
     // The record keeps raw times, so it is told the winner.
     match.setWinnerPlayerId(isHunterWinner() ? match.getHunterPlayerId()
                                              : match.getBountyPlayerId());
-    if (PlatformClock* clock = SimpleTimer::getPlatformClock()) {
-        match.setOccurredAtUnixMs(clock->unixMilliseconds());
-    }
+    // 0 until the time is known; redateUnsetMatches fixes it within this power-on.
+    const int64_t occurredAtUnixMs = knownUtcUnixMs();
+    match.setOccurredAtUnixMs(occurredAtUnixMs);
 
     // The whole result-screen snapshot is taken here, before clearCurrentMatch wipes the match.
     lastMatchDisplay.myTimeMs = activeMatchState.localIsHunter ? hunterTime : bountyTime;
@@ -241,9 +251,15 @@ bool MatchManager::finalizeMatch() {
         return true;
     }
 
+    redateUnsetMatches();
     const bool stored = appendRecordToStorage(match);
     if (stored) {
         LOG_I(MATCH_MANAGER_TAG, "Stored match %s", match.getMatchId());
+        PlatformClock* clock = SimpleTimer::getPlatformClock();
+        if (occurredAtUnixMs == 0 && clock != nullptr) {
+            if (unsetSinceBoot.size() >= MATCH_RING_CAPACITY) unsetSinceBoot.erase(unsetSinceBoot.begin());
+            unsetSinceBoot.push_back({getMatchSequenceNumber(), clock->milliseconds()});
+        }
     }
     clearCurrentMatch();
     return stored;
@@ -329,20 +345,50 @@ bool MatchManager::markCollected(uint32_t sequenceNumber) {
 
 bool MatchManager::readLowestPending(uint32_t& recordNumber,
                                      uint8_t (&recordBytes)[MatchRecordTraits::RECORD_SIZE]) {
+    redateUnsetMatches();
     // A scratch copy, so a short read leaves the caller's buffer untouched.
     MatchRecord record{};
+    // A match without a real time is passed over like an unreadable one: it is
+    // never handed on, and a later record's acknowledgement moves the mark past it.
     if (!findLowestReadableRecord(
         getCollectedHighWaterMark(), getMatchSequenceNumber(), MATCH_RING_CAPACITY,
         highestUnreadableReported, recordNumber,
-        [this, &record](uint32_t number) { return readRecord(number, record); },
+        [this, &record](uint32_t number) {
+            return readRecord(number, record) && isValidUtcUnixMs(record.occurredAtUnixMs);
+        },
         [](uint32_t number) {
-            LOG_W(MATCH_MANAGER_TAG, "Stored match %u cannot be read",
+            LOG_W(MATCH_MANAGER_TAG, "Stored match %u cannot be read or has no time; passed over",
                   static_cast<unsigned>(number));
         })) {
         return false;
     }
     memcpy(recordBytes, &record, sizeof(record));
     return true;
+}
+
+void MatchManager::redateUnsetMatches() {
+    const int64_t utcNow = knownUtcUnixMs();
+    PlatformClock* clock = SimpleTimer::getPlatformClock();
+    if (unsetSinceBoot.empty() || utcNow == 0 || clock == nullptr) return;
+    const unsigned long uptimeNow = clock->milliseconds();
+    for (const UnsetMatch& unset : unsetSinceBoot) {
+        MatchRecord record{};
+        if (!readRecord(unset.sequenceNumber, record)) continue;
+        record.occurredAtUnixMs = utcNow - static_cast<int64_t>(uptimeNow - unset.uptimeMs);
+        char key[16];
+        matchSlotKey(unset.sequenceNumber, key);
+        if (storage->writeBytes(MATCH_RING_PREFS_NAMESPACE, key, reinterpret_cast<uint8_t*>(&record),
+                                sizeof(record)) != sizeof(record)) {
+            LOG_E(MATCH_MANAGER_TAG, "Failed to re-date match %u", unset.sequenceNumber);
+        }
+    }
+    unsetSinceBoot.clear();
+}
+
+void MatchManager::adoptPeerTime(int64_t peerUtcUnixMs) {
+    PlatformClock* clock = SimpleTimer::getPlatformClock();
+    if (clock == nullptr || !isValidUtcUnixMs(peerUtcUnixMs) || knownUtcUnixMs() != 0) return;
+    clock->setUnixMilliseconds(peerUtcUnixMs);
 }
 
 bool MatchManager::appendRecordToStorage(const Match& match) {
@@ -474,6 +520,8 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
             return;
         }
+        // The cable vouches for this peer as it does for an FDN's context (#518).
+        adoptPeerTime(command.utcUnixMs);
         bool shootoutActive = shootoutManager_ && shootoutManager_->active();
         if(!shootoutActive && player->isHunter() == command.isHunter) {
             // Echo the sender's matchId/MAC: activeMatchState.match is still empty.
@@ -487,6 +535,7 @@ void MatchManager::listenForMatchEvents(const MatchCommand& command) {
     } else if (command.command == MatchCmd::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
+        adoptPeerTime(command.utcUnixMs);
         if (activeMatchState.matchIsReady || activeMatchState.pendingAckSeqId != 0) return;
         matchChannel.cancel(activeMatchState.opponentMac.data());
         activeMatchState.match->setPlayer(!activeMatchState.localIsHunter, command.playerUuid,

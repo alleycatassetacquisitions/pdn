@@ -12,6 +12,7 @@
 #include "device/drivers/logger.hpp"
 #include "device/wireless-manager.hpp"
 #include "game/match.hpp"
+#include "utils/http-date.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/wireless-types.hpp"
 
@@ -61,6 +62,11 @@ public:
         }
         const Outcome answered = outcome;
         outcome = Outcome::NONE;
+        if (askingTime) {
+            askingTime = false;
+            sendNext();
+            return;
+        }
         if (answered == Outcome::KEEP) {
             if (sentKind == RecordKind::MATCH) matchesFailed = true;
             // The server answered the matches (409: no active event); crash records don't depend on
@@ -92,6 +98,7 @@ private:
         if (isCabled()) return;
         matchesHeld = false;
         matchesFailed = false;
+        timeAsked = false;
         cycleTimer.setTimer(FDN_UPLOAD_CYCLE_CAP_MS);
         sendNext();
     }
@@ -108,9 +115,15 @@ private:
     void sendNext() {
         ++generation;
         outcome = Outcome::WAITING;
+        if (!timeAsked && !isClockSet()) {
+            askTime();
+            return;
+        }
         const size_t limit = probing ? 1 : FDN_MATCH_RECORD_CAPACITY;
-        sentCount =
-        matchesHeld ? 0 : fdnRecordStore->getMatchRecords().peekOldest(matchBatch, limit);
+        // A match goes up only with the FDN's clock set (#518).
+        sentCount = matchesHeld || !isClockSet()
+                    ? 0
+                    : fdnRecordStore->getMatchRecords().peekOldest(matchBatch, limit);
         if (sentCount > 0) {
             sentKind = RecordKind::MATCH;
             sentNumber = matchBatch[0].recordNumber;
@@ -151,6 +164,23 @@ private:
         [this, cycle = generation](const WirelessErrorInfo& error) { onFailure(cycle, error); });
     }
 
+    static bool isClockSet() {
+        PlatformClock* clock = SimpleTimer::getPlatformClock();
+        return clock != nullptr && isValidUtcUnixMs(clock->unixMilliseconds());
+    }
+
+    // Once a cycle, without the time: the answer's Date header sets the clock.
+    void askTime() {
+        timeAsked = true;
+        askingTime = true;
+        wirelessManager->queueHttpRequest(HttpRequest(
+        FDN_TIME_CHECK_ENDPOINT, "GET", "", "",
+        [this, cycle = generation](const std::string&) { answer(cycle, Outcome::RETIRE, 0); },
+        [this, cycle = generation](const WirelessErrorInfo& error) {
+            answer(cycle, Outcome::KEEP, error.httpStatus);
+        }));
+    }
+
     void onFailure(uint32_t cycle, const WirelessErrorInfo& error) {
         LOG_W("FDN_UPLOAD", "Upload failed: %s", error.message.c_str());
         // A 409 is batch-wide "no active event" unless its text names a match
@@ -182,6 +212,7 @@ private:
     void endCycle() {
         ++generation;
         outcome = Outcome::NONE;
+        askingTime = false;
         cycleTimer.invalidate();
         intervalTimer.setTimer(FDN_UPLOAD_INTERVAL_MS);
         restTimer.setTimer(FDN_UPLOAD_FULL_STORE_REST_MS);
@@ -200,6 +231,9 @@ private:
     bool matchesHeld = false;
     // Set when the last cycle's matches failed (kept, or the cap hit while sending them).
     bool matchesFailed = false;
+    // Set while the time check is the request out; timeAsked keeps it to one per cycle.
+    bool askingTime = false;
+    bool timeAsked = false;
     Outcome outcome = Outcome::NONE;
     uint32_t generation = 0;
     RecordKind sentKind = RecordKind::MATCH;

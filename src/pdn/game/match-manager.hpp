@@ -238,6 +238,18 @@ private:
     bool isHunterWinner() const;
     bool appendRecordToStorage(const Match& match);
 
+    // Matches stored this power-on before the time was known, with the uptime
+    // each finished at; one per ring slot at most.
+    struct UnsetMatch {
+        uint32_t sequenceNumber;
+        unsigned long uptimeMs;
+    };
+    std::vector<UnsetMatch> unsetSinceBoot;
+    // Once the time is known, dates each unset match by its uptime and forgets it.
+    void redateUnsetMatches();
+    // Takes a cabled peer's UTC when this PDN has none.
+    void adoptPeerTime(int64_t peerUtcUnixMs);
+
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake match commands
     // (MATCH_ID_ACK, MATCH_ROLE_MISMATCH, DRAW_RESULT, NEVER_PRESSED) must
