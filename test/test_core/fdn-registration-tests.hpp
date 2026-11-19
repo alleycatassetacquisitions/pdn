@@ -65,10 +65,9 @@ public:
             return 1;
         }));
         ON_CALL(*device.mockPeerComms, setPacketHandler(_, _, _))
-        .WillByDefault(testing::Invoke(
-        [this](PktType type, PeerCommsInterface::PacketCallback callback, void* ctx) {
-            packetHandlers[type] = {std::move(callback), ctx};
-        }));
+        .WillByDefault(
+        testing::Invoke([this](PktType type, PeerCommsInterface::PacketCallback callback,
+                               void* ctx) { packetHandlers[type] = {std::move(callback), ctx}; }));
         ON_CALL(*device.mockPeerComms, setSendStatusHandler(_, _, _))
         .WillByDefault(testing::Invoke(
         [this](PktType type, PeerCommsInterface::SendStatusCallback callback, void* ctx) {
@@ -124,7 +123,8 @@ public:
      */
     void step(unsigned long ms = 20) {
         clock.advance(ms);
-        for (const CabledPdn& pdn : cabled) deliverFrame(*pdn.jack, pdnHello(pdn.mac));
+        for (const CabledPdn& pdn : cabled)
+            deliverFrame(*pdn.jack, pdnHello(pdn.mac));
         emitAndCollect();
         rdc.sync(&device);
         manager->sync();
@@ -141,7 +141,8 @@ public:
 
     /** Steps through @p ms. */
     void advance(unsigned long ms) {
-        for (unsigned long elapsed = 0; elapsed < ms; elapsed += 20) step();
+        for (unsigned long elapsed = 0; elapsed < ms; elapsed += 20)
+            step();
     }
 
     /** Emits one HELLO pass and keeps each jack's key frames. */

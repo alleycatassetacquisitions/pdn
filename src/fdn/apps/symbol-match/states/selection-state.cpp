@@ -10,8 +10,7 @@ namespace {
 constexpr uint8_t IDLE_ANIMATION_SPEED = 20;
 }
 
-Selection::Selection(SymbolManager* symbolManager,
-                     RemoteDeviceCoordinator* remoteDeviceCoordinator,
+Selection::Selection(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
                      SymbolWirelessManager* symbolWirelessManager,
                      FdnProvisioningManager* fdnProvisioningManager)
     : FDNConnectState(remoteDeviceCoordinator, SELECTION)
@@ -73,6 +72,4 @@ bool Selection::transitionToIdle() {
     return transitionToIdleState;
 }
 
-bool Selection::transitionToRegistration() {
-    return transitionToRegistrationState;
-}
+bool Selection::transitionToRegistration() { return transitionToRegistrationState; }

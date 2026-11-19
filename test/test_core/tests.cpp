@@ -2357,7 +2357,9 @@ TEST_F(FdnRegistrationTests, turnNeverOpensWithoutAReader) {
 TEST_F(FdnRegistrationTests, resendsTheTurnAfterAnAbandonedContext) {
     fdnRegistrationResendsTheTurnAfterAnAbandonedContext(this);
 }
-TEST_F(FdnRegistrationTests, passesAnUntappedTurnOn) { fdnRegistrationPassesAnUntappedTurnOn(this); }
+TEST_F(FdnRegistrationTests, passesAnUntappedTurnOn) {
+    fdnRegistrationPassesAnUntappedTurnOn(this);
+}
 TEST_F(FdnRegistrationTests, lookupWithoutAnswerTimesOut) {
     fdnRegistrationLookupWithoutAnswerTimesOut(this);
 }

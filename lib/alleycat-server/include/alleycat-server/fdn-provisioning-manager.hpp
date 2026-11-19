@@ -139,7 +139,8 @@ public:
             bandReader->setTapHandler([this](const BandUid& uid) { onBandTap(uid); });
         }
         readerResponds = bandReader != nullptr && bandReader->isResponding();
-        if (!readerResponds) LOG_E("FDN_PROVISION", "No band reader answers: nobody registers here");
+        if (!readerResponds)
+            LOG_E("FDN_PROVISION", "No band reader answers: nobody registers here");
         updateQueue();
     }
 
@@ -282,8 +283,8 @@ private:
 
     void announceTurn() {
         const bool turnOpen = isTurnOpen();
-        const bool moved = turnOpen && (announcedTurn.jack != queue[0].jack ||
-                                        announcedTurn.mac != queue[0].mac);
+        const bool moved =
+        turnOpen && (announcedTurn.jack != queue[0].jack || announcedTurn.mac != queue[0].mac);
         if (turnOpen == announcedTurnOpen && !moved) return;
         announcedTurnOpen = turnOpen;
         announcedTurn = queue[0];
@@ -303,7 +304,8 @@ private:
         } else if (holdingResult) {
             view = heldResult;
         } else if (queueLength > 0) {
-            view.screen = readerResponds ? RegistrationScreen::TAP_BAND : RegistrationScreen::NO_READER;
+            view.screen =
+            readerResponds ? RegistrationScreen::TAP_BAND : RegistrationScreen::NO_READER;
             view.jack = queue[0].jack;
         }
         return view;

@@ -223,9 +223,7 @@ bool SymbolIdle::transitionToSelection() {
     return transitionToSelectionState;
 }
 
-bool SymbolIdle::transitionToRegistration() {
-    return transitionToRegistrationState;
-}
+bool SymbolIdle::transitionToRegistration() { return transitionToRegistrationState; }
 
 bool SymbolIdle::transitionToMatchSuccess() {
     return symbolManager->isMatched(SerialIdentifier::INPUT_JACK)

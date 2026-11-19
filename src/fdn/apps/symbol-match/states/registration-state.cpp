@@ -7,9 +7,7 @@ Registration::Registration(FdnProvisioningManager* fdnProvisioningManager)
     : TypedState<FDN>(REGISTRATION)
     , fdnProvisioningManager(fdnProvisioningManager) {}
 
-Registration::~Registration() {
-    fdnProvisioningManager = nullptr;
-}
+Registration::~Registration() { fdnProvisioningManager = nullptr; }
 
 void Registration::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted");
@@ -44,6 +42,4 @@ void Registration::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
 }
 
-bool Registration::transitionToSelection() {
-    return transitionToSelectionState;
-}
+bool Registration::transitionToSelection() { return transitionToSelectionState; }

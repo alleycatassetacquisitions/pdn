@@ -36,8 +36,8 @@ constexpr const char GET_DEVICE_PLAYER_BY_BAND_ENDPOINT[] = "/device/players/by-
  * @p recordKey the decoded key; both are empty unless @p result is KEY_ISSUED
  * or KEY_NOT_ISSUED, and both live only for the call: the key is wiped after it.
  */
-using OnBandLookupDone = std::function<void(ProvisionLookupResult result, const Player& player,
-                                            const RecordKey& recordKey)>;
+using OnBandLookupDone =
+std::function<void(ProvisionLookupResult result, const Player& player, const RecordKey& recordKey)>;
 
 /**
  * GET /device/players/by-band/{uid}, {uid} being @p uid as upper-case hex with

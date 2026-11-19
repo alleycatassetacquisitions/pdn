@@ -18,8 +18,7 @@ enum SymbolMatchStateId {
 // ── Selection ────────────────────────────────────────────────────────────────
 class Selection : public FDNConnectState {
 public:
-    Selection(SymbolManager* symbolManager,
-              RemoteDeviceCoordinator* remoteDeviceCoordinator,
+    Selection(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
               SymbolWirelessManager* symbolWirelessManager,
               FdnProvisioningManager* fdnProvisioningManager);
     ~Selection();
@@ -45,8 +44,7 @@ private:
 // ── SymbolIdle ───────────────────────────────────────────────────────────────
 class SymbolIdle : public FDNConnectState {
 public:
-    SymbolIdle(SymbolManager* symbolManager,
-               RemoteDeviceCoordinator* remoteDeviceCoordinator,
+    SymbolIdle(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
                SymbolWirelessManager* symbolWirelessManager,
                FdnProvisioningManager* fdnProvisioningManager);
     ~SymbolIdle();

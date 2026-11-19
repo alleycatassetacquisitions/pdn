@@ -17,8 +17,8 @@ SymbolMatchApp::~SymbolMatchApp() {
 void SymbolMatchApp::populateStateMap() {
     auto* selection = new Selection(symbolManager, remoteDeviceCoordinator, symbolWirelessManager,
                                     fdnProvisioningManager);
-    auto* symbolIdle = new SymbolIdle(symbolManager, remoteDeviceCoordinator,
-                                      symbolWirelessManager, fdnProvisioningManager);
+    auto* symbolIdle = new SymbolIdle(symbolManager, remoteDeviceCoordinator, symbolWirelessManager,
+                                      fdnProvisioningManager);
     auto* matchSuccess = new MatchSuccess(remoteDeviceCoordinator, symbolWirelessManager);
     auto* registration = new Registration(fdnProvisioningManager);
 
