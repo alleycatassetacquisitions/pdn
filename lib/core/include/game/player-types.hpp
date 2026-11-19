@@ -41,9 +41,9 @@ struct WireAffiliation {
 } __attribute__((packed));
 
 /**
- * FDN to PDN over PktType::kPlayerProvision, sent to the MAC of the PDN whose
- * registration a tap answered, after its record key went over that PDN's jack.
- * Only `status` means anything when it is LOOKUP_FAILED.
+ * FDN to PDN over PktType::kPlayerProvision, sent to the MAC of the PDN a band
+ * tap was looked up for; a PROFILE_DELIVERED one only after its record key went
+ * over that PDN's jack. Only `status` means anything when it is LOOKUP_FAILED.
  */
 struct PlayerProvisionPacket {
     uint8_t seqId;
@@ -55,3 +55,5 @@ struct PlayerProvisionPacket {
     uint8_t affiliationCount;
     WireAffiliation affiliations[PlayerLimits::MAX_AFFILIATIONS];
 } __attribute__((packed));
+// Both images parse it: a change to a name or affiliation limit changes the wire.
+static_assert(sizeof(PlayerProvisionPacket) == 427, "PlayerProvisionPacket wire size");

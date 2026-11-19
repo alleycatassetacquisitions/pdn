@@ -78,6 +78,17 @@ public:
             requests.push_back(std::move(request));
             return true;
         }));
+        // As the ESP32 driver's disconnect(): giving Wi-Fi up fails, at once,
+        // every request still waiting for its answer.
+        ON_CALL(*device.mockHttpClient, setHttpClientState(_))
+        .WillByDefault(testing::Invoke([this](HttpClientState state) {
+            if (state != HttpClientState::DISCONNECTED) return;
+            for (size_t i = 0; i < requests.size(); ++i) {
+                if (i >= answered.size() || !answered[i]) {
+                    fail(i, {WirelessError::CONNECTION_FAILED, "Disconnected before an answer"});
+                }
+            }
+        }));
         device.serialManager->setInputJack(&jack1);
         device.serialManager->setSecondaryInputJack(&jack2);
         rdc.setExternalConnectivityTask(true);
@@ -185,8 +196,30 @@ public:
         return packets;
     }
 
-    /** Taps a 4-byte band. */
-    void tap() { reader.tapBand({0x04, 0xA2, 0x1B, 0x9C}); }
+    /** Taps a 4-byte band and runs the ticks that close the turn and start its lookup. */
+    void tap() {
+        reader.tapBand({0x04, 0xA2, 0x1B, 0x9C});
+        step();
+        step();
+    }
+
+    /** Answers request @p index with @p body, once. */
+    void answer(size_t index, const std::string& body) {
+        markAnswered(index);
+        requests[index].onSuccess(body);
+    }
+
+    /** Fails request @p index with @p error, once. */
+    void fail(size_t index, const WirelessErrorInfo& error) {
+        markAnswered(index);
+        requests[index].onError(error);
+    }
+
+    /** Marks request @p index as having had its one answer. */
+    void markAnswered(size_t index) {
+        if (answered.size() <= index) answered.resize(index + 1, false);
+        answered[index] = true;
+    }
 
     /** A HELLO from the PDN @p mac. */
     static std::vector<uint8_t> pdnHello(const uint8_t* mac) {
@@ -210,6 +243,7 @@ public:
     std::vector<SentFrame> sent;
     std::vector<SentFrame> unacked;
     bool radioLosesFrames = false;
+    std::vector<bool> answered;
     std::vector<HttpRequest> requests;
     std::vector<std::vector<uint8_t>> keyFrames1;
     std::vector<std::vector<uint8_t>> keyFrames2;
@@ -249,7 +283,7 @@ inline void fdnRegistrationTapSendsKeyThenProfileToTheTurnsPdn(FdnRegistrationTe
     suite->step();
     EXPECT_EQ(suite->view.screen, RegistrationScreen::LOOKING_UP);
 
-    suite->requests[0].onSuccess(encodeTestPlayerWithKey(RECORD_KEY_SIZE));
+    suite->answer(0, encodeTestPlayerWithKey(RECORD_KEY_SIZE));
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW)
     << "the radio was not handed back to ESP-NOW";
     suite->emitAndCollect();
@@ -267,7 +301,7 @@ inline void fdnRegistrationTapSendsKeyThenProfileToTheTurnsPdn(FdnRegistrationTe
     EXPECT_STREQ(delivered.getServerPlayerName(), "Alex");
     EXPECT_TRUE(suite->provisionsTo(PDN_B).empty());
     EXPECT_EQ(suite->view.screen, RegistrationScreen::RESULT);
-    EXPECT_TRUE(suite->view.registered);
+    EXPECT_EQ(suite->view.outcome, RegistrationOutcome::REGISTERED);
     EXPECT_STREQ(suite->view.playerName, "Alex");
 }
 
@@ -277,15 +311,15 @@ inline void fdnRegistrationWithoutKeySendsNoKeyAndNoProfile(FdnRegistrationTests
     suite->cable(suite->jack1, PDN_A);
     suite->tap();
     ASSERT_EQ(suite->requests.size(), 1u);
-    suite->requests[0].onSuccess(encodeTestPlayerWithKey(RECORD_KEY_SIZE - 1));
+    suite->answer(0, encodeTestPlayerWithKey(RECORD_KEY_SIZE - 1));
     suite->advance(FdnProvisioningManager::LOOKUP_RESULT_HOLD_MS + 40);
     EXPECT_EQ(suite->view.screen, RegistrationScreen::TAP_BAND);
 
     suite->tap();
     ASSERT_EQ(suite->requests.size(), 2u);
-    suite->requests[1].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404", 404});
+    suite->fail(1, {WirelessError::INVALID_RESPONSE, "HTTP Error: 404", 404});
     suite->step();
-    EXPECT_EQ(suite->view.result, ProvisionLookupResult::NO_PLAYER);
+    EXPECT_EQ(suite->view.outcome, RegistrationOutcome::NO_PLAYER);
 
     EXPECT_TRUE(suite->keyFrames1.empty());
     const std::vector<PlayerProvisionPacket> packets = suite->provisionsTo(PDN_A);
@@ -304,14 +338,13 @@ inline void fdnRegistrationSendsNothingToAPdnThatLeftDuringLookup(FdnRegistratio
     suite->unplug(PDN_A);
     suite->cable(suite->jack1, PDN_C);
 
-    suite->requests[0].onSuccess(encodeTestPlayerWithKey(RECORD_KEY_SIZE));
+    suite->answer(0, encodeTestPlayerWithKey(RECORD_KEY_SIZE));
     suite->step();
     suite->step();
     EXPECT_TRUE(suite->keyFrames1.empty()) << "a key went to the PDN now on the jack";
     EXPECT_TRUE(suite->provisionsTo(PDN_A).empty());
     EXPECT_TRUE(suite->provisionsTo(PDN_C).empty());
-    EXPECT_EQ(suite->view.result, ProvisionLookupResult::KEY_ISSUED);
-    EXPECT_FALSE(suite->view.registered);
+    EXPECT_EQ(suite->view.outcome, RegistrationOutcome::PDN_LEFT);
 }
 
 // The PDN is swapped for another after its key frame went out but before the
@@ -321,7 +354,7 @@ fdnRegistrationSendsNoProfileToAPdnSwappedAsItsKeyIsWritten(FdnRegistrationTests
     suite->cable(suite->jack1, PDN_A);
     suite->tap();
     ASSERT_EQ(suite->requests.size(), 1u);
-    suite->requests[0].onSuccess(encodeTestPlayerWithKey(RECORD_KEY_SIZE));
+    suite->answer(0, encodeTestPlayerWithKey(RECORD_KEY_SIZE));
     suite->emitAndCollect();
     ASSERT_EQ(suite->keyFrames1.size(), 1u);
 
@@ -330,7 +363,7 @@ fdnRegistrationSendsNoProfileToAPdnSwappedAsItsKeyIsWritten(FdnRegistrationTests
     suite->step();
     EXPECT_TRUE(suite->provisionsTo(PDN_A).empty()) << "profile sent to a PDN that left";
     EXPECT_TRUE(suite->provisionsTo(PDN_C).empty());
-    EXPECT_FALSE(suite->view.registered);
+    EXPECT_EQ(suite->view.outcome, RegistrationOutcome::PDN_LEFT);
 }
 
 // A UID of no anticollision length is not looked up and the turn stays. Taps
@@ -344,7 +377,7 @@ inline void fdnRegistrationIgnoresTapsDuringTheResultHold(FdnRegistrationTests* 
     EXPECT_EQ(suite->view.screen, RegistrationScreen::TAP_BAND);
 
     suite->tap();
-    suite->requests[0].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404", 404});
+    suite->fail(0, {WirelessError::INVALID_RESPONSE, "HTTP Error: 404", 404});
     suite->advance(1000);
     EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::CLOSED);
     suite->tap();
@@ -410,19 +443,34 @@ inline void fdnRegistrationPassesAnUntappedTurnOn(FdnRegistrationTests* suite) {
     EXPECT_EQ(suite->lastTurnTo(PDN_B), RegistrationTurn::OPEN);
 }
 
+// A modified PDN on the other jack claims the MAC of the PDN waiting on jack 1:
+// a context told to that MAC could be tapped for either jack, so no turn opens
+// and no key can reach the impostor's jack.
+inline void fdnRegistrationOpensNoTurnForAMacOnBothJacks(FdnRegistrationTests* suite) {
+    suite->cable(suite->jack1, PDN_A);
+    ASSERT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::OPEN);
+    suite->cable(suite->jack2, PDN_A);
+    EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::CLOSED);
+
+    suite->advance(FdnProvisioningManager::REGISTRATION_PENDING_MS + 40);
+    EXPECT_EQ(suite->lastTurnTo(PDN_A), RegistrationTurn::CLOSED) << "the rotation opened a turn";
+    suite->tap();
+    EXPECT_TRUE(suite->requests.empty()) << "a tap was looked up with the MAC on both jacks";
+    EXPECT_TRUE(suite->keyFrames2.empty());
+}
+
 // A lookup the server never answers ends at its deadline with the radio back
-// on ESP-NOW, and its late answer hands out no key.
+// on ESP-NOW. Giving Wi-Fi up fails the request at once, and that failure ends
+// nothing twice: the PDN hears of the failure once.
 inline void fdnRegistrationLookupWithoutAnswerTimesOut(FdnRegistrationTests* suite) {
     suite->cable(suite->jack1, PDN_A);
     suite->tap();
     ASSERT_EQ(suite->requests.size(), 1u);
     suite->advance(FdnProvisioningManager::LOOKUP_TIMEOUT_MS + 40);
     EXPECT_EQ(suite->view.screen, RegistrationScreen::RESULT);
-    EXPECT_EQ(suite->view.result, ProvisionLookupResult::LOOKUP_FAILED);
+    EXPECT_EQ(suite->view.outcome, RegistrationOutcome::LOOKUP_FAILED);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
-
-    suite->requests[0].onSuccess(encodeTestPlayerWithKey(RECORD_KEY_SIZE));
-    suite->step();
+    EXPECT_EQ(suite->provisionsTo(PDN_A).size(), 1u);
     EXPECT_TRUE(suite->keyFrames1.empty());
 }
 
@@ -441,20 +489,18 @@ inline void fdnRegistrationScreenText() {
     view.jack = SerialIdentifier::INPUT_JACK;
     EXPECT_EQ(lines(), Lines("NO READER", "JACK 1"));
     view.screen = RegistrationScreen::RESULT;
-    view.registered = true;
     strcpy(view.playerName, "Ada");
-    EXPECT_EQ(lines(), Lines("WELCOME", "Ada"));
-    view.registered = false;
-    const std::vector<std::pair<ProvisionLookupResult, Lines>> results = {
-    {ProvisionLookupResult::KEY_ISSUED, {"PDN LEFT", "JACK 1"}},
-    {ProvisionLookupResult::KEY_NOT_ISSUED, {"UNABLE TO", "ISSUE KEY"}},
-    {ProvisionLookupResult::NO_PLAYER, {"SEE DESK", "JACK 1"}},
-    {ProvisionLookupResult::SERVER_NOT_TRUSTED, {"SERVER", "NOT TRUSTED"}},
-    {ProvisionLookupResult::LOOKUP_FAILED, {"UNABLE TO", "LOCATE ASSET"}},
+    const std::vector<std::pair<RegistrationOutcome, Lines>> outcomes = {
+    {RegistrationOutcome::REGISTERED, {"WELCOME", "Ada"}},
+    {RegistrationOutcome::PDN_LEFT, {"PDN LEFT", "JACK 1"}},
+    {RegistrationOutcome::KEY_NOT_ISSUED, {"UNABLE TO", "ISSUE KEY"}},
+    {RegistrationOutcome::NO_PLAYER, {"SEE DESK", "JACK 1"}},
+    {RegistrationOutcome::SERVER_NOT_TRUSTED, {"SERVER", "NOT TRUSTED"}},
+    {RegistrationOutcome::LOOKUP_FAILED, {"UNABLE TO", "LOCATE ASSET"}},
     };
-    for (const auto& result : results) {
-        view.result = result.first;
-        EXPECT_EQ(lines(), result.second);
+    for (const auto& outcome : outcomes) {
+        view.outcome = outcome.first;
+        EXPECT_EQ(lines(), outcome.second);
     }
 }
 

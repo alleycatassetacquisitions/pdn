@@ -75,11 +75,9 @@ SerialIdentifier PosseManager::supporterJack() const {
 }
 
 std::optional<bool> PosseManager::peerIsHunter(SerialIdentifier jack) const {
-    if (rdc->getPeerDeviceType(jack) != DeviceType::PDN) return std::nullopt;
-    size_t len = 0;
-    const uint8_t* raw = rdc->getPeerProfile(jack, len);
-    if (raw == nullptr || len < sizeof(PlayerProfile)) return std::nullopt;
-    return reinterpret_cast<const PlayerProfile*>(raw)->gameRole != 0;
+    PlayerProfile profile{};
+    if (!rdc->getPeerPlayerProfile(jack, profile)) return std::nullopt;
+    return profile.gameRole != 0;
 }
 
 bool PosseManager::containsMac(const SupporterSlots& slots, size_t count, const uint8_t* mac) {

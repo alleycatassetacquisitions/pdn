@@ -63,6 +63,10 @@ SymbolIdle::~SymbolIdle() {
 void SymbolIdle::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
     mountedFdn = fdn;
+    // A PDN waiting to register is not playing, so the round this cuts short cannot be won.
+    fdnProvisioningManager->setOnViewChanged([this](const RegistrationView& view) {
+        transitionToRegistrationState = view.screen != RegistrationScreen::NONE;
+    });
     renderSymbolScreen(fdn);
 
     symbolWirelessManager->setPacketReceivedCallback(
@@ -102,8 +106,6 @@ void SymbolIdle::onStateMounted(FDN* fdn) {
 }
 
 void SymbolIdle::onStateLoop(FDN* fdn) {
-    // A PDN waiting to register cannot be playing, so the round it would cut short can't be won.
-    transitionToRegistrationState = fdnProvisioningManager->hasRegistrationWork();
     if (symbolManager->getRefreshTimer()->expired()) {
         transitionToSelectionState = true;
         return;
@@ -162,6 +164,7 @@ void SymbolIdle::onStateLoop(FDN* fdn) {
 void SymbolIdle::onStateDismounted(FDN* fdn) {
     transitionToSelectionState = false;
     transitionToRegistrationState = false;
+    fdnProvisioningManager->setOnViewChanged(nullptr);
     mountedFdn                 = nullptr;
     lastTimeRendered           = 0;
     symbolSentLeft             = false;

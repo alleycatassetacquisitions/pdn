@@ -26,6 +26,9 @@ Selection::~Selection() {
 
 void Selection::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
+    fdnProvisioningManager->setOnViewChanged([this](const RegistrationView& view) {
+        transitionToRegistrationState = view.screen != RegistrationScreen::NONE;
+    });
     symbolManager->getRefreshTimer()->invalidate();
     symbolManager->refreshSymbols();
     bufferTimer.setTimer(bufferInterval);
@@ -49,7 +52,6 @@ void Selection::onStateMounted(FDN* fdn) {
 }
 
 void Selection::onStateLoop(FDN* fdn) {
-    transitionToRegistrationState = fdnProvisioningManager->hasRegistrationWork();
     if (bufferTimer.expired()) {
         transitionToIdleState = true;
     } else if (bufferTimer.isRunning()) {
@@ -59,6 +61,7 @@ void Selection::onStateLoop(FDN* fdn) {
 
 void Selection::onStateDismounted(FDN* fdn) {
     bufferTimer.invalidate();
+    fdnProvisioningManager->setOnViewChanged(nullptr);
     transitionToIdleState = false;
     transitionToRegistrationState = false;
     // SymbolIdle shows only its per-jack match lights; a running animation would repaint them.

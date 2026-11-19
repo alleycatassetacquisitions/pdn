@@ -31,8 +31,8 @@ enum class PktType : uint8_t {
     // their kFoo spelling rather than splitting the enum across two conventions.
     // NOLINTNEXTLINE(readability-identifier-naming)
     kChainJoin = 20,
-    // FDN to the PDN it registered: the profile, or that the lookup failed
-    // (PlayerProvisionPacket in game/player-types.hpp).
+    // FDN to the PDN a band tap was looked up for: the profile, or that the
+    // lookup failed (PlayerProvisionPacket in game/player-types.hpp).
     // NOLINTNEXTLINE(readability-identifier-naming)
     kPlayerProvision = 21,
     // Record relay, PDN to FDN and the FDN's ack back (wireless/record-relay-types.hpp).
@@ -71,7 +71,7 @@ struct PdnConnectionContext {
 } __attribute__((packed));
 
 // Whether the FDN's registration turn is with the PDN a context goes to: a band
-// tapped now registers that PDN.
+// tapped now is looked up for that PDN.
 enum class RegistrationTurn : uint8_t {
     CLOSED = 0,
     OPEN = 1,

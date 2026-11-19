@@ -2366,6 +2366,9 @@ TEST_F(FdnRegistrationTests, passesAnUntappedTurnOn) {
 TEST_F(FdnRegistrationTests, lookupWithoutAnswerTimesOut) {
     fdnRegistrationLookupWithoutAnswerTimesOut(this);
 }
+TEST_F(FdnRegistrationTests, opensNoTurnForAMacOnBothJacks) {
+    fdnRegistrationOpensNoTurnForAMacOnBothJacks(this);
+}
 TEST(FdnRegistration, screenText) { fdnRegistrationScreenText(); }
 TEST(FdnRegistration, provisionCodecRoundTripsAndBoundsTheWire) {
     playerProvisionCodecRoundTripsAndBoundsTheWire();

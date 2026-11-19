@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <map>
 #include <vector>
@@ -256,6 +257,21 @@ public:
         const JackHelloLink& link = helloByJack[jackIndex(jack)];
         length = link.peerProfileLen;
         return link.peerProfileLen == 0 ? nullptr : link.peerProfile.data();
+    }
+
+    /**
+     * Copies the PlayerProfile the PDN peer on `jack` sent. False, leaving
+     * `profile` as it was, while the jack holds no PDN profile.
+     */
+    bool getPeerPlayerProfile(SerialIdentifier jack, PlayerProfile& profile) const {
+        size_t length = 0;
+        const uint8_t* bytes = getPeerProfile(jack, length);
+        if (getPeerDeviceType(jack) != DeviceType::PDN || bytes == nullptr ||
+            length < sizeof(PlayerProfile)) {
+            return false;
+        }
+        memcpy(&profile, bytes, sizeof(profile));
+        return true;
     }
 
     /** True while a context send to `mac` is still awaiting its SEND_SUCCESS. */

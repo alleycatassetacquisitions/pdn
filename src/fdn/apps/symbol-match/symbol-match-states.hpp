@@ -108,7 +108,7 @@ class Registration : public TypedState<FDN> {
 public:
     /** Shows the band registration the manager runs while PDNs wait to register. */
     explicit Registration(FdnProvisioningManager* fdnProvisioningManager);
-    /** Drops the manager pointer; dismount already let go of its listener. */
+    /** Drops the manager pointer. */
     ~Registration() override;
 
     /** Lets turns open and follows the manager's view. */
