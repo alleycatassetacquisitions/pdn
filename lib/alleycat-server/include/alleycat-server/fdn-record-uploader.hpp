@@ -138,10 +138,10 @@ private:
         LOG_W("FDN_UPLOAD", "Upload failed: %s", error.message.c_str());
         // A 409 is batch-wide "no active event" unless its text names a match
         // the server already holds under another event: that copy is refused.
-        const bool refused = error.httpStatus == 400 || error.httpStatus == 413 ||
-                             error.httpStatus == 415 ||
-                             (error.httpStatus == 409 &&
-                              error.responseBody.find(FDN_CROSS_EVENT_409_TEXT) != std::string::npos);
+        const bool refused =
+        error.httpStatus == 400 || error.httpStatus == 413 || error.httpStatus == 415 ||
+        (error.httpStatus == 409 &&
+         error.responseBody.find(FDN_CROSS_EVENT_409_TEXT) != std::string::npos);
         answer(cycle, refused ? Outcome::REFUSED : Outcome::KEEP, error.httpStatus);
     }
 

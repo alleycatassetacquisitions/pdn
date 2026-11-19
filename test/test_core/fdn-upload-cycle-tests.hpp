@@ -36,12 +36,13 @@ public:
         decodeTestRequest(request.payload);
         for (const alleycat_device_QuickdrawMatch& match : matches) {
             if (storedUnderAnEarlierEvent.count(match.id) != 0) {
-                request.onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 409", 409,
-                                 CROSS_EVENT_409_BODY});
+                request.onError(
+                {WirelessError::INVALID_RESPONSE, "HTTP Error: 409", 409, CROSS_EVENT_409_BODY});
                 return;
             }
         }
-        for (const alleycat_device_QuickdrawMatch& match : matches) accepted.insert(match.id);
+        for (const alleycat_device_QuickdrawMatch& match : matches)
+            accepted.insert(match.id);
         request.onSuccess("");
     }
 
@@ -92,7 +93,8 @@ TEST_F(UploadCycleTests, oneCrossEventMatchDoesNotHoldEveryOtherMatch) {
     storeMatch(2);
     storeMatch(3);
 
-    for (int cycle = 0; cycle < 12; ++cycle) runCycle(server);  // one hour of cycles
+    for (int cycle = 0; cycle < 12; ++cycle)
+        runCycle(server);  // one hour of cycles
 
     EXPECT_EQ(server.accepted.count("00000000-0000-4000-8000-000000000002"), 1u)
     << "match 2 never reached the server";
