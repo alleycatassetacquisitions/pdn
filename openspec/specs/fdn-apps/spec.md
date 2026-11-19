@@ -78,7 +78,7 @@ When a PDN connects to the FDN on an upstream serial jack, the FDN SHALL inspect
 
 Collected PDN match records (`match-collection`) and local or relayed PDN crash records (`crash-reporting`) SHALL be persisted in non-volatile storage and uploaded periodically to the central server over Wi-Fi:
 
-- While in the idle state with no PDN actively connected, the FDN SHALL run a `300,000 ms` (5-minute) upload check timer. When the timer expires and the FDN has at least one unuploaded collected match record (`match-collection`) or unuploaded crash record (`crash-reporting`), the FDN SHALL transition to the upload state.
+- While in the idle state with no PDN actively connected, the FDN SHALL run a `300,000 ms` (5-minute) upload check timer. When the timer expires and the FDN has at least one unuploaded collected match record (`match-collection`) or unuploaded crash record (`crash-reporting`), the FDN SHALL transition to the upload state. When its match store is full, the FDN SHALL transition to the upload state without waiting for the timer, but no sooner than `30,000 ms` after its last upload ended.
 - On mounting the upload state, the FDN SHALL explicitly transition the wireless subsystem into Wi-Fi HTTP station mode (disabling the peer-to-peer radio and initiating Wi-Fi station association with the configured access point), run a `500 ms` glyph loading sequence followed by displaying `"SYNCING"` with a green chase LED animation, and start a `15,000 ms` fallback timeout timer.
 - While Wi-Fi HTTP mode is active, background peer-to-peer send attempts SHALL be rejected without automatically switching the wireless subsystem out of Wi-Fi mode or aborting in-flight HTTP requests.
 - Once queued for the upload cycle:
