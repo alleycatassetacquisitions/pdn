@@ -2348,6 +2348,9 @@ TEST_F(FdnRegistrationTests, withoutKeySendsNoKeyAndNoProfile) {
 TEST_F(FdnRegistrationTests, sendsNothingToAPdnThatLeftDuringLookup) {
     fdnRegistrationSendsNothingToAPdnThatLeftDuringLookup(this);
 }
+TEST_F(FdnRegistrationTests, sendsNoProfileToAPdnSwappedAsItsKeyIsWritten) {
+    fdnRegistrationSendsNoProfileToAPdnSwappedAsItsKeyIsWritten(this);
+}
 TEST_F(FdnRegistrationTests, ignoresTapsDuringTheResultHold) {
     fdnRegistrationIgnoresTapsDuringTheResultHold(this);
 }

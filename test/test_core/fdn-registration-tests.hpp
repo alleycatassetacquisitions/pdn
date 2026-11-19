@@ -314,6 +314,25 @@ inline void fdnRegistrationSendsNothingToAPdnThatLeftDuringLookup(FdnRegistratio
     EXPECT_FALSE(suite->view.registered);
 }
 
+// The PDN is swapped for another after its key frame went out but before the
+// FDN collected the outcome: the frame reports written, yet no profile follows.
+inline void fdnRegistrationSendsNoProfileToAPdnSwappedAsItsKeyIsWritten(
+FdnRegistrationTests* suite) {
+    suite->cable(suite->jack1, PDN_A);
+    suite->tap();
+    ASSERT_EQ(suite->requests.size(), 1u);
+    suite->requests[0].onSuccess(encodeTestPlayerWithKey(RECORD_KEY_SIZE));
+    suite->emitAndCollect();
+    ASSERT_EQ(suite->keyFrames1.size(), 1u);
+
+    suite->cabled.clear();
+    suite->cable(suite->jack1, PDN_C);
+    suite->step();
+    EXPECT_TRUE(suite->provisionsTo(PDN_A).empty()) << "profile sent to a PDN that left";
+    EXPECT_TRUE(suite->provisionsTo(PDN_C).empty());
+    EXPECT_FALSE(suite->view.registered);
+}
+
 // A UID of no anticollision length is not looked up and the turn stays. Taps
 // during the result hold are ignored and no turn is open; afterwards the PDN
 // still waiting gets its turn back.
