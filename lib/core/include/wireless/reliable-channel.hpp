@@ -106,8 +106,8 @@ private:
     struct RxSeqRecord {
         std::array<uint8_t, 6> mac;
         uint8_t lastSeqId;
-        // Armed at arrival: once it expires no retransmit of that frame can still
-        // arrive, so an equal seqId is a new frame (a rebooted sender's reseed).
+        // Armed when a seqId is accepted; past STALE_AFTER_MS no copy of that frame
+        // can still arrive, so an equal seqId is a new frame.
         SimpleTimer staleTimer;
     };
     OnAbandon onAbandon;

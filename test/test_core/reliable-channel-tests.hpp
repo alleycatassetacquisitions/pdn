@@ -77,8 +77,6 @@ TEST(ReliableChannelBaseTest, duplicateSeqIdRemainsSuppressedAndFreshSeedDeliver
     EXPECT_TRUE(ch.isDuplicateReliableRx(peer.data(), 42));
 }
 
-// Soak seed 6001: a rebooted sender reseeded onto the seqId the receiver still
-// held, and its first frame was dropped as a duplicate.
 TEST(ReliableChannelBaseTest, staleCursorDoesNotSuppressAnEqualSeqId) {
     FakePlatformClock clock;
     SimpleTimer::setPlatformClock(&clock);
