@@ -32,6 +32,7 @@
 #include "fdn-record-store-tests.hpp"
 #include "fdn-record-uploader-tests.hpp"
 #include "record-relay-tests.hpp"
+#include "fdn-upload-cycle-tests.hpp"
 #include "player-fetch-tests.hpp"
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"

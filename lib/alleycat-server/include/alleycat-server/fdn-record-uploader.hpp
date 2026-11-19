@@ -18,6 +18,9 @@
 inline constexpr unsigned long FDN_UPLOAD_INTERVAL_MS = 300000;
 // With no AP in range a queued request never answers; the cycle gives the radio back.
 inline constexpr unsigned long FDN_UPLOAD_CYCLE_CAP_MS = 15000;
+// alleycat-rs answers a batch naming a match it already holds under another
+// event with 409 and this text; the server has that match, so the copy can go.
+inline constexpr const char FDN_CROSS_EVENT_409_TEXT[] = "already belongs to another event";
 static_assert(FDN_MATCH_RECORD_CAPACITY <= QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH,
               "a full match ring goes up in one batch");
 
@@ -133,8 +136,12 @@ private:
 
     void onFailure(uint32_t cycle, const WirelessErrorInfo& error) {
         LOG_W("FDN_UPLOAD", "Upload failed: %s", error.message.c_str());
+        // A 409 is batch-wide "no active event" unless its text names a match
+        // the server already holds under another event: that copy is refused.
         const bool refused =
-        error.httpStatus == 400 || error.httpStatus == 413 || error.httpStatus == 415;
+        error.httpStatus == 400 || error.httpStatus == 413 || error.httpStatus == 415 ||
+        (error.httpStatus == 409 &&
+         error.responseBody.find(FDN_CROSS_EVENT_409_TEXT) != std::string::npos);
         answer(cycle, refused ? Outcome::REFUSED : Outcome::KEEP, error.httpStatus);
     }
 
