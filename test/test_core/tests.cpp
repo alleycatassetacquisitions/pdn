@@ -38,6 +38,7 @@
 #include "uuid-bytes-tests.hpp"
 #include "server-trust-tests.hpp"
 #include "sha256-tests.hpp"
+#include "text-lines-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -827,6 +828,28 @@ TEST_F(TimerTestSuite, unaffectedByWallClockJump) {
     timerUnaffectedByWallClockJump(fakeClock);
 }
 
+TEST(TextLines, keepAShortNameOnOneLine) { textLinesKeepAShortNameOnOneLine(); }
+
+TEST(TextLines, breakAtASpace) { textLinesBreakAtASpace(); }
+
+TEST(TextLines, fitALongestNameWithSpacesOnThreeLines) {
+    textLinesFitALongestNameWithSpacesOnThreeLines();
+}
+
+TEST(TextLines, showAllOfANameThatOnlyFitsWhenFilled) {
+    textLinesShowAllOfANameThatOnlyFitsWhenFilled();
+}
+
+TEST(TextLines, fillThreeLinesWithALongestNameWithoutSpaces) {
+    textLinesFillThreeLinesWithALongestNameWithoutSpaces();
+}
+
+TEST(TextLines, splitAWordWiderThanTheLimit) { textLinesSplitAWordWiderThanTheLimit(); }
+
+TEST(TextLines, cutTextBeyondTheLastLine) { textLinesCutTextBeyondTheLastLine(); }
+
+TEST(TextLines, giveNoLinesForNoText) { textLinesGiveNoLinesForNoText(); }
+
 // ============================================
 // MATCH MANAGER TESTS
 // ============================================
@@ -1211,6 +1234,20 @@ TEST_F(IdleStateTests, stateClearsOnDismount) {
 TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
 }
+
+TEST_F(IdleStateTests, firstScreenShowsThePlayerName) { idleFirstScreenShowsThePlayerName(this); }
+
+TEST_F(IdleStateTests, nameScreenWithoutANameShowsTheLabelAlone) {
+    idleNameScreenWithoutANameShowsTheLabelAlone(this);
+}
+
+TEST_F(IdleStateTests, oneClickShowsWins) { idleOneClickShowsWins(this); }
+
+TEST_F(IdleStateTests, nineClicksReturnToTheNameScreen) {
+    idleNineClicksReturnToTheNameScreen(this);
+}
+
+TEST_F(IdleStateTests, remountStartsOnTheNameScreen) { idleRemountStartsOnTheNameScreen(this); }
 
 TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
     pairingCodeFirmwareHoldStartsAnUpdate(this);
