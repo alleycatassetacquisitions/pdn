@@ -13,9 +13,8 @@ AwaitBandState::AwaitBandState(RemoteDeviceCoordinator* remoteDeviceCoordinator,
     , playerProvider(playerProvider)
     , bandRegistration(bandRegistration)
     , firmwareUpdateManager(firmwareUpdateManager) {
-    setOnJackState([this](SerialIdentifier jack, const JackConnectionState& state) {
-        onJackState(jack, state);
-    });
+    setOnJackState(
+    [this](SerialIdentifier jack, const JackConnectionState& state) { onJackState(jack, state); });
 }
 
 AwaitBandState::~AwaitBandState() {

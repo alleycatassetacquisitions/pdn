@@ -143,7 +143,7 @@ private:
                 dispatchJackState(jack, connected);
             });
         remoteDeviceCoordinator->setOnJackContext(
-            [this](SerialIdentifier jack) { dispatchJackState(jack, true); });
+        [this](SerialIdentifier jack) { dispatchJackState(jack, true); });
         subscribed = true;
     }
 

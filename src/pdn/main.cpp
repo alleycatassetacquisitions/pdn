@@ -147,9 +147,9 @@ static void setup() {
     GameContext gameContext = gameSession->getContext();
     bandRegistration = new BandRegistration(pdn->getWirelessManager(),
                                             pdn->getRemoteDeviceCoordinator(), playerProvider);
-    playerFetchApp = new PlayerFetchApp(pdn->getFirmwareUpdateManager(), playerProvider,
-                                        bandRegistration, pdn->getRemoteDeviceCoordinator(),
-                                        TEST_PLAYER_IDENTITY);
+    playerFetchApp =
+    new PlayerFetchApp(pdn->getFirmwareUpdateManager(), playerProvider, bandRegistration,
+                       pdn->getRemoteDeviceCoordinator(), TEST_PLAYER_IDENTITY);
     hubApp = new HubApp(gameContext);
     matchApp = new MatchApp(gameContext);
     shootoutApp = new ShootoutApp(gameContext);

@@ -356,7 +356,8 @@ inline void waitingScreenFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite)
 inline void waitingScreenTakesUpdatesWhileUp(IdleStateTests* suite) {
     PeerCommsInterface::PacketCallback onFrame;
     // The registration the screen opens claims its own packet type.
-    EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(_, _, _)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(_, _, _))
+    .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
         .WillOnce(SaveArg<1>(&onFrame));
     FakeFirmwareStore store;

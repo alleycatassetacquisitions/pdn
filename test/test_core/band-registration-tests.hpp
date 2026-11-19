@@ -105,8 +105,8 @@ public:
         manager = new FdnProvisioningManager(fdn.wirelessManager, &fdnRdc, &reader);
         manager->setOnViewChanged([this](const RegistrationView& changed) { fdnView = changed; });
         manager->setRegistrationScreenShown(true);
-        session = new GameSession(playerProvider.getPlayer(), playerProvider.getRecordKey(), &pdn,
-                                  nullptr);
+        session =
+        new GameSession(playerProvider.getPlayer(), playerProvider.getRecordKey(), &pdn, nullptr);
         bandRegistration = new BandRegistration(pdn.wirelessManager, &pdnRdc, &playerProvider);
         app = new PlayerFetchApp(nullptr, &playerProvider, bandRegistration, &pdnRdc, false);
         AppConfig apps;
@@ -242,16 +242,16 @@ public:
     }
 
     /** The bytes of a packed wire struct. */
-    template <class P>
-    static std::vector<uint8_t> bytesOf(const P& packet) {
+    template <class P> static std::vector<uint8_t> bytesOf(const P& packet) {
         const uint8_t* raw = reinterpret_cast<const uint8_t*>(&packet);
         return std::vector<uint8_t>(raw, raw + sizeof(P));
     }
 
     /** A record key frame of bytes @p fill from @p source, arriving on @p jack. */
     static void sendKey(NativeSerialDriver& jack, const uint8_t* source, uint8_t fill) {
-        deliverFrame(jack, applicationFrameBytes(static_cast<uint8_t>(ApplicationFrameKind::RECORD_KEY),
-                                                 source, std::vector<uint8_t>(RECORD_KEY_SIZE, fill)));
+        deliverFrame(jack,
+                     applicationFrameBytes(static_cast<uint8_t>(ApplicationFrameKind::RECORD_KEY),
+                                           source, std::vector<uint8_t>(RECORD_KEY_SIZE, fill)));
     }
 
     /** A profile for @p name, or a lookup failure, from @p fromMac. */
@@ -425,9 +425,9 @@ inline void bandRegistrationProfileBeforeKeyRegisters(BandRegistrationTests* sui
 // A short key frame is not a key; a profile and key in the same tick register.
 inline void bandRegistrationShortKeyIgnoredAndBothPiecesInOneTick(BandRegistrationTests* suite) {
     suite->advance(200);
-    deliverFrame(suite->pdnOut,
-                 applicationFrameBytes(static_cast<uint8_t>(ApplicationFrameKind::RECORD_KEY),
-                                       suite->fdnMac, std::vector<uint8_t>(RECORD_KEY_SIZE - 1, 0x12)));
+    deliverFrame(suite->pdnOut, applicationFrameBytes(
+                                static_cast<uint8_t>(ApplicationFrameKind::RECORD_KEY),
+                                suite->fdnMac, std::vector<uint8_t>(RECORD_KEY_SIZE - 1, 0x12)));
     suite->step();
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
     EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld()) << "a short key was taken";
@@ -501,7 +501,8 @@ inline void bandRegistrationOnePieceTimesOutAndIsWiped(BandRegistrationTests* su
 
 // A lookup that issues no key: the FDN reports a failure, the PDN shows it,
 // returns to the waiting screen and is told to tap again after the FDN's hold.
-inline void bandRegistrationLookupFailureShowsTheFailurePageThenWaits(BandRegistrationTests* suite) {
+inline void
+bandRegistrationLookupFailureShowsTheFailurePageThenWaits(BandRegistrationTests* suite) {
     suite->advance(200);
     suite->tapAndAnswer(encodeTestPlayerWithKey(0));
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);

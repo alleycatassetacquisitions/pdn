@@ -209,9 +209,9 @@ public:
                         instance.symbolWirelessManager);
 
         GameContext gameContext = instance.gameSession->getContext();
-        instance.bandRegistration = new BandRegistration(
-        instance.pdn->getWirelessManager(), instance.pdn->getRemoteDeviceCoordinator(),
-        instance.playerProvider);
+        instance.bandRegistration =
+        new BandRegistration(instance.pdn->getWirelessManager(),
+                             instance.pdn->getRemoteDeviceCoordinator(), instance.playerProvider);
         instance.playerFetchApp = new PlayerFetchApp(
         instance.pdn->getFirmwareUpdateManager(), instance.playerProvider,
         instance.bandRegistration, instance.pdn->getRemoteDeviceCoordinator(), true);

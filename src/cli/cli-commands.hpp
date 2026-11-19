@@ -545,7 +545,8 @@ private:
         dev.stateHistory.clear();
         dev.lastStateId = -1;
 
-        dev.pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID), StateId(PlayerFetchStateId::AWAIT_BAND));
+        dev.pdn->setActiveApp(StateId(PLAYER_FETCH_APP_ID),
+                              StateId(PlayerFetchStateId::AWAIT_BAND));
 
         result.message = "Rebooted " + dev.deviceId + " -> AwaitBand";
         return result;

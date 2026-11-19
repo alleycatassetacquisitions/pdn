@@ -32,8 +32,8 @@ public:
      * The band waiting screen. Opens @p bandRegistration for its tenure; while it is up,
      * @p firmwareUpdateManager (may be null) takes updates.
      */
-    AwaitBandState(RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                   PlayerProvider* playerProvider, BandRegistration* bandRegistration,
+    AwaitBandState(RemoteDeviceCoordinator* remoteDeviceCoordinator, PlayerProvider* playerProvider,
+                   BandRegistration* bandRegistration,
                    FirmwareUpdateManager* firmwareUpdateManager);
     /** @copydoc TypedState::~TypedState */
     ~AwaitBandState() override;
