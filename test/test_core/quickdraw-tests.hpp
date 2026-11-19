@@ -305,6 +305,7 @@ inline void idleRemountStartsOnTheNameScreen(IdleStateTests* suite) {
 
 // The band waiting screen's state, with the registration it opens; `manager` may be null.
 struct AwaitBandUnderTest {
+    /** Builds the registration and the state over @p suite's device. */
     AwaitBandUnderTest(IdleStateTests* suite, FirmwareUpdateManager* manager)
         : bandRegistration(suite->device.wirelessManager,
                            suite->device.getRemoteDeviceCoordinator(), &playerProvider)

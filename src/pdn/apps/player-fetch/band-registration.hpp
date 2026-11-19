@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <optional>
 
 #include "device/remote-device-coordinator.hpp"
 #include "game/player-provider.hpp"
@@ -64,11 +63,6 @@ public:
     void setOnAnswerChanged(std::function<void()> callback);
 
 private:
-    struct AttemptFdn {
-        std::array<uint8_t, 6> mac{};
-        SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK;
-    };
-
     void onRecordKey(SerialIdentifier jack, const uint8_t* payload, size_t length);
     void onProvision(const uint8_t* fromMac, const PlayerProvisionPacket& packet);
     bool isConnectedFdn(SerialIdentifier jack, const uint8_t* mac) const;
@@ -79,7 +73,10 @@ private:
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
     PlayerProvider* playerProvider = nullptr;
     ReliableChannel<PlayerProvisionPacket> provisionChannel;
-    std::optional<AttemptFdn> attemptFdn;
+    // The FDN the first piece came from; set while attemptIsBound.
+    std::array<uint8_t, 6> attemptMac{};
+    SerialIdentifier attemptJack = SerialIdentifier::OUTPUT_JACK;
+    bool attemptIsBound = false;
     Player heldProfile;
     bool profileIsHeld = false;
     bool isOpen = false;

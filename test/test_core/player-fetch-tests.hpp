@@ -42,7 +42,7 @@ public:
     FakePlatformClock* fakeClock = nullptr;
     PlayerProvider playerProvider;
     MockDevice device;
-    // After the device and provider it borrows.
+    /** Declared after the device and provider it borrows. */
     BandRegistration bandRegistration{device.wirelessManager, device.getRemoteDeviceCoordinator(),
                                       &playerProvider};
 };

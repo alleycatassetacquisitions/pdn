@@ -4,6 +4,7 @@
 #include "device/drivers/logger.hpp"
 
 #include <cstring>
+#include <optional>
 
 static const char TAG[] = "BandRegistration";
 
@@ -105,13 +106,13 @@ bool BandRegistration::isConnectedFdn(SerialIdentifier jack, const uint8_t* mac)
 }
 
 bool BandRegistration::bindAttempt(SerialIdentifier jack, const uint8_t* mac) {
-    if (!attemptFdn.has_value()) {
-        attemptFdn.emplace();
-        memcpy(attemptFdn->mac.data(), mac, attemptFdn->mac.size());
-        attemptFdn->jack = jack;
+    if (!attemptIsBound) {
+        memcpy(attemptMac.data(), mac, attemptMac.size());
+        attemptJack = jack;
+        attemptIsBound = true;
         return true;
     }
-    if (attemptFdn->jack != jack || memcmp(attemptFdn->mac.data(), mac, 6) != 0) {
+    if (attemptJack != jack || memcmp(attemptMac.data(), mac, attemptMac.size()) != 0) {
         LOG_W(TAG, "Ignoring a piece from an FDN other than the attempt's");
         return false;
     }
@@ -121,7 +122,7 @@ bool BandRegistration::bindAttempt(SerialIdentifier jack, const uint8_t* mac) {
 void BandRegistration::dropPieces() {
     heldProfile.clearRegistrationProfile();
     profileIsHeld = false;
-    attemptFdn.reset();
+    attemptIsBound = false;
 }
 
 void BandRegistration::setAnswer(Answer changed) {
