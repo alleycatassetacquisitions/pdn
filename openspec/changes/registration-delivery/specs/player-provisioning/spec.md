@@ -4,7 +4,7 @@
 
 When a band is tapped at an FDN while the jack of a Connected unprovisioned PDN holds the registration turn, the FDN SHALL look up the player linked to that band from the server:
 
-- The FDN SHALL look the band up by its UID alone (`device-player-lookup`), only from a server that presents the pinned key (`fdn-server-trust`), and SHALL send no PIN and no `Authorization` header. It SHALL hold the UID only for its lookup and SHALL NOT store or log it.
+- The FDN SHALL look the band up by its UID alone (`device-player-lookup`), only over verified HTTPS (`fdn-server-trust`), and SHALL send no PIN and no `Authorization` header. It SHALL hold the UID only for its lookup and SHALL NOT store or log it.
 - On a successful HTTP `200 OK` response (with a bounded response body size so oversized payloads are rejected before exhausting memory), the FDN SHALL decode the protobuf payload via the device-player codec:
   - The player UUID, category UUIDs, and affiliation UUIDs SHALL each be validated as exactly `16` raw bytes and non-nil (not `16` zero bytes); a missing, non-16-byte, or all-zero required UUID SHALL cause the response to be rejected as undecodable.
   - If a team is present, its team UUID SHALL be validated as `16` raw bytes and non-nil; if absent, the team UUID SHALL be recorded as the nil UUID (`16` zero bytes).
