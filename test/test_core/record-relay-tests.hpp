@@ -125,11 +125,15 @@ public:
         relay->setCrashRecordSource(&crashSource);
     }
 
-    /** Appends a match record of all @p fill bytes to the PDN's ring, as MatchManager does. */
+    /**
+     * Appends a match record of all @p fill bytes, tagged with all `~fill`
+     * bytes, to the PDN's ring, as MatchManager does.
+     */
     void storeMatch(uint8_t fill) {
         const uint32_t number = pdnStorage.readUInt(MATCH_RING_PREFS_NAMESPACE, "seq", 0) + 1;
-        uint8_t record[MATCH_BINARY_SIZE];
-        memset(record, fill, sizeof(record));
+        uint8_t record[sizeof(TaggedMatchRecord)];
+        memset(record, fill, MATCH_BINARY_SIZE);
+        memset(record + MATCH_BINARY_SIZE, static_cast<uint8_t>(~fill), RECORD_TAG_SIZE);
         const std::string key = "match_" + std::to_string((number - 1) % 32);
         pdnStorage.writeBytes(MATCH_RING_PREFS_NAMESPACE, key, record, sizeof(record));
         pdnStorage.writeUInt(MATCH_RING_PREFS_NAMESPACE, "seq", number);
@@ -455,6 +459,52 @@ TEST_F(RecordRelayTests, unreadableMatchIsPassedOverAndCollectedPast) {
     EXPECT_EQ(collectedSeq(), 2u);
 }
 
+// Earlier test builds stored 112-byte slots with no tag; they are never sent.
+TEST_F(RecordRelayTests, untaggedSlotFromAnEarlierBuildIsPassedOver) {
+    storeMatch(0x01);
+    storeMatch(0x02);
+    uint8_t untagged[MATCH_BINARY_SIZE];
+    memset(untagged, 0x01, sizeof(untagged));
+    pdnStorage.writeBytes(MATCH_RING_PREFS_NAMESPACE, "match_0", untagged, sizeof(untagged));
+
+    beacon(fdnMac);
+
+    ASSERT_EQ(pdnRadio.sentOf(PktType::kMatchRecord).size(), 1u);
+    EXPECT_EQ(sentRecordNumber(PktType::kMatchRecord, 0), 2u);
+    EXPECT_EQ(store->getMatchRecords().getStoredCount(), 1u);
+}
+
+TEST_F(RecordRelayTests, matchRecordReachesTheStoreWithItsTag) {
+    storeMatch(0x5A);
+
+    beacon(fdnMac);
+
+    EXPECT_EQ(collectedSeq(), 1u);
+    FdnRecordStore::MatchRing::Entry entry{};
+    ASSERT_EQ(store->getMatchRecords().peekOldest(&entry, 1), 1u);
+    uint8_t expected[sizeof(TaggedMatchRecord)];
+    memset(expected, 0x5A, MATCH_BINARY_SIZE);
+    memset(expected + MATCH_BINARY_SIZE, 0xA5, RECORD_TAG_SIZE);
+    EXPECT_EQ(memcmp(entry.content, expected, sizeof(expected)), 0);
+}
+
+// The check covers the tag: an FDN that stored the same record bytes under
+// another tag has not stored this record.
+TEST_F(RecordRelayTests, ackForTheSameBytesUnderAnotherTagDoesNotRetire) {
+    storeMatch(0x5A);
+    beacon(silentFdnMac);
+    ASSERT_EQ(pdnRadio.sentOf(PktType::kMatchRecord).size(), 1u);
+    std::vector<uint8_t> content = pdnRadio.sentOf(PktType::kMatchRecord)[0].bytes;
+    content.erase(content.begin(), content.begin() + 6);
+    content[MATCH_BINARY_SIZE] ^= 0x01;
+
+    ack(silentFdnMac, RecordKind::MATCH, 1, crc16(content.data(), content.size()));
+    EXPECT_EQ(collectedSeq(), 0u);
+
+    ack(silentFdnMac, RecordKind::MATCH, 1, sentContentCrc(PktType::kMatchRecord, 0));
+    EXPECT_EQ(collectedSeq(), 1u);
+}
+
 TEST_F(RecordRelayTests, relayLeavesOlderFirmwareMatchesByteIdentical) {
     const std::vector<std::pair<std::string, std::string>> legacy = {
     {"count", "2"},
@@ -498,11 +548,11 @@ TEST_F(GameSessionLifecycleTests, sessionRelaysBothKindsOnAnFdnBeaconAndRetriesF
             readUInt(testing::Eq(MATCH_RING_PREFS_NAMESPACE), testing::Eq(std::string("seq")), _))
     .WillByDefault(Return(1));
     ON_CALL(*device.mockStorage, readBytes(testing::Eq(MATCH_RING_PREFS_NAMESPACE), _, _, _))
-    .WillByDefault(Return(MATCH_BINARY_SIZE));
+    .WillByDefault(Return(sizeof(TaggedMatchRecord)));
     FakeCrashSource crashSource;
     crashSource.newest = 1;
 
-    GameSession* session = new GameSession(player, &device, nullptr);
+    GameSession* session = new GameSession(player, nullptr, &device, nullptr);
     session->setCrashRecordSource(&crashSource);
     ASSERT_NE(beaconHandler, nullptr);
     PlayerInfoPkt beacon{};

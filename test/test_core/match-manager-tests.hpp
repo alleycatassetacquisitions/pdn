@@ -5,6 +5,7 @@
 #include "device/drivers/native/native-prefs-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
+#include "utils/hmac-sha256.hpp"
 #include "device-mock.hpp"
 #include "player-provider-tests.hpp"
 #include "utility-tests.hpp"
@@ -92,12 +93,24 @@ public:
 
     /** Record sequenceNumber as stored in the ring. */
     Match storedMatch(uint32_t sequenceNumber) {
-        MatchRecord record{};
-        EXPECT_TRUE(matchManager->readRecord(sequenceNumber, record));
+        TaggedMatchRecord stored{};
+        EXPECT_TRUE(matchManager->readRecord(sequenceNumber, stored));
         Match match;
-        match.deserialize(reinterpret_cast<const uint8_t*>(&record));
+        match.deserialize(reinterpret_cast<const uint8_t*>(&stored.record));
         return match;
     }
+
+    /** Hands the manager a record key of bytes 0x40, 0x41, … to tag matches with. */
+    void holdRecordKey() {
+        for (size_t i = 0; i < RECORD_KEY_SIZE; ++i) {
+            recordKeyBytes[i] = static_cast<uint8_t>(0x40 + i);
+        }
+        recordKey.set(recordKeyBytes);
+        matchManager->setRecordKey(&recordKey);
+    }
+
+    RecordKey recordKey;
+    uint8_t recordKeyBytes[RECORD_KEY_SIZE] = {};
 
     MatchManager* matchManager;
     Player* player;
@@ -861,10 +874,63 @@ TEST_F(MatchManagerTestSuite, finalizeAppendsTheRecordAndBumpsSeq) {
 
     ASSERT_TRUE(playHunterWin());
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 2u);
-    uint8_t slot[sizeof(MatchRecord)];
+    uint8_t slot[sizeof(TaggedMatchRecord)];
     EXPECT_EQ(storage.readBytes(MATCH_RING_PREFS_NAMESPACE, "match_1", slot, sizeof(slot)),
-              sizeof(MatchRecord))
+              sizeof(TaggedMatchRecord))
     << "record 2 goes in slot 1";
+}
+
+// The tag is the first 16 bytes of HMAC-SHA-256 under the record key over the
+// 112 record bytes; the shared vector is key 00..1f over bytes 00..6f.
+TEST(RecordTagTests, tagIsTheHmacPrefixOfTheRecordBytes) {
+    uint8_t key[RECORD_KEY_SIZE];
+    for (size_t i = 0; i < RECORD_KEY_SIZE; ++i) {
+        key[i] = static_cast<uint8_t>(i);
+    }
+    RecordKey recordKey;
+    recordKey.set(key);
+    TaggedMatchRecord tagged{};
+    uint8_t* recordBytes = reinterpret_cast<uint8_t*>(&tagged.record);
+    for (size_t i = 0; i < MATCH_BINARY_SIZE; ++i) {
+        recordBytes[i] = static_cast<uint8_t>(i);
+    }
+    const uint8_t expected[RECORD_TAG_SIZE] = {0xa9, 0xcc, 0x05, 0xf6, 0x42, 0x50, 0x6d, 0x83,
+                                               0x89, 0xc1, 0xfc, 0x42, 0x70, 0x6e, 0x7c, 0x99};
+
+    ASSERT_TRUE(tagMatchRecord(&recordKey, tagged));
+    EXPECT_EQ(memcmp(tagged.tag, expected, RECORD_TAG_SIZE), 0);
+
+    recordBytes[MATCH_BINARY_SIZE - 1] ^= 0x01;
+    ASSERT_TRUE(tagMatchRecord(&recordKey, tagged));
+    EXPECT_NE(memcmp(tagged.tag, expected, RECORD_TAG_SIZE), 0)
+    << "a changed record byte kept its tag";
+}
+
+TEST_F(MatchManagerTestSuite, finalizeTagsTheRecordUnderTheHeldKey) {
+    holdRecordKey();
+    ASSERT_TRUE(playHunterWin());
+
+    TaggedMatchRecord stored{};
+    ASSERT_TRUE(matchManager->readRecord(1, stored));
+    uint8_t hmac[HMAC_SHA256_SIZE];
+    ASSERT_TRUE(computeHmacSha256(recordKeyBytes, RECORD_KEY_SIZE,
+                                  reinterpret_cast<const uint8_t*>(&stored.record),
+                                  sizeof(stored.record), hmac));
+    EXPECT_EQ(memcmp(stored.tag, hmac, RECORD_TAG_SIZE), 0);
+}
+
+// Whether a match with no key is kept waits on #498; until then it is stored
+// as before, with a zero tag.
+TEST_F(MatchManagerTestSuite, matchWithNoRecordKeyIsStoredWithAZeroTag) {
+    holdRecordKey();
+    recordKey.clear();
+    ASSERT_TRUE(playHunterWin());
+
+    TaggedMatchRecord stored{};
+    ASSERT_TRUE(matchManager->readRecord(1, stored));
+    EXPECT_EQ(storedMatch(1).getWinnerPlayerId(), makeTestUuid(LOCAL_PLAYER_UUID));
+    const uint8_t zeroTag[RECORD_TAG_SIZE] = {};
+    EXPECT_EQ(memcmp(stored.tag, zeroTag, RECORD_TAG_SIZE), 0);
 }
 
 TEST_F(MatchManagerTestSuite, handshakeFramesCarryPlayerAndTeam) {
@@ -953,31 +1019,31 @@ TEST_F(MatchManagerTestSuite, fullRingRefusesTheNextMatch) {
     for (uint32_t i = 0; i < MatchManager::MATCH_RING_CAPACITY; i++) {
         ASSERT_TRUE(playHunterWin());
     }
-    uint8_t firstRecord[sizeof(MatchRecord)];
+    uint8_t firstRecord[sizeof(TaggedMatchRecord)];
     ASSERT_EQ(
     storage.readBytes(MATCH_RING_PREFS_NAMESPACE, "match_0", firstRecord, sizeof(firstRecord)),
-    sizeof(MatchRecord));
+    sizeof(TaggedMatchRecord));
 
     EXPECT_FALSE(playHunterWin()) << "the 33rd unsent match was stored";
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 32u);
     EXPECT_FALSE(matchManager->getCurrentMatch().has_value())
     << "the refusal blocked the next match";
-    MatchRecord stillFirst{};
+    TaggedMatchRecord stillFirst{};
     ASSERT_TRUE(matchManager->readRecord(1, stillFirst));
-    EXPECT_EQ(memcmp(&stillFirst, firstRecord, sizeof(MatchRecord)), 0);
+    EXPECT_EQ(memcmp(&stillFirst, firstRecord, sizeof(TaggedMatchRecord)), 0);
 
     // Once an FDN takes record 1, its slot holds record 33.
     ASSERT_TRUE(matchManager->markCollected(1));
     ASSERT_TRUE(playHunterWin());
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 33u);
-    MatchRecord gone{};
+    TaggedMatchRecord gone{};
     EXPECT_FALSE(matchManager->readRecord(1, gone));
     EXPECT_TRUE(matchManager->readRecord(33, gone));
 }
 
 TEST_F(MatchManagerTestSuite, markCollectedMovesTheFirstPendingRecord) {
     uint32_t pending = 0;
-    uint8_t record[sizeof(MatchRecord)];
+    uint8_t record[MatchRecordTraits::RECORD_SIZE];
     EXPECT_FALSE(matchManager->readLowestPending(pending, record));
     for (int i = 0; i < 3; i++) {
         ASSERT_TRUE(playHunterWin());
@@ -1007,6 +1073,7 @@ TEST_F(MatchManagerTestSuite, olderFirmwareMatchesAreLeftUntouched) {
         storage.write(LEGACY_MATCHES_NAMESPACE, "match_" + std::to_string(i), legacy[i]);
     }
 
+    holdRecordKey();
     ASSERT_TRUE(playHunterWin());
     ASSERT_EQ(matchManager->getMatchSequenceNumber(), 1u);
 

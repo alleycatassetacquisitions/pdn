@@ -17,7 +17,8 @@ inline constexpr const char FDN_RECORD_STORE_NAMESPACE[] = "fdn_records";
 inline constexpr size_t FDN_MATCH_RECORD_CAPACITY = 32;
 inline constexpr size_t FDN_CRASH_RECORD_CAPACITY = 16;
 
-/// One stored record: the MAC it came from, then the frame's kind, number and content.
+/// One stored record: the MAC it came from, then the frame's kind, number and
+/// content. A match record's content ends with its tag, which the FDN never checks.
 template <size_t CONTENT_SIZE> struct FdnStoredEntry {
     uint8_t senderMac[6];
     uint8_t kind;
@@ -181,7 +182,7 @@ private:
 class FdnRecordStore {
 public:
     using CrashRing = FdnRecordRing<CRASH_RECORD_SIZE, FDN_CRASH_RECORD_CAPACITY>;
-    using MatchRing = FdnRecordRing<MATCH_BINARY_SIZE, FDN_MATCH_RECORD_CAPACITY>;
+    using MatchRing = FdnRecordRing<MatchRecordTraits::RECORD_SIZE, FDN_MATCH_RECORD_CAPACITY>;
 
     /** Loads what storage holds and claims the record and ack packet types. */
     FdnRecordStore(WirelessManager* wirelessManager, StorageInterface* storage)

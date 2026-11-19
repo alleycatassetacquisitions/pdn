@@ -1,7 +1,7 @@
 /*
     Runs the match handshake and draw for this PDN and keeps qualifying
-    standalone matches as 112-byte records in a 32-slot ring until an FDN
-    collects them.
+    standalone matches as 112-byte records, each followed by its 16-byte tag,
+    in a 32-slot ring until an FDN collects them.
 */
 #pragma once
 
@@ -14,6 +14,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/match.hpp"
 #include "game/player.hpp"
+#include "game/record-tag.hpp"
 #include "wireless/mac-functions.hpp"
 #include "wireless/match-packet.hpp"
 #include "wireless/record-source.hpp"
@@ -90,7 +91,7 @@ public:
 
     /**
      * Finalizes the active match and clears active match state. A standalone match
-     * is appended to the ring, unless 32 records already wait there.
+     * is tagged and appended to the ring, unless 32 records already wait there.
      */
     bool finalizeMatch();
 
@@ -133,10 +134,10 @@ public:
     uint32_t getCollectedHighWaterMark();
 
     /**
-     * Reads record @p sequenceNumber into @p record.
+     * Reads record @p sequenceNumber and its tag into @p record.
      * @return false when that record is not in the ring or its slot cannot be read.
      */
-    bool readRecord(uint32_t sequenceNumber, MatchRecord& record);
+    bool readRecord(uint32_t sequenceNumber, TaggedMatchRecord& record);
 
     /**
      * Marks every record up to @p sequenceNumber collected, freeing their slots.
@@ -164,6 +165,12 @@ public:
     void clearShootoutMatch();
 
     void setBoostProvider(std::function<unsigned long()> provider);
+
+    /**
+     * Borrows the key finalizeMatch tags records with, read when a match is
+     * stored; it must outlive the manager. Null or holding no key: the tag is zero.
+     */
+    void setRecordKey(const RecordKey* recordKey);
 
     /**
      * Result-screen snapshot that outlives the match, taken whole by finalizeMatch.
@@ -212,6 +219,7 @@ private:
     bool currentMatchIsShootout() const;
 
     Player* player;
+    const RecordKey* recordKey = nullptr;
 
     std::function<unsigned long()> boostProvider;
     RemoteDeviceCoordinator* rdc_ = nullptr;

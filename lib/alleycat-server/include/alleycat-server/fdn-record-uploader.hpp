@@ -97,6 +97,8 @@ private:
             MatchesApi::uploadQuickdrawMatches(
             wirelessManager, sentCount,
             [this](size_t index, MatchRecord& record) {
+                // The tag after the record bytes is not uploaded until the
+                // server takes the raw record and tag.
                 memcpy(&record, matchBatch[index].content, sizeof(record));
                 return true;
             },

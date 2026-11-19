@@ -18,7 +18,8 @@ const std::array<GameSession::PacketRoute, 4>& GameSession::packetRoutes() {
 
 // The initializer list is in declaration order, which is also dependency order:
 // both managers read the two device-owned managers pulled off the PDN above them.
-GameSession::GameSession(Player* player, Device* pdn, SymbolWirelessManager* symbolWirelessManager)
+GameSession::GameSession(Player* player, const RecordKey* recordKey, Device* pdn,
+                         SymbolWirelessManager* symbolWirelessManager)
     : player(player)
     , pdn(pdn)
     , wirelessManager(pdn->getWirelessManager())
@@ -32,6 +33,7 @@ GameSession::GameSession(Player* player, Device* pdn, SymbolWirelessManager* sym
     matchManager->setShootoutManager(shootoutManager);
 
     matchManager->initialize(player, pdn->getStorage());
+    matchManager->setRecordKey(recordKey);
     matchManager->setBoostProvider([this]() -> unsigned long {
         return posseManager ? posseManager->getBoostMs() : 0;
     });

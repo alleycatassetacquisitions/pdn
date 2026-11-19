@@ -126,20 +126,23 @@ public:
 };
 
 TEST_F(FdnRecordStoreTests, storesMatchThenAcksItsSender) {
-    const MatchRecordFramePacket frame = matchFrame(7, 0x5A);
+    MatchRecordFramePacket frame = matchFrame(7, 0x5A);
+    memset(frame.content + MATCH_BINARY_SIZE, 0xC3, RECORD_TAG_SIZE);
     deliver(pdnA, frame);
 
     ASSERT_EQ(acks.size(), 1u);
     EXPECT_EQ(acks[0].kind, static_cast<uint8_t>(RecordKind::MATCH));
     EXPECT_EQ(acks[0].recordNumber, 7u);
-    EXPECT_EQ(acks[0].contentCrc, crc16(frame.content, MATCH_BINARY_SIZE));
+    EXPECT_EQ(acks[0].contentCrc, crc16(frame.content, sizeof(frame.content)))
+    << "the ack names the record bytes and the tag";
     EXPECT_EQ(memcmp(lastAckDestination, pdnA, 6), 0);
 
     FdnRecordStore::MatchRing::Entry entries[2];
     ASSERT_EQ(store->getMatchRecords().peekOldest(entries, 2), 1u);
     EXPECT_EQ(memcmp(entries[0].senderMac, pdnA, 6), 0);
     EXPECT_EQ(entries[0].recordNumber, 7u);
-    EXPECT_EQ(memcmp(entries[0].content, frame.content, MATCH_BINARY_SIZE), 0);
+    EXPECT_EQ(memcmp(entries[0].content, frame.content, sizeof(frame.content)), 0)
+    << "the store keeps the tag after the record bytes";
 }
 
 TEST_F(FdnRecordStoreTests, storesCrashThenAcksWithItsKind) {
@@ -240,6 +243,18 @@ TEST_F(FdnRecordStoreTests, duplicateIsAckedEvenWhenFull) {
 TEST_F(FdnRecordStoreTests, sameNumberWithDifferentBytesIsStoredSeparately) {
     deliver(pdnA, matchFrame(9, 0x33));
     deliver(pdnA, matchFrame(9, 0x44));
+
+    ASSERT_EQ(acks.size(), 2u);
+    EXPECT_NE(acks[0].contentCrc, acks[1].contentCrc);
+    EXPECT_EQ(store->getMatchRecords().getStoredCount(), 2u);
+}
+
+TEST_F(FdnRecordStoreTests, sameBytesUnderAnotherTagIsStoredSeparately) {
+    MatchRecordFramePacket frame = matchFrame(9, 0x33);
+    deliver(pdnA, frame);
+    frame.seqId = nextSeqId++;
+    frame.content[MATCH_BINARY_SIZE] ^= 0x01;
+    deliver(pdnA, frame);
 
     ASSERT_EQ(acks.size(), 2u);
     EXPECT_NE(acks[0].contentCrc, acks[1].contentCrc);
