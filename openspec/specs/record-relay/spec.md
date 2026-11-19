@@ -56,3 +56,9 @@ An FDN SHALL treat a frame as a duplicate only when it holds a record with the s
 #### Scenario: A resent record is acknowledged again and stored once
 - **WHEN** an FDN receives an identical record frame from the same PDN again
 - **THEN** it sends the stored acknowledgement and still holds one copy
+
+## Residual gaps
+
+These are decisions, not oversights.
+
+- **A second FDN's beacon after the frame is delivered and before the stored acknowledgement sends the record again.** The PDN sends it to the newer FDN and takes only that FDN's acknowledgement, so the record can be stored and uploaded by both. Duplicates are harmless: the server keeps one match per match ID and one crash report per device MAC and crash number.
