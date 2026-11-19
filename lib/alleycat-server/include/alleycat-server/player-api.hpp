@@ -12,9 +12,9 @@
 
 /** How a band lookup ended. Only KEY_ISSUED registers anyone (one delivery, #486). */
 enum class ProvisionLookupResult : uint8_t {
-    // The server sent a profile and a record key of ISSUED_RECORD_KEY_SIZE bytes.
+    // The server sent a profile and a record key of RECORD_KEY_SIZE bytes.
     KEY_ISSUED,
-    // The server sent a profile but no key of ISSUED_RECORD_KEY_SIZE bytes.
+    // The server sent a profile but no key of RECORD_KEY_SIZE bytes.
     KEY_NOT_ISSUED,
     // The server answered 404: no player is linked to the band. The server
     // cannot tell an unknown band from an unlinked one.

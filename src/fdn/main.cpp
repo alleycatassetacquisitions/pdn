@@ -17,8 +17,10 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1309-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "alleycat-server/fdn-provisioning-manager.hpp"
 #include "alleycat-server/fdn-record-store.hpp"
 #include "alleycat-server/fdn-record-uploader.hpp"
+#include "device/driver-names.hpp"
 
 #include "fdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -83,6 +85,7 @@ HackedPlayersManager*     hackedPlayersManager     = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
 FdnRecordStore* fdnRecordStore = nullptr;
 FdnRecordUploader* fdnRecordUploader = nullptr;
+FdnProvisioningManager* fdnProvisioningManager = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
 
@@ -198,6 +201,9 @@ static void setup() {
                rdc->getJackStatus(SerialIdentifier::INPUT_JACK_SECONDARY) !=
                JackStatus::DISCONNECTED;
     });
+    // No band reader driver exists yet (#485 Q1), so this finds none and nobody registers.
+    fdnProvisioningManager = new FdnProvisioningManager(
+    fdn->getWirelessManager(), rdc, fdn->getPeripheral<BandReader>(BAND_READER_DRIVER_NAME));
     // From the tick, not an app: the FDN boots into symbol-match, which never
     // reaches idle, so the beacon, the store and the uploader must run whatever app is up.
     fdn->setTickCallback([]() {
@@ -205,6 +211,7 @@ static void setup() {
         remotePlayerManager->Update();
         fdnRecordStore->sync();
         fdnRecordUploader->sync();
+        fdnProvisioningManager->sync();
     });
 
     setupEspNow(peerCommsDriver);
@@ -220,7 +227,7 @@ static void setup() {
         new IdleApp(remotePlayerManager, hackedPlayersManager, fdnConnectWirelessManager, rdc);
     auto* mainMenuApp = new MainMenuApp(rdc);
     auto* hackingApp = new HackingApp(fdnConnectWirelessManager, hackedPlayersManager, rdc);
-    auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager);
+    auto* symbolMatchApp = new SymbolMatchApp(rdc, symbolWirelessManager, fdnProvisioningManager);
 
     // Splash screen
     fdn->getDisplay()

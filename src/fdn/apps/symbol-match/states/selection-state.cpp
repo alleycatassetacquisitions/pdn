@@ -12,14 +12,17 @@ constexpr uint8_t IDLE_ANIMATION_SPEED = 20;
 
 Selection::Selection(SymbolManager* symbolManager,
                      RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                     SymbolWirelessManager* symbolWirelessManager)
+                     SymbolWirelessManager* symbolWirelessManager,
+                     FdnProvisioningManager* fdnProvisioningManager)
     : FDNConnectState(remoteDeviceCoordinator, SELECTION)
     , symbolManager(symbolManager)
-    , symbolWirelessManager(symbolWirelessManager) {}
+    , symbolWirelessManager(symbolWirelessManager)
+    , fdnProvisioningManager(fdnProvisioningManager) {}
 
 Selection::~Selection() {
     symbolManager = nullptr;
     symbolWirelessManager = nullptr;
+    fdnProvisioningManager = nullptr;
 }
 
 void Selection::onStateMounted(FDN* fdn) {
@@ -47,6 +50,7 @@ void Selection::onStateMounted(FDN* fdn) {
 }
 
 void Selection::onStateLoop(FDN* fdn) {
+    transitionToRegistrationState = fdnProvisioningManager->hasRegistrationWork();
     if (bufferTimer.expired()) {
         transitionToIdleState = true;
     } else if (bufferTimer.isRunning()) {
@@ -57,6 +61,7 @@ void Selection::onStateLoop(FDN* fdn) {
 void Selection::onStateDismounted(FDN* fdn) {
     bufferTimer.invalidate();
     transitionToIdleState = false;
+    transitionToRegistrationState = false;
     // SymbolIdle shows only its per-jack match lights; a running animation would repaint them.
     fdn->getLightManager()->stopAnimation();
     fdn->getDisplay()->invalidateScreen();
@@ -66,4 +71,8 @@ void Selection::onStateDismounted(FDN* fdn) {
 
 bool Selection::transitionToIdle() {
     return transitionToIdleState;
+}
+
+bool Selection::transitionToRegistration() {
+    return transitionToRegistrationState;
 }
