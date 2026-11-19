@@ -9,7 +9,10 @@
 // The long soak: seeds from the environment (see [env:native_soak] in
 // platformio.ini). Each seed prints one summary line; a failing one writes its
 // action log and findings under SOAK_LOG_DIR and, with SOAK_SHRINK=1, a
-// minimised action list that SOAK_REPLAY plays back. SOAK_BLACKOUT_MINUTES=<m>
+// minimised action list that SOAK_REPLAY plays back; SOAK_SHRINK_MATCH=<text>
+// keeps only lists whose failures contain that text. SOAK_NONCE=<n> pins the
+// entropy nonce the summary line prints, so a real-server failure replays on the
+// fake server (same match ids and seqIds). SOAK_BLACKOUT_MINUTES=<m>
 // is ring-fill mode: every FDN is out of radio range for the first m minutes, so
 // PDN rings fill and refuse (give SOAK_MINUTES about m + 15 for the refill).
 
@@ -42,6 +45,8 @@ soak::SoakConfig configFor(uint64_t seed) {
     config.http.transportFail = 0.02;
     config.http.lostResponse = 0.03;
     config.schedule.fdnBlackoutMs = std::stoull(environment("SOAK_BLACKOUT_MINUTES", "0")) * 60000;
+    const std::string nonce = environment("SOAK_NONCE", "");
+    if (!nonce.empty()) config.nonce = std::stoull(nonce);
     return config;
 }
 
@@ -61,11 +66,18 @@ soak::RunResult play(const soak::SoakConfig& config, const std::vector<soak::Act
     return world.run();
 }
 
-// Drops the tail, then single actions, while the run still fails.
+// Drops the tail, then single actions, while the run still fails (with a failure
+// containing SOAK_SHRINK_MATCH, when set).
 std::vector<soak::Action> shrink(soak::SoakConfig config, std::vector<soak::Action> actions) {
-    const auto fails = [&config](const std::vector<soak::Action>& list) {
+    const std::string match = environment("SOAK_SHRINK_MATCH", "");
+    const auto fails = [&config, &match](const std::vector<soak::Action>& list) {
         config.schedule.horizonMs = list.empty() ? 1000 : list.back().at + 30000;
-        return !play(config, list).passed;
+        const soak::RunResult result = play(config, list);
+        if (match.empty()) return !result.passed;
+        for (const std::string& failure : result.failures) {
+            if (failure.find(match) != std::string::npos) return true;
+        }
+        return false;
     };
     size_t low = 0;
     size_t high = actions.size();

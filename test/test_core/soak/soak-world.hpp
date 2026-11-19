@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -57,6 +58,11 @@ struct SoakConfig {
     uint64_t drainCapMs = 40 * 60000;
     // Empty: the in-process fake server. Else a loopback alleycat-rs.
     std::string serverUrl;
+    // The run's entropy nonce, printed on the summary line. Unset: 0 on the fake
+    // server, a fresh one on a real server. Set to a real run's nonce to replay that
+    // run's match ids and seqIds on the fake server; on a real server a reused nonce
+    // re-sends ids the database already holds under another event (409).
+    std::optional<uint64_t> nonce;
 };
 
 struct RunResult {
@@ -263,7 +269,7 @@ private:
 
     bool setUp() {
         const uint64_t seed = config.schedule.seed;
-        uint64_t nonce = 0;
+        nonce = 0;
         uint64_t startedAt = 0;
         if (config.serverUrl.empty()) {
             fake = new FakeServer(seed ^ 0x22);
@@ -284,6 +290,7 @@ private:
                                              std::chrono::system_clock::now().time_since_epoch())
                                              .count()));
         }
+        if (config.nonce.has_value()) nonce = *config.nonce;
         seedEntropy(seed ^ nonce);
         IdGenerator::initialize(static_cast<unsigned long>(seed ^ nonce));
         srand(static_cast<unsigned>(seed));
@@ -1522,14 +1529,15 @@ private:
         result.log = log;
         result.logHash = fnv1a(log);
         result.counts = counts;
-        char head[192];
-        snprintf(head, sizeof(head),
-                 "seed=%llu pdns=%d fdns=%d minutes=%llu actions=%zu %s fails=%zu hash=%016llx",
-                 static_cast<unsigned long long>(config.schedule.seed), config.schedule.pdns,
-                 config.schedule.fdns,
-                 static_cast<unsigned long long>(config.schedule.horizonMs / 60000), actions.size(),
-                 result.passed ? "PASS" : "FAIL", failures.size(),
-                 static_cast<unsigned long long>(result.logHash));
+        char head[224];
+        snprintf(
+        head, sizeof(head),
+        "seed=%llu pdns=%d fdns=%d minutes=%llu actions=%zu %s fails=%zu hash=%016llx "
+        "nonce=%llu",
+        static_cast<unsigned long long>(config.schedule.seed), config.schedule.pdns,
+        config.schedule.fdns, static_cast<unsigned long long>(config.schedule.horizonMs / 60000),
+        actions.size(), result.passed ? "PASS" : "FAIL", failures.size(),
+        static_cast<unsigned long long>(result.logHash), static_cast<unsigned long long>(nonce));
         result.summary = head;
         for (const std::pair<const std::string, uint64_t>& count : counts) {
             result.summary += " " + count.first + "=" + std::to_string(count.second);
@@ -1547,6 +1555,8 @@ private:
     uint64_t noEventUntil = 0;
     // The wall clock at virtual time zero: fixed on the fake, the real clock on a real server.
     int64_t epochMs = EVENT_EPOCH_MS;
+    // Mixed into the entropy seed (setUp); 0 until set up.
+    uint64_t nonce = 0;
     std::vector<PdnSlot> pdns;
     std::vector<FdnSlot> fdns;
     std::vector<Activity> activities;
