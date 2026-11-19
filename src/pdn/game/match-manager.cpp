@@ -367,18 +367,24 @@ uint32_t MatchManager::getCollectedHighWaterMark() {
                     getMatchSequenceNumber());
 }
 
-bool MatchManager::readRecord(uint32_t sequenceNumber, TaggedMatchRecord& record) {
-    const uint32_t newest = getMatchSequenceNumber();
+// Record @p sequenceNumber of the ring @p area holds. A slot of another size,
+// such as an untagged 112-byte record from an earlier test build, reads as
+// unreadable.
+static bool readRingRecord(StorageInterface* area, uint32_t sequenceNumber,
+                           TaggedMatchRecord& record) {
+    const uint32_t newest = area->readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0);
     if (sequenceNumber == 0 || sequenceNumber > newest ||
-        newest - sequenceNumber >= MATCH_RING_CAPACITY) {
+        newest - sequenceNumber >= MatchManager::MATCH_RING_CAPACITY) {
         return false;
     }
     char key[16];
     matchSlotKey(sequenceNumber, key);
-    // A slot of another size, such as an untagged 112-byte record from an
-    // earlier test build, reads as unreadable.
-    return storage->readBytes(MATCH_RING_PREFS_NAMESPACE, key, reinterpret_cast<uint8_t*>(&record),
-                              sizeof(record)) == sizeof(record);
+    return area->readBytes(MATCH_RING_PREFS_NAMESPACE, key, reinterpret_cast<uint8_t*>(&record),
+                           sizeof(record)) == sizeof(record);
+}
+
+bool MatchManager::readRecord(uint32_t sequenceNumber, TaggedMatchRecord& record) {
+    return readRingRecord(storage, sequenceNumber, record);
 }
 
 bool MatchManager::markCollected(uint32_t sequenceNumber) {
@@ -412,25 +418,33 @@ bool MatchManager::readLowestPending(uint32_t& recordNumber,
     return true;
 }
 
+bool MatchManager::ringIsFull() {
+    return getMatchSequenceNumber() - getCollectedHighWaterMark() >= MATCH_RING_CAPACITY;
+}
+
 bool MatchManager::appendRecordToStorage(const Match& match) {
-    const uint32_t newest = getMatchSequenceNumber();
     // Every slot holds a record no FDN has taken yet; overwriting one would lose it.
-    if (newest - getCollectedHighWaterMark() >= MATCH_RING_CAPACITY) {
+    if (ringIsFull()) {
         LOG_E(MATCH_MANAGER_TAG, "Match %s not stored: %u matches wait for an FDN",
               match.getMatchId(), MATCH_RING_CAPACITY);
         return false;
     }
 
-    const uint32_t nextSeq = newest + 1;
-    char key[16];
-    matchSlotKey(nextSeq, key);
     TaggedMatchRecord record{};
     match.serialize(reinterpret_cast<uint8_t*>(&record.record));
     // Tagged once, here, under the key held now.
     if (!tagMatchRecord(recordKey, record)) {
         LOG_W(MATCH_MANAGER_TAG, "Match %s has no record key; its tag is zero", match.getMatchId());
     }
-    if (storage->writeBytes(MATCH_RING_PREFS_NAMESPACE, key, reinterpret_cast<uint8_t*>(&record),
+    return appendRingSlot(record);
+}
+
+bool MatchManager::appendRingSlot(const TaggedMatchRecord& record) {
+    const uint32_t nextSeq = getMatchSequenceNumber() + 1;
+    char key[16];
+    matchSlotKey(nextSeq, key);
+    if (storage->writeBytes(MATCH_RING_PREFS_NAMESPACE, key,
+                            reinterpret_cast<const uint8_t*>(&record),
                             sizeof(record)) != sizeof(record)) {
         LOG_E(MATCH_MANAGER_TAG, "Failed to save match record at key %s", key);
         return false;
@@ -444,15 +458,78 @@ bool MatchManager::appendRecordToStorage(const Match& match) {
     return true;
 }
 
+// Never writes to @p previous outside the ring's namespace: older firmware's
+// matches sit beside it.
+void MatchManager::moveRingRecordsFrom(StorageInterface* previous) {
+    const uint32_t newest = previous->readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, 0);
+    if (newest == 0) {
+        return;
+    }
+    const uint32_t oldestHeld = newest > MATCH_RING_CAPACITY ? newest - MATCH_RING_CAPACITY + 1 : 1;
+    const uint32_t movedUpTo = std::max(
+    previous->readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0), oldestHeld - 1);
+    // Into an empty ring the records keep their numbers, so an FDN that stored
+    // one without acknowledging it does not store it again as another record.
+    if (getMatchSequenceNumber() == 0 &&
+        (storage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, movedUpTo) !=
+         sizeof(uint32_t) ||
+         storage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY, movedUpTo) !=
+         sizeof(uint32_t))) {
+        LOG_E(MATCH_MANAGER_TAG, "Numbering the match ring's area failed; nothing moved");
+        return;
+    }
+    for (uint32_t number = movedUpTo + 1; number != 0 && number <= newest; number++) {
+        TaggedMatchRecord record{};
+        TaggedMatchRecord newestHeld{};
+        if (!readRingRecord(previous, number, record)) {
+            LOG_W(MATCH_MANAGER_TAG, "Stored match %u cannot be read; not moved",
+                  static_cast<unsigned>(number));
+        } else if (readRecord(getMatchSequenceNumber(), newestHeld) &&
+                   memcmp(&newestHeld, &record, sizeof(record)) == 0) {
+            // Moved by an earlier boot, cut short before it marked the record below.
+        } else if (ringIsFull() || !appendRingSlot(record)) {
+            LOG_E(MATCH_MANAGER_TAG, "Moving the match ring stopped at match %u",
+                  static_cast<unsigned>(number));
+            return;
+        }
+        // Marked only once it is held here, so a cut between the two leaves it
+        // in both places, never in neither.
+        if (previous->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, number) !=
+            sizeof(uint32_t)) {
+            LOG_E(MATCH_MANAGER_TAG, "Moving the match ring stopped at match %u",
+                  static_cast<unsigned>(number));
+            return;
+        }
+    }
+    // "seq" goes last: while it is there, a later boot finds the ring and
+    // finishes erasing it.
+    for (uint32_t number = 1; number <= MATCH_RING_CAPACITY; number++) {
+        char key[16];
+        matchSlotKey(number, key);
+        previous->remove(MATCH_RING_PREFS_NAMESPACE, key);
+    }
+    previous->remove(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY);
+    previous->remove(MATCH_RING_PREFS_NAMESPACE, PREF_SEQ_KEY);
+}
+
 parameterizedCallbackFunction MatchManager::getButtonMasher() {
     return buttonMasher;
 }
 
 void MatchManager::clearButtonMasherCount() { activeMatchState.buttonMasherCount = 0; }
 
-void MatchManager::initialize(Player* player, StorageInterface* storage) {
+void MatchManager::initialize(Player* player, StorageInterface* storage,
+                              StorageDriverInterface* matchRingArea) {
     this->player = player;
     this->storage = storage;
+    if (matchRingArea != nullptr) {
+        if (matchRingArea->initialize() == 0) {
+            this->storage = matchRingArea;
+            moveRingRecordsFrom(storage);
+        } else {
+            LOG_E(MATCH_MANAGER_TAG, "The match ring's area did not open; the ring stays put");
+        }
+    }
 
     matchButtonPush = [](void* ctx) {
         if (!ctx) {

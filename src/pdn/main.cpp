@@ -53,6 +53,13 @@ Esp32s3SerialIn* serialInDriver = nullptr;
 EspNowDriver* peerCommsDriver = nullptr;
 Esp32S3Logger* loggerDriver = nullptr;
 Esp32S3PrefsDriver* storageDriver = nullptr;
+// The match ring's own partition, at the end of flash after nvs_keys. Deployed
+// tables (partitions.csv) end before it, so the driver registers the range at
+// runtime; partitions-test.csv lists it. Keep the two in step.
+constexpr NvsPartitionRange MATCH_RING_PARTITION = {"records", 0x7E1000, 0x1F000};
+// Not in DriverConfig: the match manager opens it, and keeps the ring in
+// storageDriver's partition when it does not open.
+Esp32S3PrefsDriver* matchRingDriver = nullptr;
 
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
@@ -103,8 +110,12 @@ static void setup() {
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, RXt, RXr);
 
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
+    // storageDriver keeps MATCH_RING_PREFS_NAMESPACE so the ring earlier firmware
+    // kept there can move to its own partition, or stay when that does not open.
     storageDriver =
     new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCH_RING_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
+    matchRingDriver = new Esp32S3PrefsDriver(MATCH_RING_DRIVER_NAME, MATCH_RING_PARTITION,
+                                             {MATCH_RING_PREFS_NAMESPACE});
 
     // Create driver configuration
     DriverConfig pdnConfig = {
@@ -139,7 +150,7 @@ static void setup() {
     if (nvsStatus == ESP_OK) crashLogger->capture(crashedBootUptimeMs);  // it erases the dump
 
     gameSession = new GameSession(playerProvider->getPlayer(), playerProvider->getRecordKey(), pdn,
-                                  symbolWirelessManager);
+                                  symbolWirelessManager, matchRingDriver);
     gameSession->setCrashRecordSource(crashLogger);
 
     GameContext gameContext = gameSession->getContext();

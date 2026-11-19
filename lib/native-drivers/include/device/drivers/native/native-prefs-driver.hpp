@@ -46,6 +46,15 @@ public:
         return it != stringStorage.end() ? it->second : defaultValue;
     }
 
+    /** Drops one key from a registered namespace. True when something was removed. */
+    bool remove(const std::string& ns, const std::string& key) override {
+        requireRegisteredNamespace(ns);
+        const std::string composite = compositeKey(ns, key);
+        return stringStorage.erase(composite) + ucharStorage.erase(composite) +
+               uintStorage.erase(composite) + blobStorage.erase(composite) >
+               0;
+    }
+
     /** No backing store to flush or close. */
     void end() override {}
 

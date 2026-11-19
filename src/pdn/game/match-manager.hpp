@@ -21,6 +21,7 @@
 #include "wireless/record-source.hpp"
 #include "wireless/reliable-channel.hpp"
 #include "wireless/resender.hpp"
+#include "device/drivers/driver-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 
 class ShootoutManager;
@@ -233,8 +234,14 @@ public:
      */
     void listenForMatchEvents(const MatchCommand& command);
 
-    /** Binds the player and storage this manager records matches against. */
-    void initialize(Player* player, StorageInterface* storage);
+    /**
+     * Binds the player and the storage this manager records matches in. When
+     * @p matchRingArea, borrowed, opens, the ring lives there and the ring
+     * records @p storage still holds move into it; otherwise the ring stays in
+     * @p storage.
+     */
+    void initialize(Player* player, StorageInterface* storage,
+                    StorageDriverInterface* matchRingArea = nullptr);
 
     /** Drives the match channel's retries. */
     void sync();
@@ -302,6 +309,7 @@ private:
     parameterizedCallbackFunction matchButtonPush;
     parameterizedCallbackFunction buttonMasher;
 
+    // The ring's storage: its own area, or the device's storage without one.
     StorageInterface* storage;
     // Each unreadable record is logged once, not on every FDN beacon.
     uint32_t highestUnreadableReported = 0;
@@ -316,6 +324,13 @@ private:
     // never reported loses, else the lower effective time; a tie to the Bounty.
     bool isHunterWinner() const;
     bool appendRecordToStorage(const Match& match);
+    // True while 32 records wait for an FDN; a full ring overwrites none of them.
+    bool ringIsFull();
+    // Writes @p record to the next slot, then moves "seq" to it.
+    bool appendRingSlot(const TaggedMatchRecord& record);
+    // Moves the pending records of the ring @p previous holds into this ring,
+    // then erases that ring.
+    void moveRingRecordsFrom(StorageInterface* previous);
 
     // True when the frame names the currently-active match and was sent by
     // that match's opponent. Every post-handshake match command must pass this
