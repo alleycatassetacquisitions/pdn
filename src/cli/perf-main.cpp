@@ -28,6 +28,7 @@
 #include "device/drivers/platform-clock.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
+#include "device/remote-device-coordinator.hpp"
 #include "device/wireless-manager.hpp"
 #include "utils/simple-timer.hpp"
 #include "id-generator.hpp"
@@ -64,8 +65,13 @@ public:
 
 class StubPeerComms : public PeerCommsInterface {
 public:
-    int sendData(const uint8_t*, PktType,
-                 const uint8_t*, const size_t) override { return 1; }
+    // Keeps the last match frame so the peer is fed exactly what was sent, tag included.
+    int sendData(const uint8_t*, PktType type, const uint8_t* data, const size_t len) override {
+        if (type == PktType::kMatchCommand && len == sizeof(MatchPacket)) {
+            memcpy(&lastMatchFrame, data, len);
+        }
+        return 1;
+    }
     void setPacketHandler(PktType, PacketCallback cb, void* ctx) override {
         handlerCb_ = cb;
         handlerCtx_ = ctx;
@@ -86,6 +92,8 @@ public:
     PeerCommsState getPeerCommsState() override { return PeerCommsState::ENABLED; }
     void enable() override {}
     void disable() override {}
+
+    MatchPacket lastMatchFrame = {};
 
 private:
     PacketCallback handlerCb_ = nullptr;
@@ -111,15 +119,20 @@ public:
     }
 };
 
-static MatchPacket makeDrawResultPacket(const std::optional<Match>& match, bool senderIsHunter) {
-    MatchPacket p = {};
-    strncpy(p.matchId,  match->getMatchId(), sizeof(p.matchId) - 1);
-    p.isHunter       = senderIsHunter;
-    p.playerDrawTime = senderIsHunter ? match->getHunterDrawTime()
-                                      : match->getBountyDrawTime();
-    p.command = MatchCmd::DRAW_RESULT;
-    return p;
-}
+// The cable: it takes the Hunter's match secret, which the harness hands to the Bounty.
+class PerfRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
+public:
+    bool sendApplicationFrame(SerialIdentifier, ApplicationFrameKind kind, const uint8_t* payload,
+                              size_t length) override {
+        if (kind != ApplicationFrameKind::MATCH_SECRET || length != MATCH_SECRET_FRAME_LENGTH) {
+            return false;
+        }
+        memcpy(lastMatchSecret.data(), payload + UUIDBytes::SIZE, lastMatchSecret.size());
+        return true;
+    }
+
+    MatchSecret lastMatchSecret = {};
+};
 
 static void deliver(StubPeerComms& target, const uint8_t mac[6], MatchPacket& pkt) {
     target.deliver(PktType::kMatchCommand, mac, reinterpret_cast<const uint8_t*>(&pkt),
@@ -133,6 +146,7 @@ static void deliver(StubPeerComms& target, const uint8_t mac[6], MatchPacket& pk
 struct DeviceCtx {
     StubPeerComms    peerComms;
     StubStorage storage;
+    PerfRemoteDeviceCoordinator rdc;
     WirelessManager* wirelessMgr = nullptr;
     MatchManager*    matchMgr       = nullptr;
     Player           player;
@@ -146,6 +160,7 @@ struct DeviceCtx {
         wirelessMgr = new WirelessManager(&peerComms);
         matchMgr = new MatchManager(wirelessMgr);
         matchMgr->initialize(&player, &storage);
+        matchMgr->setRemoteDeviceCoordinator(&rdc);
     }
 
     void destroy() {
@@ -202,10 +217,12 @@ int main(int argc, char** argv) {
         // Hunter initiates the match via the production path.
         hunter.matchMgr->initializeMatch(const_cast<uint8_t*>(kBountyMac));
 
-        // Bypass listenForMatchEvents(SEND_MATCH_ID), which requires a non-null RDC.
+        // Bypass the radio initiation, which the Bounty takes only beside the
+        // secret off its opponent jack; the secret and the initiation's counter go across here.
         const char* matchId = hunter.matchMgr->getCurrentMatch()->getMatchId();
-        bounty.matchMgr->receiveMatch(matchId, UUIDBytes{}, UUIDBytes{}, true,
-                                      const_cast<uint8_t*>(kHunterMac));
+        bounty.matchMgr->receiveMatch(
+        matchId, UUIDBytes{}, UUIDBytes{}, true, const_cast<uint8_t*>(kHunterMac),
+        MatchFrameAuth(hunter.rdc.lastMatchSecret, hunter.peerComms.lastMatchFrame.counter));
 
         MatchCommand ackCmd(kBountyMac, MatchCmd::MATCH_ID_ACK, matchId, 0, false);
         hunter.matchMgr->listenForMatchEvents(ackCmd);
@@ -218,12 +235,11 @@ int main(int argc, char** argv) {
 
         clock.set(matchStart + hunterPress);
         hunter.matchMgr->getMatchButtonPush()(hunter.matchMgr);
+        MatchPacket hunterPkt = hunter.peerComms.lastMatchFrame;
 
         clock.set(matchStart + bountyPress);
         bounty.matchMgr->getMatchButtonPush()(bounty.matchMgr);
-
-        MatchPacket hunterPkt = makeDrawResultPacket(hunter.matchMgr->getCurrentMatch(), true);
-        MatchPacket bountyPkt = makeDrawResultPacket(bounty.matchMgr->getCurrentMatch(), false);
+        MatchPacket bountyPkt = bounty.peerComms.lastMatchFrame;
 
         deliver(bounty.peerComms, kHunterMac, hunterPkt);
         deliver(hunter.peerComms, kBountyMac, bountyPkt);

@@ -1,9 +1,13 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "id-generator.hpp"
 #include "utils/uuid-bytes.hpp"
+
+// A signed frame's tag: the first 16 bytes of HMAC-SHA-256 under the match secret.
+inline constexpr size_t MATCH_TAG_SIZE = 16;
 
 struct MatchPacket {
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
@@ -13,6 +17,10 @@ struct MatchPacket {
     long playerDrawTime;  // raw reaction time, before any boost
     uint32_t boostMs;     // posse boost the sender earned; 0 without supporters
     int command;
+    // Signed standalone frames: one more than the sender's previous frame in
+    // the match, from 1. 0, with the tag zero, on an unsigned frame.
+    uint32_t counter;
+    uint8_t tag[MATCH_TAG_SIZE];
     uint8_t seqId;
 } __attribute__((packed));
 

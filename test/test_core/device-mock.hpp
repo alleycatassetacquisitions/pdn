@@ -15,6 +15,7 @@
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
 #include "wireless/match-packet.hpp"
+#include "game/match-manager.hpp"
 #include "game/posse-manager.hpp"
 #include <queue>
 #include <vector>
@@ -316,6 +317,25 @@ public:
         return false;
     }
 
+    /** One frame sendApplicationFrame() accepted. */
+    struct SentApplicationFrame {
+        SerialIdentifier jack;
+        ApplicationFrameKind kind;
+        std::vector<uint8_t> payload;
+    };
+
+    /** Keeps the frame instead of writing it; refuses all while applicationFramesRefused. */
+    bool sendApplicationFrame(SerialIdentifier jack, ApplicationFrameKind kind,
+                              const uint8_t* payload, size_t length) override {
+        if (applicationFramesRefused) return false;
+        sentApplicationFrames.push_back(
+        {jack, kind, std::vector<uint8_t>(payload, payload + length)});
+        return true;
+    }
+
+    std::vector<SentApplicationFrame> sentApplicationFrames;
+    bool applicationFramesRefused = false;
+
 private:
     JackStatus outputStatus = JackStatus::DISCONNECTED;
     JackStatus inputStatus = JackStatus::DISCONNECTED;
@@ -427,6 +447,91 @@ private:
     void* sendStatusContext = nullptr;
     std::array<uint8_t, 6> lastDestination{};
 };
+
+// ---- Match secret over a fake cable ----
+
+/** A fixed secret whose bytes count up from @p first. */
+inline MatchSecret testMatchSecret(uint8_t first) {
+    MatchSecret secret{};
+    for (size_t i = 0; i < secret.size(); ++i) {
+        secret[i] = static_cast<uint8_t>(first + i);
+    }
+    return secret;
+}
+
+/** A secret frame as a Hunter lays it out: the match ID's 16 bytes, then the secret. */
+inline std::vector<uint8_t> matchSecretFrame(const char* matchId, const MatchSecret& secret) {
+    UUIDBytes id{};
+    EXPECT_TRUE(UUIDBytes::parse(matchId, id)) << "a match secret names a UUID match ID";
+    std::vector<uint8_t> frame(id.bytes, id.bytes + UUIDBytes::SIZE);
+    frame.insert(frame.end(), secret.begin(), secret.end());
+    return frame;
+}
+
+/** The last match secret frame @p rdc accepted; empty when it accepted none. */
+inline std::vector<uint8_t> lastSentMatchSecretFrame(const FakeRemoteDeviceCoordinator& rdc) {
+    for (size_t i = rdc.sentApplicationFrames.size(); i > 0; --i) {
+        const FakeRemoteDeviceCoordinator::SentApplicationFrame& frame =
+        rdc.sentApplicationFrames[i - 1];
+        if (frame.kind == ApplicationFrameKind::MATCH_SECRET) return frame.payload;
+    }
+    return {};
+}
+
+/** The secret in the last secret frame @p rdc accepted; all zero when none. */
+inline MatchSecret lastSentMatchSecret(const FakeRemoteDeviceCoordinator& rdc) {
+    MatchSecret secret{};
+    const std::vector<uint8_t> frame = lastSentMatchSecretFrame(rdc);
+    if (frame.size() == MATCH_SECRET_FRAME_LENGTH) {
+        memcpy(secret.data(), frame.data() + UUIDBytes::SIZE, secret.size());
+    }
+    return secret;
+}
+
+/** Hands the last secret frame @p hunterRdc accepted to @p bounty as arrived on @p bountyJack. */
+inline void carryMatchSecret(const FakeRemoteDeviceCoordinator& hunterRdc, MatchManager& bounty,
+                             SerialIdentifier bountyJack = SerialIdentifier::INPUT_JACK) {
+    const std::vector<uint8_t> frame = lastSentMatchSecretFrame(hunterRdc);
+    ASSERT_FALSE(frame.empty()) << "the Hunter queued no match secret";
+    bounty.onMatchSecretFrame(bountyJack, frame.data(), frame.size());
+}
+
+/** A match frame from the side whose draw slot is hunter when @p isHunter, signed by @p auth. */
+inline MatchPacket signedMatchFrame(MatchFrameAuth& auth, int command, const char* matchId,
+                                    bool isHunter, long drawTime = 0, uint32_t boostMs = 0,
+                                    const UUIDBytes& playerUuid = UUIDBytes{},
+                                    const UUIDBytes& teamUuid = UUIDBytes{}) {
+    MatchPacket packet{};
+    IdGenerator::copyId(packet.matchId, matchId);
+    packet.command = command;
+    packet.isHunter = isHunter ? 1 : 0;
+    packet.playerDrawTime = drawTime;
+    packet.boostMs = boostMs;
+    packet.playerUuid = playerUuid;
+    packet.teamUuid = teamUuid;
+    auth.sign(packet);
+    return packet;
+}
+
+/**
+ * Starts a match on @p bounty as a cabled Hunter at @p hunterMac does: the
+ * secret for @p matchId on the Bounty's opponent jack, then SEND_MATCH_ID
+ * signed under it through @p bountyTap. Returns the Hunter's signer.
+ */
+inline MatchFrameAuth startMatchFromHunter(MatchManager& bounty, QuickdrawRadioTap& bountyTap,
+                                           const uint8_t* hunterMac, const char* matchId,
+                                           const UUIDBytes& hunterPlayerId = UUIDBytes{},
+                                           const UUIDBytes& hunterTeamId = UUIDBytes{},
+                                           const MatchSecret& secret = testMatchSecret(1)) {
+    const std::vector<uint8_t> frame = matchSecretFrame(matchId, secret);
+    bounty.onMatchSecretFrame(SerialIdentifier::INPUT_JACK, frame.data(), frame.size());
+    MatchFrameAuth hunterAuth(secret);
+    MatchPacket initiation = signedMatchFrame(hunterAuth, MatchCmd::SEND_MATCH_ID, matchId, true, 0,
+                                              0, hunterPlayerId, hunterTeamId);
+    initiation.seqId = 1;
+    bountyTap.deliverFrameFrom(hunterMac, &initiation);
+    return hunterAuth;
+}
 
 // Fake light strip for LightManager
 class FakeLightStrip : public LightStrip {

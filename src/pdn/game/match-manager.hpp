@@ -16,6 +16,7 @@
 #include "game/player.hpp"
 #include "game/record-tag.hpp"
 #include "wireless/mac-functions.hpp"
+#include "wireless/match-frame-auth.hpp"
 #include "wireless/match-packet.hpp"
 #include "wireless/record-source.hpp"
 #include "wireless/reliable-channel.hpp"
@@ -37,6 +38,14 @@ struct LastMatchDisplay {
     bool hasData = false;
 };
 
+// The opponent's DRAW_RESULT or NEVER_PRESSED as it arrived.
+struct OpponentResult {
+    int command = 0;
+    bool isHunter = false;
+    long playerDrawTime = 0;
+    unsigned long boostMs = 0;
+};
+
 struct ActiveMatchState {
     bool matchIsReady = false;
     // The draw slot for THIS match, which a shootout assigns from MAC
@@ -54,6 +63,12 @@ struct ActiveMatchState {
     // The opponent frame's boost, held to PosseManager::getMaxBoostMs().
     unsigned long opponentBoostMs = 0;
     unsigned long matchLocalStartTime = 0;
+    // Set with matchLocalStartTime; a standalone match applies no opponent result before it.
+    bool drawWindowIsOpen = false;
+    // A standalone opponent's result that came before the draw window; the latest one.
+    std::optional<OpponentResult> heldOpponentResult;
+    // Signs and checks a standalone match's frames; empty for a shootout match.
+    std::optional<MatchFrameAuth> frameAuth;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
     std::optional<Match> match;
@@ -74,9 +89,19 @@ public:
     /** Initializes a match and sends SEND_MATCH_ID to opponentMac. */
     void initializeMatch(uint8_t* opponentMac);
 
-    /** Primes a match from an incoming SEND_MATCH_ID and replies with MATCH_ID_ACK. */
+    /**
+     * Primes a match from a SEND_MATCH_ID that verified under @p frameAuth and
+     * replies with MATCH_ID_ACK signed under it.
+     */
     void receiveMatch(const char* matchId, const UUIDBytes& opponentPlayerId,
-                      const UUIDBytes& opponentTeamId, bool opponentIsHunter, uint8_t* opponentMac);
+                      const UUIDBytes& opponentTeamId, bool opponentIsHunter, uint8_t* opponentMac,
+                      const MatchFrameAuth& frameAuth);
+
+    /**
+     * A match secret frame from the coordinator. Only one from the opponent
+     * jack, while no match is active, is held for the initiation it names.
+     */
+    void onMatchSecretFrame(SerialIdentifier jack, const uint8_t* payload, size_t length);
 
     /**
      * Shootout mode: primes a match without the SEND_MATCH_ID handshake. Both
@@ -98,7 +123,10 @@ public:
     bool setHunterDrawTime(unsigned long hunter_time_ms);
     bool setBountyDrawTime(unsigned long bounty_time_ms);
 
-    /** Records the local timestamp when the match draw window starts. */
+    /**
+     * Records the local timestamp when the match draw window starts, opens the
+     * window, and applies an opponent result held until then.
+     */
     void setMatchLocalStartTime(unsigned long localStartTimeMs);
 
     bool didWin();
@@ -155,7 +183,7 @@ public:
     /** markCollected for a record an FDN acknowledged storing. */
     bool advanceMark(uint32_t recordNumber) override { return markCollected(recordNumber); }
 
-    /** Clears the active match and resets all per-match state flags. */
+    /** Clears the active match, wipes its secret, and resets all per-match state flags. */
     void clearCurrentMatch();
 
     /**
@@ -177,9 +205,9 @@ public:
      */
     const LastMatchDisplay& getLastMatchDisplay() const { return lastMatchDisplay; }
 
-    // Required for SEND_MATCH_ID to be accepted: sender MAC must match one
-    // of the RDC's direct-peer MACs (cable-established neighbor). If unset,
-    // SEND_MATCH_ID is refused — no match initiation from an unknown MAC.
+    // Required for SEND_MATCH_ID to be accepted: the match secret arrives from
+    // its opponent jack, and the sender must be the peer there. If unset, every
+    // SEND_MATCH_ID is refused and no match can be started.
     void setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc);
 
     // Shootout tournament suppresses the hunter/bounty role-mismatch rejection
@@ -188,7 +216,10 @@ public:
     void setShootoutManager(ShootoutManager* shootoutManager);
     ShootoutManager* getShootoutManager() const;
 
-    /** Dispatches an inbound match command (handshake or active-match event). */
+    /**
+     * Dispatches an inbound match command after the channel's admit filter:
+     * MATCH_ID_ACK, MATCH_ROLE_MISMATCH, DRAW_RESULT or NEVER_PRESSED.
+     */
     void listenForMatchEvents(const MatchCommand& command);
 
     /** Binds the player and storage this manager records matches against. */
@@ -218,12 +249,40 @@ private:
     /** True when the active match carries a shootout-derived match id. */
     bool currentMatchIsShootout() const;
 
+    // The jack the opponent of this device's standing role is cabled to.
+    SerialIdentifier opponentJack() const;
+    // Queues the secret frame for the opponent jack; false when the coordinator refuses it.
+    bool sendMatchSecret(const char* matchId, const MatchSecret& secret);
+    // Every inbound frame before duplicate detection: takes SEND_MATCH_ID
+    // itself, and admits a standalone match's other frames only once they verify.
+    bool admitMatchFrame(const uint8_t* fromMac, const MatchPacket& packet);
+    // Holds an initiation from the cabled peer for the secret it needs.
+    void onMatchInitiation(const uint8_t* fromMac, const MatchPacket& packet);
+    // Primes the match once the held initiation verifies under the held secret.
+    void pairInitiationWithSecret();
+    void applyOpponentResult(const OpponentResult& result);
+
+    // Bounty: the latest secret off the opponent jack and the match it names.
+    struct PendingMatchSecret {
+        UUIDBytes matchId;
+        MatchFrameAuth frameAuth;
+    };
+    std::optional<PendingMatchSecret> pendingMatchSecret;
+    // Bounty: the latest SEND_MATCH_ID from the cabled peer, until its secret arrives.
+    struct PendingInitiation {
+        std::array<uint8_t, 6> fromMac;
+        MatchPacket packet;
+    };
+    std::optional<PendingInitiation> pendingInitiation;
+    // Set while this manager owns the match secret frame kind on remoteDeviceCoordinator.
+    bool matchSecretKindIsRegistered = false;
+
     Player* player;
     const RecordKey* recordKey = nullptr;
 
     std::function<unsigned long()> boostProvider;
-    RemoteDeviceCoordinator* rdc_ = nullptr;
-    ShootoutManager* shootoutManager_ = nullptr;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
+    ShootoutManager* shootoutManager = nullptr;
 
     ActiveMatchState activeMatchState;
     LastMatchDisplay lastMatchDisplay;
@@ -246,14 +305,10 @@ private:
     bool isHunterWinner() const;
     bool appendRecordToStorage(const Match& match);
 
-    // Returns true when `command` belongs to the currently-active match and
-    // was sent by that match's opponent. All post-handshake match commands
-    // (MATCH_ID_ACK, MATCH_ROLE_MISMATCH, DRAW_RESULT, NEVER_PRESSED) must
-    // pass this gate before mutating match state — otherwise any neighbor
-    // in ESP-NOW range could forge a result for a match they're not in.
-    // SEND_MATCH_ID is intentionally exempt: it's the packet that
-    // establishes the peering in the first place.
-    bool isFromActiveMatchOpponent(const MatchCommand& command) const;
+    // True when the frame names the currently-active match and was sent by
+    // that match's opponent. Every post-handshake match command must pass this
+    // gate before it changes match state.
+    bool isFromActiveMatchOpponent(const uint8_t* fromMac, const char* matchId) const;
 
     // Emplace match with given id/opponent/draw slot. Common path for both the
     // cable-handshake init and the Shootout MATCH_START init.

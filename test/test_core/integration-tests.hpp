@@ -58,8 +58,9 @@ public:
         delete fakeClock;
     }
 
-    // Runs the full SEND_MATCH_ID → MATCH_ID_ACK handshake so both managers
-    // have an active, ready match after this call returns.
+    // Runs the full handshake so both managers have an active, ready match
+    // after this call returns. SEND_MATCH_ID overtakes the secret on the cable,
+    // as it does on hardware.
     void performHandshake() {
         uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
         uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
@@ -67,6 +68,7 @@ public:
         bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
         bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
+        carryMatchSecret(hunterFakeRdc, *bountyMatchManager);
         hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
         bountyWirelessManager->confirmLastSend();
     }
