@@ -10,15 +10,21 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_crt_bundle.h>
+#include <esp_netif_sntp.h>
 #include <esp_mac.h>
 #include <esp_http_client.h>
 #include <queue>
-#include <strings.h>
-#include <sys/time.h>
+#include <sdkconfig.h>
 #include "device/drivers/driver-interface.hpp"
+#include "wireless/tls-clock-gate.hpp"
 #include "wireless/wireless-types.hpp"
-#include "utils/http-date.hpp"
 #include "utils/simple-timer.hpp"
+
+// Without this mbedTLS ignores certificate dates, and the SNTP clock hold
+// below guards nothing; sdkconfig.defaults.fdn sets it.
+#if !CONFIG_MBEDTLS_HAVE_TIME_DATE
+#error "CONFIG_MBEDTLS_HAVE_TIME_DATE is off: the FDN would accept expired certificates"
+#endif
 
 // Forward declaration for the event handler
 class Esp32S3HttpClient;
@@ -48,6 +54,9 @@ public:
 
     ~Esp32S3HttpClient() override {
         disconnect();
+        if (clockSyncStarted) {
+            esp_netif_sntp_deinit();
+        }
     }
 
     int initialize() override {
@@ -73,8 +82,20 @@ public:
         return wifiConnected && httpClientInitialized;
     }
 
-    /** Takes ownership of @p request; a large payload is moved, not copied. */
+    /**
+     * Takes ownership of @p request; a large payload is moved, not copied.
+     * Unless the server address is `https://` the request fails at once with
+     * SERVER_NOT_TRUSTED and nothing is sent.
+     */
     bool queueRequest(HttpRequest&& request) override {
+        if (!isHttpsAddress(wifiConfig->baseUrl)) {
+            LOG_E(HTTP_TAG, "Request refused: BASE_URL is not https://");
+            if (request.onError) {
+                request.onError(
+                {WirelessError::SERVER_NOT_TRUSTED, "Server address is not https://"});
+            }
+            return false;
+        }
         httpQueue.push(std::move(request));
         return true;
     }
@@ -107,6 +128,7 @@ public:
         httpClientInitialized = false;
         wifiGivenUp = false;
         connectionAttemptTimer.invalidate();
+        clockGate.reset();
         httpClientState = HttpClientState::DISCONNECTED;
     }
 
@@ -170,6 +192,7 @@ public:
         if (isStationConnected()) {
             wifiConnected = true;
             wifiGivenUp = false;
+            startClockSync();
             channel = stationChannel();
             LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d",
                   stationIpString().c_str(), channel);
@@ -186,6 +209,29 @@ public:
     friend esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt);
 
 private:
+    // SNTP starts on the first Wi-Fi connection and lwIP re-polls on its own. A
+    // later connection asks again at once while the clock is unset, and restarts
+    // SNTP if the configuration now names another server.
+    void startClockSync() {
+        if (clockSyncStarted && sntpServer == wifiConfig->ntpServer) {
+            if (!TlsClockGate::isClockSet()) {
+                esp_netif_sntp_start();
+            }
+            return;
+        }
+        if (clockSyncStarted) {
+            esp_netif_sntp_deinit();
+        }
+        // lwIP keeps this pointer, not a copy, so the driver owns the string.
+        sntpServer = wifiConfig->ntpServer;
+        esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(sntpServer.c_str());
+        config.wait_for_sync = false;
+        clockSyncStarted = esp_netif_sntp_init(&config) == ESP_OK;
+        if (!clockSyncStarted) {
+            LOG_E(HTTP_TAG, "SNTP did not start (%s)", sntpServer.c_str());
+        }
+    }
+
     /**
      * Station states this driver distinguishes. IDF only delivers these as
      * events, so the current state is tracked here for callers that poll.
@@ -323,6 +369,7 @@ private:
             LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", stationIpString().c_str(), channel);
             wifiConnected = true;
             wifiGivenUp = false;
+            startClockSync();
             connectionAttemptTimer.invalidate();
             httpClientInitialized = initializeHttpClient();
             // Leave auto-reconnect ON so WiFi recovers from disconnections
@@ -365,6 +412,9 @@ private:
         // The server certificate is checked against the CA bundle compiled into
         // IDF, hostname included.
         config.crt_bundle_attach = esp_crt_bundle_attach;
+        // A redirect could lead away from https, so none is followed; it is
+        // answered as a failed request instead (httpStatusFailure).
+        config.disable_auto_redirect = true;
         config.is_async = true;
 
         httpClient = esp_http_client_init(&config);
@@ -404,13 +454,9 @@ private:
         }
     }
 
+    // Only an https:// address reaches here (queueRequest), so no scheme is added.
     std::string buildRequestUrl(const HttpRequest& request) const {
         std::string fullUrl = wifiConfig->baseUrl;
-
-        if (fullUrl.find("http://") == std::string::npos &&
-            fullUrl.find("https://") == std::string::npos) {
-            fullUrl = "http://" + fullUrl;
-        }
 
         if (!fullUrl.empty() && !request.path.empty()) {
             if (fullUrl.back() == '/' && request.path.front() == '/') {
@@ -432,6 +478,16 @@ private:
         // Signed difference, so the comparison survives the clock wrapping.
         if (retryAt != 0 && static_cast<long>(now - retryAt) < 0) {
             return;
+        }
+        // Certificate dates are checked against the wall clock, so nothing is
+        // sent until SNTP has set it.
+        switch (clockGate.check()) {
+            case TlsClockGate::Decision::HOLD: return;
+            case TlsClockGate::Decision::GIVE_UP:
+                LOG_E(HTTP_TAG, "Clock not set by SNTP from %s", wifiConfig->ntpServer.c_str());
+                completeFront(false, {WirelessError::TIMEOUT, "Clock not set"});
+                return;
+            case TlsClockGate::Decision::SEND: break;
         }
         initiateHttpRequest(httpQueue.front());
     }
@@ -494,6 +550,19 @@ private:
         }
         HttpRequest& request = httpQueue.front();
         if (err != ESP_OK) {
+            // esp-tls records the certificate verification flags of a refused
+            // handshake (CA, host name or dates); they go with the handle.
+            int tlsFlags = 0;
+            esp_http_client_get_and_clear_last_tls_error(httpClient, nullptr, &tlsFlags);
+            if (tlsFlags != 0) {
+                LOG_E(HTTP_TAG, "Server certificate not verified (flags 0x%x, %s)", tlsFlags,
+                      request.path.c_str());
+                resetHttpClient();
+                // No retry: the same server presents the same certificate.
+                completeFront(
+                false, {WirelessError::SERVER_NOT_TRUSTED, "Server certificate not verified"});
+                return;
+            }
             LOG_E(HTTP_TAG, "Request failed: %s (%s)", esp_err_to_name(err), request.path.c_str());
             resetHttpClient();
             endAttempt({WirelessError::CONNECTION_FAILED, esp_err_to_name(err)});
@@ -502,18 +571,15 @@ private:
         deleteRequestHeaders(request);
 
         const int statusCode = esp_http_client_get_status_code(httpClient);
-        if (statusCode >= 200 && statusCode < 300) {
+        const std::optional<WirelessErrorInfo> failure = httpStatusFailure(statusCode);
+        if (!failure) {
             completeFront(true, {});
             return;
         }
         LOG_E(HTTP_TAG, "HTTP %d for: %s (%s)", statusCode, request.path.c_str(),
               buildRequestUrl(request).c_str());
         logHttpErrorBody(request.responseData);
-        char errorMsg[64] = {0};
-        snprintf(errorMsg, sizeof(errorMsg), "HTTP Error: %d", statusCode);
-        const WirelessError errorType =
-            statusCode >= 500 ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
-        completeFront(false, {errorType, errorMsg, statusCode});
+        completeFront(false, *failure);
     }
 
     void checkOngoingRequests() {
@@ -594,26 +660,17 @@ private:
     HttpClientState httpClientState = HttpClientState::DISCONNECTED;
     // When the front request may be attempted again after a failure; 0 = now.
     unsigned long retryAt = 0;
+    TlsClockGate clockGate;
+    bool clockSyncStarted = false;
+    // The NTP server SNTP was started with; lwIP points into it.
+    std::string sntpServer;
 };
 
-// Defined after the class: syncs clock from the Date header, collects the
-// response body; outcomes are decided from perform()'s return in exec().
+// Defined after the class: collects the response body; outcomes are decided
+// from perform()'s return in exec().
 inline esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt) {
     auto* client = static_cast<Esp32S3HttpClient*>(evt->user_data);
-    if (evt->event_id == HTTP_EVENT_ON_HEADER && evt->header_key != nullptr &&
-        strcasecmp(evt->header_key, "Date") == 0) {
-        const std::optional<int64_t> epochSec = parseHttpDate(evt->header_value);
-        if (epochSec.has_value()) {
-            struct timeval tv = {};
-            tv.tv_sec = static_cast<time_t>(*epochSec);
-            settimeofday(&tv, nullptr);
-            PlatformClock* clock = SimpleTimer::getPlatformClock();
-            LOG_I(HTTP_TAG, "Synced clock from HTTP Date: %lld (unixMs=%lld, uptimeMs=%lu)",
-                  static_cast<long long>(*epochSec),
-                  static_cast<long long>(clock ? clock->unixMilliseconds() : 0),
-                  clock ? clock->milliseconds() : 0UL);
-        }
-    } else if (evt->event_id == HTTP_EVENT_ON_DATA && client->currentRequest != nullptr) {
+    if (evt->event_id == HTTP_EVENT_ON_DATA && client->currentRequest != nullptr) {
         client->handleHttpData(client->currentRequest, evt->data, evt->data_len);
     }
     return ESP_OK;

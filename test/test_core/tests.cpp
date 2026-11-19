@@ -36,6 +36,8 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
+#include "server-trust-tests.hpp"
+#include "sha256-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -823,18 +825,6 @@ TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
 
 TEST_F(TimerTestSuite, unaffectedByWallClockJump) {
     timerUnaffectedByWallClockJump(fakeClock);
-}
-
-TEST(HttpDate, parsesValidImfFixdate) {
-    httpDateParsesValidImfFixdate();
-}
-
-TEST(HttpDate, handlesLeapYearsCorrectly) {
-    httpDateHandlesLeapYearsCorrectly();
-}
-
-TEST(HttpDate, rejectsPre2025AndMalformedStrings) {
-    httpDateRejectsPre2025AndMalformedStrings();
 }
 
 // ============================================
@@ -2184,6 +2174,17 @@ TEST_F(ShootoutManagerTests, matchIndexAdvancesMonotonicallyAcrossRounds) {
 TEST_F(ShootoutManagerTests, resultRetryIsReturnedByTournamentReset) {
     resultRetryIsReturnedByTournamentReset(this);
 }
+
+TEST(Sha256, matchesPublishedVectors) { sha256MatchesPublishedVectors(); }
+TEST(Sha256, matchesTheMillionAVector) { sha256MatchesTheMillionAVector(); }
+TEST(Sha256, matchesDigestsAtThePaddingBoundaries) { sha256MatchesDigestsAtThePaddingBoundaries(); }
+TEST(Sha256, padsOverABufferThatWasFilledBefore) { sha256PadsOverABufferThatWasFilledBefore(); }
+TEST(Sha256, isTheSameHoweverTheMessageIsSplit) { sha256IsTheSameHoweverTheMessageIsSplit(); }
+
+TEST(ServerTrust, isHttpsAddressAcceptsOnlyTheHttpsScheme) {
+    isHttpsAddressAcceptsOnlyTheHttpsScheme();
+}
+TEST(ServerTrust, httpStatusFailureRefusesRedirects) { httpStatusFailureRefusesRedirects(); }
 
 // ============================================
 // MAIN

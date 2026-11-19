@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -11,7 +12,10 @@ enum class WirelessError {
     INVALID_RESPONSE,
     SERVER_ERROR,
     WIFI_NOT_CONNECTED,
-    INVALID_STATE
+    INVALID_STATE,
+    // The FDN refused to send to an address that is not https://, or the server
+    // failed TLS verification (CA bundle or host name); a retry meets the same.
+    SERVER_NOT_TRUSTED
 };
 
 struct WirelessErrorInfo {
@@ -22,6 +26,20 @@ struct WirelessErrorInfo {
     int httpStatus = 0;
 };
 
+/** Whether @p baseUrl is an https:// address, the only kind the FDN sends to. */
+inline bool isHttpsAddress(const std::string& baseUrl) { return baseUrl.rfind("https://", 0) == 0; }
+
+/**
+ * The failure an HTTP @p status means, or none for a 2xx. A 3xx fails too:
+ * redirects are not followed, since one could lead away from https.
+ */
+inline std::optional<WirelessErrorInfo> httpStatusFailure(int status) {
+    if (status >= 200 && status < 300) return std::nullopt;
+    const WirelessError code =
+    status >= 500 ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
+    return WirelessErrorInfo{code, "HTTP Error: " + std::to_string(status), status};
+}
+
 /**
  * Configuration struct for WiFi credentials and settings
  */
@@ -29,11 +47,16 @@ struct WifiConfig {
     std::string ssid;
     std::string password;
     std::string baseUrl;
-    
-    WifiConfig() : ssid(""), password(""), baseUrl("") {}
-    
-    WifiConfig(const std::string& ssid, const std::string& password, const std::string& baseUrl)
-        : ssid(ssid), password(password), baseUrl(baseUrl) {}
+    // The NTP server SNTP sets the clock from before the first TLS connection.
+    std::string ntpServer;
+
+    /** Holds the build-time Wi-Fi credentials, server address and NTP server. */
+    WifiConfig(const std::string& ssid, const std::string& password, const std::string& baseUrl,
+               const std::string& ntpServer)
+        : ssid(ssid)
+        , password(password)
+        , baseUrl(baseUrl)
+        , ntpServer(ntpServer) {}
 };
 
 // Callback definitions

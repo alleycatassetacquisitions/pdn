@@ -151,7 +151,7 @@ static void setup() {
     serialInDriver          = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, fdnRXt, fdnRXr);
     serialInSecondaryDriver = new Esp32s3SerialInSecondary(SERIAL_IN_SECONDARY_DRIVER_NAME, fdnRXt2, fdnRXr2);
 
-    wifiConfig    = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
+    wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL, NTP_SERVER);
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
     storageDriver = new Esp32S3PrefsDriver(

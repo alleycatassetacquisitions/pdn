@@ -16,7 +16,12 @@ public:
 
     virtual void setWifiConfig(WifiConfig* config) = 0;
     virtual bool isConnected() = 0;
-    /** Takes ownership of @p request; a large payload is moved, not copied. */
+    /**
+     * Takes ownership of @p request; a large payload is moved, not copied.
+     * @return false when the client refuses the request, having already failed
+     * it through its error callback (SERVER_NOT_TRUSTED when the server address
+     * is not https://).
+     */
     virtual bool queueRequest(HttpRequest&& request) = 0;
     virtual void disconnect() = 0;
     virtual void updateConfig(WifiConfig* config) = 0;
