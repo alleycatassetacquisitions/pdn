@@ -131,9 +131,8 @@ void MatchManager::setShootoutManager(ShootoutManager* shootoutManager) {
 ShootoutManager* MatchManager::getShootoutManager() const { return shootoutManager; }
 
 bool MatchManager::currentMatchIsShootout() const {
-    return activeMatchState.match.has_value() &&
-           strncmp(activeMatchState.match->getMatchId(), kShootoutMatchIdPrefix,
-                   sizeof(kShootoutMatchIdPrefix) - 1) == 0;
+    // Only a standalone match is cabled and so holds a secret.
+    return activeMatchState.match.has_value() && !activeMatchState.frameAuth.has_value();
 }
 
 void MatchManager::clearShootoutMatch() {
@@ -569,9 +568,12 @@ void MatchManager::onMatchInitiation(const uint8_t* fromMac, const MatchPacket& 
     if (activeMatchState.match.has_value()) return;
     const bool shootoutActive = shootoutManager && shootoutManager->active();
     if (!shootoutActive && player->isHunter() == (packet.isHunter != 0)) {
-        // Echo the sender's matchId/MAC: no match is active.
-        sendCommand(fromMac, MatchCmd::MATCH_ROLE_MISMATCH, packet.matchId, 0, 0,
-                    player->isHunter());
+        // Echo the sender's matchId/MAC: no match is active. Not while a
+        // frame to that MAC still retries: the reply would supersede it.
+        if (!matchChannel.isPending(fromMac)) {
+            sendCommand(fromMac, MatchCmd::MATCH_ROLE_MISMATCH, packet.matchId, 0, 0,
+                        player->isHunter());
+        }
         return;
     }
     // Only the peer on the jack the secret comes in on can know it.

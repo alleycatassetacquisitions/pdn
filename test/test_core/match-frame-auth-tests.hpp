@@ -360,3 +360,24 @@ TEST_F(MatchManagerTestSuite, aRunningMatchAnswersNoInitiation) {
     EXPECT_EQ(radioTap.lastFrame()->command, MatchCmd::MATCH_ID_ACK);
     EXPECT_TRUE(matchManager->isMatchReady());
 }
+
+// After the match clears, its signed result may still be retrying to the
+// opponent. A forged same-role initiation from that MAC must not draw a role
+// mismatch, which would supersede the result.
+TEST_F(MatchManagerTestSuite, aForgedInitiationDoesNotSupersedeARetryingResult) {
+    setupMatchAsBounty();
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(200);
+    matchManager->getMatchButtonPush()(matchManager);
+    ASSERT_NE(radioTap.lastFrame(), nullptr);
+    ASSERT_EQ(radioTap.lastFrame()->command, MatchCmd::DRAW_RESULT);
+    matchManager->clearCurrentMatch();
+
+    MatchPacket forged{};
+    IdGenerator::copyId(forged.matchId, "eeeeeeee-0000-4000-8000-000000000005");
+    forged.command = MatchCmd::SEND_MATCH_ID;
+    forged.isHunter = 0;
+    forged.seqId = 11;
+    radioTap.deliverFrameFrom(FRAME_AUTH_HUNTER_MAC, &forged);
+    EXPECT_EQ(radioTap.lastFrame()->command, MatchCmd::DRAW_RESULT);
+}
