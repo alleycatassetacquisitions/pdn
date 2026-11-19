@@ -2260,7 +2260,6 @@ TEST(Sha256, matchesDigestsAtThePaddingBoundaries) { sha256MatchesDigestsAtThePa
 TEST(Sha256, padsOverABufferThatWasFilledBefore) { sha256PadsOverABufferThatWasFilledBefore(); }
 TEST(Sha256, isTheSameHoweverTheMessageIsSplit) { sha256IsTheSameHoweverTheMessageIsSplit(); }
 
-<<<<<<< HEAD
 TEST(HmacSha256, matchesTheRfc4231VectorsForShortKeys) {
     hmacSha256MatchesTheRfc4231VectorsForShortKeys();
 }
