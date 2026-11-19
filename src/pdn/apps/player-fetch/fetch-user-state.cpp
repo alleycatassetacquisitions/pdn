@@ -73,16 +73,10 @@ void FetchUserState::onStateDismounted(PDN* pdn) {
 }
 
 void FetchUserState::takeAnswer() {
-    switch (bandRegistration->getAnswer()) {
-        case BandRegistration::Answer::FOUND:
-            onPlayerFound(*bandRegistration->getFoundPlayer());
-            break;
-        case BandRegistration::Answer::FAILED:
-            onPlayerLookupFailed();
-            break;
-        case BandRegistration::Answer::NONE:
-        case BandRegistration::Answer::PARTIAL:
-            break;
+    if (bandRegistration->getAnswer() == BandRegistration::Answer::FOUND) {
+        onPlayerFound(*bandRegistration->getFoundPlayer());
+    } else if (bandRegistration->getAnswer() == BandRegistration::Answer::FAILED) {
+        onPlayerLookupFailed();
     }
 }
 

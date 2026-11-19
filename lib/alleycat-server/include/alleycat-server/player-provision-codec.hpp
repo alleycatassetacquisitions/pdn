@@ -7,10 +7,7 @@
 #include "game/player.hpp"
 #include "game/player-types.hpp"
 
-/**
- * Encodes and decodes the PlayerProvisionPacket an FDN sends a cabled PDN. No
- * platform dependencies; decode applies the profile to the Player it is given.
- */
+/** Codec for the PlayerProvisionPacket an FDN sends a cabled PDN. No platform dependencies. */
 namespace PlayerProvisionCodec {
 
 /** Packs @p player's registration fields into a PROFILE_DELIVERED packet. */

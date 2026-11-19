@@ -200,10 +200,8 @@ public:
     using JackContextCallback = std::function<void(SerialIdentifier jack)>;
 
     /**
-     * Registers the observer told each time the peer already Connected on a jack
-     * sends a fresh context; its first context comes with the connect edge
-     * instead. One slot, held by the mounted ConnectState alongside
-     * setOnJackChange.
+     * One slot, held by the mounted ConnectState: told each time the peer already Connected on a
+     * jack sends a fresh context (its first context comes with the connect edge instead).
      */
     void setOnJackContext(JackContextCallback callback) {
         jackContextCallback = std::move(callback);

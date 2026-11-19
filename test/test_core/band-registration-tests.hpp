@@ -52,6 +52,10 @@ public:
 
     /** Brings both coordinators up, builds the FDN manager and boots the PDN's registration app. */
     void SetUp() override {
+        // A 10 s wait is hundreds of ticks of uninteresting radio calls; the
+        // warnings for them run to megabytes and stall the test runner.
+        savedGmockVerbose = GMOCK_FLAG_GET(verbose);
+        GMOCK_FLAG_SET(verbose, "error");
         clock.setTime(1000);
         SimpleTimer::setPlatformClock(&clock);
         wireRadio(pdn, pdnRadio, pdnMac);
@@ -118,6 +122,7 @@ public:
         delete session;
         delete manager;
         SimpleTimer::setPlatformClock(nullptr);
+        GMOCK_FLAG_SET(verbose, savedGmockVerbose);
     }
 
     /** Records @p device's sends and handlers in @p radio. */
@@ -334,6 +339,7 @@ public:
     std::optional<std::array<uint8_t, 6>> forgedPeer;
     DeviceType forgedType = DeviceType::PDN;
     uint8_t forgedSeqId = 0;
+    std::string savedGmockVerbose;
 };
 
 constexpr uint8_t OTHER_FDN_MAC[6] = {0x0F, 0x0D, 0x0E, 0x01, 0x02, 0x03};
@@ -344,7 +350,7 @@ constexpr uint8_t OTHER_PDN_MAC[6] = {0x33, 0x02, 0x03, 0x04, 0x05, 0x06};
 inline void bandRegistrationWaitingScreenFollowsTheFdnTurn(BandRegistrationTests* suite) {
     suite->fdnCabled = false;
     suite->step();
-    EXPECT_TRUE(suite->shows("Cable to"));
+    EXPECT_TRUE(suite->shows("Please")) << "no FDN cabled";
 
     suite->fdnCabled = true;
     suite->advance(200);
@@ -359,8 +365,21 @@ inline void bandRegistrationWaitingScreenFollowsTheFdnTurn(BandRegistrationTests
     EXPECT_TRUE(suite->shows("Tap band"));
 
     suite->unplugFdn();
-    EXPECT_TRUE(suite->shows("Cable to"));
+    EXPECT_TRUE(suite->shows("Please")) << "the FDN unplugged";
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
+
+    // A PDN peer's context whose bytes would read as an open turn is not an FDN's.
+    suite->forgedPeer.emplace();
+    memcpy(suite->forgedPeer->data(), OTHER_PDN_MAC, 6);
+    suite->forgedType = DeviceType::PDN;
+    suite->step();
+    PdnConnectionContext context{};
+    memset(&context.player, static_cast<int>(RegistrationTurn::OPEN), sizeof(context.player));
+    context.seqId = ++suite->forgedSeqId;
+    BandRegistrationTests::receive(suite->pdnRadio, OTHER_PDN_MAC, PktType::kPdnConnectionContext,
+                                   BandRegistrationTests::bytesOf(context));
+    suite->advance(100);
+    EXPECT_TRUE(suite->shows("Please")) << "a PDN peer opened the turn";
 }
 
 // The whole path: a tap at the FDN, the key over the jack, the profile over the
@@ -378,6 +397,13 @@ inline void bandRegistrationTapRegistersAndTheFdnLetsThePdnGo(BandRegistrationTe
     EXPECT_TRUE(suite->holdsKeyOf(0xA5));
     EXPECT_EQ(suite->lastRegisteredSentToFdn(), 1);
 
+    // Seeded from the player's id, so another PDN registering Alex rolls the same.
+    const int rolledHere = std::rand();
+    Player elsewhere;
+    elsewhere.applyRegistrationProfile(makeTestUuid(TEST_PLAYER_ID), "Alex", Team(), {});
+    elsewhere.applyRngSeedFromServerPlayerId();
+    EXPECT_EQ(std::rand(), rolledHere);
+
     suite->advance(FdnProvisioningManager::LOOKUP_RESULT_HOLD_MS + 500);
     EXPECT_EQ(suite->fdnView.screen, RegistrationScreen::NONE) << "the FDN queued it again";
 }
@@ -394,6 +420,24 @@ inline void bandRegistrationProfileBeforeKeyRegisters(BandRegistrationTests* sui
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::WELCOME);
     EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
     EXPECT_TRUE(suite->holdsKeyOf(0x3C));
+}
+
+// A short key frame is not a key; a profile and key in the same tick register.
+inline void bandRegistrationShortKeyIgnoredAndBothPiecesInOneTick(BandRegistrationTests* suite) {
+    suite->advance(200);
+    deliverFrame(suite->pdnOut,
+                 applicationFrameBytes(static_cast<uint8_t>(ApplicationFrameKind::RECORD_KEY),
+                                       suite->fdnMac, std::vector<uint8_t>(RECORD_KEY_SIZE - 1, 0x12)));
+    suite->step();
+    EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
+    EXPECT_FALSE(suite->playerProvider.getRecordKey()->isHeld()) << "a short key was taken";
+
+    suite->sendProfile(suite->fdnMac, "Ada");
+    BandRegistrationTests::sendKey(suite->pdnOut, suite->fdnMac, 0x13);
+    suite->step();
+    suite->step();
+    EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::WELCOME);
+    EXPECT_TRUE(suite->holdsKeyOf(0x13));
 }
 
 // A key frame names no sender: it counts only from the jack whose Connected

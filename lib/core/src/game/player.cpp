@@ -83,11 +83,11 @@ void Player::setIsHunter(bool isHunter) { applyRole(isHunter); }
 void Player::applyRole(bool isHunter) {
     if (hunter == isHunter) return;
     hunter = isHunter;
-    if (profileChangedCallback) profileChangedCallback();
+    if (roleChangedCallback) roleChangedCallback();
 }
 
-void Player::setOnProfileChanged(ProfileChangedCallback callback) {
-    profileChangedCallback = std::move(callback);
+void Player::setOnRoleChanged(RoleChangedCallback callback) {
+    roleChangedCallback = std::move(callback);
 }
 
 PlayerProfile Player::toProfile() const {
@@ -252,7 +252,7 @@ void Player::applyRegistrationProfile(const UUIDBytes& serverId, const char* ser
     registrationAffiliations = affiliations;
     registrationProfileStored = true;
     syncLegacyFieldsFromRegistration();
-    if (profileChangedCallback) profileChangedCallback();
+    if (roleChangedCallback) roleChangedCallback();
 }
 
 void Player::clearRegistrationProfile() {
@@ -262,7 +262,7 @@ void Player::clearRegistrationProfile() {
     registrationTeam = Team();
     registrationAffiliations.clear();
     registrationProfileStored = false;
-    if (wasStored && profileChangedCallback) profileChangedCallback();
+    if (wasStored && roleChangedCallback) roleChangedCallback();
 }
 
 UUIDBytes Player::testPlayerIdFromMac(const uint8_t* mac) {

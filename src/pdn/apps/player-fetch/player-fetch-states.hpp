@@ -56,13 +56,6 @@ protected:
     bool isAuxRequired() override;
 
 private:
-    // Ordered by precedence: the screen shown is the highest any jack asks for.
-    enum class WaitingScreen : uint8_t {
-        CABLE_TO_FDN,
-        PLEASE_WAIT,
-        TAP_BAND,
-    };
-
     void onJackState(SerialIdentifier jack, const JackConnectionState& state);
     bool isHoldComplete(unsigned long heldMs, unsigned long holdMs);
     void renderWaitingScreen(PDN* pdn) const;
@@ -71,8 +64,8 @@ private:
     BandRegistration* bandRegistration = nullptr;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
     SimpleTimer sinceMount;
-    // What each jack's Connected peer says, from its jack events.
-    std::array<WaitingScreen, RemoteDeviceCoordinator::HELLO_JACKS.size()> screenByJack{};
+    // Whether each jack's Connected FDN says the turn is open, from its jack events.
+    std::array<bool, RemoteDeviceCoordinator::HELLO_JACKS.size()> turnIsOpenByJack{};
     bool displayIsDirty = false;
     bool transitionToFetchUserState = false;
     bool transitionToChooseTeamState = false;

@@ -15,7 +15,7 @@ public:
     /** @return true when the owned player has a registration profile. */
     bool hasPlayer() const;
 
-    /** Clears the registration profile on the owned player and drops and overwrites the record key. */
+    /** Clears the owned player's registration profile; drops and overwrites the record key. */
     void clear();
 
     /** @return the session's record key holder (never null); registration by band fills it. */

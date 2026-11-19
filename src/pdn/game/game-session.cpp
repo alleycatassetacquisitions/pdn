@@ -51,7 +51,7 @@ GameSession::GameSession(Player* player, const RecordKey* recordKey, Device* pdn
     // Registration applies a profile and flips hunter/bounty long after the
     // jacks came up, and the context exchange only runs on connect, so each
     // change has to push itself; an FDN learns from it that the PDN registered.
-    this->player->setOnProfileChanged([this]() {
+    this->player->setOnRoleChanged([this]() {
         remoteDeviceCoordinator->resendContext();
         posseManager->onChainStateChanged();
     });
@@ -67,7 +67,7 @@ GameSession::~GameSession() {
     // before that pointer dangles.
     if (pdn) pdn->setTickCallback(nullptr);
     pdn = nullptr;
-    if (player) player->setOnProfileChanged(nullptr);
+    if (player) player->setOnRoleChanged(nullptr);
     if (remoteDeviceCoordinator) remoteDeviceCoordinator->setSelfProfileProvider(nullptr);
     player = nullptr;
     // setBoostProvider is the one install with no clear: matchManager owns that slot

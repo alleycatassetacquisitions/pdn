@@ -152,7 +152,7 @@ The record key SHALL travel only as the jack's record-key application frame (`wi
 
 ### Requirement: PDN waiting screens
 
-The band waiting screen SHALL show `"Tap band"` / `"at FDN"` while an FDN Connected on a jack says in its latest context that this PDN holds its registration turn, `"Please"` / `"wait"` while an FDN is Connected otherwise, and `"Cable to"` / `"FDN"` with none. It SHALL learn each change from the jack's events, with no replug. Each time it is shown the PDN SHALL clear its session player provider (`player-provider`).
+The band waiting screen SHALL show `"Tap band"` / `"at FDN"` while an FDN Connected on a jack says in its latest context that this PDN holds its registration turn, and `"Please"` / `"wait"` otherwise, with or without an FDN cabled. It SHALL learn each change from the jack's events, with no replug. Each time it is shown the PDN SHALL clear its session player provider (`player-provider`).
 
 #### Scenario: Cabled PDN holding the turn asks for a band tap
 - **WHEN** the FDN Connected on an unprovisioned PDN's jack sends a context saying that PDN holds the turn
@@ -162,9 +162,9 @@ The band waiting screen SHALL show `"Tap band"` / `"at FDN"` while an FDN Connec
 - **WHEN** the FDN Connected on the PDN's jack then sends a context saying the turn is closed
 - **THEN** the PDN displays `"Please"` / `"wait"` with the cable still seated
 
-#### Scenario: PDN with no FDN asks to be cabled
+#### Scenario: PDN with no FDN waits
 - **WHEN** no FDN is Connected on either of an unprovisioned PDN's jacks
-- **THEN** the PDN displays `"Cable to"` / `"FDN"`
+- **THEN** the PDN displays `"Please"` / `"wait"`
 
 ### Requirement: Random seed from the registered player
 

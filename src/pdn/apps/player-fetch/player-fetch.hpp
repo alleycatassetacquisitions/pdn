@@ -8,16 +8,10 @@
 
 class FirmwareUpdateManager;
 
-/**
- * Registration app: the band waiting screen and the registration it leads to, the demo role
- * picker, and the firmware update it can hand off to.
- */
+/** Registration app: band waiting screen, registration, demo path and firmware update. */
 class PlayerFetchApp : public StateMachine {
 public:
-    /**
-     * @p firmwareUpdateManager may be null to skip the hold-to-update state. @p bandRegistration
-     * and @p remoteDeviceCoordinator are borrowed and must outlive the app.
-     */
+    /** @p firmwareUpdateManager may be null to skip the hold-to-update state. */
     PlayerFetchApp(FirmwareUpdateManager* firmwareUpdateManager, PlayerProvider* playerProvider,
                    BandRegistration* bandRegistration,
                    RemoteDeviceCoordinator* remoteDeviceCoordinator, bool testIdentity);

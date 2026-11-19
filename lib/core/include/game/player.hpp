@@ -21,8 +21,8 @@ enum class Allegiance {
  * symbol. */
 class Player {
 public:
-    /** Fires after a field peers read from the connection context changes. */
-    using ProfileChangedCallback = std::function<void()>;
+    /** Fires after the hunter/bounty role flips or a registration profile is applied or cleared. */
+    using RoleChangedCallback = std::function<void()>;
 
     Player() = default;
     ~Player() = default;
@@ -36,11 +36,11 @@ public:
     void toggleHunter();
 
     /**
-     * Registers the profile observer (one slot). Fires on an actual role flip,
-     * never on a set that reasserts the current role, and once for each
+     * Registers the role-flip observer (one slot). Fires only on an actual
+     * flip, never on a set that reasserts the current role, and once for each
      * registration profile applied or cleared.
      */
-    void setOnProfileChanged(ProfileChangedCallback callback);
+    void setOnRoleChanged(RoleChangedCallback callback);
 
     /**
      * This player as the packed profile peers receive in the connection
@@ -133,7 +133,7 @@ public:
 
     /**
      * Replaces registration fields and syncs legacy gameplay fields, then fires
-     * the profile-changed observer once. Used by the device player codec and
+     * the role-changed observer once. Used by the device player codec and
      * demo registration paths.
      */
     void applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
@@ -141,7 +141,7 @@ public:
 
     /**
      * Clears registration fields only; does not reset match stats or legacy
-     * fields. Fires the profile-changed observer when a profile was held.
+     * fields. Fires the role-changed observer when a profile was held.
      */
     void clearRegistrationProfile();
 
@@ -154,7 +154,7 @@ private:
     void applyRole(bool isHunter);
     void syncLegacyFieldsFromRegistration();
 
-    ProfileChangedCallback profileChangedCallback;
+    RoleChangedCallback roleChangedCallback;
 
     UUIDBytes serverPlayerId;
     char serverPlayerName[PlayerLimits::NAME_BUFFER_SIZE] = {};

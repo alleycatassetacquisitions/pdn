@@ -60,7 +60,7 @@ void AwaitBandState::onStateDismounted(PDN* pdn) {
         bandRegistration->close(false);
     }
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
-    screenByJack.fill(WaitingScreen::CABLE_TO_FDN);
+    turnIsOpenByJack.fill(false);
     displayIsDirty = false;
     transitionToFetchUserState = false;
     transitionToChooseTeamState = false;
@@ -81,19 +81,15 @@ bool AwaitBandState::isPrimaryRequired() { return false; }
 bool AwaitBandState::isAuxRequired() { return false; }
 
 void AwaitBandState::onJackState(SerialIdentifier jack, const JackConnectionState& state) {
-    WaitingScreen screen = WaitingScreen::CABLE_TO_FDN;
-    if (state.connected && state.context.has_value() &&
-        state.context->peerType == DeviceType::FDN) {
-        screen = WaitingScreen::PLEASE_WAIT;
-        FdnProfile fdn{};
-        if (state.context->profileLen >= sizeof(fdn)) {
-            memcpy(&fdn, state.context->profile.data(), sizeof(fdn));
-            if (fdn.registrationTurn == RegistrationTurn::OPEN) screen = WaitingScreen::TAP_BAND;
-        }
-    }
-    WaitingScreen& held = screenByJack[static_cast<size_t>(jack)];
-    if (held != screen) {
-        held = screen;
+    FdnProfile fdn{};
+    const bool fromFdn = state.connected && state.context.has_value() &&
+                         state.context->peerType == DeviceType::FDN &&
+                         state.context->profileLen >= sizeof(fdn);
+    if (fromFdn) memcpy(&fdn, state.context->profile.data(), sizeof(fdn));
+    const bool turnIsOpen = fromFdn && fdn.registrationTurn == RegistrationTurn::OPEN;
+    bool& held = turnIsOpenByJack[static_cast<size_t>(jack)];
+    if (held != turnIsOpen) {
+        held = turnIsOpen;
         displayIsDirty = true;
     }
 }
@@ -105,14 +101,13 @@ bool AwaitBandState::isHoldComplete(unsigned long heldMs, unsigned long holdMs) 
 }
 
 void AwaitBandState::renderWaitingScreen(PDN* pdn) const {
-    const WaitingScreen screen = *std::max_element(screenByJack.begin(), screenByJack.end());
+    const bool turnIsOpen =
+    std::find(turnIsOpenByJack.begin(), turnIsOpenByJack.end(), true) != turnIsOpenByJack.end();
     pdn->getDisplay()->invalidateScreen()->setGlyphMode(FontMode::TEXT);
-    if (screen == WaitingScreen::TAP_BAND) {
+    if (turnIsOpen) {
         pdn->getDisplay()->drawText("Tap band", 16, 26)->drawText("at FDN", 28, 42);
-    } else if (screen == WaitingScreen::PLEASE_WAIT) {
-        pdn->getDisplay()->drawText("Please", 28, 26)->drawText("wait", 40, 42);
     } else {
-        pdn->getDisplay()->drawText("Cable to", 16, 26)->drawText("FDN", 44, 42);
+        pdn->getDisplay()->drawText("Please", 28, 26)->drawText("wait", 40, 42);
     }
     pdn->getDisplay()->render();
 }

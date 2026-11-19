@@ -671,8 +671,8 @@ TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
 // PLAYER TESTS
 // ============================================
 
-TEST_F(PlayerTestSuite, profileChangeFiresOncePerChange) {
-    playerProfileChangeFiresOncePerChange(player);
+TEST_F(PlayerTestSuite, roleChangeFiresOnlyOnFlip) {
+    playerRoleChangeFiresOnlyOnFlip(player);
 }
 
 TEST_F(PlayerTestSuite, profileCarriesRoleAndIdentity) {
@@ -1154,6 +1154,9 @@ TEST_F(BandRegistrationTests, tapRegistersAndTheFdnLetsThePdnGo) {
 }
 TEST_F(BandRegistrationTests, profileBeforeKeyRegisters) {
     bandRegistrationProfileBeforeKeyRegisters(this);
+}
+TEST_F(BandRegistrationTests, shortKeyIgnoredAndBothPiecesInOneTick) {
+    bandRegistrationShortKeyIgnoredAndBothPiecesInOneTick(this);
 }
 TEST_F(BandRegistrationTests, keyOnlyFromTheConnectedFdnsJack) {
     bandRegistrationKeyOnlyFromTheConnectedFdnsJack(this);
