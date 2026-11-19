@@ -87,8 +87,8 @@ void MatchCountdown::renderStep(PDN* pdn, CountdownStep step) {
         display->drawText("PRACTICE", 5, 24);
         display->drawText("NOT", 22, 38);
         display->drawText("SCORED", 11, 52);
-        // The small font draws by XOR; left set, it would garble the next
-        // step's art and MatchState's DRAW image.
+        // The small font draws by XOR; left set, MatchState's DRAW image would
+        // XOR into its IDLE art.
         display->setGlyphMode(FontMode::TEXT);
     }
     display->render();
