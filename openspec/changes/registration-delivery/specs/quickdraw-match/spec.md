@@ -14,7 +14,7 @@ For each standalone match the Hunter SHALL draw a 16-byte secret from the hardwa
 
 ### Requirement: Signed standalone match frames
 
-Standalone match initiation, acknowledgement, draw-result and never-pressed frames SHALL carry a rising counter and a 16-byte tag: the first 16 bytes of HMAC-SHA-256 under the match secret over every field but the sequence number. A receiver SHALL check the last three for sender, match, draw slot, tag and counter in place of duplicate detection; a failing frame changes nothing, and no unsigned frame takes a signed one's sequence number. Shootout, role-mismatch, posse, roster and join frames stay unsigned.
+Standalone match initiation, acknowledgement, draw-result and never-pressed frames SHALL carry a rising counter and a tag: the first 16 bytes of HMAC-SHA-256 under the match secret over all fields but the sequence number. A receiver SHALL check the last three for sender, match, draw slot, tag and counter instead of duplicate detection; a failing frame changes nothing and no unsigned frame takes a signed one's sequence number. Shootout, role-mismatch, posse, roster and join frames stay unsigned.
 
 #### Scenario: Forged draw result does not block the honest one
 - **WHEN** a radio attacker spoofing Hunter $H$'s MAC sends a $0\text{ ms}$ draw result with a $270\text{ ms}$ boost under $H$'s next sequence number, and $H$'s own draw result follows under the same sequence number
