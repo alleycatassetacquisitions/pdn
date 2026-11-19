@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cstring>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 #include "device/drivers/driver-interface.hpp"
@@ -15,7 +15,8 @@
 /**
  * An NVS partition a driver opens by label. When the flashed partition table
  * lacks it, the driver registers `size` bytes at `offset` under that label for
- * the boot, so a deployed table needs no USB flash.
+ * the boot, so a deployed table needs no USB flash; a table that lists it must
+ * list this range.
  */
 struct NvsPartitionRange {
     const char* label;
@@ -40,16 +41,18 @@ public:
     /** Registers one NVS handle slot per namespace of the default partition; any other name throws.
      */
     Esp32S3PrefsDriver(const std::string& name, std::initializer_list<const char*> namespaces)
-        : Esp32S3PrefsDriver(name, NvsPartitionRange{NVS_DEFAULT_PART_NAME, 0, 0}, namespaces) {}
+        : StorageDriverInterface(name)
+        , partitionLabel(NVS_DEFAULT_PART_NAME) {
+        registerNamespaces(namespaces);
+    }
 
     /** Registers one NVS handle slot per namespace of @p partition; any other name throws. */
     Esp32S3PrefsDriver(const std::string& name, const NvsPartitionRange& partition,
                        std::initializer_list<const char*> namespaces)
         : StorageDriverInterface(name)
-        , partition(partition) {
-        for (const char* ns : namespaces) {
-            namespaceHandles.try_emplace(std::string(ns), 0);
-        }
+        , partitionLabel(partition.label)
+        , range(partition) {
+        registerNamespaces(namespaces);
     }
 
     /** Closes every namespace handle this driver opened. */
@@ -58,20 +61,27 @@ public:
     }
 
     /**
-     * Begins each namespace read-write. Non-zero when the partition cannot be
-     * registered or brought up, or a namespace refuses to open.
+     * Brings the partition up and begins each namespace read-write. Non-zero
+     * when the partition cannot be found, registered or brought up, or a
+     * namespace refuses to open. Never erases: the partition may hold records.
      */
     int initialize() override {
-        // nvs_flash_init() of the default partition is main's job, in main before
-        // any driver, because the radio needs NVS too and neither driver owns it.
-        if (strcmp(partition.label, NVS_DEFAULT_PART_NAME) != 0 && !bringUpOwnPartition()) {
+        // main brings the default partition up first, because the radio needs
+        // it too; bringing it up again here is a no-op.
+        if (!findOrRegisterPartition()) {
+            return 1;
+        }
+        const esp_err_t status = nvs_flash_init_partition(partitionLabel);
+        if (status != ESP_OK) {
+            LOG_E(name.c_str(), "nvs_flash_init_partition failed for %s: %s", partitionLabel,
+                  esp_err_to_name(status));
             return 1;
         }
         for (auto& entry : namespaceHandles) {
-            if (nvs_open_from_partition(partition.label, entry.first.c_str(), NVS_READWRITE,
+            if (nvs_open_from_partition(partitionLabel, entry.first.c_str(), NVS_READWRITE,
                                         &entry.second) != ESP_OK) {
                 LOG_E(name.c_str(), "nvs_open failed for namespace %s in partition %s",
-                      entry.first.c_str(), partition.label);
+                      entry.first.c_str(), partitionLabel);
                 return 1;
             }
         }
@@ -203,26 +213,40 @@ public:
     }
 
 private:
-    // Finds the partition in the flashed table or registers its range for this
-    // boot, then brings NVS up on it. Never erases: the range may hold records.
-    bool bringUpOwnPartition() {
-        if (esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS,
-                                     partition.label) == nullptr) {
-            // Refused when the range overlaps a partition of the flashed table
-            // or runs past the end of flash.
-            const esp_err_t registered = esp_partition_register_external(
-            nullptr, partition.offset, partition.size, partition.label, ESP_PARTITION_TYPE_DATA,
-            ESP_PARTITION_SUBTYPE_DATA_NVS, nullptr);
-            if (registered != ESP_OK) {
-                LOG_E(name.c_str(), "Registering partition %s failed: %s", partition.label,
-                      esp_err_to_name(registered));
+    void registerNamespaces(std::initializer_list<const char*> namespaces) {
+        for (const char* ns : namespaces) {
+            namespaceHandles.try_emplace(std::string(ns), 0);
+        }
+    }
+
+    // True when the flashed table holds the partition, at the range if one was
+    // given, or the range is registered for this boot.
+    bool findOrRegisterPartition() {
+        const esp_partition_t* found = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, partitionLabel);
+        if (found != nullptr) {
+            // A table listing the label elsewhere would split devices across two ranges.
+            if (range && (found->address != range->offset || found->size != range->size)) {
+                LOG_E(
+                name.c_str(), "Partition %s is at 0x%lx+0x%lx, not 0x%lx+0x%lx", partitionLabel,
+                static_cast<unsigned long>(found->address), static_cast<unsigned long>(found->size),
+                static_cast<unsigned long>(range->offset), static_cast<unsigned long>(range->size));
                 return false;
             }
+            return true;
         }
-        const esp_err_t status = nvs_flash_init_partition(partition.label);
-        if (status != ESP_OK) {
-            LOG_E(name.c_str(), "nvs_flash_init_partition failed for %s: %s", partition.label,
-                  esp_err_to_name(status));
+        if (!range) {
+            LOG_E(name.c_str(), "The partition table has no partition %s", partitionLabel);
+            return false;
+        }
+        // Refused when the range overlaps a partition of the flashed table or
+        // runs past the end of flash.
+        const esp_err_t registered = esp_partition_register_external(
+        nullptr, range->offset, range->size, partitionLabel, ESP_PARTITION_TYPE_DATA,
+        ESP_PARTITION_SUBTYPE_DATA_NVS, nullptr);
+        if (registered != ESP_OK) {
+            LOG_E(name.c_str(), "Registering partition %s failed: %s", partitionLabel,
+                  esp_err_to_name(registered));
             return false;
         }
         return true;
@@ -245,6 +269,8 @@ private:
         }
     }
 
-    NvsPartitionRange partition;
+    const char* partitionLabel;
+    // Registered when the table lacks the partition; absent for the default one.
+    std::optional<NvsPartitionRange> range;
     std::map<std::string, nvs_handle_t> namespaceHandles;
 };

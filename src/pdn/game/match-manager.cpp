@@ -468,8 +468,11 @@ void MatchManager::moveRingRecordsFrom(StorageInterface* previous) {
     const uint32_t oldestHeld = newest > MATCH_RING_CAPACITY ? newest - MATCH_RING_CAPACITY + 1 : 1;
     const uint32_t movedUpTo = std::max(
     previous->readUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, 0), oldestHeld - 1);
-    // Into an empty ring the records keep their numbers, so an FDN that stored
-    // one without acknowledging it does not store it again as another record.
+    // Into an empty ring the records keep their numbers up to the first
+    // unreadable one, so an FDN that stored one without acknowledging it does
+    // not store it again as another record. After a skipped record the rest
+    // move one number down; a copy an FDN then stores twice is harmless, as the
+    // server dedupes by match ID.
     if (getMatchSequenceNumber() == 0 &&
         (storage->writeUInt(MATCH_RING_PREFS_NAMESPACE, PREF_COLLECTED_SEQ_KEY, movedUpTo) !=
          sizeof(uint32_t) ||
@@ -486,7 +489,7 @@ void MatchManager::moveRingRecordsFrom(StorageInterface* previous) {
                   static_cast<unsigned>(number));
         } else if (readRecord(getMatchSequenceNumber(), newestHeld) &&
                    memcmp(&newestHeld, &record, sizeof(record)) == 0) {
-            // Moved by an earlier boot, cut short before it marked the record below.
+            // Moved by an earlier boot that was cut before it marked the record in @p previous.
         } else if (ringIsFull() || !appendRingSlot(record)) {
             LOG_E(MATCH_MANAGER_TAG, "Moving the match ring stopped at match %u",
                   static_cast<unsigned>(number));

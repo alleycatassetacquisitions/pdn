@@ -55,7 +55,8 @@ Esp32S3Logger* loggerDriver = nullptr;
 Esp32S3PrefsDriver* storageDriver = nullptr;
 // The match ring's own partition, at the end of flash after nvs_keys. Deployed
 // tables (partitions.csv) end before it, so the driver registers the range at
-// runtime; partitions-test.csv lists it. Keep the two in step.
+// runtime. partitions-test.csv lists it; the driver refuses a table that lists
+// the label at any other range.
 constexpr NvsPartitionRange MATCH_RING_PARTITION = {"records", 0x7E1000, 0x1F000};
 // Not in DriverConfig: the match manager opens it, and keeps the ring in
 // storageDriver's partition when it does not open.
