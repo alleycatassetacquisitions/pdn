@@ -207,6 +207,25 @@ TEST_F(MatchManagerTestSuite, earlyResultIsHeldAndTheLatestAppliesWhenTheWindowO
     EXPECT_FALSE(matchManager->didWin()) << "the held 30 ms boost did not count";
 }
 
+// Latest wins inside the window too: a draw result after a never-pressed
+// report clears it, or the report would still hand this side the win.
+TEST_F(MatchManagerTestSuite, aLaterDrawResultClearsAnEarlierNeverPressed) {
+    setupMatchAsBounty();
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    MatchPacket neverPressed =
+    signedMatchFrame(*hunterAuth, MatchCmd::NEVER_PRESSED, TEST_MATCH_ID, true, 9999, 0);
+    neverPressed.seqId = 5;
+    MatchPacket drawResult =
+    signedMatchFrame(*hunterAuth, MatchCmd::DRAW_RESULT, TEST_MATCH_ID, true, 200, 0);
+    drawResult.seqId = 6;
+    radioTap.deliverFrameFrom(FRAME_AUTH_HUNTER_MAC, &neverPressed);
+    radioTap.deliverFrameFrom(FRAME_AUTH_HUNTER_MAC, &drawResult);
+
+    fakeClock->advance(250);
+    matchManager->getMatchButtonPush()(matchManager);
+    EXPECT_FALSE(matchManager->didWin()) << "the earlier never-pressed report still counted";
+}
+
 // No reaction-time floor: an anticipated press on the rhythmic countdown can
 // land at 0 ms, and a signed 0 ms result counts.
 TEST_F(MatchManagerTestSuite, zeroMillisecondResultIsAccepted) {
@@ -239,6 +258,12 @@ TEST_F(MatchManagerTestSuite, shootoutFramesStayUnsignedAndApplyOnArrival) {
 
     EXPECT_TRUE(matchManager->getHasReceivedDrawResult());
     EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 220u);
+    // Shootout frames still go through duplicate detection.
+    MatchPacket retransmit = result;
+    retransmit.playerDrawTime = 300;
+    radioTap.deliverFrameFrom(opponent, &retransmit);
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 220u)
+    << "a shootout frame under a seen seqId was applied";
     matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
     fakeClock->advance(200);
     matchManager->getMatchButtonPush()(matchManager);
