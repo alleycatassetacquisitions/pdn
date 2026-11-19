@@ -122,14 +122,7 @@ private:
         wirelessManager->attach(&peerComms);
         matchManager = new MatchManager(deviceWirelessManager);
         matchManager->initialize(player, &storage);
-        // Stub the RDC with the opponent MAC this fixture uses so the
-        // SEND_MATCH_ID gate in listenForMatchEvents passes for delivered packets.
-        {
-            uint8_t stubMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-            fakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, stubMac);
-            fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, stubMac);
-            matchManager->setRemoteDeviceCoordinator(&fakeRdc);
-        }
+        matchManager->setRemoteDeviceCoordinator(&fakeRdc);
 
         // Must match processPacket's defaultMac so isFromActiveMatchOpponent accepts delivered frames.
         uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -256,10 +249,10 @@ private:
         //   2. Bounty broadcasts MATCH_ID_ACK   → hunter receives, sets matchIsReady
         uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
         uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
-        // Stub each side's RDC direct peer with the other side's MAC so the
-        // SEND_MATCH_ID gate accepts the delivered packets.
+        // Mark the hunter the Connected PDN on the bounty's input jack so the
+        // bounty's SEND_MATCH_ID gate accepts it.
         hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
-        bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
+        bountyFakeRdc.setConnectedPdn(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
         bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
         hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());

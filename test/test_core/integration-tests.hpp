@@ -64,7 +64,7 @@ public:
         uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
         uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
         hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
-        bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
+        bountyFakeRdc.setConnectedPdn(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
         bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
         hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());

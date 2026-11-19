@@ -28,7 +28,7 @@ inline void matchManagerConcurrentDriverVsReader() {
     player.setIsHunter(false);
     FakeRemoteDeviceCoordinator rdc;
     const uint8_t peerMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-    rdc.setPeerMac(SerialIdentifier::INPUT_JACK, peerMac);
+    rdc.setConnectedPdn(SerialIdentifier::INPUT_JACK, peerMac);
 
     NativePeerCommsDriver driver("tsan-test-driver");
     driver.initialize();

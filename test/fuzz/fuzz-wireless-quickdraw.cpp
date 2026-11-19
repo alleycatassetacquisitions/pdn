@@ -112,11 +112,14 @@ public:
         return nullptr;
     }
 
-    bool isDirectPeer(const uint8_t* mac) const override {
-        if (mac == nullptr) {
-            return false;
-        }
-        return std::memcmp(mac, peerMac, 6) == 0;
+    // MatchManager accepts SEND_MATCH_ID only from the Connected PDN on its opponent jack.
+    JackStatus getJackStatus(SerialIdentifier jack) override {
+        return jack == SerialIdentifier::INPUT_JACK ? JackStatus::CONNECTED
+                                                    : JackStatus::DISCONNECTED;
+    }
+
+    DeviceType getPeerDeviceType(SerialIdentifier jack) const override {
+        return jack == SerialIdentifier::INPUT_JACK ? DeviceType::PDN : DeviceType::UNKNOWN;
     }
 
 private:
