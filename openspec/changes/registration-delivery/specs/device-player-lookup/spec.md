@@ -68,7 +68,7 @@ If a successful HTTP response body cannot be decoded as `DevicePlayerResponse`, 
 ## ADDED Requirements
 
 ### Requirement: Lookup errors are classified
-If the HTTP layer reports an error, the client SHALL end the lookup as: not found for status `404` (no player is linked to the band, or no active event); untrusted server for `SERVER_NOT_TRUSTED`, including a request the client refuses when no trusted server is configured; failed for anything else, including `400`. Each lookup SHALL end exactly once.
+If the HTTP layer reports an error, the client SHALL end the lookup as: not found for status `404` (no player is linked to the band, or no active event); untrusted server for `SERVER_NOT_TRUSTED`, including a request the client refuses when no trusted server is configured; failed for anything else, including `400` and a device with no HTTP client. Each answer SHALL end the lookup exactly once, handing on a profile and key only when found.
 
 #### Scenario: Unknown band
 - **WHEN** the HTTP layer reports status `404` for the lookup request
@@ -79,8 +79,8 @@ If the HTTP layer reports an error, the client SHALL end the lookup as: not foun
 - **THEN** the lookup ends once, as untrusted server
 
 #### Scenario: Other failures
-- **WHEN** the HTTP layer reports status `400` or `500`, or a timeout
-- **THEN** the lookup ends as failed
+- **WHEN** the HTTP layer reports status `400` or `500`, or a timeout, or the device has no HTTP client
+- **THEN** the lookup ends as failed, with no profile or key
 
 ### Requirement: Record key in the lookup answer
 The client SHALL keep the response's `record_key` only when it is exactly `32` bytes, and report the lookup found with a key. An absent key or one of any other length SHALL leave no key held while the profile still decodes, and the lookup SHALL report found without a usable key; such a lookup registers nobody (one delivery, #486).

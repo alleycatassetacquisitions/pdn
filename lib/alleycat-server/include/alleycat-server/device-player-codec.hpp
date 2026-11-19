@@ -24,10 +24,11 @@ namespace DevicePlayerCodec {
 
 /**
  * Decodes @p body into @p player's registration fields, replacing previous registration data,
- * and its record key into @p recordKey. A key of any other length leaves @p recordKey not held
- * and does not fail the decode.
+ * and its record key into @p recordKey. A key of a length other than ISSUED_RECORD_KEY_SIZE
+ * leaves @p recordKey not held and does not fail the decode.
  *
- * @return false when @p body is not a valid DevicePlayerResponse; @p recordKey is then not held.
+ * @return false when @p body is not a valid DevicePlayerResponse; @p recordKey is then
+ * meaningless and must be dropped.
  */
 bool decode(const std::string& body, Player& player, IssuedRecordKey& recordKey);
 

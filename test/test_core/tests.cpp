@@ -1092,12 +1092,20 @@ TEST_F(AlleycatApiTestSuite, playerApiReportsUndecodableAnswerAsFailedWithoutKey
     playerApiReportsUndecodableAnswerAsFailedWithoutKey(this);
 }
 
+TEST_F(AlleycatApiTestSuite, playerApiHandsNoKeyWithFailedLookup) {
+    playerApiHandsNoKeyWithFailedLookup(this);
+}
+
 TEST_F(AlleycatApiTestSuite, playerApiClassifiesLookupErrors) {
     playerApiClassifiesLookupErrors(this);
 }
 
 TEST_F(AlleycatApiTestSuite, playerApiReportsRefusedLookupAsUntrustedOnce) {
     playerApiReportsRefusedLookupAsUntrustedOnce(this);
+}
+
+TEST_F(AlleycatApiTestSuite, playerApiEndsLookupWithoutHttpClient) {
+    playerApiEndsLookupWithoutHttpClient(this);
 }
 
 TEST_F(AlleycatApiTestSuite, playerApiNeverLogsBandUid) { playerApiNeverLogsBandUid(this); }

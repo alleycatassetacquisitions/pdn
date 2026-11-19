@@ -254,16 +254,24 @@ inline std::string encodeTestPlayerWithKey(size_t keyLength) {
     return body;
 }
 
-/** Runs a by-band lookup for @p uid and returns the result it reported, if any. */
+/** Runs by-band lookups and keeps what each reported; player and key are from the last. */
 struct TestBandLookup {
     Player player;
     IssuedRecordKey recordKey;
     std::vector<ProvisionLookupResult> results;
 
     void start(AlleycatApiTestSuite* suite, const BandUid& uid) {
+        startOn(suite->wirelessManager, uid);
+    }
+
+    void startOn(WirelessManager* wirelessManager, const BandUid& uid) {
         PlayerApi::getDevicePlayerByBand(
-        suite->wirelessManager, uid, &player, &recordKey,
-        [this](ProvisionLookupResult result) { results.push_back(result); });
+        wirelessManager, uid,
+        [this](ProvisionLookupResult result, const Player& found, const IssuedRecordKey& key) {
+            results.push_back(result);
+            player = found;
+            recordKey = key;
+        });
     }
 };
 
@@ -341,6 +349,23 @@ inline void playerApiReportsUndecodableAnswerAsFailedWithoutKey(AlleycatApiTestS
     ASSERT_EQ(lookup.results.size(), 1u);
     EXPECT_EQ(lookup.results[0], ProvisionLookupResult::LOOKUP_FAILED);
     EXPECT_FALSE(lookup.recordKey.held);
+    EXPECT_TRUE(lookup.player.getServerPlayerId().isZero())
+    << "an undecodable profile was handed on";
+}
+
+// A found answer followed by a 404 must not hand the earlier player's key on again.
+inline void playerApiHandsNoKeyWithFailedLookup(AlleycatApiTestSuite* suite) {
+    TestBandLookup lookup;
+    lookup.start(suite, makeTestBandUid({0x04, 0xA2, 0x1B, 0x9C}));
+    lookup.start(suite, makeTestBandUid({0x04, 0xA2, 0x1B, 0x9D}));
+    ASSERT_EQ(suite->queuedRequests.size(), 2u);
+    suite->queuedRequests[0].onSuccess(encodeTestPlayerWithKey(ISSUED_RECORD_KEY_SIZE));
+    ASSERT_TRUE(lookup.recordKey.held);
+
+    suite->queuedRequests[1].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404", 404});
+    EXPECT_EQ(lookup.results.back(), ProvisionLookupResult::NO_PLAYER);
+    EXPECT_FALSE(lookup.recordKey.held);
+    EXPECT_TRUE(lookup.player.getServerPlayerId().isZero());
 }
 
 inline void playerApiClassifiesLookupErrors(AlleycatApiTestSuite* suite) {
@@ -376,6 +401,16 @@ inline void playerApiReportsRefusedLookupAsUntrustedOnce(AlleycatApiTestSuite* s
 
     EXPECT_EQ(lookup.results,
               std::vector<ProvisionLookupResult>{ProvisionLookupResult::SERVER_NOT_TRUSTED});
+}
+
+// A device with no HTTP client (the CLI FDN) still ends the lookup, as failed.
+inline void playerApiEndsLookupWithoutHttpClient(AlleycatApiTestSuite* suite) {
+    WirelessManager noClient(&suite->peerComms);
+    TestBandLookup lookup;
+    lookup.startOn(&noClient, makeTestBandUid({0x04, 0xA2, 0x1B, 0x9C}));
+
+    EXPECT_EQ(lookup.results,
+              std::vector<ProvisionLookupResult>{ProvisionLookupResult::LOOKUP_FAILED});
 }
 
 /** Keeps every formatted log line, for checking what a log would show. */
@@ -427,7 +462,8 @@ inline void httpRequestWithoutPrivatePartLogsWholePath() {
 }
 
 // A reader registered under the band reader name is found through the driver
-// framework's cross-cast, and an FDN that registers none finds none.
+// framework's cross-cast and reports taps to its handler; an FDN that registers
+// none finds none.
 inline void bandReaderIsReachedThroughDriverFramework() {
     FakeBandReader* reader = new FakeBandReader();
     DriverManager withReader({{BAND_READER_DRIVER_NAME, reader}});
@@ -436,11 +472,12 @@ inline void bandReaderIsReachedThroughDriverFramework() {
     EXPECT_EQ(driver->type, DriverType::BAND_READER);
 
     BandReader* found = static_cast<BandReader*>(driver->abstractSelf());
-    reader->placeBand({0x04, 0xA2, 0x1B, 0x9C});
-    BandUid uid;
-    ASSERT_TRUE(found->takeTap(uid));
-    EXPECT_EQ(uid.length, 4);
-    EXPECT_EQ(uid.bytes[3], 0x9C);
+    std::vector<BandUid> taps;
+    found->setTapHandler([&taps](const BandUid& uid) { taps.push_back(uid); });
+    reader->tapBand({0x04, 0xA2, 0x1B, 0x9C});
+    ASSERT_EQ(taps.size(), 1u);
+    EXPECT_EQ(taps[0].length, 4);
+    EXPECT_EQ(taps[0].bytes[3], 0x9C);
     withReader.dismountDrivers();
 
     DriverManager withoutReader({});

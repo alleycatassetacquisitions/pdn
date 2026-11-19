@@ -32,32 +32,26 @@ namespace PlayerApi {
 constexpr const char GET_DEVICE_PLAYER_BY_BAND_ENDPOINT[] = "/device/players/by-band/";
 
 /**
- * Classifies an error the by-band lookup reported: an untrusted server,
- * a 404, or anything else.
+ * Told how a by-band lookup ended. @p player holds the decoded profile and
+ * @p recordKey the decoded key; both are empty unless @p result is KEY_ISSUED
+ * or KEY_NOT_ISSUED, and both live only for the call.
  */
-inline ProvisionLookupResult classifyLookupError(const WirelessErrorInfo& error) {
-    if (error.code == WirelessError::SERVER_NOT_TRUSTED) {
-        return ProvisionLookupResult::SERVER_NOT_TRUSTED;
-    }
-    if (error.httpStatus == 404) {
-        return ProvisionLookupResult::NO_PLAYER;
-    }
-    return ProvisionLookupResult::LOOKUP_FAILED;
-}
+using OnBandLookupDone = std::function<void(ProvisionLookupResult result, const Player& player,
+                                            const IssuedRecordKey& recordKey)>;
 
 /**
  * GET /device/players/by-band/{uid}, {uid} being @p uid as upper-case hex with
- * no separators. Decodes the answer into @p player's registration fields and
- * @p recordKey, then calls @p onDone with how the lookup ended; both must outlive
- * the request. The UID is never logged: the request shows logs only the route.
+ * no separators; calls @p onDone once with how it ended. The request has no
+ * deadline of its own: a caller that must not wait on a lost Wi-Fi link keeps
+ * one, and ignores a later answer. The UID is never logged: logs show only the
+ * route (loggablePathLength).
  */
 inline void getDevicePlayerByBand(WirelessManager* wirelessManager, const BandUid& uid,
-                                  Player* player, IssuedRecordKey* recordKey,
-                                  const std::function<void(ProvisionLookupResult)>& onDone) {
+                                  const OnBandLookupDone& onDone) {
     if (!uid.hasLookupLength()) {
         LOG_E("PLAYER_API", "Band UID of %u bytes not looked up",
               static_cast<unsigned>(uid.length));
-        onDone(ProvisionLookupResult::LOOKUP_FAILED);
+        onDone(ProvisionLookupResult::LOOKUP_FAILED, Player(), IssuedRecordKey());
         return;
     }
     static constexpr char HEX_DIGITS[] = "0123456789ABCDEF";
@@ -69,20 +63,31 @@ inline void getDevicePlayerByBand(WirelessManager* wirelessManager, const BandUi
 
     HttpRequest request(
     std::move(path), "GET", "", "",
-    [onDone, player, recordKey](const std::string& response) {
-        if (!DevicePlayerCodec::decode(response, *player, *recordKey)) {
+    [onDone](const std::string& response) {
+        Player player;
+        IssuedRecordKey recordKey;
+        if (!DevicePlayerCodec::decode(response, player, recordKey)) {
             LOG_E("PLAYER_API", "Band lookup answer not decodable");
-            onDone(ProvisionLookupResult::LOOKUP_FAILED);
+            onDone(ProvisionLookupResult::LOOKUP_FAILED, Player(), IssuedRecordKey());
             return;
         }
-        onDone(recordKey->held ? ProvisionLookupResult::KEY_ISSUED
-                               : ProvisionLookupResult::KEY_NOT_ISSUED);
+        onDone(recordKey.held ? ProvisionLookupResult::KEY_ISSUED
+                              : ProvisionLookupResult::KEY_NOT_ISSUED,
+               player, recordKey);
     },
-    [onDone](const WirelessErrorInfo& error) { onDone(classifyLookupError(error)); });
+    [onDone](const WirelessErrorInfo& error) {
+        ProvisionLookupResult result = ProvisionLookupResult::LOOKUP_FAILED;
+        if (error.code == WirelessError::SERVER_NOT_TRUSTED) {
+            result = ProvisionLookupResult::SERVER_NOT_TRUSTED;
+        } else if (error.httpStatus == 404) {
+            result = ProvisionLookupResult::NO_PLAYER;
+        }
+        onDone(result, Player(), IssuedRecordKey());
+    });
     request.loggablePathLength = sizeof(GET_DEVICE_PLAYER_BY_BAND_ENDPOINT) - 1;
     request.requestHeaders.push_back({"Accept", "application/protobuf"});
 
-    // A refusal has already reported SERVER_NOT_TRUSTED through the error callback.
+    // A request the manager or client refuses has already failed through its error callback.
     wirelessManager->queueHttpRequest(std::move(request));
 }
 

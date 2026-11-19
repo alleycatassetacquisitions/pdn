@@ -129,11 +129,15 @@ public:
 
     /**
      * Queues an HTTP request, then switches to WiFi mode if needed. A request
-     * the client refuses has already failed and leaves the radio on ESP-NOW.
+     * refused here or by the client has already failed through its error
+     * callback and leaves the radio on ESP-NOW.
      */
     bool queueHttpRequest(HttpRequest&& request) {
         if (httpClient == nullptr) {
             LOG_E(WM_TAG, "Cannot queue HTTP request - no HTTP client");
+            if (request.onError) {
+                request.onError({WirelessError::INVALID_STATE, "No HTTP client"});
+            }
             return false;
         }
         // Queued before the WiFi connection is up; the client sends it once

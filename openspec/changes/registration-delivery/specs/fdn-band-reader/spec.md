@@ -14,7 +14,7 @@ An FDN SHALL read a band only by the UID that ISO/IEC 14443-A anticollision retu
 
 ### Requirement: Band reader behind a driver interface
 
-The FDN SHALL reach its band reader only through a band reader driver interface in its driver framework, registered under the band reader driver name, which reports a latched UID and whether the reader answers. Registration logic SHALL NOT depend on the reader model, and native tests SHALL run against a fake reader.
+The FDN SHALL reach its band reader only through a band reader driver interface in its driver framework, registered under the band reader driver name, which reports each tap to one registered handler and answers whether the reader responds. Registration logic SHALL NOT depend on the reader model, and native tests SHALL run against a fake reader.
 
 #### Scenario: Fake reader found through the driver framework
 - **WHEN** a fake band reader is registered under the band reader driver name and a band is placed on it

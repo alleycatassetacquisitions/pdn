@@ -93,13 +93,11 @@ bool decode(const std::string& body, Player& player, IssuedRecordKey& recordKey)
     pb_istream_t stream = pb_istream_from_buffer(
         reinterpret_cast<const pb_byte_t*>(body.data()), body.size());
     if (!pb_decode(&stream, alleycat_device_DevicePlayerResponse_fields, &message)) {
-        recordKey = {};
         return false;
     }
 
     std::memcpy(serverId.bytes, message.id, UUIDBytes::SIZE);
     if (serverId.isZero()) {
-        recordKey = {};
         return false;
     }
     if (message.has_team_id) {

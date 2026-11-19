@@ -1,11 +1,12 @@
 #pragma once
 
 #include <initializer_list>
+#include <utility>
 
 #include "device/driver-names.hpp"
 #include "device/drivers/driver-interface.hpp"
 
-/** A band reader driver a test places bands on; it answers until told not to. */
+/** A band reader driver a test taps bands on; it answers until told not to. */
 class FakeBandReader : public BandReaderDriverInterface {
 public:
     /** Registers under the FDN's band reader name. */
@@ -15,35 +16,30 @@ public:
     /** The boot check: fails while the reader does not answer. */
     int initialize() override { return readerResponds ? 0 : -1; }
 
-    /** Nothing to poll: placeBand() latches the tap as exec() would. */
+    /** Nothing to poll: tapBand() reports the tap as exec() would. */
     void exec() override {}
 
-    /** Puts a band with @p uid in the field and latches it as one tap. */
-    void placeBand(std::initializer_list<uint8_t> uid) {
-        heldBand = BandUid{};
+    /** Taps a band with @p uid; a reader that does not answer reports nothing. */
+    void tapBand(std::initializer_list<uint8_t> uid) {
+        if (!readerResponds || !tapHandler) return;
+        BandUid band;
         for (uint8_t byte : uid) {
-            if (heldBand.length == heldBand.bytes.size()) break;
-            heldBand.bytes[heldBand.length++] = byte;
+            if (band.length == band.bytes.size()) break;
+            band.bytes[band.length++] = byte;
         }
-        tapUnreported = true;
+        tapHandler(band);
     }
 
-    /** Sets whether the reader answers; one that does not reports no tap. */
+    /** Sets whether the reader answers. */
     void setResponding(bool responding) { readerResponds = responding; }
 
-    /** Reports the placed band once, while the reader answers. */
-    bool takeTap(BandUid& uid) override {
-        if (!readerResponds || !tapUnreported) return false;
-        tapUnreported = false;
-        uid = heldBand;
-        return true;
-    }
+    /** Keeps @p handler as the one tap handler. */
+    void setTapHandler(BandTapHandler handler) override { tapHandler = std::move(handler); }
 
     /** @return what setResponding last set; true by default. */
     bool isResponding() override { return readerResponds; }
 
 private:
-    BandUid heldBand;
-    bool tapUnreported = false;
+    BandTapHandler tapHandler;
     bool readerResponds = true;
 };
