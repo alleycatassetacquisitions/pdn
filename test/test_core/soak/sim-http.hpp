@@ -2,9 +2,11 @@
 
 #include <ArduinoJson.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <pb_decode.h>
 #include <pb_encode.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -564,9 +566,31 @@ inline int64_t parseRfc3339Ms(const char* text) {
 // a fresh event per seed so checks are event-scoped and no reset is needed.
 class RealServer : public EventServer {
 public:
-    /** Talks to @p baseUrl, loopback only. */
+    // The server has one active event, and uploads and reads all go to it: two
+    // runs against it at once would steal each other's event. Runs on this host
+    // take turns on this lock for the whole run.
+    static constexpr const char* RUN_LOCK_PATH = "/tmp/soak-real-server.lock";
+
+    /** Talks to @p baseUrl, loopback only; waits for any other real-server run to end. */
     explicit RealServer(const std::string& baseUrl)
-        : http(baseUrl) {}
+        : http(baseUrl) {
+        if (!http.isUsable()) return;
+        lockFd = open(RUN_LOCK_PATH, O_RDWR | O_CREAT, 0666);
+        if (lockFd >= 0 && flock(lockFd, LOCK_EX | LOCK_NB) != 0) {
+            fprintf(stderr, "soak: waiting for another run against the real server\n");
+            flock(lockFd, LOCK_EX);
+        }
+    }
+
+    /** Lets the next real-server run start. */
+    ~RealServer() override {
+        if (lockFd >= 0) close(lockFd);
+    }
+
+    /** Not copyable: owns the run lock. */
+    RealServer(const RealServer&) = delete;
+    /** Not assignable. */
+    RealServer& operator=(const RealServer&) = delete;
 
     /** False when the URL is not loopback. */
     bool isUsable() const { return http.isUsable(); }
@@ -608,6 +632,12 @@ public:
             }
             JsonArray matches = doc["matches"].as<JsonArray>();
             for (JsonObject match : matches) {
+                // Reads follow the active event; another event here means it was switched.
+                if (match["event_id"].as<std::string>() != eventId) {
+                    fprintf(stderr, "soak: the active event moved off %s mid-run\n",
+                            eventId.c_str());
+                    return false;
+                }
                 ServerRow row;
                 row.id = match["id"].as<std::string>();
                 row.playerA = match["player_a_id"].as<std::string>();
@@ -659,6 +689,7 @@ private:
     }
 
     LoopbackHttp http;
+    int lockFd = -1;
 };
 
 }  // namespace soak

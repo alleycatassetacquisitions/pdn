@@ -995,7 +995,7 @@ private:
         std::vector<ServerRow> rows;
         std::map<std::string, int> reports;
         if (!server->listMatches(rows) || !server->countReports(reports)) {
-            fail("could not read the server");
+            fail("could not read the server's rows for this run's event");
             return;
         }
         std::map<std::string, std::vector<const Commit*>> copies;
