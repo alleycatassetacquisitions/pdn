@@ -42,6 +42,14 @@ inline constexpr uint32_t PITY_FLOOR_MS = 750;
 // later than this cannot explain a side that never finalized.
 inline constexpr uint64_t MATCH_OPEN_MS = 10000;
 
+/** SplitMix64's finalizer: every input bit reaches every output bit. */
+inline uint64_t splitMix64(uint64_t x) {
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    return x ^ (x >> 31);
+}
+
 struct SoakConfig {
     ScheduleConfig schedule;
     MediumConfig medium;
@@ -256,6 +264,7 @@ private:
     bool setUp() {
         const uint64_t seed = config.schedule.seed;
         uint64_t nonce = 0;
+        uint64_t startedAt = 0;
         if (config.serverUrl.empty()) {
             fake = new FakeServer(seed ^ 0x22);
             server = fake;
@@ -266,8 +275,14 @@ private:
                 fail("SOAK_SERVER_URL must be http://127.0.0.1:<port> or http://localhost:<port>");
                 return false;
             }
-            // Match ids are unique per event on a real server; mix the event into the entropy.
-            nonce = static_cast<uint64_t>(time(nullptr));
+            // Match ids must be new to a database that keeps every earlier run: a plain
+            // seed ^ seconds repeats across runs (seed 3005 and, 5319 s later, seed 6006
+            // drew the same ids, refused as another event's), so hash the start time.
+            startedAt = static_cast<uint64_t>(time(nullptr));
+            nonce =
+            splitMix64(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count()));
         }
         seedEntropy(seed ^ nonce);
         IdGenerator::initialize(static_cast<unsigned long>(seed ^ nonce));
@@ -276,7 +291,7 @@ private:
         Team teams[2];
         strncpy(teams[0].name, "Hunter", sizeof(teams[0].name) - 1);
         strncpy(teams[1].name, "Bounty", sizeof(teams[1].name) - 1);
-        if (!server->openEvent("soak-" + std::to_string(seed) + "-" + std::to_string(nonce)) ||
+        if (!server->openEvent("soak-" + std::to_string(seed) + "-" + std::to_string(startedAt)) ||
             !server->addTeam("Hunter", teams[0].id) || !server->addTeam("Bounty", teams[1].id)) {
             fail("server set-up failed (is the local server up?)");
             return false;
