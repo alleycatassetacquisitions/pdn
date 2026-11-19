@@ -104,6 +104,8 @@ PlayerProfile Player::toProfile() const {
     // snprintf both truncates to the fixed wire width and NUL-terminates.
     std::snprintf(profile.faction, sizeof(profile.faction), "%s", faction.c_str());
     std::snprintf(profile.name, sizeof(profile.name), "%s", name.c_str());
+    // An FDN queues for registration only a PDN that reports no applied profile.
+    profile.registered = registrationProfileStored ? 1 : 0;
     return profile;
 }
 

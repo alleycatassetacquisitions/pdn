@@ -48,7 +48,7 @@ inline std::string encodeTestPlayer(const std::string& id, const std::string& na
 
 /** Decodes @p body as a lookup answer, ignoring any record key. */
 inline bool decodeTestProfile(const std::string& body, Player& player) {
-    IssuedRecordKey recordKey;
+    RecordKey recordKey;
     return DevicePlayerCodec::decode(body, player, recordKey);
 }
 
@@ -257,7 +257,7 @@ inline std::string encodeTestPlayerWithKey(size_t keyLength) {
 /** Runs by-band lookups and keeps what each reported; player and key are from the last. */
 struct TestBandLookup {
     Player player;
-    IssuedRecordKey recordKey;
+    RecordKey recordKey;
     std::vector<ProvisionLookupResult> results;
 
     /** Starts a lookup for @p uid through the suite's manager. */
@@ -269,10 +269,14 @@ struct TestBandLookup {
     void startOn(WirelessManager* wirelessManager, const BandUid& uid) {
         PlayerApi::getDevicePlayerByBand(
         wirelessManager, uid,
-        [this](ProvisionLookupResult result, const Player& found, const IssuedRecordKey& key) {
+        [this](ProvisionLookupResult result, const Player& found, const RecordKey& key) {
             results.push_back(result);
             player = found;
-            recordKey = key;
+            if (key.isHeld()) {
+                recordKey.set(key.getBytes());
+            } else {
+                recordKey.clear();
+            }
         });
     }
 };
@@ -318,23 +322,23 @@ inline void playerApiReportsKeyIssuedOnlyForThirtyTwoByteKey(AlleycatApiTestSuit
     }
     ASSERT_EQ(suite->queuedRequests.size(), 4u);
 
-    suite->queuedRequests[0].onSuccess(encodeTestPlayerWithKey(ISSUED_RECORD_KEY_SIZE));
+    suite->queuedRequests[0].onSuccess(encodeTestPlayerWithKey(RECORD_KEY_SIZE));
     ASSERT_EQ(lookup.results.size(), 1u);
     EXPECT_EQ(lookup.results[0], ProvisionLookupResult::KEY_ISSUED);
-    EXPECT_TRUE(lookup.recordKey.held);
-    for (uint8_t byte : lookup.recordKey.bytes) {
-        ASSERT_EQ(byte, 0xA5);
+    EXPECT_TRUE(lookup.recordKey.isHeld());
+    for (size_t i = 0; i < RECORD_KEY_SIZE; ++i) {
+        ASSERT_EQ(lookup.recordKey.getBytes()[i], 0xA5);
     }
     EXPECT_EQ(lookup.player.getServerPlayerId(), makeTestUuid(TEST_PLAYER_ID));
 
-    suite->queuedRequests[1].onSuccess(encodeTestPlayerWithKey(ISSUED_RECORD_KEY_SIZE - 1));
-    suite->queuedRequests[2].onSuccess(encodeTestPlayerWithKey(ISSUED_RECORD_KEY_SIZE + 1));
+    suite->queuedRequests[1].onSuccess(encodeTestPlayerWithKey(RECORD_KEY_SIZE - 1));
+    suite->queuedRequests[2].onSuccess(encodeTestPlayerWithKey(RECORD_KEY_SIZE + 1));
     suite->queuedRequests[3].onSuccess(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"));
     EXPECT_EQ(lookup.results,
               (std::vector<ProvisionLookupResult>{
               ProvisionLookupResult::KEY_ISSUED, ProvisionLookupResult::KEY_NOT_ISSUED,
               ProvisionLookupResult::KEY_NOT_ISSUED, ProvisionLookupResult::KEY_NOT_ISSUED}));
-    EXPECT_FALSE(lookup.recordKey.held) << "a key of the wrong length, or none, was kept";
+    EXPECT_FALSE(lookup.recordKey.isHeld()) << "a key of the wrong length, or none, was kept";
 }
 
 // A failed decode must not leave a key behind from the same answer.
@@ -345,12 +349,12 @@ inline void playerApiReportsUndecodableAnswerAsFailedWithoutKey(AlleycatApiTestS
 
     std::string nilPlayer = encodeTestPlayer(std::string(UUIDBytes::SIZE, '\0'), "Alex");
     appendTestBytesField(nilPlayer, alleycat_device_DevicePlayerResponse_record_key_tag,
-                         std::string(ISSUED_RECORD_KEY_SIZE, '\xA5'));
+                         std::string(RECORD_KEY_SIZE, '\xA5'));
     suite->queuedRequests[0].onSuccess(nilPlayer);
 
     ASSERT_EQ(lookup.results.size(), 1u);
     EXPECT_EQ(lookup.results[0], ProvisionLookupResult::LOOKUP_FAILED);
-    EXPECT_FALSE(lookup.recordKey.held);
+    EXPECT_FALSE(lookup.recordKey.isHeld());
     EXPECT_TRUE(lookup.player.getServerPlayerId().isZero())
     << "an undecodable profile was handed on";
 }
@@ -361,12 +365,12 @@ inline void playerApiHandsNoKeyWithFailedLookup(AlleycatApiTestSuite* suite) {
     lookup.start(suite, makeTestBandUid({0x04, 0xA2, 0x1B, 0x9C}));
     lookup.start(suite, makeTestBandUid({0x04, 0xA2, 0x1B, 0x9D}));
     ASSERT_EQ(suite->queuedRequests.size(), 2u);
-    suite->queuedRequests[0].onSuccess(encodeTestPlayerWithKey(ISSUED_RECORD_KEY_SIZE));
-    ASSERT_TRUE(lookup.recordKey.held);
+    suite->queuedRequests[0].onSuccess(encodeTestPlayerWithKey(RECORD_KEY_SIZE));
+    ASSERT_TRUE(lookup.recordKey.isHeld());
 
     suite->queuedRequests[1].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404", 404});
     EXPECT_EQ(lookup.results.back(), ProvisionLookupResult::NO_PLAYER);
-    EXPECT_FALSE(lookup.recordKey.held);
+    EXPECT_FALSE(lookup.recordKey.isHeld());
     EXPECT_TRUE(lookup.player.getServerPlayerId().isZero());
 }
 

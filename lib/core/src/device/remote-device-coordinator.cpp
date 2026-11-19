@@ -65,9 +65,9 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
     }
 
     // One device-level channel per device-type PktType. Claiming a channel makes
-    // its receive path live (the transport installs the driver rx handler). The
-    // abandon callback is a no-op: an unreachable peer's jack link self-heals to
-    // IDLE via the context-exchange timeout (HelloConnectingState, contextTimeoutMs).
+    // its receive path live (the transport installs the driver rx handler). A
+    // PDN context's abandon is a no-op: an unreachable peer's jack link self-heals
+    // to IDLE via the context-exchange timeout (HelloConnectingState, contextTimeoutMs).
     // The packet's PktType alone picks which channel decodes a context; the
     // HELLO deviceType is not consulted. RDC forwards the profile bytes opaquely.
     transport = new ReliableTransport(wirelessManager);
@@ -81,8 +81,20 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* 
                                   sizeof(ctx.player));
             });
     }
+    // An FDN context carries the registration turn, so one given up on would
+    // leave its PDN showing a turn the FDN has since moved: it goes again while
+    // that peer stays Connected.
     fdnContextChannel = transport->channel<FdnConnectionContext>(
-        PktType::kFdnConnectionContext);
+    PktType::kFdnConnectionContext, [this](uint8_t, const uint8_t* toMac) {
+        for (SerialIdentifier jack : HELLO_JACKS) {
+            const uint8_t* peer = getPeerMac(jack);
+            if (getJackStatus(jack) == JackStatus::CONNECTED && peer != nullptr &&
+                memcmp(peer, toMac, 6) == 0) {
+                sendSelfContext(toMac);
+                return;
+            }
+        }
+    });
     if (fdnContextChannel != nullptr) {
         fdnContextChannel->onReceive(
             [this](const uint8_t* fromMac, const FdnConnectionContext& ctx) {
@@ -509,6 +521,9 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
         PlatformClock* clock = SimpleTimer::getPlatformClock();
         const int64_t unixMs = clock != nullptr ? clock->unixMilliseconds() : 0;
         ctx.fdn.utcUnixMs = isValidUtcUnixMs(unixMs) ? unixMs : 0;
+        ctx.fdn.registrationTurn = registrationTurnProvider && registrationTurnProvider(mac)
+                                   ? RegistrationTurn::OPEN
+                                   : RegistrationTurn::CLOSED;
         fdnContextChannel->sendReliable(mac, ctx);
         return;
     }

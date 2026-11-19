@@ -212,10 +212,27 @@ public:
     }
 
     /**
+     * Answers, on an FDN, whether the registration turn is with the PDN whose
+     * radio MAC is `peerMac`. Read at send time, as the self profile is.
+     */
+    using RegistrationTurnProvider = std::function<bool(const uint8_t* peerMac)>;
+
+    /**
+     * Registers the registration-turn source an FDN's contexts carry; null
+     * removes it, and with none every context says the turn is closed. An FDN
+     * context whose send is abandoned while its peer stays Connected is sent
+     * again, so a PDN never keeps a turn the FDN has moved on from.
+     */
+    void setRegistrationTurnProvider(RegistrationTurnProvider provider) {
+        registrationTurnProvider = std::move(provider);
+    }
+
+    /**
      * Queues a fresh context to the peer on every Connected jack. The exchange
      * is otherwise once-per-connect, so a profile field a peer acts on (the
-     * hunter/bounty role) changing on an already-open link has to push itself
-     * or the peer keeps acting on the stale value until the next replug.
+     * hunter/bounty role, an FDN's registration turn) changing on an
+     * already-open link has to push itself or the peer keeps acting on the
+     * stale value until the next replug.
      */
     void resendContext();
 
@@ -391,6 +408,7 @@ private:
     bool externalConnectivityTask = false;
     ContextReceivedCallback contextReceivedCallback;
     SelfProfileProvider selfProfileProvider;
+    RegistrationTurnProvider registrationTurnProvider;
     std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 

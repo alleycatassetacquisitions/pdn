@@ -31,6 +31,10 @@ enum class PktType : uint8_t {
     // their kFoo spelling rather than splitting the enum across two conventions.
     // NOLINTNEXTLINE(readability-identifier-naming)
     kChainJoin = 20,
+    // FDN to the PDN it registered: the profile, or that the lookup failed
+    // (PlayerProvisionPacket in game/player-types.hpp).
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kPlayerProvision = 21,
     // Record relay, PDN to FDN and the FDN's ack back (wireless/record-relay-types.hpp).
     // NOLINTNEXTLINE(readability-identifier-naming)
     kCrashRecord = 23,
@@ -53,6 +57,7 @@ struct PlayerProfile {
     uint8_t allegiance;
     char faction[8];
     char name[16];
+    uint8_t registered;  // 1 once a profile is applied, demo included
 } __attribute__((packed));
 
 // PDN-to-neighbour connection context. seqId is stamped by the ReliableChannel.
@@ -65,10 +70,19 @@ struct PdnConnectionContext {
     PlayerProfile player;
 } __attribute__((packed));
 
+// Whether the FDN's registration turn is with the PDN a context goes to: a band
+// tapped now registers that PDN.
+enum class RegistrationTurn : uint8_t {
+    CLOSED = 0,
+    OPEN = 1,
+};
+
 // FDN self-description exchanged on cabled connection context. Carries the FDN's
-// synchronized UTC wall clock in epoch milliseconds (or 0 when unsynchronized).
+// synchronized UTC wall clock in epoch milliseconds (or 0 when unsynchronized),
+// and whether the receiving PDN's jack holds the FDN's registration turn.
 struct FdnProfile {
     int64_t utcUnixMs;
+    RegistrationTurn registrationTurn;
 } __attribute__((packed));
 
 // FDN-to-neighbour connection context; same header as PdnConnectionContext, FDN body.
