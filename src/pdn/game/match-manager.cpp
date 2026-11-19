@@ -376,7 +376,8 @@ void MatchManager::redateUnsetMatches() {
         record.occurredAtUnixMs = utcNow - static_cast<int64_t>(uptimeNow - unset.uptimeMs);
         char key[16];
         matchSlotKey(unset.sequenceNumber, key);
-        if (storage->writeBytes(MATCH_RING_PREFS_NAMESPACE, key, reinterpret_cast<uint8_t*>(&record),
+        if (storage->writeBytes(MATCH_RING_PREFS_NAMESPACE, key,
+                                reinterpret_cast<uint8_t*>(&record),
                                 sizeof(record)) != sizeof(record)) {
             LOG_E(MATCH_MANAGER_TAG, "Failed to re-date match %u", unset.sequenceNumber);
         }
@@ -429,8 +430,9 @@ void MatchManager::passOverUndatableMatches() {
     MatchRecord record{};
     while (passed < newest && readRecord(passed + 1, record) &&
            !isValidUtcUnixMs(record.occurredAtUnixMs) &&
-           std::none_of(unsetSinceBoot.begin(), unsetSinceBoot.end(),
-                        [&](const UnsetMatch& unset) { return unset.sequenceNumber == passed + 1; })) {
+           std::none_of(unsetSinceBoot.begin(), unsetSinceBoot.end(), [&](const UnsetMatch& unset) {
+               return unset.sequenceNumber == passed + 1;
+           })) {
         ++passed;
     }
     if (passed > mark && markCollected(passed)) {

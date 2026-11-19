@@ -26,6 +26,7 @@ inline constexpr int64_t SYNCED_UTC_MS = 1792359000000LL;
 // between them is a byte copy (RecordRelayTests cover it).
 class MatchTimeTests : public MatchManagerTestSuite {
 public:
+    /** Adds an FDN whose requests are captured in fdnRequests. */
     void SetUp() override {
         MatchManagerTestSuite::SetUp();
         ON_CALL(fdnHttpClient, queueRequest(testing::_))
@@ -38,6 +39,7 @@ public:
         fdnUploader = new FdnRecordUploader(fdnWireless, fdnStore, []() { return false; });
     }
 
+    /** Deletes the FDN, then the PDN fixture. */
     void TearDown() override {
         delete fdnUploader;
         delete fdnStore;
@@ -121,7 +123,7 @@ TEST_F(MatchTimeTests, matchFromAnEarlierPowerOnIsNeverHandedOn) {
 // A ring full of matches from an earlier power-on with no time could never
 // drain; the next match must still be stored and handed on.
 TEST_F(MatchTimeTests, ringFullOfUndatableMatchesStillTakesTheNextOne) {
-    for (uint32_t played = 0; played < MATCH_RING_CAPACITY; played++) {
+    for (uint32_t played = 0; played < MatchManager::MATCH_RING_CAPACITY; played++) {
         unsetClockAt(95000 + played * 1000);
         ASSERT_TRUE(playHunterWin());
     }
@@ -138,7 +140,7 @@ TEST_F(MatchTimeTests, ringFullOfUndatableMatchesStillTakesTheNextOne) {
     uint8_t bytes[MatchRecordTraits::RECORD_SIZE];
     ASSERT_TRUE(matchManager->readLowestPending(recordNumber, bytes))
     << "the match after a ring of undatable ones was not stored";
-    EXPECT_EQ(recordNumber, MATCH_RING_CAPACITY + 1);
+    EXPECT_EQ(recordNumber, MatchManager::MATCH_RING_CAPACITY + 1);
 }
 
 // The handshake is cabled, so it carries time the way an FDN's context does: a
