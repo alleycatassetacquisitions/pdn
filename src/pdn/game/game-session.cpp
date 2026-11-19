@@ -35,6 +35,7 @@ GameSession::GameSession(Player* player, Device* pdn, SymbolWirelessManager* sym
     matchManager->setBoostProvider([this]() -> unsigned long {
         return posseManager ? posseManager->getBoostMs() : 0;
     });
+    matchManager->setIdleProvider([this]() { return isIdleMounted(); });
     matchManager->setRemoteDeviceCoordinator(remoteDeviceCoordinator);
 
     for (const PacketRoute& route : packetRoutes()) {
@@ -67,8 +68,8 @@ GameSession::~GameSession() {
     if (player) player->setOnRoleChanged(nullptr);
     if (remoteDeviceCoordinator) remoteDeviceCoordinator->setSelfProfileProvider(nullptr);
     player = nullptr;
-    // setBoostProvider is the one install with no clear: matchManager owns that slot
-    // and is deleted below.
+    // setBoostProvider and setIdleProvider are the installs with no clear:
+    // matchManager owns those slots and is deleted below.
     remoteDeviceCoordinator = nullptr;
     for (const PacketRoute& route : packetRoutes()) {
         wirelessManager->clearEspNowPacketHandler(route.type);
@@ -99,11 +100,20 @@ GameContext GameSession::getContext() {
     return context;
 }
 
-SupporterReady* GameSession::getMountedSupporterReady() {
+State* GameSession::getMountedState() {
     if (pdn == nullptr) return nullptr;
     StateMachine* activeApp = pdn->getActiveApp();
     if (activeApp == nullptr) return nullptr;
-    State* current = activeApp->getCurrentState();
+    return activeApp->getCurrentState();
+}
+
+bool GameSession::isIdleMounted() {
+    State* current = getMountedState();
+    return current != nullptr && current->getStateId() == IDLE;
+}
+
+SupporterReady* GameSession::getMountedSupporterReady() {
+    State* current = getMountedState();
     if (current == nullptr || current->getStateId() != SUPPORTER_READY) return nullptr;
     return static_cast<SupporterReady*>(current);
 }
