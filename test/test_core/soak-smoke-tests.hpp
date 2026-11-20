@@ -259,33 +259,92 @@ inline void soakFdnUploadsACabledDuel() {
     EXPECT_EQ(soak::SimNvsDriver::unopenedNamespaceCalls, 0u);
 }
 
-// A short event: a few PDNs and FDNs, scheduled play under loss and faults.
+// A short event: a few PDNs and FDNs, a minute and a half of scheduled play under
+// loss, faults and HTTP errors.
 inline soak::SoakConfig soakSmokeConfig(uint64_t seed) {
     soak::SoakConfig config;
     config.seed = seed;
     config.pdns = 8;
     config.fdns = 2;
+    config.schedule.horizonMs = 90000;
     config.schedule.rebootsPerHour = 6;
     config.schedule.cutsPerHour = 6;
     config.schedule.fdnRebootsPerHour = 20;
     config.schedule.httpErrorsPerHour = 40;
     config.schedule.ackLossPerHour = 120;
     // High enough that a short run resends records an FDN already holds (lost
-    // link-layer acks); the scheduled windows add whole stretches of them.
+    // link-layer acks) and sees some upload batches answered 503 or lost; the
+    // scheduled windows add whole stretches of them.
     config.medium.ackLoss = 0.15;
+    config.http.serverError = 0.15;
+    config.http.transportFail = 0.05;
+    config.http.lostResponse = 0.05;
     return config;
 }
 
-// A scripted event on @p pdns PDNs and @p fdns FDNs.
+// The run passed every end-to-end check; the summary and findings say why not.
+inline void expectSoakPasses(const soak::RunResult& result) {
+    std::string failures;
+    for (const std::string& failure : result.failures)
+        failures += failure + "\n";
+    EXPECT_TRUE(result.passed) << result.summary << "\n" << failures;
+}
+
+// A scripted event on @p pdns PDNs and @p fdns FDNs with no random HTTP faults; it
+// must pass the end-to-end checks.
 inline soak::RunResult playSoakScript(int pdns, int fdns, const std::vector<std::string>& lines) {
     soak::SoakConfig config = soakSmokeConfig(7);
     config.pdns = pdns;
     config.fdns = fdns;
+    config.http = soak::HttpFaults();
     const std::vector<soak::Action> actions = soakScript(lines);
-    // Room for the FDN's boot-time upload cycle after the last action.
+    // Room for the FDN's boot-time upload cycle before the drain clears the faults.
     config.schedule.horizonMs = actions.back().at + 10000;
     soak::World world(config, actions);
-    return world.run();
+    soak::RunResult result = world.run();
+    expectSoakPasses(result);
+    return result;
+}
+
+// Test: a seeded event passes every end-to-end check
+inline void soakSmokeSeedPasses(uint64_t seed) {
+    soak::RunResult result = soak::runSeed(soakSmokeConfig(seed));
+    expectSoakPasses(result);
+    EXPECT_GT(result.counts["storedMatches"], 0u) << result.summary;
+}
+
+// Test: a shootout ring next to duels and a posse stores only the duels, and they all arrive
+inline void soakRingAndPosseStoreOnlyDuels() {
+    soak::RunResult result = playSoakScript(11, 2,
+                                            {
+                                            "at=1000 ring a=0,2,4 b=- cm=15",
+                                            "at=1000 duel a=6,8 b=1,3 cm=3 rb=260 rh=310",
+                                            "at=1000 visit a=7 b=0 dur=4000",
+                                            "at=12000 duel a=10 b=7 rb=-1 rh=280",
+                                            });
+    EXPECT_GT(result.counts["shootoutMatches"], 0u) << result.summary;
+    EXPECT_GE(result.counts["storedMatches"], 2u) << result.summary;
+}
+
+// Test: matches still arrive when one has a single stored copy, every record ack
+// is lost for a while (the PDNs resend what the FDN holds), and the FDN reboots
+// into a window where every upload fails in transport, then one where every upload
+// answers 503
+inline void soakSingleCopiesOutliveLostAcksAndServerErrors() {
+    soak::RunResult result = playSoakScript(4, 1,
+                                            {
+                                            "at=1000 visit a=1 b=0 dur=2500",
+                                            "at=1000 duel a=0 b=1 cut=0 k=1 rb=300 rh=250",
+                                            "at=1000 duel a=2 b=3 rb=-1 rh=200",
+                                            "at=3000 ackloss a=- b=- dur=30000",
+                                            "at=40000 httperr a=- b=0 dur=20000 mode=2",
+                                            "at=41000 fdnreboot a=- b=0 down=1000",
+                                            "at=62000 httperr a=- b=0 dur=20000 mode=1",
+                                            "at=63000 fdnreboot a=- b=0 down=1000",
+                                            });
+    EXPECT_GE(result.counts["allowedCutBeforeCommit"], 1u) << result.summary;
+    EXPECT_GE(result.counts["storedMatches"], 2u) << result.summary;
+    EXPECT_GE(result.counts["syncedStampsChecked"], 1u) << result.summary;
 }
 
 // Test: the same seed twice plays the same event, tick for tick
@@ -293,6 +352,7 @@ inline void soakSameSeedReplaysIdentically() {
     soak::SoakConfig config = soakSmokeConfig(5);
     config.pdns = 6;
     config.schedule.horizonMs = 30000;
+    config.http = soak::HttpFaults();
     const soak::RunResult first = soak::runSeed(config);
     const soak::RunResult second = soak::runSeed(config);
     EXPECT_EQ(first.logHash, second.logHash);
@@ -358,7 +418,8 @@ inline void soakHttpFaultsReachTheFdnClient() {
     soak::HttpFaults faults;
     faults.offline = true;
     std::mt19937_64 rng(1);
-    soak::SimHttpClient client("http", server, faults, rng);
+    std::map<std::string, uint64_t> unconfirmed;
+    soak::SimHttpClient client("http", server, faults, rng, unconfirmed);
     std::vector<int> failures;
     const auto request = [&]() {
         client.queueRequest(

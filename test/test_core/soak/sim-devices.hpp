@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdarg>
+#include <cstdio>
+#include <deque>
 #include <string>
 
 #include "alleycat-server/fdn-record-store.hpp"
@@ -23,17 +26,36 @@
 
 namespace soak {
 
+// Keeps one device's recent warnings and errors for a failure report; drops the rest.
+class SoakLogger : public LoggerInterface {
+public:
+    /** Formats WARN and ERROR into the ring; everything else is dropped. */
+    void vlog(LogLevel level, const char* tag, const char* file, int line, const char* format,
+              va_list args) override {
+        (void)file;
+        (void)line;
+        if (level > LogLevel::WARN) return;
+        char text[200];
+        vsnprintf(text, sizeof(text), format, args);
+        lines.push_back(std::string(tag) + ": " + text);
+        if (lines.size() > 40) lines.pop_front();
+    }
+
+    std::deque<std::string> lines;
+};
+
 /** Who a PDN's player is: the server-registered ids it carries. */
 struct PdnIdentity {
     UUIDBytes playerId;
     Team team;
+    bool hunter = true;
 };
 
 // One PDN built as DeviceFactory::createDevice builds it (src/cli/cli-device.hpp),
 // with the harness radio, flash and identity in place of the CLI's broker ones.
 class SimPdn {
 public:
-    /** Builds and boots the PDN; call with its clock installed. */
+    /** Builds and boots the PDN; call with its clock and logger installed. */
     SimPdn(const std::string& suffix, VirtualMedium& medium, const uint8_t* mac, SimNvs& nvs,
            const PdnIdentity& identity)
         : primaryButton(new NativeButtonDriver(PRIMARY_BUTTON_DRIVER_NAME + suffix, 0))
@@ -134,12 +156,16 @@ class SimFdn {
 public:
     static constexpr unsigned long BEACON_INTERVAL_MS = 12000;
 
-    /** Builds and boots the FDN; call with its clock installed. */
+    /**
+     * Builds and boots the FDN; call with its clock and logger installed. @p unconfirmed
+     * gains one per id for each upload the server took but this FDN never heard succeed.
+     */
     SimFdn(const std::string& suffix, VirtualMedium& medium, const uint8_t* mac, SimNvs& nvs,
-           HttpBackend& backend, HttpFaults& faults, std::mt19937_64& rng)
-        : serialIn(new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix))
+           HttpBackend& backend, HttpFaults& faults, std::mt19937_64& rng,
+           std::map<std::string, uint64_t>& unconfirmed)
+        : radio(new SimRadio(PEER_COMMS_DRIVER_NAME + suffix, medium, mac))
+        , serialIn(new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix))
         , serialInSecondary(new NativeSerialDriver(SERIAL_IN_SECONDARY_DRIVER_NAME + suffix)) {
-        SimRadio* radio = new SimRadio(PEER_COMMS_DRIVER_NAME + suffix, medium, mac);
         SimNvsDriver* storage =
         new SimNvsDriver(STORAGE_DRIVER_NAME + suffix, nvs, {FDN_RECORD_STORE_NAMESPACE});
         DriverConfig config = {
@@ -147,7 +173,7 @@ public:
         {SERIAL_IN_DRIVER_NAME, serialIn},
         {SERIAL_IN_SECONDARY_DRIVER_NAME, serialInSecondary},
         {HTTP_CLIENT_DRIVER_NAME,
-         new SimHttpClient(HTTP_CLIENT_DRIVER_NAME + suffix, backend, faults, rng)},
+         new SimHttpClient(HTTP_CLIENT_DRIVER_NAME + suffix, backend, faults, rng, unconfirmed)},
         {PEER_COMMS_DRIVER_NAME, radio},
         {STORAGE_DRIVER_NAME, storage},
         };
@@ -183,6 +209,7 @@ public:
     }
 
     FDN* firmware = nullptr;
+    SimRadio* radio = nullptr;
 
 private:
     NativeSerialDriver* serialIn = nullptr;
