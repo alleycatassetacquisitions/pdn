@@ -2211,6 +2211,12 @@ TEST(SoakSmoke, actionListRoundTrips) { soakActionListRoundTrips(); }
 TEST(SoakScheduler, everyFaultTypeFires) { soakEveryFaultTypeFires(); }
 TEST(SoakScheduler, httpFaultsReachTheFdnClient) { soakHttpFaultsReachTheFdnClient(); }
 TEST(SoakScheduler, cutsStayDownForTheirDrawnTime) { soakCutsStayDownForTheirDrawnTime(); }
+TEST(SoakSmoke, seed11PassesEndToEnd) { soakSmokeSeedPasses(11); }
+TEST(SoakSmoke, seed23PassesEndToEnd) { soakSmokeSeedPasses(23); }
+TEST(SoakSmoke, ringAndPosseStoreOnlyDuels) { soakRingAndPosseStoreOnlyDuels(); }
+TEST(SoakSmoke, singleCopiesOutliveLostAcksAndServerErrors) {
+    soakSingleCopiesOutliveLostAcksAndServerErrors();
+}
 
 // ============================================
 // MAIN

@@ -53,6 +53,7 @@ public:
             return;
         }
         values[{ns, key}] = std::string(1, type) + bytes;
+        if (onWrite) onWrite(ns, key);
     }
 
     /** The bytes under (ns, key) if stored with @p type. */
@@ -73,8 +74,19 @@ public:
         return value;
     }
 
-    // Fires the moment the armed write dies, with the write it killed, so the world can
-    // silence the radio and tell what was lost.
+    /** Every key in @p ns with its tagged bytes, for byte-identical comparisons. */
+    std::map<std::string, std::string> snapshot(const std::string& ns) const {
+        std::map<std::string, std::string> out;
+        for (const std::pair<const std::pair<std::string, std::string>, std::string>& entry :
+             values) {
+            if (entry.first.first == ns) out[entry.first.second] = entry.second;
+        }
+        return out;
+    }
+
+    // Each write that stuck, and the moment the armed write dies with the write it
+    // killed, so the world can follow commits, silence the radio and tell what was lost.
+    std::function<void(const std::string& ns, const std::string& key)> onWrite;
     std::function<void(const std::string& ns, const std::string& key)> onCut;
     // Cuts ever armed and ever fired; an armed cut is dropped by a later arm, a disarm
     // or a boot, so the difference is the cuts that never happened.

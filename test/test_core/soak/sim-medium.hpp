@@ -120,6 +120,12 @@ public:
     uint64_t burstUntil = 0;
     // Until then every record ack is lost: the FDN stored, the PDN never hears so.
     uint64_t dropAcksUntil = 0;
+    // Each frame put on the air, lost or not, before it fans out.
+    std::function<void(PktType type, const std::vector<uint8_t>& data)> onAir;
+    // Each frame that reached an enabled radio, so the world can tell what a device heard.
+    std::function<void(const uint8_t* src, const uint8_t* dst, PktType type,
+                       const std::vector<uint8_t>& data)>
+    onDelivered;
     uint64_t framesSent = 0;
     uint64_t framesLost = 0;
 
@@ -201,8 +207,13 @@ public:
                 }
             } else if (state == PeerCommsState::ENABLED) {
                 std::pair<PacketCallback, void*>& handler = handlers[event.type];
-                if (handler.first)
+                if (handler.first) {
+                    if (beforeHandled) beforeHandled();
+                    const uint64_t acksBefore = acksSent;
                     handler.first(event.mac, event.data.data(), event.data.size(), handler.second);
+                    if (onHandled)
+                        onHandled(event.mac, event.type, event.data, acksSent != acksBefore);
+                }
             }
             pending.pop();
         }
@@ -212,6 +223,7 @@ public:
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data,
                  const size_t length) override {
         if (state != PeerCommsState::ENABLED) return -1;
+        if (packetType == PktType::kRecordAck) ++acksSent;
         medium.send(*this, dst, packetType, data, length);
         return 0;
     }
@@ -242,6 +254,12 @@ public:
     void disable() override { state = PeerCommsState::DISABLED; }
 
     static constexpr uint8_t BROADCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    // Before each received frame's handler, so the world can snapshot what it is about to change.
+    std::function<void()> beforeHandled;
+    // After each received frame's handler: whether it sent a record ack meanwhile.
+    std::function<void(const uint8_t* src, PktType type, const std::vector<uint8_t>& data,
+                       bool acked)>
+    onHandled;
 
 private:
     friend class VirtualMedium;
@@ -260,6 +278,7 @@ private:
     std::map<PktType, std::pair<PacketCallback, void*>> handlers;
     std::map<PktType, std::pair<SendStatusCallback, void*>> statusHandlers;
     std::queue<Event> events;
+    uint64_t acksSent = 0;
 
     // Medium side: a received frame (status false) or the verdict on one of this
     // radio's unicast frames, handled on the next exec().
@@ -272,6 +291,7 @@ private:
 
 inline void VirtualMedium::send(SimRadio& from, const uint8_t* dst, PktType type,
                                 const uint8_t* data, size_t length) {
+    if (onAir) onAir(type, std::vector<uint8_t>(data, data + length));
     if (memcmp(dst, SimRadio::BROADCAST, 6) != 0) {
         schedule(from, dst, type, data, length, true);
         if (chance(rng, config.duplicate)) schedule(from, dst, type, data, length, false);
@@ -320,6 +340,7 @@ inline void VirtualMedium::deliverDue() {
             delivered = true;
         }
         if (!delivered) ++framesLost;
+        if (delivered && onDelivered) onDelivered(frame.src, frame.dst, frame.type, frame.data);
         std::map<uint64_t, SimRadio*>::iterator src = radios.find(MacToUInt64(frame.src));
         if (frame.wantsStatus && src != radios.end() &&
             src->second->instance == frame.senderInstance) {

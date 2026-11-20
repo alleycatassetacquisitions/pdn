@@ -1,7 +1,14 @@
 #pragma once
 
+#include <ArduinoJson.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
 #include <pb_decode.h>
 #include <pb_encode.h>
+#include <sys/file.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include "alleycat-server/device_api.pb.h"
 #include "device/drivers/driver-interface.hpp"
@@ -11,6 +18,8 @@
 #include "sim-medium.hpp"
 
 #include <cstdint>
+#include <ctime>
+#include <functional>
 #include <map>
 #include <queue>
 #include <random>
@@ -40,6 +49,7 @@ public:
 struct HttpFaults {
     double serverError = 0;
     double transportFail = 0;
+    double lostResponse = 0;
     bool offline = false;
 };
 
@@ -67,18 +77,34 @@ inline bool decodeMatchBatch(const std::string& body,
 // (esp32-s3-http-client-driver.hpp): Wi-Fi association before the first request,
 // one request in flight, 2xx = success, other statuses fail at once as
 // SERVER_ERROR (>= 500) or INVALID_RESPONSE with the status, transport failures
-// retried once after 2 s, and disconnect() failing everything queued.
+// and the 15 s timeout retried once after 2 s, and disconnect() failing
+// everything queued.
 class SimHttpClient : public HttpClientDriverInterface {
 public:
+    static constexpr unsigned long REQUEST_TIMEOUT_MS = 15000;
     static constexpr int MAX_RETRIES = 1;
 
-    /** Requests go to @p backend; @p faults and @p rng belong to the FDN's world slot. */
+    /**
+     * Requests go to @p backend; @p faults and @p rng belong to the FDN's world slot.
+     * @p unconfirmed gains one per match id for each upload the server accepted that
+     * this FDN never heard succeed (lost response, cut or disconnect mid-request): each
+     * one is a report the FDN will send again.
+     */
     SimHttpClient(const std::string& name, HttpBackend& backend, HttpFaults& faults,
-                  std::mt19937_64& rng)
+                  std::mt19937_64& rng, std::map<std::string, uint64_t>& unconfirmed)
         : HttpClientDriverInterface(name)
         , backend(backend)
         , faults(faults)
-        , rng(rng) {}
+        , rng(rng)
+        , unconfirmed(unconfirmed) {}
+
+    /** A request the server accepted dies with the FDN unanswered. */
+    ~SimHttpClient() override { forfeitAccepted(); }
+
+    /** Not copyable: holds the world's ledgers. */
+    SimHttpClient(const SimHttpClient&) = delete;
+    /** Not assignable. */
+    SimHttpClient& operator=(const SimHttpClient&) = delete;
 
     /** Nothing to bring up until Wi-Fi mode. */
     int initialize() override { return 0; }
@@ -96,10 +122,15 @@ public:
         if (!request.inProgress) {
             if (retryAt != 0 && static_cast<long>(now - retryAt) < 0) return;
             request.inProgress = true;
+            request.lastAttemptTime = now;
             attempt(request, now);
             return;
         }
-        if (static_cast<long>(now - completeAt) >= 0) finish();
+        if (now - request.lastAttemptTime > REQUEST_TIMEOUT_MS) {
+            endAttempt({WirelessError::TIMEOUT, "Request timed out"});
+        } else if (static_cast<long>(now - completeAt) >= 0) {
+            finish();
+        }
     }
 
     /** Ignored: the backend fixes the base URL. */
@@ -156,6 +187,20 @@ private:
         }
         result =
         backend.perform(request.method, request.path, request.contentType, request.payload);
+        std::vector<alleycat_device_QuickdrawMatch> batch;
+        if (result.status / 100 == 2 && request.path == "/quickdraw-matches" &&
+            decodeMatchBatch(request.payload, batch)) {
+            for (const alleycat_device_QuickdrawMatch& match : batch)
+                acceptedIds.push_back(match.id);
+        }
+        // The server acted, but its answer never comes back: the timeout path.
+        if (chance(rng, faults.lostResponse)) completeAt = now + REQUEST_TIMEOUT_MS + 1000;
+    }
+
+    void forfeitAccepted() {
+        for (const std::string& id : acceptedIds)
+            unconfirmed[id]++;
+        acceptedIds.clear();
     }
 
     void finish() {
@@ -174,6 +219,7 @@ private:
     }
 
     void endAttempt(const WirelessErrorInfo& error) {
+        forfeitAccepted();
         HttpRequest& request = queue.front();
         request.inProgress = false;
         if (request.retryCount < MAX_RETRIES) {
@@ -186,6 +232,8 @@ private:
     }
 
     void completeFront(bool success, const WirelessErrorInfo& error) {
+        if (success) acceptedIds.clear();
+        forfeitAccepted();
         HttpRequest done = std::move(queue.front());
         queue.pop();
         retryAt = 0;
@@ -199,6 +247,9 @@ private:
     HttpBackend& backend;
     HttpFaults& faults;
     std::mt19937_64& rng;
+    std::map<std::string, uint64_t>& unconfirmed;
+    // Match ids of the attempt in flight that the server answered 2xx.
+    std::vector<std::string> acceptedIds;
     std::queue<HttpRequest> queue;
     HttpClientState state = HttpClientState::DISCONNECTED;
     bool wifiConnected = false;
@@ -220,6 +271,8 @@ struct ServerRow {
     uint64_t drawA = 0;
     uint64_t drawB = 0;
     int64_t occurredAtMs = 0;
+    // tie, scoring_disabled, unassigned_team, same_team or scoring, decided at insert.
+    std::string scoringStatus;
 };
 
 inline std::string formatUuid(const UUIDBytes& id) {
@@ -228,19 +281,45 @@ inline std::string formatUuid(const UUIDBytes& id) {
     return text;
 }
 
+/** The event-scoped server surface the harness seeds and the checker reads. */
+class EventServer {
+public:
+    /** Servers are owned by the world. */
+    virtual ~EventServer() = default;
+    /** Creates and activates a fresh event and turns scoring on. */
+    virtual bool openEvent(const std::string& name) = 0;
+    /** Adds a team to the event. */
+    virtual bool addTeam(const std::string& name, UUIDBytes& id) = 0;
+    /** Registers a player on @p team. */
+    virtual bool addPlayer(const std::string& name, const UUIDBytes& team, UUIDBytes& id) = 0;
+    /** Every accepted match of the event. */
+    virtual bool listMatches(std::vector<ServerRow>& rows) = 0;
+    /** Raw report count per match id (every retry and copy). */
+    virtual bool countReports(std::map<std::string, int>& counts) = 0;
+    /** Where FDN uploads go. */
+    virtual HttpBackend& deviceBackend() = 0;
+};
+
 // In-process model of alleycat-rs POST /quickdraw-matches (routes/quickdraw.rs
 // at a01a3fd): one active event, every entry kept as a raw report, entries
 // validated in the server's order, first accepted report wins (a duplicate skips
 // the reference check, as ON CONFLICT DO NOTHING does), 204 when all are accepted
-// and 200 with protobuf rejections otherwise.
-class FakeServer : public HttpBackend {
+// and 200 with protobuf rejections otherwise. Scoring is one open period from
+// scoringFromMs.
+class FakeServer : public EventServer, public HttpBackend {
 public:
     /** Player and team ids come from @p seed, so a run replays. */
     explicit FakeServer(uint64_t seed)
         : rng(seed) {}
 
+    /** The one event is always open. */
+    bool openEvent(const std::string& name) override {
+        (void)name;
+        return true;
+    }
+
     /** Adds a team with a fresh v4 id. */
-    bool addTeam(const std::string& name, UUIDBytes& id) {
+    bool addTeam(const std::string& name, UUIDBytes& id) override {
         (void)name;
         id = freshId();
         teams.insert(formatUuid(id));
@@ -248,7 +327,7 @@ public:
     }
 
     /** Registers a player with a fresh v4 id. */
-    bool addPlayer(const std::string& name, const UUIDBytes& team, UUIDBytes& id) {
+    bool addPlayer(const std::string& name, const UUIDBytes& team, UUIDBytes& id) override {
         (void)name;
         (void)team;
         id = freshId();
@@ -257,17 +336,20 @@ public:
     }
 
     /** Accepted rows. */
-    bool listMatches(std::vector<ServerRow>& out) {
+    bool listMatches(std::vector<ServerRow>& out) override {
         for (const std::pair<const std::string, ServerRow>& row : rows)
             out.push_back(row.second);
         return true;
     }
 
     /** Raw reports per id. */
-    bool countReports(std::map<std::string, int>& counts) {
+    bool countReports(std::map<std::string, int>& counts) override {
         counts = reports;
         return true;
     }
+
+    /** This object. */
+    HttpBackend& deviceBackend() override { return *this; }
 
     /** Handles POST /quickdraw-matches; anything else is a 404. */
     HttpResult perform(const std::string& method, const std::string& path,
@@ -296,6 +378,8 @@ public:
 
     // False answers 409 "No active event", as between events.
     bool eventActive = true;
+    // Where the event's one scoring period starts (PUT /scoring {"enabled":true}).
+    int64_t scoringFromMs = 0;
 
 private:
     using Code = alleycat_device_QuickdrawMatchErrorCode;
@@ -400,6 +484,11 @@ private:
         row.drawA = match.player_a_draw_time_ms;
         row.drawB = match.player_b_draw_time_ms;
         row.occurredAtMs = match.occurred_at_unix_ms;
+        row.scoringStatus = row.winner.empty()                         ? "tie"
+                            : row.occurredAtMs < scoringFromMs         ? "scoring_disabled"
+                              : row.teamA.empty() || row.teamB.empty() ? "unassigned_team"
+                                : row.teamA == row.teamB               ? "same_team"
+                                                                       : "scoring";
         rows[row.id] = row;
         return true;
     }
@@ -418,6 +507,243 @@ private:
     std::set<std::string> teams;
     std::map<std::string, ServerRow> rows;
     std::map<std::string, int> reports;
+};
+
+// Blocking HTTP/1.1 over a POSIX socket, loopback only: the harness must never
+// reach a server other than a local throwaway instance.
+class LoopbackHttp : public HttpBackend {
+public:
+    /** @p baseUrl like http://127.0.0.1:8000; any other host leaves this unusable. */
+    explicit LoopbackHttp(const std::string& baseUrl) {
+        const std::string scheme = "http://";
+        if (baseUrl.compare(0, scheme.size(), scheme) != 0) return;
+        const std::string rest = baseUrl.substr(scheme.size());
+        const size_t colon = rest.find(':');
+        const std::string host = rest.substr(0, colon);
+        if (host != "127.0.0.1" && host != "localhost") return;
+        port = colon == std::string::npos ? 80 : std::atoi(rest.c_str() + colon + 1);
+        usable = port > 0 && port < 65536;
+    }
+
+    /** False when the URL named anything but loopback. */
+    bool isUsable() const { return usable; }
+
+    /** One request on a fresh connection, Connection: close. */
+    HttpResult perform(const std::string& method, const std::string& path,
+                       const std::string& contentType, const std::string& body) override {
+        HttpResult out;
+        if (!usable) return out;
+        const int fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0) return out;
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_port = htons(static_cast<uint16_t>(port));
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        std::string request =
+        method + " " + path + " HTTP/1.1\r\nHost: 127.0.0.1\r\n" +
+        "Connection: close\r\nContent-Length: " + std::to_string(body.size()) + "\r\n";
+        if (!contentType.empty()) request += "Content-Type: " + contentType + "\r\n";
+        request += "\r\n" + body;
+        std::string response;
+        if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0 &&
+            sendAll(fd, request)) {
+            char chunk[4096];
+            ssize_t got = 0;
+            while ((got = recv(fd, chunk, sizeof(chunk), 0)) > 0)
+                response.append(chunk, static_cast<size_t>(got));
+        }
+        close(fd);
+        const size_t headerEnd = response.find("\r\n\r\n");
+        if (response.compare(0, 5, "HTTP/") != 0 || headerEnd == std::string::npos) return out;
+        out.transportOk = true;
+        out.status = std::atoi(response.c_str() + response.find(' ') + 1);
+        out.body = response.substr(headerEnd + 4);
+        std::string headers = response.substr(0, headerEnd);
+        for (char& c : headers)
+            c = static_cast<char>(std::tolower(c));
+        if (headers.find("transfer-encoding: chunked") != std::string::npos)
+            out.body = dechunk(out.body);
+        return out;
+    }
+
+private:
+    static bool sendAll(int fd, const std::string& data) {
+        size_t sent = 0;
+        while (sent < data.size()) {
+            const ssize_t n = send(fd, data.data() + sent, data.size() - sent, 0);
+            if (n <= 0) return false;
+            sent += static_cast<size_t>(n);
+        }
+        return true;
+    }
+
+    static std::string dechunk(const std::string& body) {
+        std::string out;
+        size_t at = 0;
+        while (at < body.size()) {
+            const size_t lineEnd = body.find("\r\n", at);
+            if (lineEnd == std::string::npos) break;
+            const size_t size = std::strtoul(body.c_str() + at, nullptr, 16);
+            if (size == 0) break;
+            out += body.substr(lineEnd + 2, size);
+            at = lineEnd + 2 + size + 2;
+        }
+        return out;
+    }
+
+    int port = 0;
+    bool usable = false;
+};
+
+/** RFC 3339 UTC ("2026-11-18T18:47:25.613429Z") to Unix milliseconds. */
+inline int64_t parseRfc3339Ms(const char* text) {
+    std::tm parts{};
+    int consumed = 0;
+    if (sscanf(text, "%d-%d-%dT%d:%d:%d%n", &parts.tm_year, &parts.tm_mon, &parts.tm_mday,
+               &parts.tm_hour, &parts.tm_min, &parts.tm_sec, &consumed) != 6) {
+        return -1;
+    }
+    parts.tm_year -= 1900;
+    parts.tm_mon -= 1;
+    int64_t ms = static_cast<int64_t>(timegm(&parts)) * 1000;
+    if (text[consumed] == '.') {
+        int scale = 100;
+        for (const char* p = text + consumed + 1; *p >= '0' && *p <= '9' && scale > 0; p++) {
+            ms += (*p - '0') * scale;
+            scale /= 10;
+        }
+    }
+    return ms;
+}
+
+// The lead's local alleycat-rs (origin/main a01a3fd) over its admin JSON routes:
+// a fresh event per seed so checks are event-scoped and no reset is needed.
+class RealServer : public EventServer {
+public:
+    // The server has one active event, and uploads and reads all go to it: two
+    // runs against it at once would steal each other's event. Runs on this host
+    // take turns on this lock for the whole run.
+    static constexpr const char* RUN_LOCK_PATH = "/tmp/soak-real-server.lock";
+
+    /** Talks to @p baseUrl, loopback only; waits for any other real-server run to end. */
+    explicit RealServer(const std::string& baseUrl)
+        : http(baseUrl) {
+        if (!http.isUsable()) return;
+        lockFd = open(RUN_LOCK_PATH, O_RDWR | O_CREAT, 0666);
+        if (lockFd >= 0 && flock(lockFd, LOCK_EX | LOCK_NB) != 0) {
+            fprintf(stderr, "soak: waiting for another run against the real server\n");
+            flock(lockFd, LOCK_EX);
+        }
+    }
+
+    /** Lets the next real-server run start. */
+    ~RealServer() override {
+        if (lockFd >= 0) close(lockFd);
+    }
+
+    /** Not copyable: owns the run lock. */
+    RealServer(const RealServer&) = delete;
+    /** Not assignable. */
+    RealServer& operator=(const RealServer&) = delete;
+
+    /** False when the URL is not loopback. */
+    bool isUsable() const { return http.isUsable(); }
+
+    /** POST /events, PUT /events/{id}/active, PUT /scoring. */
+    bool openEvent(const std::string& name) override {
+        JsonDocument doc;
+        if (!call("POST", "/events", "{\"name\":\"" + name + "\"}", &doc)) return false;
+        eventId = doc["id"].as<std::string>();
+        return call("PUT", "/events/" + eventId + "/active", "", nullptr) &&
+               call("PUT", "/scoring", "{\"enabled\":true}", nullptr);
+    }
+
+    /** POST /teams. */
+    bool addTeam(const std::string& name, UUIDBytes& id) override {
+        JsonDocument doc;
+        return call("POST", "/teams", "{\"name\":\"" + name + "\"}", &doc) &&
+               UUIDBytes::parse(doc["id"].as<const char*>(), id);
+    }
+
+    /** POST /players, then PATCH its team. */
+    bool addPlayer(const std::string& name, const UUIDBytes& team, UUIDBytes& id) override {
+        JsonDocument doc;
+        if (!call("POST", "/players", "{\"name\":\"" + name + "\"}", &doc) ||
+            !UUIDBytes::parse(doc["id"].as<const char*>(), id)) {
+            return false;
+        }
+        return call("PATCH", "/players/" + formatUuid(id),
+                    "{\"team_id\":\"" + formatUuid(team) + "\"}", nullptr);
+    }
+
+    /** GET /quickdraw-matches, every page. */
+    bool listMatches(std::vector<ServerRow>& rows) override {
+        return eachPage("/quickdraw-matches", "matches", [this, &rows](JsonObject match) {
+            // Reads follow the active event; another event here means it was switched.
+            if (match["event_id"].as<std::string>() != eventId) {
+                fprintf(stderr, "soak: the active event moved off %s mid-run\n", eventId.c_str());
+                return false;
+            }
+            ServerRow row;
+            row.id = match["id"].as<std::string>();
+            row.playerA = match["player_a_id"].as<std::string>();
+            row.playerB = match["player_b_id"].as<std::string>();
+            row.teamA = match["player_a_team_id"] | "";
+            row.teamB = match["player_b_team_id"] | "";
+            row.winner = match["winner_player_id"] | "";
+            row.drawA = match["player_a_draw_time_ms"].as<uint64_t>();
+            row.drawB = match["player_b_draw_time_ms"].as<uint64_t>();
+            row.occurredAtMs = parseRfc3339Ms(match["occurred_at"] | "");
+            row.scoringStatus = match["scoring_status"] | "";
+            rows.push_back(row);
+            return true;
+        });
+    }
+
+    /** GET /quickdraw-matches/reports, every page. */
+    bool countReports(std::map<std::string, int>& counts) override {
+        return eachPage("/quickdraw-matches/reports", "reports", [&counts](JsonObject report) {
+            counts[report["match_id"] | ""]++;
+            return true;
+        });
+    }
+
+    /** The loopback client. */
+    HttpBackend& deviceBackend() override { return http; }
+
+private:
+    // Admin routes answer 200, 201 or 204 by route; any 2xx is success.
+    bool call(const std::string& method, const std::string& path, const std::string& body,
+              JsonDocument* doc) {
+        const HttpResult result =
+        http.perform(method, path, body.empty() ? "" : "application/json", body);
+        if (!result.transportOk || result.status / 100 != 2) {
+            fprintf(stderr, "soak: %s %s -> %d %s\n", method.c_str(), path.c_str(), result.status,
+                    result.body.c_str());
+            return false;
+        }
+        return doc == nullptr || !deserializeJson(*doc, result.body);
+    }
+
+    // Hands each item under @p key of every 100-item page of @p path to @p each,
+    // until one is refused.
+    bool eachPage(const std::string& path, const char* key,
+                  const std::function<bool(JsonObject)>& each) {
+        for (int page = 1;; page++) {
+            JsonDocument doc;
+            if (!call("GET", path + "?per_page=100&page=" + std::to_string(page), "", &doc))
+                return false;
+            JsonArray items = doc[key].as<JsonArray>();
+            for (JsonObject item : items) {
+                if (!each(item)) return false;
+            }
+            if (items.size() < 100) return true;
+        }
+    }
+
+    LoopbackHttp http;
+    int lockFd = -1;
+    std::string eventId;
 };
 
 }  // namespace soak

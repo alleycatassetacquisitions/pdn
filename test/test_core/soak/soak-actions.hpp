@@ -12,7 +12,8 @@ namespace soak {
 
 // What a run does, as intents with a virtual start time. The world decides the
 // ticks (it waits for the PDNs to be idle and presses relative to the draw), so
-// dropping actions from a list still leaves a runnable list.
+// dropping actions from a list still leaves a runnable list: that is what lets a
+// failing seed shrink.
 enum class ActionType {
     DUEL,
     RING,
@@ -116,6 +117,10 @@ struct ScheduleConfig {
     // A window where every FDN record ack is lost on the air: the PDNs resend
     // records an FDN already holds.
     double ackLossPerHour = 10;
+    // Ring-fill mode when nonzero: every FDN is out of radio range from the start for
+    // this long and only plain duels are drawn meanwhile, so each PDN plays more than
+    // its 32-record ring holds with no FDN to collect it (the full ring refuses).
+    uint64_t fdnBlackoutMs = 0;
 };
 
 // Seeded generator of an action list. It keeps a rough busy-until per device so
@@ -286,12 +291,19 @@ private:
 
     std::vector<Action> run() {
         const int attempts = std::max(1, pdns / 12);
+        for (int fdn = 0; fdn < fdns && config.fdnBlackoutMs > 0; fdn++) {
+            Action off;
+            off.type = ActionType::FDN_OFF;
+            off.b = {fdn};
+            off.params = {{"dur", static_cast<int64_t>(config.fdnBlackoutMs)}, {"mode", 1}};
+            actions.push_back(off);
+        }
         for (uint64_t t = 3000; t < config.horizonMs; t += STEP_MS) {
             addFaults(t);
             for (int i = 0; i < attempts; i++) {
                 if (!chance(0.35)) continue;
                 const int64_t kind = uniform(0, 99);
-                if (kind < 58) {
+                if (t < config.fdnBlackoutMs || kind < 58) {
                     addDuel(t, false);
                 } else if (kind < 76) {
                     addDuel(t, true);
