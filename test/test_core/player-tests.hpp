@@ -181,6 +181,13 @@ inline void playerProfileCarriesRoleAndIdentity(Player* player) {
 
     player->setIsHunter(false);
     EXPECT_EQ(player->toProfile().gameRole, 0);
+
+    // An FDN queues for registration exactly the PDNs that report no applied profile.
+    EXPECT_EQ(player->toProfile().registered, 0);
+    player->applyRegistrationProfile(UUIDBytes{}, "Demo", Team(), {});
+    EXPECT_EQ(player->toProfile().registered, 1) << "the demo profile counts as applied";
+    player->clearRegistrationProfile();
+    EXPECT_EQ(player->toProfile().registered, 0);
 }
 
 // Test ids must differ per PDN, stay stable per MAC and never look like a v4 server UUID.

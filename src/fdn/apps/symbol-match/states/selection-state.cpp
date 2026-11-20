@@ -10,20 +10,25 @@ namespace {
 constexpr uint8_t IDLE_ANIMATION_SPEED = 20;
 }
 
-Selection::Selection(SymbolManager* symbolManager,
-                     RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                     SymbolWirelessManager* symbolWirelessManager)
+Selection::Selection(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
+                     SymbolWirelessManager* symbolWirelessManager,
+                     FdnProvisioningManager* fdnProvisioningManager)
     : FDNConnectState(remoteDeviceCoordinator, SELECTION)
     , symbolManager(symbolManager)
-    , symbolWirelessManager(symbolWirelessManager) {}
+    , symbolWirelessManager(symbolWirelessManager)
+    , fdnProvisioningManager(fdnProvisioningManager) {}
 
 Selection::~Selection() {
     symbolManager = nullptr;
     symbolWirelessManager = nullptr;
+    fdnProvisioningManager = nullptr;
 }
 
 void Selection::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
+    fdnProvisioningManager->setOnViewChanged([this](const RegistrationView& view) {
+        transitionToRegistrationState = view.screen != RegistrationScreen::NONE;
+    });
     symbolManager->getRefreshTimer()->invalidate();
     symbolManager->refreshSymbols();
     bufferTimer.setTimer(bufferInterval);
@@ -56,7 +61,9 @@ void Selection::onStateLoop(FDN* fdn) {
 
 void Selection::onStateDismounted(FDN* fdn) {
     bufferTimer.invalidate();
+    fdnProvisioningManager->setOnViewChanged(nullptr);
     transitionToIdleState = false;
+    transitionToRegistrationState = false;
     // SymbolIdle shows only its per-jack match lights; a running animation would repaint them.
     fdn->getLightManager()->stopAnimation();
     fdn->getDisplay()->invalidateScreen();
@@ -67,3 +74,5 @@ void Selection::onStateDismounted(FDN* fdn) {
 bool Selection::transitionToIdle() {
     return transitionToIdleState;
 }
+
+bool Selection::transitionToRegistration() { return transitionToRegistrationState; }

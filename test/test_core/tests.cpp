@@ -42,6 +42,7 @@
 #include "text-lines-tests.hpp"
 #include "hmac-sha256-tests.hpp"
 #include "rdc-application-frame-tests.hpp"
+#include "fdn-registration-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -2315,6 +2316,69 @@ TEST(ServerTrust, isHttpsAddressAcceptsOnlyTheHttpsScheme) {
     isHttpsAddressAcceptsOnlyTheHttpsScheme();
 }
 TEST(ServerTrust, httpStatusFailureRefusesRedirects) { httpStatusFailureRefusesRedirects(); }
+
+// ============================================
+// FDN REGISTRATION BY BAND TAP
+// ============================================
+
+TEST_F(FdnRegistrationTests, turnIsOnlyWithTheFirstPdn) {
+    fdnRegistrationTurnIsOnlyWithTheFirstPdn(this);
+}
+TEST_F(FdnRegistrationTests, tapSendsKeyThenProfileToTheTurnsPdn) {
+    fdnRegistrationTapSendsKeyThenProfileToTheTurnsPdn(this);
+}
+TEST_F(FdnRegistrationTests, welcomesOnlyOnceThePdnConfirms) {
+    fdnRegistrationWelcomesOnlyOnceThePdnConfirms(this);
+}
+TEST_F(FdnRegistrationTests, countsOnlyTheConfirmOfThePdnOnItsJack) {
+    fdnRegistrationCountsOnlyTheConfirmOfThePdnOnItsJack(this);
+}
+TEST_F(FdnRegistrationTests, showsPdnLeftWhenUnpluggedBeforeConfirming) {
+    fdnRegistrationShowsPdnLeftWhenUnpluggedBeforeConfirming(this);
+}
+TEST_F(FdnRegistrationTests, showsPdnLeftWhenItsJackChangesPeer) {
+    fdnRegistrationShowsPdnLeftWhenItsJackChangesPeer(this);
+}
+TEST_F(FdnRegistrationTests, givesUpOnAConfirmationThatNeverComes) {
+    fdnRegistrationGivesUpOnAConfirmationThatNeverComes(this);
+}
+TEST_F(FdnRegistrationTests, withoutKeySendsNoKeyAndNoProfile) {
+    fdnRegistrationWithoutKeySendsNoKeyAndNoProfile(this);
+}
+TEST_F(FdnRegistrationTests, sendsNothingToAPdnThatLeftDuringLookup) {
+    fdnRegistrationSendsNothingToAPdnThatLeftDuringLookup(this);
+}
+TEST_F(FdnRegistrationTests, sendsNoProfileToAPdnSwappedAsItsKeyIsWritten) {
+    fdnRegistrationSendsNoProfileToAPdnSwappedAsItsKeyIsWritten(this);
+}
+TEST_F(FdnRegistrationTests, ignoresTapsDuringTheResultHold) {
+    fdnRegistrationIgnoresTapsDuringTheResultHold(this);
+}
+TEST_F(FdnRegistrationTests, requeuesAFailedPdnAtTheBack) {
+    fdnRegistrationRequeuesAFailedPdnAtTheBack(this);
+}
+TEST_F(FdnRegistrationTests, turnNeverOpensWithoutAReader) {
+    fdnRegistrationTurnNeverOpensWithoutAReader(this);
+}
+TEST_F(FdnRegistrationTests, resendsTheTurnAfterAnAbandonedContext) {
+    fdnRegistrationResendsTheTurnAfterAnAbandonedContext(this);
+}
+TEST_F(FdnRegistrationTests, passesAnUntappedTurnOn) {
+    fdnRegistrationPassesAnUntappedTurnOn(this);
+}
+TEST_F(FdnRegistrationTests, lookupWithoutAnswerTimesOut) {
+    fdnRegistrationLookupWithoutAnswerTimesOut(this);
+}
+TEST_F(FdnRegistrationTests, opensNoTurnForAMacOnBothJacks) {
+    fdnRegistrationOpensNoTurnForAMacOnBothJacks(this);
+}
+TEST_F(FdnRegistrationTests, closesTheTurnBeforeTheLookupTakesTheRadio) {
+    fdnRegistrationClosesTheTurnBeforeTheLookupTakesTheRadio(this);
+}
+TEST(FdnRegistration, screenText) { fdnRegistrationScreenText(); }
+TEST(FdnRegistration, provisionCodecEncodesTheRegistrationFields) {
+    playerProvisionCodecEncodesTheRegistrationFields();
+}
 
 // ============================================
 // MAIN
