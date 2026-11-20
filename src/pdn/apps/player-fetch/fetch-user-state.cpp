@@ -22,7 +22,7 @@ void FetchUserState::onStateMounted(PDN* pdn) {
     transitionToWelcomeState = false;
     transitionToAwaitBandState = false;
     showLoadingGlyphs(pdn);
-    fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
+    fetchTimer.setTimer(REGISTRATION_ATTEMPT_MS);
     // The piece that led here, or the whole pair, may already be in. Applying a
     // profile resends the context, so it waits for the loop, out of the callback.
     bandRegistration->setOnPieceTaken([this]() { pieceTaken = true; });

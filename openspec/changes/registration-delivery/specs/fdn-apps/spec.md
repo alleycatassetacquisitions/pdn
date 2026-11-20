@@ -51,7 +51,7 @@ A lookup's result SHALL stay on the registration screen for `3000 ms` from when 
 
 ### Requirement: Registration waits for the PDN's confirmation
 
-After writing the key and sending the profile, the FDN SHALL show `"SENT"` / `"WAITING"`, and SHALL show the registered result only when a context arrives from the MAC Connected on that jack reporting the profile applied. If that PDN leaves or the jack's peer changes first, it SHALL show `"PDN LEFT"`; if `12,000 ms` pass first, `"UNABLE TO"` / `"CONFIRM"`. Contexts from another jack or MAC SHALL NOT count.
+After writing the key and sending the profile, the FDN SHALL show `"SENT"` / `"WAITING"`, and SHALL show the registered result only when a context arrives from the MAC Connected on that jack reporting the profile applied. If that PDN leaves or the jack's peer changes first, it SHALL show `"PDN LEFT"`; if `12,000 ms` (the PDN's `10,000 ms` attempt plus `2,000 ms`) pass first, `"UNABLE TO"` / `"CONFIRM"`, sending no failure. Contexts from another jack or MAC SHALL NOT count.
 
 #### Scenario: PDN confirms its profile
 - **WHEN** the FDN has written the key and sent the profile to the PDN on the primary jack, and that PDN's next context reports its profile applied
@@ -63,7 +63,7 @@ After writing the key and sending the profile, the FDN SHALL show `"SENT"` / `"W
 
 #### Scenario: No confirmation in time
 - **WHEN** `12,000 ms` pass after the profile was sent with no context from that PDN reporting it applied
-- **THEN** the FDN displays `"UNABLE TO"` / `"CONFIRM"`, sends the PDN still cabled the lookup failure, and never displays `"WELCOME"`
+- **THEN** the FDN displays `"UNABLE TO"` / `"CONFIRM"`, sends the PDN no lookup failure (its own attempt has already ended), and never displays `"WELCOME"`
 
 #### Scenario: Another PDN's context does not confirm
 - **WHEN** the PDN on the other jack, or a MAC on no jack, reports an applied profile while the FDN waits for the PDN on the primary jack

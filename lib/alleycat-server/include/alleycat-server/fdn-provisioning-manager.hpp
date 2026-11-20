@@ -129,9 +129,9 @@ public:
     static constexpr unsigned long TURN_CLOSE_MS = 500;
     /**
      * How long after its profile went out the FDN waits for the PDN's context
-     * to confirm it is applied: the PDN's 10 s attempt plus a context round trip.
+     * to confirm it is applied: the PDN's attempt plus a context round trip.
      */
-    static constexpr unsigned long CONFIRM_TIMEOUT_MS = 12000;
+    static constexpr unsigned long CONFIRM_TIMEOUT_MS = REGISTRATION_ATTEMPT_MS + 2000;
 
     /**
      * Listens to @p remoteDeviceCoordinator's jacks and contexts, becomes the
@@ -475,9 +475,11 @@ private:
         heldResult.screen = RegistrationScreen::RESULT;
         heldResult.jack = lookupPdn.jack;
         heldResult.outcome = outcome;
+        // No failure goes out after NOT_CONFIRMED: the PDN's own shorter attempt
+        // has already failed it, and a late one could land in its next attempt.
         if (outcome == RegistrationOutcome::REGISTERED) {
             memcpy(heldResult.playerName, pendingProfile.playerName, sizeof(heldResult.playerName));
-        } else if (isStillCabled(lookupPdn)) {
+        } else if (outcome != RegistrationOutcome::NOT_CONFIRMED && isStillCabled(lookupPdn)) {
             PlayerProvisionPacket failed{};
             failed.status = static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED);
             replyChannel.sendReliable(lookupPdn.mac.data(), failed);

@@ -492,7 +492,7 @@ inline void bandRegistrationProfileOnlyFromAConnectedFdn(BandRegistrationTests* 
     suite->step();
     EXPECT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER)
     << "another FDN's profile joined the attempt";
-    suite->advance(USER_DATA_FETCH_TIMEOUT_MS + 100);
+    suite->advance(REGISTRATION_ATTEMPT_MS + 100);
     EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "a stranger's profile was held";
 }
 
@@ -504,7 +504,7 @@ inline void bandRegistrationOnePieceTimesOutAndIsWiped(BandRegistrationTests* su
     suite->step();
     ASSERT_EQ(suite->pdnState(), PlayerFetchStateId::FETCH_USER);
 
-    suite->advance(USER_DATA_FETCH_TIMEOUT_MS + 100);
+    suite->advance(REGISTRATION_ATTEMPT_MS + 100);
     EXPECT_TRUE(suite->shows("Unable to"));
     EXPECT_FALSE(suite->bandRegistration->hasPieces()) << "the key outlived the failure page";
     suite->sendProfile(suite->fdnMac, "Ada");
@@ -525,7 +525,7 @@ inline void bandRegistrationOnePieceTimesOutAndIsWiped(BandRegistrationTests* su
     EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "one tap's profile met another's key";
 
     // After that attempt times out, a key from another FDN is a first piece.
-    suite->advance(USER_DATA_FETCH_TIMEOUT_MS + FETCH_FAILURE_PAGE_TIMEOUT_MS + 200);
+    suite->advance(REGISTRATION_ATTEMPT_MS + FETCH_FAILURE_PAGE_TIMEOUT_MS + 200);
     ASSERT_EQ(suite->pdnState(), PlayerFetchStateId::AWAIT_BAND);
     suite->cableForgedPeer(OTHER_FDN_MAC, DeviceType::FDN);
     BandRegistrationTests::sendKey(suite->pdnIn, OTHER_FDN_MAC, 0x56);
