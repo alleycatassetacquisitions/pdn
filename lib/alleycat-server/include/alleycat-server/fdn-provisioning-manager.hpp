@@ -31,16 +31,20 @@ enum class RegistrationScreen : uint8_t {
     NO_READER,
     // A tap's lookup for the PDN on `jack` runs.
     LOOKING_UP,
+    // Key and profile went to the PDN on `jack`; its confirmation is awaited.
+    CONFIRMING,
     // How the last lookup for `jack` ended.
     RESULT,
 };
 
 /** How a registration attempt ended. */
 enum class RegistrationOutcome : uint8_t {
-    // The record key was written to the PDN's jack and its profile sent.
+    // The PDN's context confirmed that the profile it was sent is applied.
     REGISTERED,
-    // A key was issued, but the PDN left before its key and profile went out.
+    // A key was issued, but the PDN left before it confirmed its profile.
     PDN_LEFT,
+    // Key and profile went out, but the PDN did not confirm in time.
+    NOT_CONFIRMED,
     KEY_NOT_ISSUED,
     NO_PLAYER,
     SERVER_NOT_TRUSTED,
@@ -80,11 +84,13 @@ inline RegistrationScreenLines getRegistrationScreenLines(const RegistrationView
         case RegistrationScreen::TAP_BAND: return {"TAP BAND", jackLabel};
         case RegistrationScreen::NO_READER: return {"NO READER", jackLabel};
         case RegistrationScreen::LOOKING_UP: return {"LOOKING", "UP"};
+        case RegistrationScreen::CONFIRMING: return {"SENT", "WAITING"};
         case RegistrationScreen::RESULT: break;
     }
     switch (view.outcome) {
         case RegistrationOutcome::REGISTERED: return {"WELCOME", view.playerName};
         case RegistrationOutcome::PDN_LEFT: return {"PDN LEFT", jackLabel};
+        case RegistrationOutcome::NOT_CONFIRMED: return {"UNABLE TO", "CONFIRM"};
         case RegistrationOutcome::KEY_NOT_ISSUED: return {"UNABLE TO", "ISSUE KEY"};
         case RegistrationOutcome::NO_PLAYER: return {"SEE DESK", jackLabel};
         case RegistrationOutcome::SERVER_NOT_TRUSTED: return {"SERVER", "NOT TRUSTED"};
@@ -96,8 +102,8 @@ inline RegistrationScreenLines getRegistrationScreenLines(const RegistrationView
 /**
  * FDN side of band registration: a queue of cabled unregistered PDNs, the
  * turn in every context the FDN sends, and tap → lookup → key frame, then
- * profile. Lives as long as the FDN: a pending lookup's HTTP callback captures
- * this manager.
+ * profile, then the PDN's confirmation. Lives as long as the FDN: a pending
+ * lookup's HTTP callback captures this manager.
  */
 class FdnProvisioningManager {
 public:
@@ -121,6 +127,11 @@ public:
      * to reach the tapped PDN before Wi-Fi takes the radio from ESP-NOW.
      */
     static constexpr unsigned long TURN_CLOSE_MS = 500;
+    /**
+     * How long after its profile went out the FDN waits for the PDN's context
+     * to confirm it is applied: the PDN's 10 s attempt plus a context round trip.
+     */
+    static constexpr unsigned long CONFIRM_TIMEOUT_MS = 12000;
 
     /**
      * Listens to @p remoteDeviceCoordinator's jacks and contexts, becomes the
@@ -142,9 +153,9 @@ public:
         });
         remoteDeviceCoordinator->setRegistrationTurnProvider(
         [this](const uint8_t* peerMac) { return isTurnOpenFor(peerMac); });
-        remoteDeviceCoordinator->setChainChangeCallback([this]() { updateQueue(); });
+        remoteDeviceCoordinator->setChainChangeCallback([this]() { onPeersChanged(); });
         remoteDeviceCoordinator->setOnContextReceived(
-        [this](SerialIdentifier, DeviceType, const uint8_t*, size_t) { updateQueue(); });
+        [this](SerialIdentifier, DeviceType, const uint8_t*, size_t) { onPeersChanged(); });
         if (bandReader != nullptr) {
             bandReader->setTapHandler([this](const BandUid& uid) { onBandTap(uid); });
         }
@@ -166,9 +177,9 @@ public:
     }
 
     /**
-     * Runs the reply retries, the lookup deadline, the result hold and the
-     * untapped-turn rotation, pushes turn changes, starts a tapped lookup once
-     * its turn is closed, and pushes view changes. Call every tick.
+     * Runs the reply retries, the lookup and confirmation deadlines, the result
+     * hold and the untapped-turn rotation, pushes turn changes, starts a tapped
+     * lookup once its turn is closed, and pushes view changes. Call every tick.
      */
     void sync() {
         resender.sync();
@@ -177,6 +188,9 @@ public:
             LOG_W("FDN_PROVISION", "Band lookup timed out");
             giveRadioBack();
             endLookup(RegistrationOutcome::LOOKUP_FAILED);
+        } else if (phase == LookupPhase::AWAITING_CONFIRM && phaseTimer.expired()) {
+            LOG_W("FDN_PROVISION", "PDN did not confirm its profile in time");
+            endLookup(RegistrationOutcome::NOT_CONFIRMED);
         } else if (phase == LookupPhase::HOLDING_RESULT && phaseTimer.expired()) {
             phase = LookupPhase::IDLE;
             phaseTimer.invalidate();
@@ -219,6 +233,8 @@ private:
         AWAITING_SERVER,
         // The record key frame waits for its outcome on the lookup's jack.
         AWAITING_JACK,
+        // The profile went out; the PDN's context saying it is applied is awaited.
+        AWAITING_CONFIRM,
         // The lookup ended; its result shows and no turn is open.
         HOLDING_RESULT,
     };
@@ -263,6 +279,23 @@ private:
 
     bool isLookingUp() const {
         return phase != LookupPhase::IDLE && phase != LookupPhase::HOLDING_RESULT;
+    }
+
+    // Every jack and context event. The PDN confirms by the context it resends
+    // once its profile is applied: only its MAC on its jack counts, and its
+    // leaving the jack ends the wait.
+    void onPeersChanged() {
+        if (phase == LookupPhase::AWAITING_CONFIRM) {
+            PlayerProfile profile{};
+            if (!isStillCabled(lookupPdn)) {
+                LOG_E("FDN_PROVISION", "PDN left before it confirmed its profile");
+                endLookup(RegistrationOutcome::PDN_LEFT);
+            } else if (remoteDeviceCoordinator->getPeerPlayerProfile(lookupPdn.jack, profile) &&
+                       profile.registered != 0) {
+                endLookup(RegistrationOutcome::REGISTERED);
+            }
+        }
+        updateQueue();
     }
 
     // Drops PDNs that left or registered, then queues newly cabled unregistered
@@ -327,7 +360,8 @@ private:
     RegistrationView getView() const {
         RegistrationView view;
         if (isLookingUp()) {
-            view.screen = RegistrationScreen::LOOKING_UP;
+            view.screen = phase == LookupPhase::AWAITING_CONFIRM ? RegistrationScreen::CONFIRMING
+                                                                 : RegistrationScreen::LOOKING_UP;
             view.jack = lookupPdn.jack;
         } else if (phase == LookupPhase::HOLDING_RESULT) {
             view = heldResult;
@@ -426,7 +460,8 @@ private:
         // A frame the link went down on mid-write is reported written, to a PDN that is gone.
         if (outcome == ApplicationFrameOutcome::WRITTEN && isStillCabled(lookupPdn)) {
             replyChannel.sendReliable(lookupPdn.mac.data(), pendingProfile);
-            endLookup(RegistrationOutcome::REGISTERED);
+            phase = LookupPhase::AWAITING_CONFIRM;
+            phaseTimer.setTimer(CONFIRM_TIMEOUT_MS);
             return;
         }
         LOG_E("FDN_PROVISION", "PDN left before its record key was written");
