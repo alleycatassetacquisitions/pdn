@@ -1711,6 +1711,9 @@ TEST_F(RDCHelloTests, joinAnnouncesToHeadAndGatesConfirmed) {
 TEST_F(RDCHelloTests, headChangeDropsConfirmedAndReannounces) {
     rdcHeadChangeDropsConfirmedAndReannounces(this);
 }
+TEST_F(RDCHelloTests, headChangeStopsTheAnnounceToTheOldHead) {
+    rdcHeadChangeStopsTheAnnounceToTheOldHead(this);
+}
 TEST_F(RDCHelloTests, headBuildsAndPrunesRoster) {
     rdcHeadBuildsAndPrunesRoster(this);
 }
@@ -1792,6 +1795,9 @@ TEST_F(RDCHelloTests, newDownstreamLeavesReportPending) {
 }
 TEST_F(RDCHelloTests, pendingReportVoidedByBecomingHead) {
     rdcPendingReportVoidedByBecomingHead(this);
+}
+TEST_F(RDCHelloTests, ringClosureVoidsThePendingReport) {
+    rdcRingClosureVoidsThePendingReport(this);
 }
 TEST_F(RDCHelloTests, reportFromHeldHeadNotForwardedBack) {
     rdcReportFromHeldHeadNotForwardedBack(this);
@@ -1893,7 +1899,13 @@ TEST_F(RDCHelloTests, contextOfAnotherKindDoesNotRetypeAConnectedPeer) {
 TEST_F(RDCHelloTests, fdnOnTheOutputJackEndsRelayedRingMembership) {
     rdcFdnOnTheOutputJackEndsRelayedRingMembership(this);
 }
+TEST_F(RDCHelloTests, fdnOnOneJackLetsAPdnConnectOnTheOther) {
+    rdcFdnOnOneJackLetsAPdnConnectOnTheOther(this);
+}
 TEST(RDCHelloStandalone, fdnNeverAdoptsItsPdnsChainHead) { rdcFdnNeverAdoptsItsPdnsChainHead(); }
+TEST(RDCHelloStandalone, fdnContextCarriesItsUtcClockOnlyOnceSet) {
+    rdcFdnContextCarriesItsUtcClockOnlyOnceSet();
+}
 
 // ============================================
 // POSSE MANAGER TESTS

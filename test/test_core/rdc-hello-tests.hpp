@@ -1492,10 +1492,11 @@ inline void rdcHelloOneWayCableTimesOutInsteadOfGhostChild() {
 // Head roster management (#158)
 // ============================================
 
-// Records every send of one PktType: count, last destination, last payload.
+// Records every send of one PktType: count, every destination, last payload.
 struct RosterSendCapture {
     int count = 0;
     std::array<uint8_t, 6> lastDst{};
+    std::vector<std::array<uint8_t, 6>> destinations;
     std::vector<uint8_t> lastPayload;
 };
 
@@ -1506,6 +1507,7 @@ inline void captureSends(RDCHelloTests* suite, PktType type, RosterSendCapture& 
                 [&capture](const uint8_t* dst, PktType, const uint8_t* data, size_t len) {
                     capture.count++;
                     memcpy(capture.lastDst.data(), dst, 6);
+                    capture.destinations.push_back(capture.lastDst);
                     capture.lastPayload.assign(data, data + len);
                 }),
             Return(1)));
@@ -1627,6 +1629,36 @@ inline void rdcHeadChangeDropsConfirmedAndReannounces(RDCHelloTests* suite) {
     suite->rdc.emitHello();
     EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).flags & HELLO_FLAG_CONFIRMED,
               HELLO_FLAG_CONFIRMED);
+}
+
+// An announce the old head never acknowledged is addressed to a device that no
+// longer heads this one: a retry landing there while it still heads a chain of
+// its own would list this device in the wrong roster.
+inline void rdcHeadChangeStopsTheAnnounceToTheOldHead(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t oldHead[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t newHead[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
+    RosterSendCapture announce;
+    captureSends(suite, PktType::kConnectionAnnounce, announce);
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, oldHead));
+    ASSERT_EQ(announce.count, 1);
+    ASSERT_EQ(0, memcmp(announce.lastDst.data(), oldHead, 6));
+
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, newHead));
+    ASSERT_EQ(0, memcmp(announce.lastDst.data(), newHead, 6));
+    announce.destinations.clear();
+    for (int i = 0; i < 10; ++i) {
+        suite->fakeClock->advance(50);
+        suite->deliverHello(suite->inJack, chainHelloFrame(upstream, newHead));
+        suite->rdc.sync(&suite->device);
+    }
+
+    ASSERT_FALSE(announce.destinations.empty()) << "the announce to the new head stopped retrying";
+    for (const std::array<uint8_t, 6>& destination : announce.destinations) {
+        EXPECT_NE(0, memcmp(destination.data(), oldHead, 6))
+        << "the announce to the old head kept retrying";
+    }
 }
 
 // Head side: announces build the roster (member -> upstream), duplicates are
@@ -2242,10 +2274,49 @@ inline void rdcPendingReportVoidedByBecomingHead(RDCHelloTests* suite) {
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::STANDALONE);
     const int baseline = report.count;
 
-    // Adopt a fresh head h2 via a new upstream: the voided report must not chase it.
-    suite->deliverHello(suite->inJack, chainHelloFrame(upstream2, h2));
+    // Adopt a fresh head h2 via a new upstream that reaches Connected: the voided
+    // report must not chase it.
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK, chainHelloFrame(upstream2, h2));
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    ASSERT_EQ(0, memcmp(suite->rdc.getHeadMac(), h2, 6));
     EXPECT_EQ(report.count, baseline);
     EXPECT_NE(0, memcmp(report.lastDst.data(), h2, 6));
+}
+
+// Closing the ring makes this device its own head, which voids a report still
+// owed to the head it held while the ring formed. When the ring then yields to
+// a lower head, that head must not be sent the stale report, or it prunes a
+// member that may since sit live in its roster.
+inline void rdcRingClosureVoidsThePendingReport(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t formingHead[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    // Below this device's MAC, so the latched ring stands down for it at once.
+    const uint8_t lowerHead[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    RosterSendCapture report;
+    captureSends(suite, PktType::kDisconnectReport, report);
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, formingHead));
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xD1));
+
+    // The downstream dies: a report to the forming head, never acknowledged.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, formingHead));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(report.count, 1);
+
+    // A different downstream closes the ring: the dead one returning would retract
+    // the report by itself, so here only the ring closing can void it. This
+    // device's own MAC then returns on INPUT.
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xD2));
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, suite->localMac));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+    const int baseline = report.count;
+
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, lowerHead));
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    ASSERT_EQ(0, memcmp(suite->rdc.getHeadMac(), lowerHead, 6));
+    EXPECT_EQ(report.count, baseline) << "the report the ring voided chased the next head";
 }
 
 // During a head transient two mutually-stale non-authorities can each hold the
@@ -2697,50 +2768,120 @@ inline void rdcFdnOnTheOutputJackEndsRelayedRingMembership(RDCHelloTests* suite)
     << "a ring cannot run through an FDN, yet this PDN still relays the upstream's closure";
 }
 
-inline void rdcFdnNeverAdoptsItsPdnsChainHead() {
-    class MockFdnDevice : public MockDevice {
+// A PDN can have an FDN on one jack and a PDN on the other. The kind check on an
+// arriving context concerns only the jack whose peer sent it, so the FDN must not
+// turn the PDN neighbour's context away and leave that jack unconnected.
+inline void rdcFdnOnOneJackLetsAPdnConnectOnTheOther(RDCHelloTests* suite) {
+    const uint8_t fdn[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    connectFdnOnOutput(suite, fdn);
+
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, nullptr));
+    suite->rdc.sync(&suite->device);
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    suite->transport()->deliverIncoming(PktType::kPdnConnectionContext, upstream, ctx.data(),
+                                        ctx.size());
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED)
+    << "the FDN on the output jack turned away the upstream PDN's context";
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+}
+
+// An FDN's coordinator with a PDN-facing INPUT jack, recording the utcUnixMs of
+// every FdnConnectionContext it puts on the radio.
+struct FdnNode {
+    class FdnDevice : public MockDevice {
     public:
         /** @return DeviceType::FDN, so the coordinator under test runs as an FDN. */
         DeviceType getDeviceType() override { return DeviceType::FDN; }
     };
+
+    /** Wires the FDN's coordinator to its INPUT jack and records its context sends. */
+    FdnNode() {
+        wireRadioDefaults(device, mac);
+        ON_CALL(*device.mockPeerComms, sendData(_, PktType::kFdnConnectionContext, _, _))
+        .WillByDefault([this](const uint8_t*, PktType, const uint8_t* data, size_t len) {
+            FdnConnectionContext ctx{};
+            memcpy(&ctx, data, len < sizeof(ctx) ? len : sizeof(ctx));
+            sentUtc.push_back(ctx.fdn.utcUnixMs);
+            return 1;
+        });
+        device.serialManager->setInputJack(&in);
+        rdc.setExternalConnectivityTask(true);
+        rdc.initialize(device.wirelessManager, device.serialManager, &device);
+    }
+
+    FdnDevice device;
+    NativeSerialDriver in{"fdn-in"};
+    uint8_t mac[6] = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60};
+    std::vector<int64_t> sentUtc;
+    RemoteDeviceCoordinator rdc;
+};
+
+inline void rdcFdnNeverAdoptsItsPdnsChainHead() {
     FakePlatformClock clock;
     SimpleTimer::setPlatformClock(&clock);
     clock.setTime(1000);
-    MockFdnDevice fdnDevice;
-    uint8_t fdnMac[6] = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60};
-    wireRadioDefaults(fdnDevice, fdnMac);
     // The clock reads pre-2025, so the context must carry 0 rather than a bogus time.
     clock.setUnixTimeMs(1000);
-    std::vector<int64_t> sentUtc;
-    ON_CALL(*fdnDevice.mockPeerComms, sendData(_, PktType::kFdnConnectionContext, _, _))
-    .WillByDefault(testing::DoAll(
-    testing::Invoke([&sentUtc](const uint8_t*, PktType, const uint8_t* data, size_t len) {
-        FdnConnectionContext ctx{};
-        memcpy(&ctx, data, len < sizeof(ctx) ? len : sizeof(ctx));
-        sentUtc.push_back(ctx.fdn.utcUnixMs);
-    }),
-    Return(1)));
-    NativeSerialDriver inJack{"fdn-in"};
-    fdnDevice.serialManager->setInputJack(&inJack);
-    RemoteDeviceCoordinator fdnRdc;
-    fdnRdc.setExternalConnectivityTask(true);
-    fdnRdc.initialize(fdnDevice.wirelessManager, fdnDevice.serialManager, &fdnDevice);
+    FdnNode fdn;
 
     const uint8_t pdn[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t head[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
-    deliverFrame(inJack, chainHelloFrame(pdn, head));
-    fdnRdc.sync(&fdnDevice);
-    fdnRdc.onContextExchangeComplete(SerialIdentifier::INPUT_JACK);
-    fdnRdc.sync(&fdnDevice);
-    EXPECT_EQ(fdnRdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+    deliverFrame(fdn.in, chainHelloFrame(pdn, head));
+    fdn.rdc.sync(&fdn.device);
+    fdn.rdc.onContextExchangeComplete(SerialIdentifier::INPUT_JACK);
+    fdn.rdc.sync(&fdn.device);
+    EXPECT_EQ(fdn.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
 
-    EXPECT_EQ(fdnRdc.getHeadMac(), nullptr)
+    EXPECT_EQ(fdn.rdc.getHeadMac(), nullptr)
     << "the FDN adopted a chain head, so it announces itself into that head's roster";
-    EXPECT_EQ(fdnRdc.getChainRole(), ChainRole::STANDALONE);
-    EXPECT_FALSE(sentUtc.empty());
-    for (int64_t utc : sentUtc)
+    EXPECT_EQ(fdn.rdc.getChainRole(), ChainRole::STANDALONE);
+    EXPECT_FALSE(fdn.sentUtc.empty());
+    for (int64_t utc : fdn.sentUtc)
         EXPECT_EQ(utc, 0) << "an unsynchronized FDN sent its raw clock";
+
+    SimpleTimer::setPlatformClock(nullptr);
+}
+
+// What an FDN tells a cabled PDN about the time. Until an HTTP answer sets it,
+// the FDN's wall clock counts from power-on, so three weeks up reads as a time
+// in January 1970 and must go out as 0. Once set, the wall clock goes out, not
+// the uptime.
+inline void rdcFdnContextCarriesItsUtcClockOnlyOnceSet() {
+    constexpr unsigned long THREE_WEEKS_MS = 21UL * 24 * 60 * 60 * 1000;
+    constexpr int64_t SYNCED_UTC_MS = 1792359000000LL;
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    clock.setTime(THREE_WEEKS_MS);
+    clock.setUnixTimeMs(THREE_WEEKS_MS);
+    FdnNode fdn;
+    const uint8_t firstPdn[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t secondPdn[6] = {0xB2, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    deliverFrame(fdn.in, chainHelloFrame(firstPdn, nullptr));
+    fdn.rdc.sync(&fdn.device);
+    EXPECT_FALSE(fdn.sentUtc.empty());
+    for (int64_t utc : fdn.sentUtc)
+        EXPECT_EQ(utc, 0) << "an FDN without the time sent its uptime as a date";
+
+    // The first PDN is unplugged, the FDN learns the time, a second PDN plugs in.
+    clock.advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    fdn.rdc.sync(&fdn.device);
+    EXPECT_EQ(fdn.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    clock.setUnixTimeMs(SYNCED_UTC_MS);
+    fdn.sentUtc.clear();
+    deliverFrame(fdn.in, chainHelloFrame(secondPdn, nullptr));
+    fdn.rdc.sync(&fdn.device);
+    EXPECT_FALSE(fdn.sentUtc.empty());
+    for (int64_t utc : fdn.sentUtc)
+        EXPECT_EQ(utc, SYNCED_UTC_MS) << "the FDN sent its uptime, not its UTC clock";
 
     SimpleTimer::setPlatformClock(nullptr);
 }
