@@ -155,15 +155,14 @@ private:
             }
         }
     }
-    
-    // Helper function for random integers in range [min, max]
-    static int randomInt(int min, int max) {
-        static std::random_device rd;
-        static std::mt19937 gen(rd());
+
+    // Helper function for random integers in range [min, max]. The generator is per
+    // instance so one device's draws never shift another's sequence.
+    int randomInt(int min, int max) {
         std::uniform_int_distribution<> dist(min, max);
-        return dist(gen);
+        return dist(generator);
     }
-    
+
     void animateWarning(uint32_t currentTime) {
         // Clear all LEDs first
         currentState_.clear();
@@ -226,4 +225,5 @@ private:
     uint32_t stateStartTime_;
     uint32_t flickerTimer_;
     int fadeProgress_;
+    std::mt19937 generator{std::random_device{}()};
 }; 
