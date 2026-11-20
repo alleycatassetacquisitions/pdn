@@ -155,3 +155,40 @@ inline void crashCodecStoredPacketWithoutDetailsOmitsThem(CrashCodecTestSuite* s
     EXPECT_TRUE(msg.has_program_counter);
     EXPECT_FALSE(msg.has_exception_cause);
 }
+
+// CrashPacket is packed, so its exception cause never sits on a 4-byte boundary.
+// The buffer is aligned so that holds wherever the compiler puts it.
+inline void crashPacketReadsDetailsOffAnUnalignedPacket() {
+    CrashPacket packet{};
+    packet.crashNumber = 0x01020304;
+    packet.timestamp = 0x05060708;
+    packet.resetReason = 4;
+    packet.programCounter = 0x42001234;
+    packet.exceptionCause = 0x1C2D3E4F;
+    memcpy(packet.taskName, "loopTask", 8);
+    memcpy(packet.commitHash, "a1b2c3d4", COMMIT_HASH_LENGTH - 1);
+    alignas(uint32_t) uint8_t stored[sizeof(CrashPacket)];
+    memcpy(stored, &packet, sizeof(packet));
+    const CrashPacket* storedPacket = reinterpret_cast<const CrashPacket*>(stored);
+    ASSERT_NE(reinterpret_cast<uintptr_t>(&stored[offsetof(CrashPacket, exceptionCause)]) %
+              alignof(uint32_t),
+              0u);
+
+    CrashRecord record = fromCrashPacket(*storedPacket);
+
+    EXPECT_EQ(record.crashNumber, 0x01020304u);
+    EXPECT_EQ(record.timestamp, 0x05060708u);
+    EXPECT_EQ(record.resetReason, 4u);
+    ASSERT_TRUE(record.coreDumpDetails.has_value());
+    EXPECT_EQ(record.coreDumpDetails->programCounter, 0x42001234u);
+    ASSERT_TRUE(record.coreDumpDetails->exceptionCause.has_value());
+    EXPECT_EQ(*record.coreDumpDetails->exceptionCause, 0x1C2D3E4Fu);
+    EXPECT_STREQ(record.coreDumpDetails->taskName, "loopTask");
+    EXPECT_STREQ(record.commitHash, "a1b2c3d4");
+
+    const uint32_t noCause = CRASH_PACKET_NO_EXCEPTION_CAUSE;
+    memcpy(&stored[offsetof(CrashPacket, exceptionCause)], &noCause, sizeof(noCause));
+    record = fromCrashPacket(*storedPacket);
+    ASSERT_TRUE(record.coreDumpDetails.has_value());
+    EXPECT_FALSE(record.coreDumpDetails->exceptionCause.has_value());
+}
