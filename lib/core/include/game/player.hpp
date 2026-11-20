@@ -21,7 +21,7 @@ enum class Allegiance {
  * symbol. */
 class Player {
 public:
-    /** Fires after the hunter/bounty role flips. */
+    /** Fires on a role flip and on a registration profile applied or cleared (despite its name). */
     using RoleChangedCallback = std::function<void()>;
 
     Player() = default;
@@ -36,8 +36,9 @@ public:
     void toggleHunter();
 
     /**
-     * Registers the role-flip observer (one slot). Fires only on an actual
-     * flip, never on a set that reasserts the current role.
+     * Registers the observer (one slot): fires on a hunter/bounty flip (not on a
+     * set that reasserts it), on every registration profile applied, and on a
+     * clear while a profile is held.
      */
     void setOnRoleChanged(RoleChangedCallback callback);
 
@@ -70,8 +71,11 @@ public:
     /** Soon to be deprecated */
     void setUserID(char* newId);
 
-    /** Reseed libc `rand` from a decimal string (e.g. registration PIN) and re-roll the symbol. */
-    void applyRngSeedFromDecimalString(const char* decimalString);
+    /**
+     * Reseeds libc `rand` from the server player UUID, the same on any PDN for
+     * one player, and re-rolls the symbol.
+     */
+    void applyRngSeedFromServerPlayerId();
 
     std::string getUserID() const;
 
@@ -128,21 +132,24 @@ public:
     bool hasTeam() const;
 
     /**
-     * Replaces registration fields and syncs legacy gameplay fields. Used by the device player
-     * codec and demo registration paths.
+     * Replaces registration fields and syncs legacy gameplay fields, then fires
+     * the role-changed observer once.
      */
     void applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
                                   const Team& team, const std::vector<Affiliation>& affiliations);
 
-    /** Clears registration fields only; does not reset match stats or legacy fields. */
+    /**
+     * Clears registration fields only; does not reset match stats or legacy
+     * fields. Fires the role-changed observer when a profile was held.
+     */
     void clearRegistrationProfile();
 
     /** Test-build id: @p mac reversed, then a `7e57` tail; version nibble 0, never a server id. */
     static UUIDBytes testPlayerIdFromMac(const uint8_t* mac);
 
 private:
-    // Sole write path for `hunter`, so every flip notifies exactly once no
-    // matter which public setter produced it.
+    // Write path for `hunter` from the setters, so every flip notifies exactly
+    // once; a registration profile sets it directly and notifies once for all.
     void applyRole(bool isHunter);
     void syncLegacyFieldsFromRegistration();
 

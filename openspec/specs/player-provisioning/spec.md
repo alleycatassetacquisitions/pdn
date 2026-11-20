@@ -20,7 +20,7 @@ Terms used throughout:
 An unprovisioned PDN SHALL wait for registration without using Wi-Fi or offering offline registration:
 
 - On boot, a PDN SHALL initialize with no registered profile and a nil 16-byte player UUID (never generating a random player ID at boot that could masquerade as a provisioned profile). After the boot splash hold, an unprovisioned PDN SHALL remain in the provisioning app until registered or a role is chosen.
-- A PDN SHALL NOT enable Wi-Fi station mode, SHALL NOT issue HTTP player-lookup requests directly, and a release build SHALL NOT offer offline registration. The PDN's first provisioning screen SHALL be PIN entry. Until the FDN lookup exists (#485), any entered PIN SHALL lead to role selection with the build's identity: a test build applies its MAC test identity (Test-only registration), a release build keeps the nil player UUID as "Demo", and its matches are stored with it (`match-collection`). The PDN never looks a PIN up itself.
+- A PDN SHALL NOT enable Wi-Fi station mode, SHALL NOT issue HTTP player-lookup requests directly, and a release build SHALL NOT offer offline registration. The PDN's first provisioning screen SHALL be PIN entry. Until the FDN lookup exists (#485), any entered PIN SHALL lead to role selection with the build's identity: a test build applies its MAC test identity (Test-only registration), a release build keeps the nil player UUID as "Demo", so its matches are practice matches, played but not stored (`quickdraw-match`). The PDN never looks a PIN up itself.
 - While waiting on the provisioning screen, the PDN SHALL remain eligible to receive peer-to-peer firmware distribution images and SHALL start seeding its running firmware image when the secondary button is released and held for `5000 ms` (`firmware-distribution`).
 
 #### Scenario: Unprovisioned PDN waits for FDN without Wi-Fi or offline fallback
@@ -93,7 +93,7 @@ When an unprovisioned PDN in the provisioning app receives a resolved player pro
 
 ### Requirement: Test-only registration
 
-A PDN built as a test build, and a simulated PDN, SHALL register itself with a test player UUID derived from its MAC address, which never equals a server-issued player UUID, so its matches are stored and relayed. A release build SHALL contain no such path. Test builds SHALL NOT be flashed to event devices.
+A PDN built as a test build, and a simulated PDN, SHALL register itself with a test player UUID derived from its MAC address, which never equals a server-issued player UUID, so its matches against another registered PDN are scored, stored and relayed (`quickdraw-match`). A release build SHALL contain no such path. Test builds SHALL NOT be flashed to event devices.
 
 #### Scenario: Two test PDNs record a match naming both
 - **WHEN** two test-build PDNs with different MAC addresses finish a match

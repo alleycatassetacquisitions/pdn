@@ -45,7 +45,7 @@ namespace cli {
  */
 inline const char* getStateName(int stateId) {
     switch (stateId) {
-        case PlayerFetchStateId::PIN_ENTRY: return "PinEntry";
+        case PlayerFetchStateId::AWAIT_BAND: return "AwaitBand";
         case PlayerFetchStateId::FETCH_USER: return "FetchUser";
         case PlayerFetchStateId::CHOOSE_TEAM: return "ChooseTeam";
         case PlayerFetchStateId::WELCOME: return "WelcomeMessage";
@@ -97,6 +97,7 @@ struct DeviceInstance {
     // Game objects
     PDN* pdn = nullptr;
     PlayerProvider* playerProvider = nullptr;
+    BandRegistration* bandRegistration = nullptr;
     Player* player = nullptr;
     GameSession* gameSession = nullptr;
     PlayerFetchApp* playerFetchApp = nullptr;
@@ -208,8 +209,12 @@ public:
                         instance.symbolWirelessManager);
 
         GameContext gameContext = instance.gameSession->getContext();
-        instance.playerFetchApp =
-        new PlayerFetchApp(instance.pdn->getFirmwareUpdateManager(), instance.playerProvider, true);
+        instance.bandRegistration =
+        new BandRegistration(instance.pdn->getWirelessManager(),
+                             instance.pdn->getRemoteDeviceCoordinator(), instance.playerProvider);
+        instance.playerFetchApp = new PlayerFetchApp(
+        instance.pdn->getFirmwareUpdateManager(), instance.playerProvider,
+        instance.bandRegistration, instance.pdn->getRemoteDeviceCoordinator(), true);
         instance.hubApp = new HubApp(gameContext);
         instance.matchApp = new MatchApp(gameContext);
         instance.shootoutApp = new ShootoutApp(gameContext);
@@ -250,6 +255,7 @@ public:
         delete device.symbolApp;
         delete device.gameSession;
         delete device.symbolWirelessManager;
+        delete device.bandRegistration;
         delete device.playerProvider;
         delete device.pdn;
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted

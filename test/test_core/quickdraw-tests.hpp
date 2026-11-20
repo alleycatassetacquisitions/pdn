@@ -197,7 +197,8 @@ inline void recordIdleDrawnTexts(IdleStateTests* suite, std::vector<std::string>
 }
 
 inline void registerIdlePlayerName(IdleStateTests* suite, const char* name) {
-    suite->player->applyRegistrationProfile(UUIDBytes(), name, Team(), {});
+    suite->player->applyRegistrationProfile(makeTestUuid("11111111-1111-4111-8111-111111111111"),
+                                            name, Team(), {});
 }
 
 // A new holder reads whose PDN it is from the first idle screen, so it shows
@@ -218,11 +219,25 @@ inline void idleFirstScreenShowsThePlayerName(IdleStateTests* suite) {
 inline void idleNameScreenWithoutANameShowsTheLabelAlone(IdleStateTests* suite) {
     std::vector<std::string> drawnTexts;
     recordIdleDrawnTexts(suite, &drawnTexts);
+    registerIdlePlayerName(suite, "");
 
     suite->idleState->onStateMounted(&suite->device);
     suite->idleState->onStateLoop(&suite->device);
 
     EXPECT_THAT(drawnTexts, testing::ElementsAre("Player"));
+}
+
+// A nil player UUID (the release demo profile) has no registered name, so the
+// first screen says UNREGISTERED in its place, whatever name the profile holds.
+inline void idleNilPlayerOpensOnUnregisteredNotTheName(IdleStateTests* suite) {
+    std::vector<std::string> drawnTexts;
+    recordIdleDrawnTexts(suite, &drawnTexts);
+    suite->player->applyRegistrationProfile(UUIDBytes(), "Demo", Team(), {});
+
+    suite->idleState->onStateMounted(&suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+
+    EXPECT_THAT(drawnTexts, testing::ElementsAre("UNREGIS-", "TERED"));
 }
 
 inline void idleOneClickShowsWins(IdleStateTests* suite) {
@@ -288,49 +303,62 @@ inline void idleRemountStartsOnTheNameScreen(IdleStateTests* suite) {
     EXPECT_THAT(drawnTexts, testing::ElementsAre("Player", "Demo"));
 }
 
-inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+// The band waiting screen's state, with the registration it opens; `manager` may be null.
+struct AwaitBandUnderTest {
+    /** Builds the registration and the state over @p suite's device. */
+    AwaitBandUnderTest(IdleStateTests* suite, FirmwareUpdateManager* manager)
+        : bandRegistration(suite->device.wirelessManager,
+                           suite->device.getRemoteDeviceCoordinator(), &playerProvider)
+        , state(suite->device.getRemoteDeviceCoordinator(), &playerProvider, &bandRegistration,
+                manager) {}
+
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider, nullptr);
-    pinEntry.onStateMounted(&suite->device);
+    BandRegistration bandRegistration;
+    AwaitBandState state;
+};
+
+inline void waitingScreenFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
+    AwaitBandUnderTest awaitBand(suite, nullptr);
+    awaitBand.state.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 1000);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS - 1))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
+    awaitBand.state.onStateLoop(&suite->device);
+    EXPECT_FALSE(awaitBand.state.transitionToFirmwareUpdate());
+    awaitBand.state.onStateLoop(&suite->device);
+    EXPECT_TRUE(awaitBand.state.transitionToFirmwareUpdate());
+    EXPECT_FALSE(awaitBand.state.transitionToChooseTeam());
 
-    pinEntry.onStateDismounted(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    awaitBand.state.onStateDismounted(&suite->device);
+    EXPECT_FALSE(awaitBand.state.transitionToFirmwareUpdate());
 }
 
 // The button's pressed time counts from press-down, so a hold that began before the
 // mount, even one not yet a long press then, is longer than the screen has been up.
-inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
-    PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider, nullptr);
-    pinEntry.onStateMounted(&suite->device);
+inline void waitingScreenFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
+    AwaitBandUnderTest awaitBand(suite, nullptr);
+    awaitBand.state.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS - 500);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS))
     .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    awaitBand.state.onStateLoop(&suite->device);
+    EXPECT_FALSE(awaitBand.state.transitionToFirmwareUpdate());
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 2000);
-    pinEntry.onStateLoop(&suite->device);
-    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
-    pinEntry.onStateDismounted(&suite->device);
+    awaitBand.state.onStateLoop(&suite->device);
+    EXPECT_TRUE(awaitBand.state.transitionToFirmwareUpdate());
+    awaitBand.state.onStateDismounted(&suite->device);
 }
 
-// The pairing screen takes firmware updates for as long as it is up.
-inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
-    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+// The waiting screen takes firmware updates for as long as it is up.
+inline void waitingScreenTakesUpdatesWhileUp(IdleStateTests* suite) {
     PeerCommsInterface::PacketCallback onFrame;
+    // The registration the screen opens claims its own packet type.
+    EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(_, _, _))
+    .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
         .WillOnce(SaveArg<1>(&onFrame));
     FakeFirmwareStore store;
@@ -343,13 +371,12 @@ inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
 
-    PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider, &manager);
-    pinEntry.onStateMounted(&suite->device);
+    AwaitBandUnderTest awaitBand(suite, &manager);
+    awaitBand.state.onStateMounted(&suite->device);
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 1);
 
-    pinEntry.onStateDismounted(&suite->device);
+    awaitBand.state.onStateDismounted(&suite->device);
     EXPECT_EQ(store.abortCalls, 1) << "leaving the screen drops the receive";
 }
 

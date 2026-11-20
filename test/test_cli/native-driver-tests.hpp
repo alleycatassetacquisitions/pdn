@@ -1145,8 +1145,8 @@ void cliRoleCommandNoDevices(CliRoleCommandTestSuite* suite) {
     ASSERT_EQ(result.message, "No devices");
 }
 
-// Test: reboot puts a hub device on PinEntry with no player and clears its history
-inline void cliCommandRebootEntersPinEntry() {
+// Test: reboot puts a hub device on the band waiting screen with no player and clears its history
+inline void cliCommandRebootEntersAwaitBand() {
     NativeClockDriver clock("test_reboot_clock");
     SimpleTimer::setPlatformClock(&clock);
     std::vector<cli::DeviceInstance> devices{cli::DeviceFactory::createDevice(0, true)};
@@ -1155,9 +1155,9 @@ inline void cliCommandRebootEntersPinEntry() {
     int selected = 0;
     cli::Renderer renderer;
     EXPECT_EQ(cli::CommandProcessor().execute("reboot", devices, selected, renderer).message,
-              "Rebooted 0010 -> PinEntry");
+              "Rebooted 0010 -> AwaitBand");
     EXPECT_EQ(device.pdn->getActiveApp(), device.playerFetchApp);
-    EXPECT_EQ(device.getCurrentState()->getStateId(), PlayerFetchStateId::PIN_ENTRY);
+    EXPECT_EQ(device.getCurrentState()->getStateId(), PlayerFetchStateId::AWAIT_BAND);
     EXPECT_FALSE(device.player->hasRegistrationProfile());
     EXPECT_TRUE(device.stateHistory.empty());
     cli::DeviceFactory::destroyDevice(device);

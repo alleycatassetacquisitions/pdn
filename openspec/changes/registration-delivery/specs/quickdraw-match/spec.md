@@ -79,3 +79,15 @@ When the countdown completes, the device SHALL open the active draw window for u
 #### Scenario: Signed 0 ms result is accepted
 - **WHEN** a standalone opponent's signed draw result carries a raw reaction time of $0\text{ ms}$
 - **THEN** the receiver records it as the opponent's draw time
+
+### Requirement: Unregistered idle indicator
+
+A PDN whose player UUID is nil SHALL open its idle screen on `UNREGISTERED`, in place of the player's name (`pdn-session-routing`), shown again each time the stats cycle wraps; a PDN with a non-nil player UUID SHALL NOT show it. A test build's MAC test identity is non-nil, so it shows no label. The release demo keeps the nil "Demo" identity, so it shows the label and every match it plays is a practice match.
+
+#### Scenario: Idle screen shows UNREGISTERED with a nil player UUID
+- **WHEN** a PDN with a nil player UUID enters the idle screen
+- **THEN** the idle screen opens on `UNREGISTERED`, split over two lines to fit the stats panel
+
+#### Scenario: Idle screen shows no label with a non-nil player UUID
+- **WHEN** a PDN with a non-nil player UUID, a test build's MAC test identity included, enters the idle screen
+- **THEN** the idle screen never shows `UNREGISTERED`

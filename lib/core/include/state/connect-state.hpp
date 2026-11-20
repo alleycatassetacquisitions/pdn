@@ -34,12 +34,12 @@ struct JackConnectionState {
 };
 
 /*
- * The coordinator's observer slot is single, and the mounted ConnectState holds it.
+ * The coordinator's two jack observer slots are single, and the mounted ConnectState holds both.
  * That works because StateMachine dismounts the outgoing state before mounting the
- * incoming one, handing the slot over cleanly; a second ConnectState mounted without
- * that dismount would take the slot and leave the first one permanently deaf.
+ * incoming one, handing the slots over cleanly; a second ConnectState mounted without
+ * that dismount would take both slots and leave the first one permanently deaf.
  *
- * `subscribed` records that this state registered, not that it still holds the slot
+ * `subscribed` records that this state registered, not that it still holds the slots
  * — the coordinator arbitrates nothing — so the two clear paths below are only safe
  * under that same dismount-before-mount ordering.
  */
@@ -64,8 +64,9 @@ public:
 
     /**
      * Registers the handler for every jack edge during this state's tenure: a
-     * connect or disconnect on a jack this device owns, plus a replay of each
-     * already-connected jack at mount.
+     * connect or disconnect on a jack this device owns, a replay of each
+     * already-connected jack at mount, and a connect again each time a
+     * Connected peer sends a fresh context.
      *
      * Register once, from the constructor or from onStateMounted — the mount replay
      * runs after both, and the slot is not cleared on dismount, so one registration
@@ -141,6 +142,8 @@ private:
             [this](SerialIdentifier jack, bool connected) {
                 dispatchJackState(jack, connected);
             });
+        remoteDeviceCoordinator->setOnJackContext(
+        [this](SerialIdentifier jack) { dispatchJackState(jack, true); });
         subscribed = true;
     }
 
@@ -171,6 +174,7 @@ private:
 
     void unsubscribe() {
         remoteDeviceCoordinator->setOnJackChange(nullptr);
+        remoteDeviceCoordinator->setOnJackContext(nullptr);
         subscribed = false;
     }
 

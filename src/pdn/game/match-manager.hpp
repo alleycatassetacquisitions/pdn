@@ -36,6 +36,8 @@ struct LastMatchDisplay {
     unsigned long boostMs = 0;        // boost applied at own button press
     unsigned long penaltyMs = 0;      // early-press penalty applied at own button press
     bool hasData = false;
+    // Practice: not stored, and labelled on the result screen.
+    bool isPractice = false;
 };
 
 // The opponent's DRAW_RESULT or NEVER_PRESSED as it arrived.
@@ -115,8 +117,16 @@ public:
     bool isMatchReady() const;
 
     /**
-     * Finalizes the active match and clears active match state. A standalone match
-     * is tagged and appended to the ring, unless 32 records already wait there.
+     * True when the active match is standalone and a player UUID is nil or both
+     * are the same: it is played and shown but never stored. Settled once the
+     * match is ready, when the handshake has named both players.
+     */
+    bool isPracticeMatch() const;
+
+    /**
+     * Finalizes the active match and clears active match state. A standalone
+     * match that is not practice is tagged and appended to the ring, unless 32
+     * records already wait there.
      */
     bool finalizeMatch();
 

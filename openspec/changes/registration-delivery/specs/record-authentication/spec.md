@@ -36,13 +36,17 @@ When a PDN stores a match record it SHALL compute its record tag once: the first
 - **WHEN** a PDN holding a record key sends a crash record
 - **THEN** the crash record is sent with no tag
 
-### Requirement: Match with no record key (deferred decision)
+### Requirement: Match with no record key
 
-Until #498 rules whether a match may be kept without a real player identity, a PDN that holds no record key when a match ends SHALL store and relay the match record as it would otherwise, with a tag of `16` zero bytes. This is not settled behaviour: #486 asks that such a match not be stored, which conflicts with storing every match today.
+A practice match is never stored (`quickdraw-match`, #498). A scored match that ends on a PDN holding no record key SHALL be stored and relayed as it would otherwise, with a tag of `16` zero bytes; the server judges it.
 
 #### Scenario: Match without a key is stored with a zero tag
-- **WHEN** a match ends on a PDN that holds no record key
+- **WHEN** a scored match between two distinct non-nil player UUIDs ends on a PDN that holds no record key
 - **THEN** the PDN stores the match record with a tag of `16` zero bytes and relays it like any other
+
+#### Scenario: Practice match is not stored even with a key
+- **WHEN** a practice match ends on a PDN that holds a record key
+- **THEN** the PDN stores no match record
 
 ### Requirement: Sender's MAC address is a note only
 

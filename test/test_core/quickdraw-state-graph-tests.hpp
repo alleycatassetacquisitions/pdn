@@ -134,7 +134,7 @@ struct QuickdrawAppsForTest {
     /** Constructs and populates the five apps without mounting any of them. */
     QuickdrawAppsForTest() {
         GameContext context;
-        playerFetch = new PlayerFetchApp(nullptr, nullptr, false);
+        playerFetch = new PlayerFetchApp(nullptr, nullptr, nullptr, nullptr, false);
         hub = new HubApp(context);
         match = new MatchApp(context);
         shootout = new ShootoutApp(context);
@@ -300,13 +300,19 @@ inline void quickdrawCrossAppEdgesAreAppTransitions() {
 inline void registrationHandsOffToHub() {
     QuickdrawAppsForTest apps;
 
-    ASSERT_EQ(apps.playerFetch->getStateMap().size(), 3u);
-    State* pinEntry = apps.playerFetch->getStateMap()[0];
-    State* chooseTeam = apps.playerFetch->getStateMap()[1];
-    State* welcome = apps.playerFetch->getStateMap()[2];
-    EXPECT_EQ(pinEntry->getStateId(), PlayerFetchStateId::PIN_ENTRY);
-    ASSERT_EQ(pinEntry->getTransitions().size(), 1u);
-    EXPECT_EQ(pinEntry->getTransitions()[0]->getNextState(), chooseTeam);
+    ASSERT_EQ(apps.playerFetch->getStateMap().size(), 4u);
+    State* awaitBand = apps.playerFetch->getStateMap()[0];
+    State* fetchUser = apps.playerFetch->getStateMap()[1];
+    State* chooseTeam = apps.playerFetch->getStateMap()[2];
+    State* welcome = apps.playerFetch->getStateMap()[3];
+    EXPECT_EQ(awaitBand->getStateId(), PlayerFetchStateId::AWAIT_BAND);
+    ASSERT_EQ(awaitBand->getTransitions().size(), 2u);
+    EXPECT_EQ(awaitBand->getTransitions()[0]->getNextState(), fetchUser);
+    EXPECT_EQ(awaitBand->getTransitions()[1]->getNextState(), chooseTeam);
+    EXPECT_EQ(fetchUser->getStateId(), PlayerFetchStateId::FETCH_USER);
+    ASSERT_EQ(fetchUser->getTransitions().size(), 2u);
+    EXPECT_EQ(fetchUser->getTransitions()[0]->getNextState(), welcome);
+    EXPECT_EQ(fetchUser->getTransitions()[1]->getNextState(), awaitBand);
     EXPECT_EQ(chooseTeam->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
     ASSERT_EQ(chooseTeam->getTransitions().size(), 1u);
     EXPECT_EQ(chooseTeam->getTransitions()[0]->getNextState(), welcome);
