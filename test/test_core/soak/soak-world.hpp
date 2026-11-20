@@ -20,6 +20,8 @@ namespace soak {
 
 inline constexpr uint64_t TICK_MS = 5;
 inline constexpr uint64_t HELLO_CADENCE_MS = 20;
+// How long a reboot or cut keeps a device down when its action draws no "down".
+inline constexpr uint64_t DEFAULT_DOWN_MS = 1500;
 // The event's wall clock at virtual time zero on the fake server (2026-11-18).
 inline constexpr int64_t EVENT_EPOCH_MS = 1795000000000LL;
 // A PDN's clock runs up to this fast or slow; the FDN's own clock is exact.
@@ -98,7 +100,7 @@ protected:
         bool down = false;
         uint64_t upAt = 0;
         // How long the armed cut keeps the device down once it fires.
-        uint64_t cutDownMs = 1500;
+        uint64_t cutDownMs = DEFAULT_DOWN_MS;
     };
     struct PdnSlot : Slot<SimPdn> {
         PdnIdentity identity;
@@ -334,14 +336,14 @@ protected:
     // Arms the action's power cut ("k", "torn"); it keeps the device down for "down" ms.
     template <class S> static void armCut(S& slot, const Action& action) {
         slot.nvs.armCut(static_cast<uint32_t>(action.get("k", 1)), action.get("torn") != 0);
-        slot.cutDownMs = static_cast<uint64_t>(action.get("down", 1500));
+        slot.cutDownMs = static_cast<uint64_t>(action.get("down", DEFAULT_DOWN_MS));
     }
 
-    // A reboot (soft) or a power cut: the PDN is gone for its boot time.
+    // A reboot (soft) or a power cut: the PDN is gone for @p downMs (the default when 0).
     void takeDown(int index, bool powerLost, uint64_t downMs) {
         PdnSlot& slot = pdns[static_cast<size_t>(index)];
         if (slot.down) return;
-        powerOff(slot, downMs != 0 ? downMs : 1500);
+        powerOff(slot, downMs != 0 ? downMs : DEFAULT_DOWN_MS);
         slot.powerLost = powerLost;
         slot.rebootAt = 0;
         slot.rebootDelay = -1;
@@ -405,7 +407,8 @@ protected:
                 const int pdn = action.a[0];
                 if (pdns[static_cast<size_t>(pdn)].down) return false;
                 if (action.type == ActionType::REBOOT) {
-                    takeDown(pdn, false, static_cast<uint64_t>(action.get("down", 1500)));
+                    takeDown(pdn, false,
+                             static_cast<uint64_t>(action.get("down", DEFAULT_DOWN_MS)));
                 } else {
                     armCut(pdns[static_cast<size_t>(pdn)], action);
                 }
@@ -429,7 +432,8 @@ protected:
                 if (action.get("k") > 0) {
                     armCut(slot, action);
                 } else {
-                    takeDownFdn(action.b[0], static_cast<uint64_t>(action.get("down", 1500)));
+                    takeDownFdn(action.b[0],
+                                static_cast<uint64_t>(action.get("down", DEFAULT_DOWN_MS)));
                 }
                 return true;
             }
