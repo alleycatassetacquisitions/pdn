@@ -2195,6 +2195,10 @@ TEST(SoakMedium, faultsReplayFromSeed) { soakMediumFaultsReplayFromSeed(); }
 TEST(SoakMedium, routesByMac) { soakMediumRoutesByMac(); }
 TEST(SoakMedium, cablePlugConnectsAndUnplugDrops) { soakCablePlugConnectsAndUnplugDrops(); }
 TEST(SoakDevices, fdnUploadsACabledDuel) { soakFdnUploadsACabledDuel(); }
+TEST(SoakSmoke, sameSeedReplaysIdentically) { soakSameSeedReplaysIdentically(); }
+TEST(SoakSmoke, actionListRoundTrips) { soakActionListRoundTrips(); }
+TEST(SoakScheduler, everyFaultTypeFires) { soakEveryFaultTypeFires(); }
+TEST(SoakScheduler, httpFaultsReachTheFdnClient) { soakHttpFaultsReachTheFdnClient(); }
 
 // ============================================
 // MAIN

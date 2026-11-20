@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -11,13 +12,46 @@
 
 namespace soak {
 
-// One device's flash. It outlives the device, so a reboot reopens what was
-// committed. Each driver call is one nvs_set + nvs_commit on the ESP32
-// (esp32-s3-prefs-driver.hpp).
+// One device's flash. It outlives the device, so a reboot or power cut reopens
+// what was committed. Each driver call is one nvs_set + nvs_commit on the ESP32
+// (esp32-s3-prefs-driver.hpp), so one call is the unit a power cut keeps or loses.
 class SimNvs {
 public:
-    /** Stores one value with its type tag. */
+    // NVS stores a blob in 32-byte entries; a torn blob keeps whole entries only.
+    static constexpr size_t WRITE_GRANULE = 32;
+
+    /** Arms a power cut at the @p k-th write from now (1 = the next one); 0 disarms. */
+    void armCut(uint32_t k, bool torn) {
+        cutCountdown = k;
+        cutTorn = torn;
+        if (k > 0) ++cutsArmed;
+    }
+
+    /** True once the armed cut fired: later writes are dropped. */
+    bool isFrozen() const { return frozen; }
+
+    /** Power returns: writes stick again. */
+    void thaw() {
+        frozen = false;
+        cutCountdown = 0;
+    }
+
+    /**
+     * Stores one value with its type tag, unless a power cut swallows it. The driver
+     * still reports success: the firmware is dead and its control flow must not
+     * change in the tick it dies in.
+     */
     void put(const std::string& ns, const std::string& key, char type, const std::string& bytes) {
+        if (frozen) return;
+        if (cutCountdown > 0 && --cutCountdown == 0) {
+            frozen = true;
+            ++cutsFired;
+            if (onCut) onCut(ns, key);
+            const size_t kept = (bytes.size() / 2 / WRITE_GRANULE) * WRITE_GRANULE;
+            if (cutTorn && type == 'b' && kept != 0)
+                values[{ns, key}] = std::string(1, type) + bytes.substr(0, kept);
+            return;
+        }
         values[{ns, key}] = std::string(1, type) + bytes;
     }
 
@@ -39,8 +73,19 @@ public:
         return value;
     }
 
+    // Fires the moment the armed write dies, with the write it killed, so the world can
+    // silence the radio and tell what was lost.
+    std::function<void(const std::string& ns, const std::string& key)> onCut;
+    // Cuts ever armed and ever fired; an armed cut is dropped by a later arm, a disarm
+    // or a boot, so the difference is the cuts that never happened.
+    uint64_t cutsArmed = 0;
+    uint64_t cutsFired = 0;
+
 private:
     std::map<std::pair<std::string, std::string>, std::string> values;
+    uint32_t cutCountdown = 0;
+    bool cutTorn = false;
+    bool frozen = false;
 };
 
 // StorageInterface over a SimNvs. Like the ESP32 driver, it serves only the

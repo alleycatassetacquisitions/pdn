@@ -107,6 +107,9 @@ public:
     /** Presses, as a thumb on the primary button. */
     void press() const { primaryButton->execCallback(ButtonInteraction::PRESS); }
 
+    /** Clicks the primary button. */
+    void click() const { primaryButton->execCallback(ButtonInteraction::CLICK); }
+
     PDN* firmware = nullptr;
 
 private:
@@ -133,7 +136,7 @@ public:
 
     /** Builds and boots the FDN; call with its clock installed. */
     SimFdn(const std::string& suffix, VirtualMedium& medium, const uint8_t* mac, SimNvs& nvs,
-           HttpBackend& backend, std::mt19937_64& rng)
+           HttpBackend& backend, HttpFaults& faults, std::mt19937_64& rng)
         : serialIn(new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix))
         , serialInSecondary(new NativeSerialDriver(SERIAL_IN_SECONDARY_DRIVER_NAME + suffix)) {
         SimRadio* radio = new SimRadio(PEER_COMMS_DRIVER_NAME + suffix, medium, mac);
@@ -144,7 +147,7 @@ public:
         {SERIAL_IN_DRIVER_NAME, serialIn},
         {SERIAL_IN_SECONDARY_DRIVER_NAME, serialInSecondary},
         {HTTP_CLIENT_DRIVER_NAME,
-         new SimHttpClient(HTTP_CLIENT_DRIVER_NAME + suffix, backend, rng)},
+         new SimHttpClient(HTTP_CLIENT_DRIVER_NAME + suffix, backend, faults, rng)},
         {PEER_COMMS_DRIVER_NAME, radio},
         {STORAGE_DRIVER_NAME, storage},
         };
