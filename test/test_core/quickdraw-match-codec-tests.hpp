@@ -134,16 +134,24 @@ inline void matchCodecKeepsZeroDrawTimePresent() {
     EXPECT_EQ(matches[0].player_a_draw_time_ms, 0u);
 }
 
+// Each side's team is present only when that side has one.
 inline void matchCodecOmitsUnassignedTeams() {
-    std::vector<MatchRecord> records = {makeMatchRecord(0)};
+    std::vector<MatchRecord> records = {makeMatchRecord(0), makeMatchRecord(1), makeMatchRecord(2)};
+    records[1].hunterTeamId = makeTestUuid("11111111-1111-4111-8111-111111111111");
+    records[2].bountyTeamId = makeTestUuid("22222222-2222-4222-8222-222222222222");
 
     std::string payload;
     ASSERT_TRUE(QuickdrawMatchCodec::encodeRequest(records.size(), makeMatchSource(records), payload));
 
     std::vector<alleycat_device_QuickdrawMatch> matches = decodeTestRequest(payload);
-    ASSERT_EQ(matches.size(), 1u);
+    ASSERT_EQ(matches.size(), 3u);
     EXPECT_FALSE(matches[0].has_player_a_team_id);
     EXPECT_FALSE(matches[0].has_player_b_team_id);
+    EXPECT_TRUE(matches[1].has_player_a_team_id);
+    EXPECT_FALSE(matches[1].has_player_b_team_id) << "a nil team B went up";
+    EXPECT_FALSE(matches[2].has_player_a_team_id);
+    EXPECT_TRUE(matches[2].has_player_b_team_id) << "the bounty's team was dropped";
+    EXPECT_STREQ(matches[2].player_b_team_id, "22222222-2222-4222-8222-222222222222");
 }
 
 inline void matchCodecFailsWhenSourceFails() {

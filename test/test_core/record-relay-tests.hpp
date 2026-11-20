@@ -13,6 +13,7 @@
 #include "device-mock.hpp"
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
+#include "fdn-record-store-tests.hpp"
 #include "game/game-session.hpp"
 #include "game/match-manager.hpp"
 #include "game/record-relay.hpp"
@@ -194,8 +195,8 @@ public:
     }
 
     FakePlatformClock clock;
-    NativePrefsDriver pdnStorage{"pdn-prefs",
-                                 {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_NAMESPACE}};
+    RefusingPrefsDriver pdnStorage{"pdn-prefs",
+                                   {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_NAMESPACE}};
     NativePrefsDriver fdnStorage{"fdn-prefs", {FDN_RECORD_STORE_NAMESPACE}};
     RecordingPeerComms pdnRadio{"relay-pdn-radio"};
     RecordingPeerComms fdnRadio{"relay-fdn-radio"};
@@ -304,6 +305,44 @@ TEST_F(RecordRelayTests, markThatFailsToMoveIsNotResentStraightBack) {
     ack(silentFdnMac, RecordKind::CRASH, 1, sentContentCrc(PktType::kCrashRecord, 0));
 
     EXPECT_EQ(pdnRadio.sentOf(PktType::kCrashRecord).size(), 1u);
+}
+
+// The PDN's own ring: a refused mark write leaves the record pending, so the
+// relay does not send it straight back for the FDN to ack again.
+TEST_F(RecordRelayTests, refusedMatchMarkWriteIsNotResentStraightBack) {
+    storeMatch(0x01);
+    storeMatch(0x02);
+    beacon(silentFdnMac);
+    ASSERT_EQ(pdnRadio.sentOf(PktType::kMatchRecord).size(), 1u);
+
+    pdnStorage.refuseUInt = true;
+    ack(silentFdnMac, RecordKind::MATCH, 1, sentContentCrc(PktType::kMatchRecord, 0));
+    pdnStorage.refuseUInt = false;
+
+    EXPECT_EQ(pdnRadio.sentOf(PktType::kMatchRecord).size(), 1u);
+    beacon(silentFdnMac);
+    ASSERT_EQ(pdnRadio.sentOf(PktType::kMatchRecord).size(), 2u);
+    EXPECT_EQ(sentRecordNumber(PktType::kMatchRecord, 1), 1u) << "match 1 is still pending";
+}
+
+// Every slot holds a collected record. A refused record write moves no number,
+// so the old record in the next slot is never relayed as the new match.
+TEST_F(RecordRelayTests, refusedMatchWriteRelaysNoCollectedRecordAsNew) {
+    for (uint32_t number = 1; number <= MatchManager::MATCH_RING_CAPACITY; ++number) {
+        storeMatch(static_cast<uint8_t>(number));
+    }
+    pdnStorage.writeUInt(MATCH_RING_PREFS_NAMESPACE, "collectedSeq",
+                         MatchManager::MATCH_RING_CAPACITY);
+
+    pdnStorage.refuseBytes = true;
+    matchManager->getCurrentMatch().emplace("refused-write-match");
+    EXPECT_FALSE(matchManager->finalizeMatch());
+    pdnStorage.refuseBytes = false;
+    beacon(silentFdnMac);
+
+    EXPECT_TRUE(pdnRadio.sentOf(PktType::kMatchRecord).empty())
+    << "collected match 1 went out as match 33";
+    EXPECT_EQ(matchManager->getMatchSequenceNumber(), MatchManager::MATCH_RING_CAPACITY);
 }
 
 TEST(RecordSourceTests, markOnlyRisesAndPendingStartsInsideTheRing) {

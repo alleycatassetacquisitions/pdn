@@ -338,6 +338,64 @@ TEST_F(FdnRecordStoreTests, unreadableEntryBehindTheHeadStopsThePeek) {
     EXPECT_EQ(store->getMatchRecords().getStoredCount(), 2u);
 }
 
+// A slot cut short keeps a valid kind byte; read whole, its missing tail would
+// be taken from whatever the reader's buffer held and uploaded.
+TEST_F(FdnRecordStoreTests, shortSlotIsRetiredNotOffered) {
+    deliver(pdnA, matchFrame(1, 0x01));
+    deliver(pdnA, matchFrame(2, 0x02));
+    FdnRecordStore::MatchRing::Entry cut{};
+    memcpy(cut.senderMac, pdnA, 6);
+    cut.kind = static_cast<uint8_t>(RecordKind::MATCH);
+    cut.recordNumber = 1;
+    storage.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_0", reinterpret_cast<const uint8_t*>(&cut),
+                       sizeof(cut) - 1);
+
+    FdnRecordStore::MatchRing::Entry entries[2];
+    ASSERT_EQ(store->getMatchRecords().peekOldest(entries, 2), 1u);
+    EXPECT_EQ(entries[0].recordNumber, 2u) << "the cut slot was offered for upload";
+}
+
+TEST_F(FdnRecordStoreTests, slotOfAnotherKindIsRetiredNotOffered) {
+    deliver(pdnA, matchFrame(1, 0x01));
+    deliver(pdnA, matchFrame(2, 0x02));
+    FdnRecordStore::MatchRing::Entry crashKind{};
+    memcpy(crashKind.senderMac, pdnA, 6);
+    crashKind.kind = static_cast<uint8_t>(RecordKind::CRASH);
+    crashKind.recordNumber = 1;
+    storage.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_0",
+                       reinterpret_cast<const uint8_t*>(&crashKind), sizeof(crashKind));
+
+    FdnRecordStore::MatchRing::Entry entries[2];
+    ASSERT_EQ(store->getMatchRecords().peekOldest(entries, 2), 1u);
+    EXPECT_EQ(entries[0].recordNumber, 2u) << "a crash-kind slot was offered as a match";
+}
+
+// A stored head above the tail (#534): however the store recovers, it takes
+// the next record and never offers records it already uploaded.
+TEST_F(FdnRecordStoreTests, headAboveTailTakesTheNextRecordAndOffersNoUploadedOne) {
+    deliver(pdnA, matchFrame(1, 0x01));
+    deliver(pdnA, matchFrame(2, 0x02));
+    store->getMatchRecords().retireOldest(2);
+    storage.writeUInt(FDN_RECORD_STORE_NAMESPACE, "m_head", 40);
+    restart();
+    acks.clear();
+
+    deliver(pdnA, matchFrame(3, 0x03));
+
+    ASSERT_EQ(acks.size(), 1u) << "the store loaded as full and refused the record";
+    FdnRecordStore::MatchRing::Entry entries[FDN_MATCH_RECORD_CAPACITY];
+    ASSERT_EQ(store->getMatchRecords().peekOldest(entries, FDN_MATCH_RECORD_CAPACITY), 1u);
+    EXPECT_EQ(entries[0].recordNumber, 3u);
+}
+
+// A lost head key leaves a pair wider than the ring; loading walks one ring, not the gap.
+TEST_F(FdnRecordStoreTests, pairWiderThanTheRingLoadsAsAtMostAFullRing) {
+    storage.writeUInt(FDN_RECORD_STORE_NAMESPACE, "m_tail", 100);
+    restart();
+
+    EXPECT_LE(store->getMatchRecords().getStoredCount(), FDN_MATCH_RECORD_CAPACITY);
+}
+
 TEST_F(FdnRecordStoreTests, ownCrashIsStoredUnderTheFdnMac) {
     const uint8_t fdnMac[6] = {0xF0, 0x0D, 0x00, 0x00, 0x00, 0x01};
     FdnRecordStore::CrashRing::Entry own{};
