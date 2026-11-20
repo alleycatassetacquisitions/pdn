@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <gtest/gtest.h>
@@ -17,6 +18,7 @@
 #include "utility-tests.hpp"
 #include "fake-firmware-store.hpp"
 #include "protocol-constants.hpp"
+#include "connect-state-callback-tests.hpp"
 
 using ::testing::_;
 using ::testing::Return;
@@ -279,6 +281,31 @@ inline void idleDismountClearsUnreadyMatch(IdleStateTests* suite) {
 
     suite->idleState->onStateDismounted(&suite->device);
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+}
+
+// The hunter's SEND_MATCH_ID can need its whole retransmit span, and the bounty's
+// ack another. A hunter that gave up sooner would leave the bounty counting down
+// alone against nobody.
+inline void idleHoldsTheMatchForBothRetransmitSpans(IdleStateTests* suite) {
+    uint8_t bountyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->device.fakeRemoteDeviceCoordinator.setJackStatus(SerialIdentifier::OUTPUT_JACK,
+                                                            JackStatus::CONNECTED);
+    suite->device.fakeRemoteDeviceCoordinator.setPeerRole(SerialIdentifier::OUTPUT_JACK, false);
+    mountState(suite->idleState, &suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value())
+    << "a cabled hunter did not start a match";
+    const std::string matchId = suite->matchManager->getCurrentMatch()->getMatchId();
+
+    // Inside the 250 ms margin past both spans, which is what the margin is for.
+    suite->fakeClock->advance(2 * Resender::RETRANSMIT_SPAN_MS + 200);
+    suite->idleState->onStateLoop(&suite->device);
+    MatchCommand ack(bountyMac, MatchCmd::MATCH_ID_ACK, matchId.c_str(), 0, false);
+    suite->matchManager->listenForMatchEvents(ack);
+
+    EXPECT_TRUE(suite->idleState->transitionToMatchCountdown())
+    << "the hunter gave up on the match before the bounty's ack could arrive";
+    dismountState(suite->idleState, &suite->device);
 }
 
 // ============================================
@@ -1492,11 +1519,11 @@ inline void cleanupWinAndLoseStopTheirAnimation(StateCleanupTests* suite) {
 inline void cleanupMatchManagerClearsCurrentMatch(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
-    
+
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
-    
+
     suite->matchManager->clearCurrentMatch();
-    
+
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
     EXPECT_FALSE(suite->matchManager->getHasReceivedDrawResult());
     EXPECT_FALSE(suite->matchManager->getHasPressedButton());
@@ -1512,7 +1539,7 @@ inline void cleanupMatchManagerClearsMatchState(StateCleanupTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     suite->matchManager->setHunterDrawTime(200);
-    
+
     // Clear match
     suite->matchManager->clearCurrentMatch();
 
@@ -1520,6 +1547,118 @@ inline void cleanupMatchManagerClearsMatchState(StateCleanupTests* suite) {
     EXPECT_EQ(suite->matchManager->getMatchLocalStartTime(), 0);
     EXPECT_FALSE(suite->matchManager->getHasReceivedDrawResult());
     EXPECT_FALSE(suite->matchManager->getHasPressedButton());
+}
+
+// Win and Lose hold the result for 8 s, then hand the PDN to the hub's Sleep.
+// Each is checked alone, so neither can borrow the other's timer.
+inline void resultScreensLeaveForSleepAfterTheirTimer(StateCleanupTests* suite) {
+    MatchApp app(suite->ctx);
+    app.populateStateMap();
+    for (int screenId : {WIN, LOSE}) {
+        State* screen = nullptr;
+        for (State* state : app.getStateMap()) {
+            if (state->getStateId() == screenId) screen = state;
+        }
+        ASSERT_NE(screen, nullptr);
+
+        mountState(screen, &suite->device);
+        suite->fakeClock->advance(8000);
+        static_cast<TypedState<PDN>*>(screen)->onStateLoop(&suite->device);
+        EXPECT_EQ(screen->checkTransitions(), nullptr) << "screen " << screenId << " left early";
+
+        suite->fakeClock->advance(1);
+        static_cast<TypedState<PDN>*>(screen)->onStateLoop(&suite->device);
+        StateTransition* next = screen->checkTransitions();
+        ASSERT_NE(next, nullptr) << "screen " << screenId << " never left";
+        EXPECT_EQ(next->getTargetAppId().id, HUB_APP_ID);
+        EXPECT_EQ(next->getEntryStateId().id, SLEEP);
+        dismountState(screen, &suite->device);
+    }
+}
+
+// Plays this fixture's hunter through one match and finalizes it: `earlyPresses`
+// in the countdown, a press `rawMs` after the draw behind `boostMs`, against the
+// bounty's `opponentRawMs` behind `opponentBoostMs`.
+inline void playMatchForResultCard(StateCleanupTests* suite, unsigned long rawMs,
+                                   unsigned long boostMs, int earlyPresses, long opponentRawMs,
+                                   unsigned long opponentBoostMs) {
+    uint8_t bountyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    MatchManager* matchManager = suite->matchManager;
+    matchManager->setBoostProvider([boostMs]() { return boostMs; });
+    matchManager->initializeMatch(bountyMac);
+    for (int press = 0; press < earlyPresses; press++) {
+        matchManager->getButtonMasher()(matchManager);
+    }
+    matchManager->setMatchLocalStartTime(suite->fakeClock->milliseconds());
+    suite->fakeClock->advance(rawMs);
+    matchManager->getMatchButtonPush()(matchManager);
+    MatchCommand result(bountyMac, MatchCmd::DRAW_RESULT,
+                        matchManager->getCurrentMatch()->getMatchId(), opponentRawMs, false);
+    result.boostMs = opponentBoostMs;
+    matchManager->listenForMatchEvents(result);
+    ASSERT_TRUE(matchManager->finalizeMatch());
+}
+
+// Every line of text the screen draws while it is mounted.
+inline std::vector<std::string> textDrawnBy(StateCleanupTests* suite, State* screen) {
+    MockDisplay* display = suite->device.mockDisplay;
+    std::vector<std::string> text;
+    ON_CALL(*display, drawText(_, _, _))
+    .WillByDefault(Invoke([&text, display](const char* line, int, int) {
+        text.emplace_back(line);
+        return display;
+    }));
+    mountState(screen, &suite->device);
+    dismountState(screen, &suite->device);
+    ON_CALL(*display, drawText(_, _, _)).WillByDefault(Return(display));
+    return text;
+}
+
+inline bool drew(const std::vector<std::string>& text, const std::string& line) {
+    return std::find(text.begin(), text.end(), line) != text.end();
+}
+
+// The card shows this player's own boost as a supporter count, and the early-press penalty.
+inline void resultCardShowsOwnBoostAndPenalty(StateCleanupTests* suite) {
+    const unsigned long supporter = PosseManager::BOOST_PER_SUPPORTER_MS;
+    // 200 ms + 2 x 75 ms penalty - 2 supporters, against 400 ms - 1 supporter.
+    playMatchForResultCard(suite, 200, 2 * supporter, 2, 400, supporter);
+    Win win(suite->ctx);
+    std::vector<std::string> text = textDrawnBy(suite, &win);
+
+    EXPECT_TRUE(drew(text, "You: " + std::to_string(350 - 2 * supporter)));
+    EXPECT_TRUE(drew(text, "Boost: 2")) << "the card did not show two supporters of boost";
+    EXPECT_TRUE(drew(text, "Pen:+150")) << "the card did not show the 150 ms penalty";
+    EXPECT_TRUE(drew(text, "Opp: " + std::to_string(400 - supporter)));
+}
+
+// A boost past the raw time prints below zero, and a match without a penalty
+// has no penalty line.
+inline void resultCardShowsNegativeTimesAndNoPenaltyLine(StateCleanupTests* suite) {
+    const unsigned long supporter = PosseManager::BOOST_PER_SUPPORTER_MS;
+    // 10 ms - 30 ms boost against 5 ms - 45 ms boost.
+    playMatchForResultCard(suite, 10, 2 * supporter, 0, 5, 3 * supporter);
+    Lose lose(suite->ctx);
+    std::vector<std::string> text = textDrawnBy(suite, &lose);
+
+    EXPECT_TRUE(drew(text, "You: -20")) << "a negative own time did not print as negative";
+    EXPECT_TRUE(drew(text, "Opp: -40")) << "a negative opponent time did not print as negative";
+    for (const std::string& line : text) {
+        EXPECT_NE(line.rfind("Pen:", 0), 0u) << "a match without a penalty drew " << line;
+    }
+}
+
+// A match without a posse has no boost line.
+inline void resultCardWithoutABoostHasNoBoostLine(StateCleanupTests* suite) {
+    // 200 ms + 75 ms penalty against 300 ms, nobody boosted.
+    playMatchForResultCard(suite, 200, 0, 1, 300, 0);
+    Win win(suite->ctx);
+    std::vector<std::string> text = textDrawnBy(suite, &win);
+
+    EXPECT_TRUE(drew(text, "Pen:+75"));
+    for (const std::string& line : text) {
+        EXPECT_NE(line.rfind("Boost:", 0), 0u) << "a match without a boost drew " << line;
+    }
 }
 
 // ============================================
@@ -1812,6 +1951,8 @@ public:
     }
 
     void TearDown() override {
+        delete hub;
+        delete session;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -1823,6 +1964,44 @@ public:
     uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     PeerCommsInterface::PacketCallback chainGameEventHandler;
     void* chainGameEventCtx = nullptr;
+    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    GameSession* session = nullptr;
+    HubApp* hub = nullptr;
+
+    /**
+     * Seats this hunter PDN as a supporter of `challenger`, cabled on its output
+     * jack, and shows SupporterReady in a hub app. TearDown frees both.
+     */
+    void mountSupporterReady() {
+        player->setIsHunter(true);
+        FakeRemoteDeviceCoordinator& rdc = device.fakeRemoteDeviceCoordinator;
+        rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
+        rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, challenger);
+        rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
+        EXPECT_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
+
+        session = new GameSession(player, &device, nullptr);
+        session->getContext().posseManager->onRoleAnnounceReceived(challenger, challenger);
+        ASSERT_TRUE(session->getContext().posseManager->isSupporter());
+
+        hub = new HubApp(session->getContext());
+        AppConfig apps;
+        apps[StateId(HUB_APP_ID)] = hub;
+        device.loadAppConfig(apps, StateId(HUB_APP_ID));
+        device.setActiveApp(StateId(HUB_APP_ID), StateId(SUPPORTER_READY));
+        ASSERT_EQ(device.getActiveApp()->getCurrentState()->getStateId(), SUPPORTER_READY);
+        ASSERT_NE(chainGameEventHandler, nullptr);
+    }
+
+    /** Delivers a chain game event from `challenger` the way the radio does. */
+    void sendChainGameEvent(ChainGameEventType type, uint8_t seqId) {
+        ChainGameEventPayload event{};
+        event.event_type = static_cast<uint8_t>(type);
+        event.seqId = seqId;
+        memcpy(event.challengerMac, challenger, 6);
+        chainGameEventHandler(challenger, reinterpret_cast<const uint8_t*>(&event), sizeof(event),
+                              chainGameEventCtx);
+    }
 };
 
 // Create + destroy many GameSession instances; under ASAN (env:native_asan) a
@@ -1893,39 +2072,38 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
 // through the device instead of being handed a pointer at mount. A lookup that
 // misses arms no supporter, so the challenger plays without their boost.
 inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* suite) {
-    suite->player->setIsHunter(true);
-    uint8_t challenger[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-
-    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
-    rdc.setJackStatus(SerialIdentifier::OUTPUT_JACK, JackStatus::CONNECTED);
-    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, challenger);
-    rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
-    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
-
-    GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
-    PosseManager* posseManager = session->getContext().posseManager;
-    posseManager->onRoleAnnounceReceived(challenger, challenger);
-    ASSERT_TRUE(posseManager->isSupporter());
-
-    HubApp* hub = new HubApp(session->getContext());
-    AppConfig apps;
-    apps[StateId(HUB_APP_ID)] = hub;
-    suite->device.loadAppConfig(apps, StateId(HUB_APP_ID));
-    suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(SUPPORTER_READY));
-    ASSERT_EQ(suite->device.getActiveApp()->getCurrentState()->getStateId(), SUPPORTER_READY);
-
-    ChainGameEventPayload countdown{};
-    countdown.event_type = static_cast<uint8_t>(ChainGameEventType::COUNTDOWN);
-    countdown.seqId = 0;
-    memcpy(countdown.challengerMac, challenger, 6);
-    ASSERT_NE(suite->chainGameEventHandler, nullptr);
-    suite->chainGameEventHandler(challenger, reinterpret_cast<const uint8_t*>(&countdown),
-                                 sizeof(countdown), suite->chainGameEventCtx);
+    ASSERT_NO_FATAL_FAILURE(suite->mountSupporterReady());
+    suite->sendChainGameEvent(ChainGameEventType::COUNTDOWN, 0);
 
     SupporterReady* supporterReady =
         static_cast<SupporterReady*>(suite->device.getActiveApp()->getCurrentState());
     EXPECT_TRUE(supporterReady->buttonArmed);
+}
 
-    delete hub;
-    delete session;
+// A supporter who presses during the countdown is counted at the press, even
+// when the button comes back up only after the draw has disarmed it. Either
+// button counts.
+inline void supporterIsCountedOnThePressNotTheRelease(GameSessionLifecycleTests* suite) {
+    ASSERT_NO_FATAL_FAILURE(suite->mountSupporterReady());
+    int confirmsSent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainConfirm, _, _))
+    .WillRepeatedly([&confirmsSent](const uint8_t*, PktType, const uint8_t*, const size_t) {
+        confirmsSent++;
+        return 1;
+    });
+
+    suite->sendChainGameEvent(ChainGameEventType::COUNTDOWN, 0);
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::PRESS);
+    EXPECT_EQ(confirmsSent, 1) << "the press during the countdown sent no confirm";
+
+    suite->sendChainGameEvent(ChainGameEventType::DRAW, 1);
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::RELEASE);
+    suite->device.mockPrimaryButton->trigger(ButtonInteraction::CLICK);
+    EXPECT_EQ(confirmsSent, 1);
+
+    suite->sendChainGameEvent(ChainGameEventType::COUNTDOWN, 2);
+    suite->device.mockSecondaryButton->trigger(ButtonInteraction::PRESS);
+    EXPECT_EQ(confirmsSent, 2) << "a press on the second button sent no confirm";
+    // The counter goes out of scope here; TearDown's frees must not reach it.
+    testing::Mock::VerifyAndClearExpectations(suite->device.mockPeerComms);
 }
