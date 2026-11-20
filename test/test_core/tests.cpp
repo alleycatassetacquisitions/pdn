@@ -36,6 +36,7 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
+#include "animation-rng-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -2183,6 +2184,16 @@ TEST_F(ShootoutManagerTests, matchIndexAdvancesMonotonicallyAcrossRounds) {
 }
 TEST_F(ShootoutManagerTests, resultRetryIsReturnedByTournamentReset) {
     resultRetryIsReturnedByTournamentReset(this);
+}
+
+TEST_F(AnimationRngTests, bountyWinCopyReplaysItsOriginal) {
+    animationCopyReplaysItsOriginal<BountyWinAnimation>(fakeClock);
+}
+TEST_F(AnimationRngTests, hunterWinCopyReplaysItsOriginal) {
+    animationCopyReplaysItsOriginal<HunterWinAnimation>(fakeClock);
+}
+TEST_F(AnimationRngTests, loseCopyReplaysItsOriginal) {
+    animationCopyReplaysItsOriginal<LoseAnimation>(fakeClock);
 }
 
 // ============================================

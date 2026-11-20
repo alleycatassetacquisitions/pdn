@@ -65,14 +65,20 @@ protected:
 
 private:
     // Helper function for random integers in range [min, max]
-    static int randomInt(int min, int max) {
-        static std::random_device rd;
-        static std::mt19937 gen(rd());
+    int randomInt(int min, int max) {
         std::uniform_int_distribution<> dist(min, max);
-        return dist(gen);
+        return dist(generator);
+    }
+
+    // One device for all instances keeps its state off the stack; only seeds come from it.
+    static unsigned int drawSeed() {
+        static std::random_device rd;
+        return rd();
     }
 
     uint32_t lastFrameTime_;   // Last frame time for timing calculations
+    // Per instance so one device's draws never shift another's sequence.
+    std::mt19937 generator{drawSeed()};
     LEDColor twinkleColor = LEDColor(222, 97, 7);
     LEDColor gripColors[6] = {
         hunterIdleLEDColors[0],
