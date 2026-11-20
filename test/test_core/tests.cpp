@@ -36,6 +36,7 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
+#include "soak-smoke-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -2184,6 +2185,15 @@ TEST_F(ShootoutManagerTests, matchIndexAdvancesMonotonicallyAcrossRounds) {
 TEST_F(ShootoutManagerTests, resultRetryIsReturnedByTournamentReset) {
     resultRetryIsReturnedByTournamentReset(this);
 }
+
+// ============================================
+// SOAK HARNESS TESTS (virtual event)
+// ============================================
+
+TEST(SoakMedium, clockKeepsWallTimeAcrossSoftReboot) { soakClockKeepsWallTimeAcrossSoftReboot(); }
+TEST(SoakMedium, faultsReplayFromSeed) { soakMediumFaultsReplayFromSeed(); }
+TEST(SoakMedium, routesByMac) { soakMediumRoutesByMac(); }
+TEST(SoakMedium, cablePlugConnectsAndUnplugDrops) { soakCablePlugConnectsAndUnplugDrops(); }
 
 // ============================================
 // MAIN
