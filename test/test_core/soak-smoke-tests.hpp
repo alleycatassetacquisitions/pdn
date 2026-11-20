@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <map>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -405,6 +406,44 @@ inline void soakEveryFaultTypeFires() {
     EXPECT_EQ(result.counts["duelRebootsNeverFired"], 0u);
     EXPECT_EQ(result.counts["cutsArmedNeverFired"], 0u);
     EXPECT_EQ(result.counts["actionsSkipped"], 0u);
+}
+
+// Milliseconds from the first log line ending in @p from to the next ending in @p to.
+inline uint64_t soakLogGap(const std::string& log, const std::string& from, const std::string& to) {
+    std::istringstream lines(log);
+    std::string line;
+    int64_t start = -1;
+    while (std::getline(lines, line)) {
+        const std::string& wanted = start < 0 ? from : to;
+        if (line.size() < wanted.size() ||
+            line.compare(line.size() - wanted.size(), wanted.size(), wanted) != 0)
+            continue;
+        const int64_t at = std::stoll(line.substr(2, line.find(' ') - 2));
+        if (start >= 0) return static_cast<uint64_t>(at - start);
+        start = at;
+    }
+    ADD_FAILURE() << "no '" << from << "' then '" << to << "' in the log";
+    return 0;
+}
+
+// Test: a scheduled PDN cut and an FDN reboot at a write keep the device down for
+// the action's drawn "down", not the default boot time. The duel gives PDN 1 its
+// write; the late noevent keeps the run going until both are back up.
+inline void soakCutsStayDownForTheirDrawnTime() {
+    soak::RunResult result = playSoakScript(3, 1,
+                                            {
+                                            "at=1000 cut a=1 b=- k=1 torn=0 down=4000",
+                                            "at=1000 fdnreboot a=- b=0 down=3000 k=1 torn=0",
+                                            "at=2000 duel a=2 b=1 rb=200 rh=300",
+                                            "at=20000 noevent a=- b=- dur=1000",
+                                            });
+    EXPECT_EQ(result.counts["cutsFired"], 2u);
+    const uint64_t pdnGap = soakLogGap(result.log, "cut pdn=1", "up pdn=1");
+    EXPECT_GE(pdnGap, 4000u);
+    EXPECT_LT(pdnGap, 4100u);
+    const uint64_t fdnGap = soakLogGap(result.log, "down fdn=0", "up fdn=0");
+    EXPECT_GE(fdnGap, 3000u);
+    EXPECT_LT(fdnGap, 3100u);
 }
 
 // Test: an FDN's client never associates while offline, fails a request in

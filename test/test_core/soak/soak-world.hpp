@@ -145,6 +145,8 @@ protected:
         uint8_t mac[6] = {};
         bool down = false;
         uint64_t upAt = 0;
+        // How long the armed cut keeps the device down once it fires.
+        uint64_t cutDownMs = 1500;
     };
     // A posse frame that reached a PDN's radio: a supporter's confirm, a supporter's
     // join naming this PDN, or a challenger's countdown. `from` is the PDN it speaks
@@ -560,7 +562,8 @@ protected:
             const bool rebootDue = slot.rebootAt != 0 && now >= slot.rebootAt;
             if (rebootDue && !slot.nvs.isFrozen()) counts["duelRebootsFired"]++;
             if (slot.nvs.isFrozen() || rebootDue) {
-                takeDown(static_cast<int>(i), slot.nvs.isFrozen(), 0);
+                takeDown(static_cast<int>(i), slot.nvs.isFrozen(),
+                         slot.nvs.isFrozen() ? slot.cutDownMs : 0);
             }
         }
         for (size_t i = 0; i < fdns.size(); i++) {
@@ -576,7 +579,7 @@ protected:
                 slot.faults.transportFail = config.http.transportFail;
             }
             step(slot, hello);
-            if (slot.nvs.isFrozen()) takeDownFdn(static_cast<int>(i), 1500);
+            if (slot.nvs.isFrozen()) takeDownFdn(static_cast<int>(i), slot.cutDownMs);
         }
     }
 
@@ -619,6 +622,12 @@ protected:
         slot.down = true;
         slot.upAt = now + downMs;
         medium.setMuted(slot.mac, true);
+    }
+
+    // Arms the action's power cut ("k", "torn"); it keeps the device down for "down" ms.
+    template <class S> static void armCut(S& slot, const Action& action) {
+        slot.nvs.armCut(static_cast<uint32_t>(action.get("k", 1)), action.get("torn") != 0);
+        slot.cutDownMs = static_cast<uint64_t>(action.get("down", 1500));
     }
 
     // A reboot (soft) or a power cut: the PDN is gone for its boot time, and every
@@ -704,8 +713,7 @@ protected:
                 if (action.type == ActionType::REBOOT) {
                     takeDown(pdn, false, static_cast<uint64_t>(action.get("down", 1500)));
                 } else {
-                    pdns[static_cast<size_t>(pdn)].nvs.armCut(
-                    static_cast<uint32_t>(action.get("k", 1)), action.get("torn") != 0);
+                    armCut(pdns[static_cast<size_t>(pdn)], action);
                 }
                 return 1;
             }
@@ -725,8 +733,7 @@ protected:
                 FdnSlot& slot = fdns[static_cast<size_t>(action.b[0])];
                 if (slot.down) return 0;
                 if (action.get("k") > 0) {
-                    slot.nvs.armCut(static_cast<uint32_t>(action.get("k")),
-                                    action.get("torn") != 0);
+                    armCut(slot, action);
                 } else {
                     takeDownFdn(action.b[0], static_cast<uint64_t>(action.get("down", 1500)));
                 }
@@ -874,9 +881,7 @@ protected:
                 activity.plugged.push_back({op.a, op.b});
                 // The duel cable is the last op: arm a cut on the device about to record.
                 if (activity.ops.empty() && activity.cutSlot >= 0) {
-                    const Action& action = actions[activity.action];
-                    pdns[static_cast<size_t>(activity.cutSlot)].nvs.armCut(
-                    static_cast<uint32_t>(action.get("k", 1)), action.get("torn") != 0);
+                    armCut(pdns[static_cast<size_t>(activity.cutSlot)], actions[activity.action]);
                 }
             }
         }

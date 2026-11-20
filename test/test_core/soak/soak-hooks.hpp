@@ -9,9 +9,8 @@
 namespace soak {
 
 // While set, every std::random_device draw comes from the seeded stream instead of
-// the OS, so match ids (IdGenerator) and ReliableChannel seqIds replay from the seed.
-// The WIN/LOSE animations seed static generators once per process, so a seed replays
-// exactly in a fresh process; a later run of it in the same process may differ.
+// the OS, so match ids (IdGenerator), ReliableChannel seqIds and the WIN/LOSE animation
+// generators replay from the seed.
 inline bool entropySeeded = false;
 inline std::mt19937 entropyStream;
 
