@@ -225,6 +225,29 @@ inline void matchCodecKeepsUnknownErrorCode() {
     EXPECT_EQ(rejections[0].rawCode, 42);
 }
 
+// Built byte by byte so the codes never pass through the generated C enum on the way in.
+inline std::string rejectionBodyWithCode(const std::string& codeVarint) {
+    std::string rejection = std::string("\x08\x00\x12\x24", 4) +
+                            "00000000-0000-4000-8000-000000000000" + "\x20" + codeVarint;
+    return std::string("\x0a", 1) + static_cast<char>(rejection.size()) + rejection;
+}
+
+inline void matchCodecKeepsErrorCodesOutsideTheEnum() {
+    const std::string codes[] = {std::string("\x44", 1), std::string("\xff\xff\xff\xff\x07", 5),
+                                 std::string("\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01", 10)};
+    const int32_t expected[] = {68, INT32_MAX, -1};
+    for (size_t index = 0; index < 3; index++) {
+        std::vector<QuickdrawMatchRejection> rejections;
+        QuickdrawUploadResult result;
+        ASSERT_TRUE(QuickdrawMatchCodec::decodeResponse(rejectionBodyWithCode(codes[index]),
+                                                        collectRejections(rejections), result));
+
+        ASSERT_EQ(rejections.size(), 1u);
+        EXPECT_EQ(rejections[0].code, QuickdrawMatchErrorCode::UNKNOWN);
+        EXPECT_EQ(rejections[0].rawCode, expected[index]);
+    }
+}
+
 inline void matchCodecRejectsTooManyFieldsWithoutDelivering() {
     alleycat_device_QuickdrawMatchRejection valid = makeRejectionMessage(
         0,

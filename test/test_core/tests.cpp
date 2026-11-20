@@ -1154,6 +1154,10 @@ TEST(QuickdrawMatchCodec, keepsUnknownErrorCode) {
     matchCodecKeepsUnknownErrorCode();
 }
 
+TEST(QuickdrawMatchCodec, keepsErrorCodesOutsideTheEnum) {
+    matchCodecKeepsErrorCodesOutsideTheEnum();
+}
+
 TEST(QuickdrawMatchCodec, rejectsTooManyFieldsWithoutDelivering) {
     matchCodecRejectsTooManyFieldsWithoutDelivering();
 }
