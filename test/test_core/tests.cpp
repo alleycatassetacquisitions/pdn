@@ -1026,6 +1026,16 @@ TEST_F(CrashCodecTestSuite, returnsZeroWhenBufferTooSmall) {
     crashCodecReturnZeroWhenBufferTooSmall(this);
 }
 
+TEST(CrashPacketTests, carriesRecordInRelayLayout) { crashPacketCarriesRecordInRelayLayout(); }
+
+TEST_F(CrashCodecTestSuite, crashRelayedThroughPacketReachesServerUnchanged) {
+    crashRelayedThroughPacketReachesServerUnchanged(this);
+}
+
+TEST_F(CrashCodecTestSuite, crashWithoutCauseRelaysWithoutCause) {
+    crashWithoutCauseRelaysWithoutCause(this);
+}
+
 // ============================================
 // DEVICE PLAYER (PROTOBUF) TESTS
 // ============================================
