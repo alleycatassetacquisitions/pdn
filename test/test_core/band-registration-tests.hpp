@@ -103,7 +103,13 @@ public:
         pdn.rdc = &pdnRdc;
 
         manager = new FdnProvisioningManager(fdn.wirelessManager, &fdnRdc, &reader);
-        manager->setOnViewChanged([this](const RegistrationView& changed) { fdnView = changed; });
+        manager->setOnViewChanged([this](const RegistrationView& changed) {
+            fdnView = changed;
+            if (changed.screen == RegistrationScreen::RESULT &&
+                changed.outcome == RegistrationOutcome::REGISTERED &&
+                lastRegisteredSentToFdn() != 1)
+                fdnWelcomedBeforeTheConfirm = true;
+        });
         manager->setRegistrationScreenShown(true);
         session =
         new GameSession(playerProvider.getPlayer(), playerProvider.getRecordKey(), &pdn, nullptr);
@@ -335,6 +341,8 @@ public:
     BandRegistration* bandRegistration = nullptr;
     PlayerFetchApp* app = nullptr;
     RegistrationView fdnView;
+    // Set if the FDN showed WELCOME before the PDN sent a context saying it registered.
+    bool fdnWelcomedBeforeTheConfirm = false;
     bool fdnCabled = true;
     std::optional<std::array<uint8_t, 6>> forgedPeer;
     DeviceType forgedType = DeviceType::PDN;
@@ -383,8 +391,8 @@ inline void bandRegistrationWaitingScreenFollowsTheFdnTurn(BandRegistrationTests
 }
 
 // The whole path: a tap at the FDN, the key over the jack, the profile over the
-// radio, Welcome; the PDN tells the FDN it registered, so the FDN does not give
-// it the turn again once its result hold ends.
+// radio, Welcome; the PDN tells the FDN it registered, so the FDN welcomes the
+// player only then and does not give it the turn again once its hold ends.
 inline void bandRegistrationTapRegistersAndTheFdnLetsThePdnGo(BandRegistrationTests* suite) {
     suite->advance(200);
     ASSERT_TRUE(suite->shows("Tap band"));
@@ -396,6 +404,10 @@ inline void bandRegistrationTapRegistersAndTheFdnLetsThePdnGo(BandRegistrationTe
     EXPECT_EQ(player->getServerPlayerId(), makeTestUuid(TEST_PLAYER_ID));
     EXPECT_TRUE(suite->holdsKeyOf(0xA5));
     EXPECT_EQ(suite->lastRegisteredSentToFdn(), 1);
+    EXPECT_EQ(suite->fdnView.screen, RegistrationScreen::RESULT);
+    EXPECT_EQ(suite->fdnView.outcome, RegistrationOutcome::REGISTERED)
+    << "the FDN missed the PDN's confirmation";
+    EXPECT_FALSE(suite->fdnWelcomedBeforeTheConfirm);
 
     // Seeded from the player's id, so another PDN registering Alex rolls the same.
     const int rolledHere = std::rand();
