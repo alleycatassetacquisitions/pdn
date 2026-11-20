@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -53,8 +54,30 @@ public:
         return matching;
     }
 
+    /** Keeps a copy of the handler, then registers it with the simulated radio. */
+    void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) override {
+        handlers[packetType] = {callback, ctx};
+        NativePeerCommsDriver::setPacketHandler(packetType, callback, ctx);
+    }
+
+    /** Forgets the copy, then unregisters the handler from the simulated radio. */
+    void clearPacketHandler(PktType packetType) override {
+        handlers.erase(packetType);
+        NativePeerCommsDriver::clearPacketHandler(packetType);
+    }
+
+    /**
+     * Calls the handler for @p type on the caller's buffer, so bytes past @p length
+     * stay readable; unlike the driver, which copies exactly @p length.
+     */
+    void handFrame(const uint8_t* fromMac, PktType type, const uint8_t* data, size_t length) {
+        const std::pair<PacketCallback, void*>& handler = handlers.at(type);
+        handler.first(fromMac, data, length, handler.second);
+    }
+
     std::vector<SentPacket> sent;
     std::set<PktType> lostTypes;
+    std::map<PktType, std::pair<PacketCallback, void*>> handlers;
 };
 
 // Crash records 1..newest, each 42 bytes of its own number.
@@ -254,6 +277,26 @@ TEST_F(RecordRelayTests, ignoresBeaconsFromAnythingButAnFdn) {
     EXPECT_TRUE(pdnRadio.sentOf(PktType::kMatchRecord).empty());
 }
 
+// Any radio can send a frame of packet type 0, so the length decides before any
+// byte is read: a beacon one byte short or one byte long relays nothing.
+TEST_F(RecordRelayTests, beaconOfAnyOtherLengthRelaysNothing) {
+    crashSource.newest = 1;
+    storeMatch(0x01);
+    PlayerInfoPkt fdnBeacon{};
+    fdnBeacon.senderDeviceType = static_cast<uint8_t>(DeviceType::FDN);
+    uint8_t frame[sizeof(PlayerInfoPkt) + 1] = {};
+    memcpy(frame, &fdnBeacon, sizeof(fdnBeacon));
+
+    // The FDN type byte is the one just past the end of the short frame.
+    pdnRadio.handFrame(fdnMac, PktType::kPlayerInfoBroadcast, frame, sizeof(PlayerInfoPkt) - 1);
+    pump();
+    EXPECT_TRUE(pdnRadio.sentOf(PktType::kCrashRecord).empty()) << "a short beacon was relayed to";
+
+    sendToPdn(fdnMac, PktType::kPlayerInfoBroadcast, frame, sizeof(frame));
+    EXPECT_TRUE(pdnRadio.sentOf(PktType::kCrashRecord).empty()) << "a long beacon was relayed to";
+    EXPECT_TRUE(pdnRadio.sentOf(PktType::kMatchRecord).empty());
+}
+
 TEST_F(RecordRelayTests, sendsNothingWhileAMatchIsActive) {
     crashSource.newest = 1;
     storeMatch(0x01);
@@ -281,19 +324,44 @@ TEST_F(RecordRelayTests, sendsNothingWhileAShootoutIsActive) {
 
 TEST_F(RecordRelayTests, ackDuringAMatchRetiresButSendsNoMore) {
     crashSource.newest = 2;
+    storeMatch(0x01);
+    storeMatch(0x02);
     beacon(silentFdnMac);
     ASSERT_EQ(pdnRadio.sentOf(PktType::kCrashRecord).size(), 1u);
+    ASSERT_EQ(pdnRadio.sentOf(PktType::kMatchRecord).size(), 1u);
     matchManager->getCurrentMatch().emplace("active-match");
 
     ack(silentFdnMac, RecordKind::CRASH, 1, sentContentCrc(PktType::kCrashRecord, 0));
+    ack(silentFdnMac, RecordKind::MATCH, 1, sentContentCrc(PktType::kMatchRecord, 0));
 
     EXPECT_EQ(crashSource.mark, 1u);
     EXPECT_EQ(pdnRadio.sentOf(PktType::kCrashRecord).size(), 1u);
+    EXPECT_EQ(collectedSeq(), 1u);
+    EXPECT_EQ(pdnRadio.sentOf(PktType::kMatchRecord).size(), 1u);
 
     // An ack already answered is not a cue to send, even once play is over.
     matchManager->clearCurrentMatch();
     ack(silentFdnMac, RecordKind::CRASH, 1, sentContentCrc(PktType::kCrashRecord, 0));
     EXPECT_EQ(pdnRadio.sentOf(PktType::kCrashRecord).size(), 1u);
+}
+
+// The FDN's ack proves the frame arrived even when the radio's delivery report
+// was lost: the record stops retrying and the next one goes out at once.
+TEST_F(RecordRelayTests, ackWithNoDeliveryReportStopsTheRetriesAndSendsTheNext) {
+    crashSource.newest = 2;
+    pdnRadio.lostTypes = {PktType::kCrashRecord};
+    beacon(silentFdnMac);
+    ASSERT_EQ(pdnRadio.sentOf(PktType::kCrashRecord).size(), 1u);
+    pdnRadio.lostTypes.clear();
+
+    ack(silentFdnMac, RecordKind::CRASH, 1, sentContentCrc(PktType::kCrashRecord, 0));
+    ASSERT_EQ(pdnRadio.sentOf(PktType::kCrashRecord).size(), 2u)
+    << "record 1, retired, still held the lane";
+    EXPECT_EQ(sentRecordNumber(PktType::kCrashRecord, 1), 2u);
+
+    clock.advance(Resender::RETRANSMIT_SPAN_MS);
+    pump();
+    EXPECT_EQ(pdnRadio.sentOf(PktType::kCrashRecord).size(), 2u) << "a retired record was resent";
 }
 
 TEST_F(RecordRelayTests, markThatFailsToMoveIsNotResentStraightBack) {

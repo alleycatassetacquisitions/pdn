@@ -636,6 +636,42 @@ inline void matchManagerRoleMismatchClearsInitiatorMatch(MatchManager* mm, Playe
     EXPECT_FALSE(mm->isMatchReady());
 }
 
+// Bounties never initiate, so no honest hunter sends one a MATCH_ID_ACK. A stray
+// one must not stand in for the delivery of the bounty's own ack: the bounty
+// stays unready and keeps sending its ack until the hunter has it.
+TEST_F(MatchManagerTestSuite, bountyWaitingOnItsAckIgnoresAMatchIdAck) {
+    player->setIsHunter(false);
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    MatchCommand initiation(hunterMac, MatchCmd::SEND_MATCH_ID, "match-id-abc", 0, true);
+    matchManager->listenForMatchEvents(initiation);
+    ASSERT_EQ(radioTap.sentFrames.size(), 1u);
+
+    MatchCommand strayAck(hunterMac, MatchCmd::MATCH_ID_ACK, "match-id-abc", 0, true);
+    matchManager->listenForMatchEvents(strayAck);
+    EXPECT_FALSE(matchManager->isMatchReady()) << "the bounty counted down on a stray ack";
+
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    matchManager->sync();
+    ASSERT_EQ(radioTap.sentFrames.size(), 2u) << "the stray ack stopped the bounty's ack retrying";
+    EXPECT_EQ(radioTap.sentFrames[1].command, MatchCmd::MATCH_ID_ACK);
+    radioTap.confirmLastSend();
+    EXPECT_TRUE(matchManager->isMatchReady());
+}
+
+// A role mismatch answers an initiation, so one that lands after the handshake is
+// stray or forged: carrying the live match ID, it still leaves a ready match held.
+TEST_F(MatchManagerTestSuite, lateRoleMismatchLeavesAReadyMatchHeld) {
+    setupMatchAsBounty();
+    ASSERT_TRUE(matchManager->isMatchReady());
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    MatchCommand mismatch(hunterMac, MatchCmd::MATCH_ROLE_MISMATCH, "test-match-id", 0, true);
+    matchManager->listenForMatchEvents(mismatch);
+
+    EXPECT_TRUE(matchManager->getCurrentMatch().has_value()) << "a late mismatch cleared the match";
+    EXPECT_TRUE(matchManager->isMatchReady());
+}
+
 TEST_F(MatchManagerTestSuite, abandoningAHandshakeCancelsItsPendingRetries) {
     using ::testing::_;
     std::vector<int> sentCommands;

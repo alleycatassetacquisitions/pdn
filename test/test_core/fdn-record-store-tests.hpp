@@ -271,6 +271,10 @@ TEST_F(FdnRecordStoreTests, wrongKindIsDroppedWithoutAck) {
 TEST_F(FdnRecordStoreTests, wrongLengthIsDroppedWithoutAck) {
     const MatchRecordFramePacket frame = matchFrame(1, 0x01);
     deliverBytes(PktType::kMatchRecord, pdnA, &frame, sizeof(frame) - 1);
+    // A frame with a trailing byte is not taken from its first sizeof(frame) bytes.
+    uint8_t padded[sizeof(MatchRecordFramePacket) + 1] = {};
+    memcpy(padded, &frame, sizeof(frame));
+    deliverBytes(PktType::kMatchRecord, pdnA, padded, sizeof(padded));
 
     EXPECT_TRUE(acks.empty());
     EXPECT_EQ(store->getMatchRecords().getStoredCount(), 0u);
@@ -370,7 +374,7 @@ TEST_F(FdnRecordStoreTests, olderFirmwareMatchesNamespaceIsUntouched) {
     EXPECT_EQ(storage.read(LEGACY_MATCHES_NAMESPACE, "match_1", ""), "{\"match_id\":\"b\"}");
 }
 
-TEST(FdnBeaconTest, beaconCarriesTheSenderDeviceType) {
+TEST(FdnBeaconTest, beaconGoesOutAtTheIntervalAskedForAndCarriesTheSenderDeviceType) {
     FakePlatformClock clock;
     SimpleTimer::setPlatformClock(&clock);
     testing::NiceMock<MockPeerComms> peerComms;
@@ -388,11 +392,35 @@ TEST(FdnBeaconTest, beaconCarriesTheSenderDeviceType) {
 
     clock.setTime(1);
     remotePlayerManager.StartBroadcastingPlayerInfo(&fdnPlayer, 12000, DeviceType::FDN);
-    clock.advance(12000);
+    clock.advance(11999);
+    remotePlayerManager.Update();
+    EXPECT_EQ(beacons.size(), 1u) << "a beacon went out before the 12 s asked for";
+    clock.advance(1);
     remotePlayerManager.Update();
 
     ASSERT_EQ(beacons.size(), 2u);
     EXPECT_EQ(beacons[0].back(), static_cast<uint8_t>(DeviceType::FDN));
     EXPECT_EQ(beacons[1].back(), static_cast<uint8_t>(DeviceType::FDN));
+    SimpleTimer::setPlatformClock(nullptr);
+}
+
+// Frames come off the radio from anyone: a player-info frame a byte short or a
+// byte long adds no player and is not heard as a beacon.
+TEST(FdnBeaconTest, playerInfoFrameOfAnyOtherLengthAddsNoPlayer) {
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    testing::NiceMock<MockPeerComms> peerComms;
+    RemotePlayerManager remotePlayerManager(&peerComms);
+    const uint8_t sender[6] = {0x0A, 0x01, 0x02, 0x03, 0x04, 0x05};
+    const uint8_t frame[sizeof(PlayerInfoPkt) + 1] = {};
+
+    remotePlayerManager.ProcessPlayerInfoPkt(sender, frame, sizeof(PlayerInfoPkt) - 1);
+    remotePlayerManager.ProcessPlayerInfoPkt(sender, frame, sizeof(frame));
+    EXPECT_EQ(remotePlayerManager.getRemotePlayerCount(), 0);
+    EXPECT_FALSE(remotePlayerManager.consumePacketReceived());
+
+    remotePlayerManager.ProcessPlayerInfoPkt(sender, frame, sizeof(PlayerInfoPkt));
+    EXPECT_EQ(remotePlayerManager.getRemotePlayerCount(), 1);
+    EXPECT_TRUE(remotePlayerManager.consumePacketReceived());
     SimpleTimer::setPlatformClock(nullptr);
 }
