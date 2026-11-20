@@ -8,6 +8,8 @@
 #include "utils/simple-timer.hpp"
 #include "utils/uuid-bytes.hpp"
 
+#include "sim-medium.hpp"
+
 #include <cstdint>
 #include <map>
 #include <queue>
@@ -19,6 +21,7 @@
 namespace soak {
 
 struct HttpResult {
+    bool transportOk = false;
     int status = 0;
     std::string body;
 };
@@ -31,6 +34,13 @@ public:
     /** Performs one request to completion; virtual time stands still meanwhile. */
     virtual HttpResult perform(const std::string& method, const std::string& path,
                                const std::string& contentType, const std::string& body) = 0;
+};
+
+// Faults one FDN's HTTP path suffers. offline: Wi-Fi never associates.
+struct HttpFaults {
+    double serverError = 0;
+    double transportFail = 0;
+    bool offline = false;
 };
 
 inline bool decodeMatchEntry(pb_istream_t* stream, const pb_field_t* field, void** arg) {
@@ -56,14 +66,18 @@ inline bool decodeMatchBatch(const std::string& body,
 // HttpClientInterface with the ESP32 driver's observable behaviour
 // (esp32-s3-http-client-driver.hpp): Wi-Fi association before the first request,
 // one request in flight, 2xx = success, other statuses fail at once as
-// SERVER_ERROR (>= 500) or INVALID_RESPONSE with the status, and disconnect()
-// failing everything queued.
+// SERVER_ERROR (>= 500) or INVALID_RESPONSE with the status, transport failures
+// retried once after 2 s, and disconnect() failing everything queued.
 class SimHttpClient : public HttpClientDriverInterface {
 public:
-    /** Requests go to @p backend; @p rng, which times them, belongs to the FDN's world slot. */
-    SimHttpClient(const std::string& name, HttpBackend& backend, std::mt19937_64& rng)
+    static constexpr int MAX_RETRIES = 1;
+
+    /** Requests go to @p backend; @p faults and @p rng belong to the FDN's world slot. */
+    SimHttpClient(const std::string& name, HttpBackend& backend, HttpFaults& faults,
+                  std::mt19937_64& rng)
         : HttpClientDriverInterface(name)
         , backend(backend)
+        , faults(faults)
         , rng(rng) {}
 
     /** Nothing to bring up until Wi-Fi mode. */
@@ -74,12 +88,13 @@ public:
         if (state != HttpClientState::CONNECTED) return;
         const unsigned long now = SimpleTimer::getPlatformClock()->milliseconds();
         if (!wifiConnected) {
-            if (now >= connectAt) wifiConnected = true;
+            if (!faults.offline && now >= connectAt) wifiConnected = true;
             return;
         }
         if (queue.empty()) return;
         HttpRequest& request = queue.front();
         if (!request.inProgress) {
+            if (retryAt != 0 && static_cast<long>(now - retryAt) < 0) return;
             request.inProgress = true;
             attempt(request, now);
             return;
@@ -131,11 +146,23 @@ public:
 private:
     void attempt(HttpRequest& request, unsigned long now) {
         completeAt = now + std::uniform_int_distribution<unsigned long>(20, 400)(rng);
+        if (chance(rng, faults.transportFail)) {
+            result = {false, 0, ""};
+            return;
+        }
+        if (chance(rng, faults.serverError)) {
+            result = {true, 503, "injected"};
+            return;
+        }
         result =
         backend.perform(request.method, request.path, request.contentType, request.payload);
     }
 
     void finish() {
+        if (!result.transportOk) {
+            endAttempt({WirelessError::CONNECTION_FAILED, "transport failed"});
+            return;
+        }
         queue.front().responseData = result.body;
         if (result.status >= 200 && result.status < 300) {
             completeFront(true, {});
@@ -146,9 +173,22 @@ private:
         completeFront(false, {type, "HTTP Error: " + std::to_string(result.status), result.status});
     }
 
+    void endAttempt(const WirelessErrorInfo& error) {
+        HttpRequest& request = queue.front();
+        request.inProgress = false;
+        if (request.retryCount < MAX_RETRIES) {
+            request.retryCount++;
+            retryAt =
+            SimpleTimer::getPlatformClock()->milliseconds() + (1UL << request.retryCount) * 1000;
+            return;
+        }
+        completeFront(false, error);
+    }
+
     void completeFront(bool success, const WirelessErrorInfo& error) {
         HttpRequest done = std::move(queue.front());
         queue.pop();
+        retryAt = 0;
         if (success && done.onSuccess) {
             done.onSuccess(done.responseData);
         } else if (!success && done.onError) {
@@ -157,11 +197,13 @@ private:
     }
 
     HttpBackend& backend;
+    HttpFaults& faults;
     std::mt19937_64& rng;
     std::queue<HttpRequest> queue;
     HttpClientState state = HttpClientState::DISCONNECTED;
     bool wifiConnected = false;
     unsigned long connectAt = 0;
+    unsigned long retryAt = 0;
     unsigned long completeAt = 0;
     HttpResult result;
     uint8_t mac[6] = {};
@@ -230,11 +272,13 @@ public:
     /** Handles POST /quickdraw-matches; anything else is a 404. */
     HttpResult perform(const std::string& method, const std::string& path,
                        const std::string& contentType, const std::string& body) override {
-        if (method != "POST" || path != "/quickdraw-matches") return {404, "Not Found"};
-        if (contentType != "application/protobuf") return {415, "Unsupported Media Type"};
+        if (method != "POST" || path != "/quickdraw-matches") return {true, 404, "Not Found"};
+        if (contentType != "application/protobuf") return {true, 415, "Unsupported Media Type"};
+        // The body is decoded and sized before the event lock (quickdraw.rs:228-247).
         std::vector<alleycat_device_QuickdrawMatch> batch;
-        if (!decodeMatchBatch(body, batch)) return {400, "bad protobuf"};
-        if (batch.empty() || batch.size() > 100) return {400, "Supply 1-100 matches"};
+        if (!decodeMatchBatch(body, batch)) return {true, 400, "bad protobuf"};
+        if (batch.empty() || batch.size() > 100) return {true, 400, "Supply 1-100 matches"};
+        if (!eventActive) return {true, 409, "No active event"};
         std::vector<alleycat_device_QuickdrawMatchRejection> rejected;
         for (size_t i = 0; i < batch.size(); i++) {
             reports[batch[i].id]++;
@@ -246,9 +290,12 @@ public:
                 rejected.push_back(rejection);
             }
         }
-        if (rejected.empty()) return {204, ""};
-        return {200, encodeRejections(rejected)};
+        if (rejected.empty()) return {true, 204, ""};
+        return {true, 200, encodeRejections(rejected)};
     }
+
+    // False answers 409 "No active event", as between events.
+    bool eventActive = true;
 
 private:
     using Code = alleycat_device_QuickdrawMatchErrorCode;

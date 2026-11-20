@@ -3,9 +3,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <functional>
 #include <map>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -13,7 +13,6 @@
 #include "device/drivers/native/native-light-strip-driver.hpp"
 #include "device/pdn.hpp"
 #include "soak/sim-medium.hpp"
-#include "soak/soak-hooks.hpp"
 #include "soak/soak-world.hpp"
 
 // Enabled radios at MACs 02:50:00:00:00:<i> on a medium seeded with 7; every
@@ -217,32 +216,23 @@ inline void soakCablePlugConnectsAndUnplugDrops() {
     SimpleTimer::setPlatformClock(saved);
 }
 
-// A World the test drives by hand: it ticks, and each PDN in MATCH presses once,
-// PDN i 200 + 100 * i ms after its draw started.
+// Parses an action list written one action per line.
+inline std::vector<soak::Action> soakScript(const std::vector<std::string>& lines) {
+    std::vector<soak::Action> actions;
+    for (const std::string& line : lines) {
+        soak::Action action;
+        EXPECT_TRUE(soak::parseAction(line, action)) << line;
+        actions.push_back(action);
+    }
+    return actions;
+}
+
+// A World whose devices and server the test reads after the run.
 struct SoakDuelWorld : soak::World {
-    using World::cables;
     using World::fdns;
     using World::pdns;
     using World::server;
-    using World::setUp;
     using World::World;
-
-    /** Ticks until @p done holds, at most @p ms of virtual time; false if it never did. */
-    bool runUntil(const std::function<bool()>& done, uint64_t ms) {
-        for (const uint64_t end = now + ms; now < end;) {
-            tick();
-            for (size_t i = 0; i < pdns.size(); i++) {
-                MatchManager* matchManager = pdns[i].device->context().matchManager;
-                if (pdns[i].device->stateId() == MATCH && !matchManager->getHasPressedButton() &&
-                    pdns[i].clock->milliseconds() - matchManager->getMatchLocalStartTime() >=
-                    200 + 100 * i) {
-                    pdns[i].device->press();
-                }
-            }
-            if (done()) return true;
-        }
-        return false;
-    }
 };
 
 // Test: two PDNs duel on a cable, an FDN collects both records over the medium
@@ -251,21 +241,12 @@ inline void soakFdnUploadsACabledDuel() {
     soak::SoakConfig config;
     config.pdns = 2;
     config.fdns = 1;
-    SoakDuelWorld world(config);
-    ASSERT_TRUE(world.setUp());
-    const auto inState = [&world](std::set<int> states) {
-        return states.count(world.pdns[0].device->stateId()) != 0 &&
-               states.count(world.pdns[1].device->stateId()) != 0;
-    };
-    ASSERT_TRUE(world.runUntil([&] { return inState({IDLE}); }, 30000));
-    ASSERT_TRUE(
-    world.cables.plug({0, SerialIdentifier::OUTPUT_JACK}, {1, SerialIdentifier::INPUT_JACK}));
-    ASSERT_TRUE(world.runUntil([&] { return inState({WIN, LOSE}); }, 30000));
-    world.cables.unplug({0, SerialIdentifier::OUTPUT_JACK});
-    // The FDN retires both records once the server answers their upload.
-    EXPECT_TRUE(world.runUntil(
-    [&] { return world.fdns[0].nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_head", 0) == 2; },
-    400000));
+    // Past the uploader's first 300 s interval.
+    config.schedule.horizonMs = 400000;
+    SoakDuelWorld world(config, soakScript({"at=1000 duel a=0 b=1 rh=200 rb=300"}));
+    world.run();
+    // The FDN retired both records once the server answered their upload.
+    EXPECT_EQ(world.fdns[0].nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_head", 0), 2u);
     std::vector<soak::ServerRow> rows;
     world.server->listMatches(rows);
     ASSERT_EQ(rows.size(), 1u);
@@ -277,4 +258,170 @@ inline void soakFdnUploadsACabledDuel() {
     EXPECT_EQ(rows[0].winner, rows[0].playerA);
     EXPECT_EQ(rows[0].drawA, 200u);
     EXPECT_EQ(soak::SimNvsDriver::unopenedNamespaceCalls, 0u);
+}
+
+// A short event: a few PDNs and FDNs, scheduled play under loss and faults.
+inline soak::SoakConfig soakSmokeConfig(uint64_t seed) {
+    soak::SoakConfig config;
+    config.seed = seed;
+    config.pdns = 8;
+    config.fdns = 2;
+    config.schedule.rebootsPerHour = 6;
+    config.schedule.cutsPerHour = 6;
+    config.schedule.fdnRebootsPerHour = 20;
+    config.schedule.httpErrorsPerHour = 40;
+    config.schedule.ackLossPerHour = 120;
+    // High enough that a short run resends records an FDN already holds (lost
+    // link-layer acks); the scheduled windows add whole stretches of them.
+    config.medium.ackLoss = 0.15;
+    return config;
+}
+
+// A scripted event on @p pdns PDNs and @p fdns FDNs.
+inline soak::RunResult playSoakScript(int pdns, int fdns, const std::vector<std::string>& lines) {
+    soak::SoakConfig config = soakSmokeConfig(7);
+    config.pdns = pdns;
+    config.fdns = fdns;
+    const std::vector<soak::Action> actions = soakScript(lines);
+    // Room for the FDN's boot-time upload cycle after the last action.
+    config.schedule.horizonMs = actions.back().at + 10000;
+    soak::World world(config, actions);
+    return world.run();
+}
+
+// Test: the same seed twice plays the same event, tick for tick
+inline void soakSameSeedReplaysIdentically() {
+    soak::SoakConfig config = soakSmokeConfig(5);
+    config.pdns = 6;
+    config.schedule.horizonMs = 30000;
+    const soak::RunResult first = soak::runSeed(config);
+    const soak::RunResult second = soak::runSeed(config);
+    EXPECT_EQ(first.logHash, second.logHash);
+    EXPECT_EQ(first.log, second.log);
+}
+
+// Test: a written action list parses back to the same list
+inline void soakActionListRoundTrips() {
+    soak::ScheduleConfig config;
+    config.horizonMs = 60000;
+    for (const soak::Action& action : soak::Scheduler::generate(config, 1, 8, 2)) {
+        soak::Action parsed;
+        ASSERT_TRUE(soak::parseAction(soak::formatAction(action), parsed));
+        EXPECT_EQ(soak::formatAction(parsed), soak::formatAction(action));
+    }
+}
+
+// Test: each fault type applies when scheduled, and the cuts and reboots it arms
+// fire: a duel cut and reboot, a cut on an idle PDN that then records, an FDN cut
+// at its next write, next to a ring and a visit
+inline void soakEveryFaultTypeFires() {
+    soak::RunResult result = playSoakScript(11, 2,
+                                            {
+                                            "at=1000 duel a=0 b=1 cut=1 k=1 rb=300 rh=250",
+                                            "at=1000 duel a=2 b=3 reboot=0 rebootdelay=100",
+                                            "at=1000 ring a=4,6,8 b=- cm=7",
+                                            "at=1000 visit a=7 b=0 dur=3000",
+                                            "at=2000 reboot a=5 b=- down=1000",
+                                            "at=2000 cut a=9 b=- k=1 torn=1",
+                                            "at=3000 duel a=10 b=9 rb=200 rh=300",
+                                            "at=3000 fdnoff a=- b=0 dur=5000 mode=3",
+                                            "at=3000 fdnreboot a=- b=1 down=1000",
+                                            "at=4000 fdnreboot a=- b=0 k=1 torn=0",
+                                            "at=4000 burst a=- b=- dur=1000 loss=50",
+                                            "at=4000 noevent a=- b=- dur=5000",
+                                            "at=5000 httperr a=- b=0 dur=5000 mode=1",
+                                            "at=30000 ackloss a=- b=- dur=3000",
+                                            });
+    const std::map<std::string, uint64_t> applied = {
+    {"apply_duel", 3},    {"apply_ring", 1},    {"apply_visit", 1},     {"apply_reboot", 1},
+    {"apply_cut", 1},     {"apply_fdnoff", 1},  {"apply_fdnreboot", 2}, {"apply_burst", 1},
+    {"apply_noevent", 1}, {"apply_httperr", 1}, {"apply_ackloss", 1}};
+    for (const std::pair<const std::string, uint64_t>& count : applied)
+        EXPECT_EQ(result.counts[count.first], count.second) << count.first;
+    EXPECT_EQ(result.counts["cutsArmed"], 3u);
+    EXPECT_EQ(result.counts["cutsFired"], 3u);
+    EXPECT_EQ(result.counts["pdnCutsTakenDown"], 2u);
+    EXPECT_EQ(result.counts["duelRebootsFired"], 1u);
+    EXPECT_EQ(result.counts["pdnRebootsFired"], 2u);
+    EXPECT_EQ(result.counts["duelRebootsNeverFired"], 0u);
+    EXPECT_EQ(result.counts["cutsArmedNeverFired"], 0u);
+    EXPECT_EQ(result.counts["actionsSkipped"], 0u);
+}
+
+// Milliseconds from the first log line ending in @p from to the next ending in @p to.
+inline uint64_t soakLogGap(const std::string& log, const std::string& from, const std::string& to) {
+    std::istringstream lines(log);
+    std::string line;
+    int64_t start = -1;
+    while (std::getline(lines, line)) {
+        const std::string& wanted = start < 0 ? from : to;
+        if (line.size() < wanted.size() ||
+            line.compare(line.size() - wanted.size(), wanted.size(), wanted) != 0)
+            continue;
+        const int64_t at = std::stoll(line.substr(2, line.find(' ') - 2));
+        if (start >= 0) return static_cast<uint64_t>(at - start);
+        start = at;
+    }
+    ADD_FAILURE() << "no '" << from << "' then '" << to << "' in the log";
+    return 0;
+}
+
+// Test: a scheduled PDN cut and an FDN reboot at a write keep the device down for
+// the action's drawn "down", not the default boot time. The duel gives PDN 1 its
+// write; the late noevent keeps the run going until both are back up.
+inline void soakCutsStayDownForTheirDrawnTime() {
+    soak::RunResult result = playSoakScript(3, 1,
+                                            {
+                                            "at=1000 cut a=1 b=- k=1 torn=0 down=4000",
+                                            "at=1000 fdnreboot a=- b=0 down=3000 k=1 torn=0",
+                                            "at=2000 duel a=2 b=1 rb=200 rh=300",
+                                            "at=20000 noevent a=- b=- dur=1000",
+                                            });
+    EXPECT_EQ(result.counts["cutsFired"], 2u);
+    const uint64_t pdnGap = soakLogGap(result.log, "cut pdn=1", "up pdn=1");
+    EXPECT_GE(pdnGap, 4000u);
+    EXPECT_LT(pdnGap, 4100u);
+    const uint64_t fdnGap = soakLogGap(result.log, "down fdn=0", "up fdn=0");
+    EXPECT_GE(fdnGap, 3000u);
+    EXPECT_LT(fdnGap, 3100u);
+}
+
+// Test: an FDN's client never associates while offline, fails a request in
+// transport only after retrying it once 2 s later, and answers a server error as 503
+inline void soakHttpFaultsReachTheFdnClient() {
+    uint64_t now = 0;
+    soak::VirtualClock clock(now, 0);
+    PlatformClock* saved = SimpleTimer::getPlatformClock();
+    SimpleTimer::setPlatformClock(&clock);
+    soak::FakeServer server(1);
+    soak::HttpFaults faults;
+    faults.offline = true;
+    std::mt19937_64 rng(1);
+    soak::SimHttpClient client("http", server, faults, rng);
+    std::vector<int> failures;
+    const auto request = [&]() {
+        client.queueRequest(
+        HttpRequest("/", "GET", "", "", nullptr,
+                    [&](const WirelessErrorInfo& error) { failures.push_back(error.httpStatus); }));
+    };
+    const auto run = [&](uint64_t ms) {
+        for (const uint64_t end = now + ms; now < end; now += 5)
+            client.exec();
+    };
+    client.setHttpClientState(HttpClientState::CONNECTED);
+    run(5000);
+    EXPECT_FALSE(client.isConnected());
+    faults.offline = false;
+    faults.transportFail = 1;
+    request();
+    run(1000);
+    EXPECT_TRUE(failures.empty());
+    run(3000);
+    EXPECT_EQ(failures, std::vector<int>{0});
+    faults.transportFail = 0;
+    faults.serverError = 1;
+    request();
+    run(1000);
+    EXPECT_EQ(failures, (std::vector<int>{0, 503}));
+    SimpleTimer::setPlatformClock(saved);
 }
