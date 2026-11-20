@@ -2199,6 +2199,7 @@ TEST(SoakSmoke, sameSeedReplaysIdentically) { soakSameSeedReplaysIdentically(); 
 TEST(SoakSmoke, actionListRoundTrips) { soakActionListRoundTrips(); }
 TEST(SoakScheduler, everyFaultTypeFires) { soakEveryFaultTypeFires(); }
 TEST(SoakScheduler, httpFaultsReachTheFdnClient) { soakHttpFaultsReachTheFdnClient(); }
+TEST(SoakScheduler, cutsStayDownForTheirDrawnTime) { soakCutsStayDownForTheirDrawnTime(); }
 
 // ============================================
 // MAIN
