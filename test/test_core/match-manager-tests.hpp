@@ -840,6 +840,20 @@ TEST_F(MatchManagerTestSuite, drawResultWithANegativeTimeIsIgnored) {
     EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 0u);
 }
 
+// An anticipated press can land at 0 ms, and 0 is a time, not a missing one.
+// A shootout match keeps the frame unsigned, so this holds with or without signing.
+TEST_F(MatchManagerTestSuite, drawResultOfZeroMsCounts) {
+    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const char* matchId = "SHT-00000000000000000000000000613";
+    player->setIsHunter(true);
+    matchManager->initializeShootoutMatch(matchId, opponentMac, true);
+
+    MatchCommand instant(opponentMac, MatchCmd::DRAW_RESULT, matchId, 0, false);
+    matchManager->listenForMatchEvents(instant);
+
+    EXPECT_TRUE(matchManager->getHasReceivedDrawResult()) << "a 0 ms result was thrown away";
+}
+
 // ============================================
 // Match record ring
 // ============================================
@@ -1094,7 +1108,7 @@ TEST_F(MatchManagerTestSuite, aPressBeatsANeverPressedOfTheSameTime) {
     matchManager->listenForMatchEvents(neverPressed);
 
     ASSERT_TRUE(matchManager->matchResultsAreIn());
-    EXPECT_TRUE(matchManager->didWin()) << "the side that never pressed won the tie";
+    EXPECT_TRUE(matchManager->didWin()) << "a press tied with a NEVER_PRESSED was shown as a loss";
 }
 
 // The first press is the draw. A second one changes neither the time, the
@@ -1151,6 +1165,9 @@ TEST_F(MatchManagerTestSuite, shootoutNeverPressedNamesTheMatchSlot) {
     matchManager->initializeShootoutMatch("SHT-00000000000000000000000000612", opponentMac, false);
     matchManager->sendNeverPressed(4000);
 
+    EXPECT_EQ(matchManager->getCurrentMatch()->getBountyDrawTime(), 4000u);
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 0u)
+    << "the pity time went in the opponent's slot";
     ASSERT_NE(radioTap.lastFrame(), nullptr);
     EXPECT_EQ(radioTap.lastFrame()->command, MatchCmd::NEVER_PRESSED);
     EXPECT_FALSE(radioTap.lastFrame()->isHunter) << "the NEVER_PRESSED named the standing role";

@@ -1467,6 +1467,10 @@ TEST_F(StateCleanupTests, resultCardShowsNegativeTimesAndNoPenaltyLine) {
     resultCardShowsNegativeTimesAndNoPenaltyLine(this);
 }
 
+TEST_F(StateCleanupTests, resultCardWithoutABoostHasNoBoostLine) {
+    resultCardWithoutABoostHasNoBoostLine(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - CONNECTION SUCCESSFUL
 // ============================================
