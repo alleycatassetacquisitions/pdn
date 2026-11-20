@@ -2194,6 +2194,7 @@ TEST(SoakMedium, clockKeepsWallTimeAcrossSoftReboot) { soakClockKeepsWallTimeAcr
 TEST(SoakMedium, faultsReplayFromSeed) { soakMediumFaultsReplayFromSeed(); }
 TEST(SoakMedium, routesByMac) { soakMediumRoutesByMac(); }
 TEST(SoakMedium, cablePlugConnectsAndUnplugDrops) { soakCablePlugConnectsAndUnplugDrops(); }
+TEST(SoakDevices, fdnUploadsACabledDuel) { soakFdnUploadsACabledDuel(); }
 
 // ============================================
 // MAIN

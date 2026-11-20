@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <functional>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -12,6 +14,7 @@
 #include "device/pdn.hpp"
 #include "soak/sim-medium.hpp"
 #include "soak/soak-hooks.hpp"
+#include "soak/soak-world.hpp"
 
 // Enabled radios at MACs 02:50:00:00:00:<i> on a medium seeded with 7; every
 // kMatchCommand frame a radio handles is written down as "<to>:<from>:<byte>".
@@ -212,4 +215,66 @@ inline void soakCablePlugConnectsAndUnplugDrops() {
     for (PDN* pdn : pdns)
         delete pdn;
     SimpleTimer::setPlatformClock(saved);
+}
+
+// A World the test drives by hand: it ticks, and each PDN in MATCH presses once,
+// PDN i 200 + 100 * i ms after its draw started.
+struct SoakDuelWorld : soak::World {
+    using World::cables;
+    using World::fdns;
+    using World::pdns;
+    using World::server;
+    using World::setUp;
+    using World::World;
+
+    /** Ticks until @p done holds, at most @p ms of virtual time; false if it never did. */
+    bool runUntil(const std::function<bool()>& done, uint64_t ms) {
+        for (const uint64_t end = now + ms; now < end;) {
+            tick();
+            for (size_t i = 0; i < pdns.size(); i++) {
+                MatchManager* matchManager = pdns[i].device->context().matchManager;
+                if (pdns[i].device->stateId() == MATCH && !matchManager->getHasPressedButton() &&
+                    pdns[i].clock->milliseconds() - matchManager->getMatchLocalStartTime() >=
+                    200 + 100 * i) {
+                    pdns[i].device->press();
+                }
+            }
+            if (done()) return true;
+        }
+        return false;
+    }
+};
+
+// Test: two PDNs duel on a cable, an FDN collects both records over the medium
+// and uploads them, and the fake server holds one accepted row from two reports
+inline void soakFdnUploadsACabledDuel() {
+    soak::SoakConfig config;
+    config.pdns = 2;
+    config.fdns = 1;
+    SoakDuelWorld world(config);
+    ASSERT_TRUE(world.setUp());
+    const auto inState = [&world](std::set<int> states) {
+        return states.count(world.pdns[0].device->stateId()) != 0 &&
+               states.count(world.pdns[1].device->stateId()) != 0;
+    };
+    ASSERT_TRUE(world.runUntil([&] { return inState({IDLE}); }, 30000));
+    ASSERT_TRUE(
+    world.cables.plug({0, SerialIdentifier::OUTPUT_JACK}, {1, SerialIdentifier::INPUT_JACK}));
+    ASSERT_TRUE(world.runUntil([&] { return inState({WIN, LOSE}); }, 30000));
+    world.cables.unplug({0, SerialIdentifier::OUTPUT_JACK});
+    // The FDN retires both records once the server answers their upload.
+    EXPECT_TRUE(world.runUntil(
+    [&] { return world.fdns[0].nvs.getUInt(FDN_RECORD_STORE_NAMESPACE, "m_head", 0) == 2; },
+    400000));
+    std::vector<soak::ServerRow> rows;
+    world.server->listMatches(rows);
+    ASSERT_EQ(rows.size(), 1u);
+    std::map<std::string, int> reports;
+    world.server->countReports(reports);
+    EXPECT_EQ(reports[rows[0].id], 2);
+    EXPECT_EQ(rows[0].playerA, soak::formatUuid(world.pdns[0].identity.playerId));
+    EXPECT_EQ(rows[0].playerB, soak::formatUuid(world.pdns[1].identity.playerId));
+    EXPECT_EQ(rows[0].winner, rows[0].playerA);
+    EXPECT_EQ(rows[0].drawA, 200u);
+    EXPECT_EQ(soak::SimNvsDriver::unopenedNamespaceCalls, 0u);
 }
