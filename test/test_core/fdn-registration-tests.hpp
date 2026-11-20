@@ -344,13 +344,14 @@ inline void fdnRegistrationTapSendsKeyThenProfileToTheTurnsPdn(FdnRegistrationTe
 }
 
 // The FDN welcomes the player only once the PDN's resent context says its
-// profile is applied, and says it waits until then. The result holds for
-// 3000 ms from the confirmation.
+// profile is applied, and says it waits until then, even for a PDN that
+// applies it at the very end of its own attempt. The result holds for 3000 ms
+// from the confirmation.
 inline void fdnRegistrationWelcomesOnlyOnceThePdnConfirms(FdnRegistrationTests* suite) {
     using Lines = std::pair<std::string, std::string>;
     ASSERT_NO_FATAL_FAILURE(suite->sendKeyAndProfileToPdnA());
     EXPECT_EQ(suite->screenLines(), Lines("SENT", "WAITING"));
-    suite->advance(5000);
+    suite->advance(REGISTRATION_ATTEMPT_MS);
     EXPECT_EQ(suite->screenLines(), Lines("SENT", "WAITING"));
     EXPECT_FALSE(suite->everShowedRegistered()) << "WELCOME before the PDN confirmed";
 
@@ -403,9 +404,9 @@ inline void fdnRegistrationShowsPdnLeftWhenItsJackChangesPeer(FdnRegistrationTes
     EXPECT_FALSE(suite->everShowedRegistered()) << "the new peer's context confirmed PDN A";
 }
 
-// No confirmation by the deadline: the FDN says it could not confirm and tells
-// the PDN still cabled that the attempt failed; a late confirmation changes
-// nothing.
+// No confirmation by the deadline: the FDN says it could not confirm and sends
+// no failure, which could land in the next attempt of a PDN whose own shorter
+// attempt has already ended; a late confirmation changes nothing.
 inline void fdnRegistrationGivesUpOnAConfirmationThatNeverComes(FdnRegistrationTests* suite) {
     using Lines = std::pair<std::string, std::string>;
     ASSERT_NO_FATAL_FAILURE(suite->sendKeyAndProfileToPdnA());
@@ -413,9 +414,7 @@ inline void fdnRegistrationGivesUpOnAConfirmationThatNeverComes(FdnRegistrationT
     EXPECT_EQ(suite->screenLines(), Lines("SENT", "WAITING"));
     suite->advance(200);
     EXPECT_EQ(suite->screenLines(), Lines("UNABLE TO", "CONFIRM"));
-    const std::vector<PlayerProvisionPacket> packets = suite->provisionsTo(PDN_A);
-    ASSERT_EQ(packets.size(), 2u);
-    EXPECT_EQ(packets[1].status, static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED));
+    EXPECT_EQ(suite->provisionsTo(PDN_A).size(), 1u) << "a failure after the PDN gave up";
 
     suite->sendContext(PDN_A, /*registered=*/true);
     suite->step();

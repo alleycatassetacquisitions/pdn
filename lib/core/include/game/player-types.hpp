@@ -32,6 +32,12 @@ enum class ProvisionStatus : uint8_t {
     LOOKUP_FAILED = 1,
 };
 
+/**
+ * How long a PDN waits, from the first piece of a band registration, for the
+ * rest; the FDN waits a little longer for the PDN to confirm.
+ */
+constexpr unsigned long REGISTRATION_ATTEMPT_MS = 10000;
+
 /** One affiliation on the wire, names NUL-terminated. */
 struct WireAffiliation {
     uint8_t categoryId[UUIDBytes::SIZE];
