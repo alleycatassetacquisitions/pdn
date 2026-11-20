@@ -1492,10 +1492,11 @@ inline void rdcHelloOneWayCableTimesOutInsteadOfGhostChild() {
 // Head roster management (#158)
 // ============================================
 
-// Records every send of one PktType: count, last destination, last payload.
+// Records every send of one PktType: count, every destination, last payload.
 struct RosterSendCapture {
     int count = 0;
     std::array<uint8_t, 6> lastDst{};
+    std::vector<std::array<uint8_t, 6>> destinations;
     std::vector<uint8_t> lastPayload;
 };
 
@@ -1506,6 +1507,7 @@ inline void captureSends(RDCHelloTests* suite, PktType type, RosterSendCapture& 
                 [&capture](const uint8_t* dst, PktType, const uint8_t* data, size_t len) {
                     capture.count++;
                     memcpy(capture.lastDst.data(), dst, 6);
+                    capture.destinations.push_back(capture.lastDst);
                     capture.lastPayload.assign(data, data + len);
                 }),
             Return(1)));
@@ -1636,29 +1638,24 @@ inline void rdcHeadChangeStopsTheAnnounceToTheOldHead(RDCHelloTests* suite) {
     const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     const uint8_t oldHead[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
     const uint8_t newHead[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
-    std::vector<std::array<uint8_t, 6>> announcedTo;
-    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kConnectionAnnounce, _, _))
-    .WillByDefault([&announcedTo](const uint8_t* dst, PktType, const uint8_t*, size_t) {
-        announcedTo.emplace_back();
-        memcpy(announcedTo.back().data(), dst, 6);
-        return 1;
-    });
+    RosterSendCapture announce;
+    captureSends(suite, PktType::kConnectionAnnounce, announce);
     connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
                 chainHelloFrame(upstream, oldHead));
-    ASSERT_EQ(announcedTo.size(), 1u);
-    ASSERT_EQ(0, memcmp(announcedTo.back().data(), oldHead, 6));
+    ASSERT_EQ(announce.count, 1);
+    ASSERT_EQ(0, memcmp(announce.lastDst.data(), oldHead, 6));
 
     suite->deliverHello(suite->inJack, chainHelloFrame(upstream, newHead));
-    ASSERT_EQ(0, memcmp(announcedTo.back().data(), newHead, 6));
-    announcedTo.clear();
+    ASSERT_EQ(0, memcmp(announce.lastDst.data(), newHead, 6));
+    announce.destinations.clear();
     for (int i = 0; i < 10; ++i) {
         suite->fakeClock->advance(50);
         suite->deliverHello(suite->inJack, chainHelloFrame(upstream, newHead));
         suite->rdc.sync(&suite->device);
     }
 
-    ASSERT_FALSE(announcedTo.empty()) << "the announce to the new head stopped retrying";
-    for (const std::array<uint8_t, 6>& destination : announcedTo) {
+    ASSERT_FALSE(announce.destinations.empty()) << "the announce to the new head stopped retrying";
+    for (const std::array<uint8_t, 6>& destination : announce.destinations) {
         EXPECT_NE(0, memcmp(destination.data(), oldHead, 6))
         << "the announce to the old head kept retrying";
     }
@@ -2308,7 +2305,9 @@ inline void rdcRingClosureVoidsThePendingReport(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(report.count, 1);
 
-    // A new downstream closes the ring: this device's own MAC returns on INPUT.
+    // A different downstream closes the ring: the dead one returning would retract
+    // the report by itself, so here only the ring closing can void it. This
+    // device's own MAC then returns on INPUT.
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xD2));
     suite->deliverHello(suite->inJack, chainHelloFrame(upstream, suite->localMac));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
