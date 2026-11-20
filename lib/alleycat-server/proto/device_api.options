@@ -21,6 +21,8 @@ alleycat.device.DevicePlayerAffiliation.affiliation_name  type:FT_CALLBACK
 alleycat.device.WriteQuickdrawMatchesResponse.rejected    type:FT_CALLBACK
 alleycat.device.QuickdrawMatchRejection.match_id          max_size:37   # echoes a submitted match ID
 alleycat.device.QuickdrawMatchRejection.fields            max_count:2 max_size:24   # SAME_PLAYER names two
+# Decoded as a plain integer: codes the server adds after this build are not enumerators, and a C enum cannot hold them.
+alleycat.device.QuickdrawMatchRejection.code              type_override:TYPE_INT32
 
 # Matches are streamed one at a time so a 100-match batch never sits on the stack.
 alleycat.device.WriteQuickdrawMatchesRequest.matches      type:FT_CALLBACK

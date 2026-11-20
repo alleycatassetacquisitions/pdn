@@ -119,7 +119,7 @@ bool decodeRejection(pb_istream_t* stream, const pb_field_t* field, void** arg) 
     rejection.matchId = matchId;
     rejection.fieldCount = message.fields_count;
     std::memcpy(rejection.fields, message.fields, sizeof(rejection.fields));
-    rejection.rawCode = static_cast<int32_t>(message.code);
+    rejection.rawCode = message.code;
     rejection.code = toErrorCode(rejection.rawCode);
     (*pass->onRejection)(rejection);
     return true;

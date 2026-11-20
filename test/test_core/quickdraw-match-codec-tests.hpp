@@ -60,7 +60,7 @@ inline alleycat_device_QuickdrawMatchRejection makeRejectionMessage(
     alleycat_device_QuickdrawMatchRejection message = alleycat_device_QuickdrawMatchRejection_init_zero;
     message.match_index = matchIndex;
     IdGenerator::copyId(message.match_id, matchId);
-    message.code = static_cast<alleycat_device_QuickdrawMatchErrorCode>(rawCode);
+    message.code = rawCode;
     return message;
 }
 
