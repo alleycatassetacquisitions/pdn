@@ -134,7 +134,6 @@ inline void matchCodecKeepsZeroDrawTimePresent() {
     EXPECT_EQ(matches[0].player_a_draw_time_ms, 0u);
 }
 
-// Each side's team is present only when that side has one.
 inline void matchCodecOmitsUnassignedTeams() {
     std::vector<MatchRecord> records = {makeMatchRecord(0), makeMatchRecord(1), makeMatchRecord(2)};
     records[1].hunterTeamId = makeTestUuid("11111111-1111-4111-8111-111111111111");

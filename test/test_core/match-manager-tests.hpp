@@ -69,15 +69,19 @@ public:
         radioTap.confirmLastSend();
     }
 
-    /** Hunter side: the bounty acks the match with its own player and team. */
+    /** Hunter side: the bounty's ack, with its own player and team, arrives over the radio. */
     void setupAckedMatchAsHunter(
     const UUIDBytes& opponentPlayerId = makeTestUuid(OPPONENT_PLAYER_UUID)) {
         setupMatchAsHunter();
         static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-        MatchCommand ack(dummyMac, MatchCmd::MATCH_ID_ACK,
-                         matchManager->getCurrentMatch()->getMatchId(), 0, false, opponentPlayerId,
-                         makeTestUuid(OPPONENT_TEAM_UUID));
-        matchManager->listenForMatchEvents(ack);
+        MatchPacket ack{};
+        ack.command = MatchCmd::MATCH_ID_ACK;
+        IdGenerator::copyId(ack.matchId, matchManager->getCurrentMatch()->getMatchId());
+        ack.playerUuid = opponentPlayerId;
+        ack.teamUuid = makeTestUuid(OPPONENT_TEAM_UUID);
+        // Fresh per ack, so the channel's dedup passes a test's later ones.
+        ack.seqId = nextAckSeqId++;
+        radioTap.deliverFrameFrom(dummyMac, &ack);
     }
 
     /** The hunter draws in 200 ms against 300 ms and the match finalizes. */
@@ -107,6 +111,7 @@ public:
     FakeRemoteDeviceCoordinator fakeRdc;
     FakePlatformClock* fakeClock;
     QuickdrawRadioTap radioTap;
+    uint8_t nextAckSeqId = 1;
 };
 
 // initializeMatch hands primeMatch the generator's own buffer rather than a copy,
@@ -957,11 +962,6 @@ TEST_F(MatchManagerTestSuite, fullRingRefusesTheNextMatch) {
     ASSERT_EQ(
     storage.readBytes(MATCH_RING_PREFS_NAMESPACE, "match_0", firstRecord, sizeof(firstRecord)),
     sizeof(MatchRecord));
-    uint32_t pending = 0;
-    uint8_t offered[sizeof(MatchRecord)];
-    ASSERT_TRUE(matchManager->readLowestPending(pending, offered));
-    EXPECT_EQ(pending, 1u) << "with 32 waiting, a newer match went to the FDN first";
-    EXPECT_EQ(memcmp(offered, firstRecord, sizeof(MatchRecord)), 0);
 
     EXPECT_FALSE(playHunterWin()) << "the 33rd unsent match was stored";
     EXPECT_EQ(matchManager->getMatchSequenceNumber(), 32u);
@@ -978,6 +978,20 @@ TEST_F(MatchManagerTestSuite, fullRingRefusesTheNextMatch) {
     MatchRecord gone{};
     EXPECT_FALSE(matchManager->readRecord(1, gone));
     EXPECT_TRUE(matchManager->readRecord(33, gone));
+}
+
+TEST_F(MatchManagerTestSuite, fullRingOffersTheOldestMatchFirst) {
+    for (uint32_t i = 0; i < MatchManager::MATCH_RING_CAPACITY; i++) {
+        ASSERT_TRUE(playHunterWin());
+    }
+    MatchRecord first{};
+    ASSERT_TRUE(matchManager->readRecord(1, first));
+
+    uint32_t pending = 0;
+    uint8_t offered[sizeof(MatchRecord)];
+    ASSERT_TRUE(matchManager->readLowestPending(pending, offered));
+    EXPECT_EQ(pending, 1u) << "with 32 waiting, a newer match went to the FDN first";
+    EXPECT_EQ(memcmp(offered, &first, sizeof(MatchRecord)), 0);
 }
 
 TEST_F(MatchManagerTestSuite, markCollectedMovesTheFirstPendingRecord) {
@@ -1001,38 +1015,14 @@ TEST_F(MatchManagerTestSuite, markCollectedMovesTheFirstPendingRecord) {
     EXPECT_FALSE(matchManager->readLowestPending(pending, record));
 }
 
-// A collected mark above the newest record (#535): whatever the mark is made
-// of, the next match is stored, not refused as if 32 waited for an FDN.
+// A collected mark above the newest record (#535): however #535 is fixed, the
+// next match is stored, not refused as if 32 waited for an FDN.
 TEST_F(MatchManagerTestSuite, markAboveTheNewestRecordStillStoresTheNextMatch) {
     storage.writeUInt(MATCH_RING_PREFS_NAMESPACE, "collectedSeq", 20);
 
     ASSERT_TRUE(playHunterWin()) << "the stale mark refused the match";
-    ASSERT_GT(matchManager->getMatchSequenceNumber(), 0u);
     EXPECT_EQ(storedMatch(matchManager->getMatchSequenceNumber()).getBountyPlayerId(),
               makeTestUuid(OPPONENT_PLAYER_UUID));
-}
-
-// The bounty's ack comes off the radio; its player and team fields land in the
-// record as the bounty's player and team.
-TEST_F(MatchManagerTestSuite, ackFromTheRadioStoresTheBountysPlayerAndTeam) {
-    static const uint8_t bountyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    setupMatchAsHunter();
-    MatchPacket frame{};
-    frame.command = MatchCmd::MATCH_ID_ACK;
-    IdGenerator::copyId(frame.matchId, matchManager->getCurrentMatch()->getMatchId());
-    frame.playerUuid = makeTestUuid(OPPONENT_PLAYER_UUID);
-    frame.teamUuid = makeTestUuid(OPPONENT_TEAM_UUID);
-    frame.seqId = 4;
-    radioTap.deliverFrameFrom(bountyMac, &frame);
-    matchManager->setHunterDrawTime(200);
-    matchManager->setBountyDrawTime(300);
-    matchManager->setReceivedButtonPush();
-    matchManager->setReceivedDrawResult();
-    ASSERT_TRUE(matchManager->finalizeMatch());
-
-    Match stored = storedMatch(1);
-    EXPECT_EQ(stored.getBountyPlayerId(), makeTestUuid(OPPONENT_PLAYER_UUID));
-    EXPECT_EQ(stored.getBountyTeamId(), makeTestUuid(OPPONENT_TEAM_UUID));
 }
 
 // Matches stored by older firmware stay byte for byte.

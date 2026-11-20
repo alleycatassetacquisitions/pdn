@@ -111,6 +111,28 @@ public:
         deliverBytes(PktType::kMatchRecord, fromMac, &frame, sizeof(frame));
     }
 
+    /**
+     * Stores matches 1 and 2, overwrites match 1's slot with @p length bytes of
+     * a record 1 entry of @p kind, and returns the record numbers a peek offers.
+     */
+    std::vector<uint32_t> offeredAfterRewritingTheOldestSlot(RecordKind kind, size_t length) {
+        deliver(pdnA, matchFrame(1, 0x01));
+        deliver(pdnA, matchFrame(2, 0x02));
+        FdnRecordStore::MatchRing::Entry rewritten{};
+        memcpy(rewritten.senderMac, pdnA, 6);
+        rewritten.kind = static_cast<uint8_t>(kind);
+        rewritten.recordNumber = 1;
+        storage.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_0",
+                           reinterpret_cast<const uint8_t*>(&rewritten), length);
+        FdnRecordStore::MatchRing::Entry entries[2];
+        const size_t count = store->getMatchRecords().peekOldest(entries, 2);
+        std::vector<uint32_t> numbers;
+        for (size_t index = 0; index < count; ++index) {
+            numbers.push_back(entries[index].recordNumber);
+        }
+        return numbers;
+    }
+
     const uint8_t pdnA[6] = {0x0A, 0x01, 0x02, 0x03, 0x04, 0x05};
     const uint8_t pdnB[6] = {0x0B, 0x01, 0x02, 0x03, 0x04, 0x05};
     FakePlatformClock clock;
@@ -341,33 +363,16 @@ TEST_F(FdnRecordStoreTests, unreadableEntryBehindTheHeadStopsThePeek) {
 // A slot cut short keeps a valid kind byte; read whole, its missing tail would
 // be taken from whatever the reader's buffer held and uploaded.
 TEST_F(FdnRecordStoreTests, shortSlotIsRetiredNotOffered) {
-    deliver(pdnA, matchFrame(1, 0x01));
-    deliver(pdnA, matchFrame(2, 0x02));
-    FdnRecordStore::MatchRing::Entry cut{};
-    memcpy(cut.senderMac, pdnA, 6);
-    cut.kind = static_cast<uint8_t>(RecordKind::MATCH);
-    cut.recordNumber = 1;
-    storage.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_0", reinterpret_cast<const uint8_t*>(&cut),
-                       sizeof(cut) - 1);
-
-    FdnRecordStore::MatchRing::Entry entries[2];
-    ASSERT_EQ(store->getMatchRecords().peekOldest(entries, 2), 1u);
-    EXPECT_EQ(entries[0].recordNumber, 2u) << "the cut slot was offered for upload";
+    const size_t cut = sizeof(FdnRecordStore::MatchRing::Entry) - 1;
+    EXPECT_EQ(offeredAfterRewritingTheOldestSlot(RecordKind::MATCH, cut), std::vector<uint32_t>{2u})
+    << "the cut slot was offered for upload";
 }
 
 TEST_F(FdnRecordStoreTests, slotOfAnotherKindIsRetiredNotOffered) {
-    deliver(pdnA, matchFrame(1, 0x01));
-    deliver(pdnA, matchFrame(2, 0x02));
-    FdnRecordStore::MatchRing::Entry crashKind{};
-    memcpy(crashKind.senderMac, pdnA, 6);
-    crashKind.kind = static_cast<uint8_t>(RecordKind::CRASH);
-    crashKind.recordNumber = 1;
-    storage.writeBytes(FDN_RECORD_STORE_NAMESPACE, "m_0",
-                       reinterpret_cast<const uint8_t*>(&crashKind), sizeof(crashKind));
-
-    FdnRecordStore::MatchRing::Entry entries[2];
-    ASSERT_EQ(store->getMatchRecords().peekOldest(entries, 2), 1u);
-    EXPECT_EQ(entries[0].recordNumber, 2u) << "a crash-kind slot was offered as a match";
+    const size_t whole = sizeof(FdnRecordStore::MatchRing::Entry);
+    EXPECT_EQ(offeredAfterRewritingTheOldestSlot(RecordKind::CRASH, whole),
+              std::vector<uint32_t>{2u})
+    << "a crash-kind slot was offered as a match";
 }
 
 // A stored head above the tail (#534): however the store recovers, it takes
@@ -388,7 +393,7 @@ TEST_F(FdnRecordStoreTests, headAboveTailTakesTheNextRecordAndOffersNoUploadedOn
     EXPECT_EQ(entries[0].recordNumber, 3u);
 }
 
-// A lost head key leaves a pair wider than the ring; loading walks one ring, not the gap.
+// A lost head key leaves a pair wider than the ring.
 TEST_F(FdnRecordStoreTests, pairWiderThanTheRingLoadsAsAtMostAFullRing) {
     storage.writeUInt(FDN_RECORD_STORE_NAMESPACE, "m_tail", 100);
     restart();
