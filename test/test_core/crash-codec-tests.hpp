@@ -156,10 +156,10 @@ inline void crashCodecStoredPacketWithoutDetailsOmitsThem(CrashCodecTestSuite* s
     EXPECT_FALSE(msg.has_exception_cause);
 }
 
-// CrashPacket is packed, so its exception cause never sits on a 4-byte boundary.
-// The buffer is aligned so that holds wherever the compiler puts it.
+// exceptionCause is at offset 13, so in a 4-byte-aligned packet it is misaligned. This test pins
+// the values read back; only a clang UBSan build detects a reference bound to that field.
 inline void crashPacketReadsDetailsOffAnUnalignedPacket() {
-    CrashPacket packet{};
+    alignas(uint32_t) CrashPacket packet{};
     packet.crashNumber = 0x01020304;
     packet.timestamp = 0x05060708;
     packet.resetReason = 4;
@@ -167,14 +167,11 @@ inline void crashPacketReadsDetailsOffAnUnalignedPacket() {
     packet.exceptionCause = 0x1C2D3E4F;
     memcpy(packet.taskName, "loopTask", 8);
     memcpy(packet.commitHash, "a1b2c3d4", COMMIT_HASH_LENGTH - 1);
-    alignas(uint32_t) uint8_t stored[sizeof(CrashPacket)];
-    memcpy(stored, &packet, sizeof(packet));
-    const CrashPacket* storedPacket = reinterpret_cast<const CrashPacket*>(stored);
-    ASSERT_NE(reinterpret_cast<uintptr_t>(&stored[offsetof(CrashPacket, exceptionCause)]) %
+    ASSERT_NE((reinterpret_cast<uintptr_t>(&packet) + offsetof(CrashPacket, exceptionCause)) %
               alignof(uint32_t),
               0u);
 
-    CrashRecord record = fromCrashPacket(*storedPacket);
+    CrashRecord record = fromCrashPacket(packet);
 
     EXPECT_EQ(record.crashNumber, 0x01020304u);
     EXPECT_EQ(record.timestamp, 0x05060708u);
@@ -186,9 +183,8 @@ inline void crashPacketReadsDetailsOffAnUnalignedPacket() {
     EXPECT_STREQ(record.coreDumpDetails->taskName, "loopTask");
     EXPECT_STREQ(record.commitHash, "a1b2c3d4");
 
-    const uint32_t noCause = CRASH_PACKET_NO_EXCEPTION_CAUSE;
-    memcpy(&stored[offsetof(CrashPacket, exceptionCause)], &noCause, sizeof(noCause));
-    record = fromCrashPacket(*storedPacket);
+    packet.exceptionCause = CRASH_PACKET_NO_EXCEPTION_CAUSE;
+    record = fromCrashPacket(packet);
     ASSERT_TRUE(record.coreDumpDetails.has_value());
     EXPECT_FALSE(record.coreDumpDetails->exceptionCause.has_value());
 }

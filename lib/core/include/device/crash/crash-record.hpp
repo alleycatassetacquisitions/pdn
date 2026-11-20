@@ -85,7 +85,7 @@ inline CrashRecord fromCrashPacket(const CrashPacket& packet) {
     if (packet.taskName[0] != '\0') {
         CoreDumpDetails& details = record.coreDumpDetails.emplace();
         details.programCounter = packet.programCounter;
-        // Copied out: optional's assignment takes a reference, and the packed field is misaligned.
+        // Copied out: optional's assignment takes a reference; the packed field can be misaligned.
         const uint32_t exceptionCause = packet.exceptionCause;
         if (exceptionCause != CRASH_PACKET_NO_EXCEPTION_CAUSE) {
             details.exceptionCause = exceptionCause;
