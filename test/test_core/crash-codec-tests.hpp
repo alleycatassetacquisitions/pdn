@@ -155,3 +155,36 @@ inline void crashCodecStoredPacketWithoutDetailsOmitsThem(CrashCodecTestSuite* s
     EXPECT_TRUE(msg.has_program_counter);
     EXPECT_FALSE(msg.has_exception_cause);
 }
+
+// exceptionCause is at offset 13, so in a 4-byte-aligned packet it is misaligned. This test pins
+// the values read back; only a clang UBSan build detects a reference bound to that field.
+inline void crashPacketReadsDetailsOffAnUnalignedPacket() {
+    alignas(uint32_t) CrashPacket packet{};
+    packet.crashNumber = 0x01020304;
+    packet.timestamp = 0x05060708;
+    packet.resetReason = 4;
+    packet.programCounter = 0x42001234;
+    packet.exceptionCause = 0x1C2D3E4F;
+    memcpy(packet.taskName, "loopTask", 8);
+    memcpy(packet.commitHash, "a1b2c3d4", COMMIT_HASH_LENGTH - 1);
+    ASSERT_NE((reinterpret_cast<uintptr_t>(&packet) + offsetof(CrashPacket, exceptionCause)) %
+              alignof(uint32_t),
+              0u);
+
+    CrashRecord record = fromCrashPacket(packet);
+
+    EXPECT_EQ(record.crashNumber, 0x01020304u);
+    EXPECT_EQ(record.timestamp, 0x05060708u);
+    EXPECT_EQ(record.resetReason, 4u);
+    ASSERT_TRUE(record.coreDumpDetails.has_value());
+    EXPECT_EQ(record.coreDumpDetails->programCounter, 0x42001234u);
+    ASSERT_TRUE(record.coreDumpDetails->exceptionCause.has_value());
+    EXPECT_EQ(*record.coreDumpDetails->exceptionCause, 0x1C2D3E4Fu);
+    EXPECT_STREQ(record.coreDumpDetails->taskName, "loopTask");
+    EXPECT_STREQ(record.commitHash, "a1b2c3d4");
+
+    packet.exceptionCause = CRASH_PACKET_NO_EXCEPTION_CAUSE;
+    record = fromCrashPacket(packet);
+    ASSERT_TRUE(record.coreDumpDetails.has_value());
+    EXPECT_FALSE(record.coreDumpDetails->exceptionCause.has_value());
+}

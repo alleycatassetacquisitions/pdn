@@ -1026,6 +1026,10 @@ TEST_F(CrashCodecTestSuite, returnsZeroWhenBufferTooSmall) {
     crashCodecReturnZeroWhenBufferTooSmall(this);
 }
 
+TEST(CrashPacketTests, readsDetailsOffAnUnalignedPacket) {
+    crashPacketReadsDetailsOffAnUnalignedPacket();
+}
+
 // ============================================
 // DEVICE PLAYER (PROTOBUF) TESTS
 // ============================================

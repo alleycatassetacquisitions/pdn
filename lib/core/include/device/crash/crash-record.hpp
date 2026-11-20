@@ -85,8 +85,10 @@ inline CrashRecord fromCrashPacket(const CrashPacket& packet) {
     if (packet.taskName[0] != '\0') {
         CoreDumpDetails& details = record.coreDumpDetails.emplace();
         details.programCounter = packet.programCounter;
-        if (packet.exceptionCause != CRASH_PACKET_NO_EXCEPTION_CAUSE) {
-            details.exceptionCause = packet.exceptionCause;
+        // Copied out: optional's assignment takes a reference; the packed field can be misaligned.
+        const uint32_t exceptionCause = packet.exceptionCause;
+        if (exceptionCause != CRASH_PACKET_NO_EXCEPTION_CAUSE) {
+            details.exceptionCause = exceptionCause;
         }
         memcpy(details.taskName, packet.taskName, TASK_NAME_LENGTH - 1);
         details.taskName[TASK_NAME_LENGTH - 1] = '\0';
