@@ -658,6 +658,20 @@ TEST_F(MatchManagerTestSuite, bountyWaitingOnItsAckIgnoresAMatchIdAck) {
     EXPECT_TRUE(matchManager->isMatchReady());
 }
 
+// A role mismatch answers an initiation, so one that lands after the handshake is
+// stray or forged: carrying the live match ID, it still leaves a ready match held.
+TEST_F(MatchManagerTestSuite, lateRoleMismatchLeavesAReadyMatchHeld) {
+    setupMatchAsBounty();
+    ASSERT_TRUE(matchManager->isMatchReady());
+    static const uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    MatchCommand mismatch(hunterMac, MatchCmd::MATCH_ROLE_MISMATCH, "test-match-id", 0, true);
+    matchManager->listenForMatchEvents(mismatch);
+
+    EXPECT_TRUE(matchManager->getCurrentMatch().has_value()) << "a late mismatch cleared the match";
+    EXPECT_TRUE(matchManager->isMatchReady());
+}
+
 TEST_F(MatchManagerTestSuite, abandoningAHandshakeCancelsItsPendingRetries) {
     using ::testing::_;
     std::vector<int> sentCommands;

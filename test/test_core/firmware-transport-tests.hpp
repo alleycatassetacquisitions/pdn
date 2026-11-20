@@ -130,6 +130,14 @@ public:
         }
     }
 
+    /** Hears only `frame`, once a second for `seconds`, syncing the receiver each second. */
+    void hearOnlyFor(const std::vector<uint8_t>& frame, int seconds) {
+        for (int i = 0; i < seconds; i++) {
+            receiverRadio.deliver(frame);
+            hearNothingFor(1);
+        }
+    }
+
     /** The index a frame carries. */
     static uint16_t chunkIndex(const std::vector<uint8_t>& frame) {
         FirmwareChunkHeader header{};
@@ -330,49 +338,72 @@ TEST(FirmwareTransportTest, aReceiveWithNoChunksForTooLongIsDropped) {
     EXPECT_FALSE(f.receiverStore.restarted);
 }
 
-// Frames come off the radio from anyone. A header with no chunk behind it, or a
-// chunk past the end of the image, is not the seed still sending: neither is
-// written, and neither keeps a stalled receive from being dropped.
-TEST(FirmwareTransportTest, framesThatAreNoChunkOfTheImageDoNotHoldAStalledReceiveOpen) {
+// Frames come off the radio from anyone. A header with no chunk behind it is not
+// the seed still sending, so it does not keep a stalled receive from being dropped.
+TEST(FirmwareTransportTest, headerOnlyFramesDoNotHoldAStalledReceiveOpen) {
+    FirmwareTransportFixture f;
+    f.deliverFirstFrames(3);
+    ASSERT_EQ(f.receiverStore.beginWriteCalls, 1);
+    const std::vector<uint8_t>& chunkOne = f.seedRadio.sent[1];
+    const std::vector<uint8_t> headerOnly(chunkOne.begin(),
+                                          chunkOne.begin() + sizeof(FirmwareChunkHeader));
+
+    f.hearOnlyFor(headerOnly, 20);
+
+    EXPECT_EQ(f.receiverStore.abortCalls, 1) << "header-only frames kept the receive open";
+    EXPECT_FALSE(f.receiverStore.restarted);
+}
+
+// A chunk index past the end of the image names no chunk of it: nothing is written,
+// and the frame does not keep a stalled receive from being dropped.
+TEST(FirmwareTransportTest, aChunkPastTheEndOfTheImageIsNotWrittenAndHoldsNothingOpen) {
     FirmwareTransportFixture f;
     f.deliverFirstFrames(3);
     ASSERT_EQ(f.receiverStore.beginWriteCalls, 1);
     const int writesBefore = f.receiverStore.writeCount;
-    const std::vector<uint8_t>& chunkOne = f.seedRadio.sent[1];
-    const std::vector<uint8_t> headerOnly(chunkOne.begin(),
-                                          chunkOne.begin() + sizeof(FirmwareChunkHeader));
+    std::vector<uint8_t> pastTheEnd = f.seedRadio.sent[1];
     FirmwareChunkHeader header{};
-    std::memcpy(&header, chunkOne.data(), sizeof(header));
+    std::memcpy(&header, pastTheEnd.data(), sizeof(header));
     header.index = FirmwareTransportFixture::CHUNK_COUNT;
-    std::vector<uint8_t> pastTheEnd = chunkOne;
     std::memcpy(pastTheEnd.data(), &header, sizeof(header));
 
-    for (int second = 0; second < 20; second++) {
-        f.receiverRadio.deliver(headerOnly);
-        f.receiverRadio.deliver(pastTheEnd);
-        f.hearNothingFor(1);
-    }
+    f.hearOnlyFor(pastTheEnd, 20);
 
-    EXPECT_EQ(f.receiverStore.abortCalls, 1);
-    EXPECT_EQ(f.receiverStore.writeCount, writesBefore);
+    EXPECT_EQ(f.receiverStore.writeCount, writesBefore) << "a chunk past the image was written";
+    EXPECT_EQ(f.receiverStore.abortCalls, 1) << "a chunk past the image kept the receive open";
     EXPECT_FALSE(f.receiverStore.restarted);
 }
 
-// A truncated frame would spoil the image in flash: its chunk is not written and
-// stays missing until a whole copy comes round on a later pass.
+// A frame a byte short or a byte long would spoil the image in flash: its chunk is
+// not written and stays missing until a whole copy comes round on a later pass.
 TEST(FirmwareTransportTest, aChunkOfTheWrongLengthIsNotWrittenAndAWholeCopyFillsIt) {
     FirmwareTransportFixture f;
-    bool truncatedOnce = false;
+    std::map<uint16_t, int> copies;
+    std::vector<uint8_t> chunkFive;
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
-        if (truncatedOnce || FirmwareTransportFixture::chunkIndex(frame) != 3) {
+        const uint16_t index = FirmwareTransportFixture::chunkIndex(frame);
+        if (copies[index]++ != 0) {
             return false;
         }
-        truncatedOnce = true;
-        f.receiverRadio.deliver(std::vector<uint8_t>(frame.begin(), frame.end() - 1));
-        return true;
+        if (index == 3) {
+            f.receiverRadio.deliver(std::vector<uint8_t>(frame.begin(), frame.end() - 1));
+            return true;
+        }
+        if (index == 5) {
+            chunkFive = frame;
+            return true;
+        }
+        if (index == 6) {
+            // Chunk 5 a byte long, after chunk 6 is in: the spare byte would land on chunk 6.
+            f.receiverRadio.deliver(frame);
+            chunkFive.push_back(0xEE);
+            f.receiverRadio.deliver(chunkFive);
+            return true;
+        }
+        return false;
     });
 
-    EXPECT_EQ(f.receiverStore.slot, f.image);
+    EXPECT_EQ(f.receiverStore.slot, f.image) << "a chunk of the wrong length was written";
     EXPECT_TRUE(f.receiverStore.restarted);
 }
 

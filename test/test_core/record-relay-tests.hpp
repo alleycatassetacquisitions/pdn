@@ -67,8 +67,8 @@ public:
     }
 
     /**
-     * Hands @p length bytes at @p data to the handler for @p type, as the driver
-     * does; the bytes past @p length are left where a reader that overruns finds them.
+     * Calls the handler for @p type on the caller's buffer, so bytes past @p length
+     * stay readable; unlike the driver, which copies exactly @p length.
      */
     void handFrame(const uint8_t* fromMac, PktType type, const uint8_t* data, size_t length) {
         const std::pair<PacketCallback, void*>& handler = handlers.at(type);
