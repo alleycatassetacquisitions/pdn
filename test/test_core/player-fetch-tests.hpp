@@ -138,6 +138,48 @@ inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
     EXPECT_FALSE(chooseTeam.transitionToWelcome());
 }
 
+// The app hands the role picker the build's identity flag: a test build registers the MAC
+// test identity, a release build the nil player id.
+inline void playerFetchAppRegistersBuildIdentity(PlayerFetchTestSuite* suite, bool testIdentity) {
+    uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x09};
+    PlayerFetchApp app(nullptr, &suite->playerProvider, testIdentity);
+    app.populateStateMap();
+    ChooseTeamState* chooseTeam = nullptr;
+    for (State* state : app.getStateMap()) {
+        if (state->getStateId() == PlayerFetchStateId::CHOOSE_TEAM) {
+            chooseTeam = static_cast<ChooseTeamState*>(state);
+        }
+    }
+    ASSERT_NE(chooseTeam, nullptr);
+    confirmChooseTeam(suite, chooseTeam, mac, false);
+
+    Player* player = suite->playerProvider.getPlayer();
+    ASSERT_TRUE(chooseTeam->transitionToWelcome());
+    if (testIdentity) {
+        EXPECT_EQ(player->getServerPlayerId(), Player::testPlayerIdFromMac(mac));
+        EXPECT_STREQ(player->getServerPlayerName(), "Test");
+    } else {
+        EXPECT_TRUE(player->getServerPlayerId().isZero());
+        EXPECT_STREQ(player->getServerPlayerName(), "Demo");
+    }
+    dismountState(chooseTeam, &suite->device);
+}
+
+inline void pinEntryClearsPreviousRegistration(PlayerFetchTestSuite* suite) {
+    uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x09};
+    suite->playerProvider.getPlayer()->applyRegistrationProfile(Player::testPlayerIdFromMac(mac),
+                                                                "Test", Team(), {});
+    suite->playerProvider.setRegistrationPin("0007");
+    ASSERT_TRUE(suite->playerProvider.hasPlayer());
+
+    PinEntryState pinEntry(&suite->playerProvider, nullptr);
+    mountState(&pinEntry, &suite->device);
+    EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "the old registration survived PIN entry";
+    EXPECT_TRUE(suite->playerProvider.getPlayer()->getServerPlayerId().isZero());
+    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "") << "the old PIN survived";
+    dismountState(&pinEntry, &suite->device);
+}
+
 inline void pinEntryAndFirmwareUpdateLeadToEachOther(PlayerFetchTestSuite* suite) {
     FakeFirmwareStore store;
     FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
