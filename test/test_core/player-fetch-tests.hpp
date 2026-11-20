@@ -190,7 +190,7 @@ inline void fetchUserTimeoutShowsFailurePage(PlayerFetchTestSuite* suite) {
     EXPECT_CALL(*suite->device.mockDisplay, drawText(testing::StrEq("Unable to"), _, _));
     FetchUserState fetch(&suite->playerProvider, &suite->bandRegistration);
     mountFetchUser(suite, &fetch);
-    suite->fakeClock->advance(USER_DATA_FETCH_TIMEOUT_MS + 1);
+    suite->fakeClock->advance(REGISTRATION_ATTEMPT_MS + 1);
     fetch.onStateLoop(&suite->device);
     expectFailurePageThenAwaitBand(suite, &fetch);
 }

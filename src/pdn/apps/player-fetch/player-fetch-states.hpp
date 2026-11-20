@@ -22,7 +22,6 @@ constexpr int FIRMWARE_UPDATE = 31;
 
 constexpr unsigned long PLAYER_FETCH_FIRMWARE_HOLD_MS = 5000;
 constexpr unsigned long PLAYER_FETCH_DEMO_HOLD_MS = 5000;
-constexpr int USER_DATA_FETCH_TIMEOUT_MS = 10000;
 constexpr int FETCH_FAILURE_PAGE_TIMEOUT_MS = 3000;
 constexpr int WELCOME_MESSAGE_TIMEOUT_MS = 5000;
 
@@ -74,7 +73,7 @@ private:
 };
 
 /**
- * Waits, for up to USER_DATA_FETCH_TIMEOUT_MS from the first piece, for the rest of a band
+ * Waits, for up to REGISTRATION_ATTEMPT_MS from the first piece, for the rest of a band
  * registration an FDN started, and applies it through the two lookup events below.
  */
 class FetchUserState : public TypedState<PDN> {
