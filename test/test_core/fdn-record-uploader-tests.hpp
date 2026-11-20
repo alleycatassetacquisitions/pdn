@@ -259,6 +259,28 @@ TEST_F(FdnRecordUploaderTests, refusedCrashRecordRetiresAndKeptOneStays) {
     EXPECT_EQ(requests.size(), 2u);
 }
 
+// The answer to a match batch retires matches, even when the cycle before
+// ended on a crash upload; the crash record behind it still goes up.
+TEST_F(FdnRecordUploaderTests, acceptedMatchBatchRetiresMatchesAfterACrashUpload) {
+    storeCrash(5);
+    uploader->sync();
+    succeed();
+    ASSERT_EQ(storedCrashes(), 0u);
+
+    storeMatch(1);
+    storeCrash(6);
+    clock.advance(FDN_UPLOAD_INTERVAL_MS + 1);
+    uploader->sync();
+    ASSERT_EQ(requests.size(), 2u);
+    ASSERT_EQ(requests[1].path, MatchesApi::POST_QUICKDRAW_MATCHES_ENDPOINT);
+    succeed();
+
+    EXPECT_EQ(storedMatches(), 0u) << "the accepted matches stay to be uploaded again";
+    ASSERT_EQ(requests.size(), 3u);
+    EXPECT_EQ(requests[2].path, CrashApi::POST_DEVICE_LOGS_ENDPOINT)
+    << "crash 6 was retired unsent";
+}
+
 TEST_F(FdnRecordUploaderTests, keptMatchesStillLetCrashRecordsGo) {
     storeMatch(1);
     storeCrash(5);
