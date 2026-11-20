@@ -35,6 +35,7 @@
 #include "player-fetch-tests.hpp"
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
+#include "idle-animation-tests.hpp"
 #include "uuid-bytes-tests.hpp"
 
 #if defined(ARDUINO)
