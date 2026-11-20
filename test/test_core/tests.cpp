@@ -1098,6 +1098,10 @@ TEST_F(PlayerFetchTestSuite, chooseTeamDemoKeepsNilPlayerId) {
     chooseTeamDemoKeepsNilPlayerId(this);
 }
 
+TEST_F(PlayerFetchTestSuite, pinEntryClearsPreviousRegistration) {
+    pinEntryClearsPreviousRegistration(this);
+}
+
 TEST_F(PlayerFetchTestSuite, pinEntryAndFirmwareUpdateLeadToEachOther) {
     pinEntryAndFirmwareUpdateLeadToEachOther(this);
 }

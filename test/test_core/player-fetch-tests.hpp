@@ -106,36 +106,66 @@ inline void confirmChooseTeam(PlayerFetchTestSuite* suite, ChooseTeamState* choo
     secondaryPress(secondaryCtx);
 }
 
+// Taken from the app, so the build's identity flag must reach the role picker through it.
+inline ChooseTeamState* findChooseTeam(PlayerFetchApp* app) {
+    app->populateStateMap();
+    for (State* state : app->getStateMap()) {
+        if (state->getStateId() == PlayerFetchStateId::CHOOSE_TEAM) {
+            return static_cast<ChooseTeamState*>(state);
+        }
+    }
+    return nullptr;
+}
+
 inline void chooseTeamTestIdentityRegistersMacPlayerAndEntersWelcome(PlayerFetchTestSuite* suite) {
     uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
-    ChooseTeamState chooseTeam(&suite->playerProvider, true);
-    confirmChooseTeam(suite, &chooseTeam, mac, true);
+    PlayerFetchApp app(nullptr, &suite->playerProvider, true);
+    ChooseTeamState* chooseTeam = findChooseTeam(&app);
+    ASSERT_NE(chooseTeam, nullptr);
+    confirmChooseTeam(suite, chooseTeam, mac, true);
 
     Player* player = suite->playerProvider.getPlayer();
-    EXPECT_TRUE(chooseTeam.transitionToWelcome());
+    EXPECT_TRUE(chooseTeam->transitionToWelcome());
     EXPECT_TRUE(player->hasRegistrationProfile());
     EXPECT_EQ(player->getServerPlayerId(), Player::testPlayerIdFromMac(mac));
     EXPECT_FALSE(player->isHunter());
     EXPECT_STREQ(player->getServerPlayerName(), "Test");
     EXPECT_FALSE(player->hasTeam());
 
-    dismountState(&chooseTeam, &suite->device);
-    EXPECT_FALSE(chooseTeam.transitionToWelcome());
+    dismountState(chooseTeam, &suite->device);
+    EXPECT_FALSE(chooseTeam->transitionToWelcome());
 }
 
 inline void chooseTeamDemoKeepsNilPlayerId(PlayerFetchTestSuite* suite) {
     uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
-    ChooseTeamState chooseTeam(&suite->playerProvider, false);
-    confirmChooseTeam(suite, &chooseTeam, mac, false);
+    PlayerFetchApp app(nullptr, &suite->playerProvider, false);
+    ChooseTeamState* chooseTeam = findChooseTeam(&app);
+    ASSERT_NE(chooseTeam, nullptr);
+    confirmChooseTeam(suite, chooseTeam, mac, false);
 
     Player* player = suite->playerProvider.getPlayer();
-    EXPECT_TRUE(chooseTeam.transitionToWelcome());
+    EXPECT_TRUE(chooseTeam->transitionToWelcome());
     EXPECT_TRUE(player->getServerPlayerId().isZero());
     EXPECT_TRUE(player->isHunter());
     EXPECT_STREQ(player->getServerPlayerName(), "Demo");
 
-    dismountState(&chooseTeam, &suite->device);
-    EXPECT_FALSE(chooseTeam.transitionToWelcome());
+    dismountState(chooseTeam, &suite->device);
+    EXPECT_FALSE(chooseTeam->transitionToWelcome());
+}
+
+inline void pinEntryClearsPreviousRegistration(PlayerFetchTestSuite* suite) {
+    uint8_t mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x09};
+    suite->playerProvider.getPlayer()->applyRegistrationProfile(Player::testPlayerIdFromMac(mac),
+                                                                "Test", Team(), {});
+    suite->playerProvider.setRegistrationPin("0007");
+    ASSERT_TRUE(suite->playerProvider.hasPlayer());
+
+    PinEntryState pinEntry(&suite->playerProvider, nullptr);
+    mountState(&pinEntry, &suite->device);
+    EXPECT_FALSE(suite->playerProvider.hasPlayer()) << "the old registration survived PIN entry";
+    EXPECT_TRUE(suite->playerProvider.getPlayer()->getServerPlayerId().isZero());
+    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "") << "the old PIN survived";
+    dismountState(&pinEntry, &suite->device);
 }
 
 inline void pinEntryAndFirmwareUpdateLeadToEachOther(PlayerFetchTestSuite* suite) {

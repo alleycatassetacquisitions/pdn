@@ -342,14 +342,18 @@ TEST_F(CliRoleCommandTestSuite, NoDevices) {
 
 TEST(CliCommandTest, RebootEntersPinEntry) { cliCommandRebootEntersPinEntry(); }
 
+TEST(CliCommandTest, RebootedDeviceReRegistersWithTestIdentity) {
+    cliRebootedDeviceReRegistersWithTestIdentity();
+}
+
 TEST_F(CliSimulationTestSuite, DevicesStartWithDistinctTestIdentities) {
     cliDevicesStartWithDistinctTestIdentities(this);
 }
 
 TEST_F(CliSimulationTestSuite, CabledDevicesConnect) { cliSimulationCabledDevicesConnect(this); }
 
-TEST_F(CliSimulationTestSuite, DuelStoresOneRecordOnEachPdn) {
-    cliDuelStoresOneRecordOnEachPdn(this);
+TEST_F(CliSimulationTestSuite, DuelDrawnByTypedButtonsStoresOneRecordOnEachPdn) {
+    cliDuelDrawnByTypedButtonsStoresOneRecordOnEachPdn(this);
 }
 
 TEST_F(CliSimulationTestSuite, FdnBeaconCollectsBothDuelRecords) {

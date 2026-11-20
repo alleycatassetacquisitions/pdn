@@ -1006,8 +1006,8 @@ public:
     unsigned long now = 1000;
 };
 
-// Test: a cabled duel between two test identities leaves one record on each PDN naming both
-void cliDuelStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
+// Test: a cabled duel drawn by the typed b and b2 commands leaves one record on each PDN
+void cliDuelDrawnByTypedButtonsStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
     // cli-main seeds this at boot; the hunter draws the match id from it.
     IdGenerator::initialize(42);
     ASSERT_TRUE(cli::SerialCableBroker::getInstance().connect(0, 1));
@@ -1016,6 +1016,12 @@ void cliDuelStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
 
     MatchManager* matchManagers[2] = {suite->devices[0].gameSession->getContext().matchManager,
                                       suite->devices[1].gameSession->getContext().matchManager};
+    cli::CommandProcessor processor;
+    cli::Renderer renderer;
+    // No device selected, so each command must reach its PDN through its own argument.
+    int selected = -1;
+    const char* drawCommands[2] = {"b 0", "b2 1"};
+    bool drawLanded[2] = {true, true};
     for (int tick = 0; tick < 20000; tick++) {
         if (matchManagers[0]->getMatchSequenceNumber() == 1 &&
             matchManagers[1]->getMatchSequenceNumber() == 1) {
@@ -1026,11 +1032,15 @@ void cliDuelStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
         for (int i = 0; i < 2; i++) {
             State* state = suite->devices[i].pdn->getActiveApp()->getCurrentState();
             if (state->getStateId() == MATCH && !matchManagers[i]->getHasPressedButton()) {
-                suite->devices[i].primaryButtonDriver->execCallback(ButtonInteraction::PRESS);
+                processor.execute(drawCommands[i], suite->devices, selected, renderer);
+                drawLanded[i] = drawLanded[i] && matchManagers[i]->getHasPressedButton();
             }
         }
     }
     SimpleTimer::setPlatformClock(&suite->globalClock);
+    for (int i = 0; i < 2; i++) {
+        EXPECT_TRUE(drawLanded[i]) << "'" << drawCommands[i] << "' did not draw";
+    }
 
     const UUIDBytes& hunterId = suite->devices[0].player->getServerPlayerId();
     const UUIDBytes& bountyId = suite->devices[1].player->getServerPlayerId();
@@ -1048,7 +1058,7 @@ void cliDuelStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
 
 // Test: after the duel, one FDN beacon in the simulator takes both PDNs' records into a real store
 void cliFdnBeaconCollectsBothDuelRecords(CliSimulationTestSuite* suite) {
-    cliDuelStoresOneRecordOnEachPdn(suite);
+    cliDuelDrawnByTypedButtonsStoresOneRecordOnEachPdn(suite);
     NativePeerCommsDriver fdnRadio("cli-fdn-radio");
     fdnRadio.initialize();
     fdnRadio.enable();
@@ -1159,6 +1169,29 @@ inline void cliCommandRebootEntersPinEntry() {
     EXPECT_EQ(device.getCurrentState()->getStateId(), PlayerFetchStateId::PIN_ENTRY);
     EXPECT_FALSE(device.player->hasRegistrationProfile());
     EXPECT_TRUE(device.stateHistory.empty());
+    cli::DeviceFactory::destroyDevice(device);
+    SimpleTimer::setPlatformClock(nullptr);
+}
+
+// Test: a rebooted simulator PDN that re-registers by typed buttons gets its MAC test identity back
+inline void cliRebootedDeviceReRegistersWithTestIdentity() {
+    NativeClockDriver clock("test_reregister_clock");
+    SimpleTimer::setPlatformClock(&clock);
+    std::vector<cli::DeviceInstance> devices{cli::DeviceFactory::createDevice(0, true)};
+    cli::DeviceInstance& device = devices[0];
+    int selected = 0;
+    cli::Renderer renderer;
+    cli::CommandProcessor processor;
+    processor.execute("reboot", devices, selected, renderer);
+    for (int digit = 0; digit < 4; digit++) {
+        processor.execute("b2", devices, selected, renderer);
+    }
+    device.pdn->loop();
+    EXPECT_EQ(device.getCurrentState()->getStateId(), PlayerFetchStateId::CHOOSE_TEAM);
+    processor.execute("b2", devices, selected, renderer);
+    EXPECT_TRUE(device.player->hasRegistrationProfile());
+    EXPECT_EQ(device.player->getServerPlayerId(),
+              Player::testPlayerIdFromMac(device.peerCommsDriver->getMacAddress()));
     cli::DeviceFactory::destroyDevice(device);
     SimpleTimer::setPlatformClock(nullptr);
 }
