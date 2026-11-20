@@ -12,6 +12,7 @@
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
 #include "match-manager-tests.hpp"
+#include "match-ring-area-tests.hpp"
 #include "match-frame-auth-tests.hpp"
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"

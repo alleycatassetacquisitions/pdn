@@ -33,10 +33,12 @@ public:
      * that feeds them, and installs its own per-tick pump. The device and its
      * wireless manager outlive the session, so the destructor empties every slot
      * holding `this`. @p recordKey is borrowed, may be null, and must outlive the
-     * session: finished matches are tagged with the key it holds.
+     * session: finished matches are tagged with the key it holds. @p matchRingArea,
+     * borrowed, is the match ring's own storage area (MatchManager::initialize).
      */
     GameSession(Player* player, const RecordKey* recordKey, Device* pdn,
-                SymbolWirelessManager* symbolWirelessManager);
+                SymbolWirelessManager* symbolWirelessManager,
+                StorageDriverInterface* matchRingArea = nullptr);
     /** Drops the callbacks that capture `this`, then frees the managers it owns. */
     ~GameSession();
 

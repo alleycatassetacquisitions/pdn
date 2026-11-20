@@ -1,0 +1,11 @@
+# Name,   Type,  SubType,  Offset,   Size
+nvs,      data,  nvs,      0x9000,   0x5000
+otadata,  data,  ota,      0xe000,   0x2000
+ota_0,    app,   ota_0,    0x10000,  0x3E0000
+ota_1,    app,   ota_1,    0x3F0000, 0x3E0000
+coredump, data,  coredump, 0x7D0000, 0x10000
+nvs_keys, data,  nvs_keys, 0x7E0000, 0x1000
+# partitions.csv plus the PDN's match ring partition, for esp32-s3_pdn_test only.
+# A PDN on partitions.csv registers the same range at runtime (MATCH_RING_PARTITION
+# in src/pdn/main.cpp; keep the two in step). Only a USB flash writes a table.
+records,  data,  nvs,      0x7E1000, 0x1F000

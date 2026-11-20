@@ -1,19 +1,24 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 #include "device/drivers/driver-interface.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/drivers/nvs-partition-range.hpp"
 #include "device/drivers/unknown-storage-namespace-exception.hpp"
 
+#include <esp_partition.h>
 #include <nvs.h>
+#include <nvs_flash.h>
 
 /**
  * NVS-backed storage driver for ESP32-S3.
  *
- * Constructed with a list of namespace names; each opens a separate NVS partition
- * namespace on initialize(). All read/write operations require an explicit namespace
+ * Constructed with a list of namespace names; each opens a separate NVS
+ * namespace on initialize(), in the default `nvs` partition or in the one named
+ * at construction. All read/write operations require an explicit namespace
  * argument. Using a namespace not passed to the constructor throws
  * UnknownStorageNamespaceException.
  *
@@ -22,12 +27,21 @@
  */
 class Esp32S3PrefsDriver : public StorageDriverInterface {
 public:
-    /** Registers one NVS handle slot per namespace; any other name throws. */
+    /** Registers one NVS handle slot per namespace of the default partition; any other name throws.
+     */
     Esp32S3PrefsDriver(const std::string& name, std::initializer_list<const char*> namespaces)
-        : StorageDriverInterface(name) {
-        for (const char* ns : namespaces) {
-            namespaceHandles.try_emplace(std::string(ns), 0);
-        }
+        : StorageDriverInterface(name)
+        , partitionLabel(NVS_DEFAULT_PART_NAME) {
+        registerNamespaces(namespaces);
+    }
+
+    /** Registers one NVS handle slot per namespace of @p partition; any other name throws. */
+    Esp32S3PrefsDriver(const std::string& name, const NvsPartitionRange& partition,
+                       std::initializer_list<const char*> namespaces)
+        : StorageDriverInterface(name)
+        , partitionLabel(partition.label)
+        , range(partition) {
+        registerNamespaces(namespaces);
     }
 
     /** Closes every namespace handle this driver opened. */
@@ -35,15 +49,28 @@ public:
         endAllNamespaces();
     }
 
-    /** Begins each namespace read-write. Non-zero when one refuses to open. */
+    /**
+     * Brings the partition up and begins each namespace read-write. Non-zero
+     * when the partition cannot be found, registered or brought up, or a
+     * namespace refuses to open. Never erases: the partition may hold records.
+     */
     int initialize() override {
-        // nvs_flash_init() is the platform's job, in main before any driver. It
-        // is idempotent, so the cost of calling it twice is nil; the reason it
-        // belongs upstairs is that the radio needs NVS too and neither driver
-        // owns it.
+        // main brings the default partition up first, because the radio needs
+        // it too; bringing it up again here is a no-op.
+        if (!findOrRegisterPartition()) {
+            return 1;
+        }
+        const esp_err_t status = nvs_flash_init_partition(partitionLabel);
+        if (status != ESP_OK) {
+            LOG_E(name.c_str(), "nvs_flash_init_partition failed for %s: %s", partitionLabel,
+                  esp_err_to_name(status));
+            return 1;
+        }
         for (auto& entry : namespaceHandles) {
-            if (nvs_open(entry.first.c_str(), NVS_READWRITE, &entry.second) != ESP_OK) {
-                LOG_E(name.c_str(), "nvs_open failed for namespace %s", entry.first.c_str());
+            if (nvs_open_from_partition(partitionLabel, entry.first.c_str(), NVS_READWRITE,
+                                        &entry.second) != ESP_OK) {
+                LOG_E(name.c_str(), "nvs_open failed for namespace %s in partition %s",
+                      entry.first.c_str(), partitionLabel);
                 return 1;
             }
         }
@@ -79,6 +106,15 @@ public:
             return defaultValue;
         }
         return std::string(buffer.data());
+    }
+
+    /** Drops one key from `ns`. True when something was removed. */
+    bool remove(const std::string& ns, const std::string& key) override {
+        nvs_handle_t handle = requireHandle(ns);
+        if (nvs_erase_key(handle, key.c_str()) != ESP_OK) {
+            return false;
+        }
+        return nvs_commit(handle) == ESP_OK;
     }
 
     /** Closes every namespace handle; the driver is unusable afterwards. */
@@ -166,6 +202,40 @@ public:
     }
 
 private:
+    void registerNamespaces(std::initializer_list<const char*> namespaces) {
+        for (const char* ns : namespaces) {
+            namespaceHandles.try_emplace(std::string(ns), 0);
+        }
+    }
+
+    // True when the flashed table holds the partition, at the range if one was
+    // given, or the range is registered for this boot.
+    bool findOrRegisterPartition() {
+        const esp_partition_t* found = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, partitionLabel);
+        const NvsPartitionSource source =
+        chooseNvsPartitionSource(found != nullptr, found != nullptr ? found->address : 0,
+                                 found != nullptr ? found->size : 0, range ? &*range : nullptr);
+        if (source == NvsPartitionSource::TABLE) {
+            return true;
+        }
+        if (source == NvsPartitionSource::NONE) {
+            LOG_E(name.c_str(), "Partition %s is not in the table at its range", partitionLabel);
+            return false;
+        }
+        // Refused when the range overlaps a partition of the flashed table or
+        // runs past the end of flash.
+        const esp_err_t registered = esp_partition_register_external(
+        nullptr, range->offset, range->size, partitionLabel, ESP_PARTITION_TYPE_DATA,
+        ESP_PARTITION_SUBTYPE_DATA_NVS, nullptr);
+        if (registered != ESP_OK) {
+            LOG_E(name.c_str(), "Registering partition %s failed: %s", partitionLabel,
+                  esp_err_to_name(registered));
+            return false;
+        }
+        return true;
+    }
+
     nvs_handle_t requireHandle(const std::string& ns) {
         auto it = namespaceHandles.find(ns);
         if (it == namespaceHandles.end()) {
@@ -183,5 +253,8 @@ private:
         }
     }
 
+    const char* partitionLabel;
+    // Registered when the table lacks the partition; absent for the default one.
+    std::optional<NvsPartitionRange> range;
     std::map<std::string, nvs_handle_t> namespaceHandles;
 };

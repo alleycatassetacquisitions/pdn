@@ -53,6 +53,14 @@ Esp32s3SerialIn* serialInDriver = nullptr;
 EspNowDriver* peerCommsDriver = nullptr;
 Esp32S3Logger* loggerDriver = nullptr;
 Esp32S3PrefsDriver* storageDriver = nullptr;
+// The match ring's own partition, at the end of flash after nvs_keys. Deployed
+// tables (partitions.csv) end before it, so the driver registers the range at
+// runtime. partitions-test.csv lists it; the driver refuses a table that lists
+// the label at any other range.
+constexpr NvsPartitionRange MATCH_RING_PARTITION = {"records", 0x7E1000, 0x1F000};
+// Not in DriverConfig: the match manager opens it, and keeps the ring in
+// storageDriver's partition when it does not open.
+Esp32S3PrefsDriver* matchRingDriver = nullptr;
 
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
@@ -75,11 +83,9 @@ static void setup() {
     // Before any driver, because two of them need it and neither can bring it
     // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
     // and the preferences driver cannot open a namespace.
+    // Never erased on failure: that would wipe every stored record. The PDN runs
+    // without storage, and so without its radio, until the desk reflashes or clears it.
     esp_err_t nvsStatus = nvs_flash_init();
-    if (nvsStatus == ESP_ERR_NVS_NO_FREE_PAGES || nvsStatus == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        nvs_flash_erase();
-        nvsStatus = nvs_flash_init();
-    }
     if (nvsStatus != ESP_OK) {
         ESP_LOGE("PDN", "nvs_flash_init failed: %s", esp_err_to_name(nvsStatus));
     }
@@ -105,8 +111,12 @@ static void setup() {
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, RXt, RXr);
 
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
+    // storageDriver keeps MATCH_RING_PREFS_NAMESPACE so the ring earlier firmware
+    // kept there can move to its own partition, or stay when that does not open.
     storageDriver =
     new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCH_RING_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
+    matchRingDriver = new Esp32S3PrefsDriver(MATCH_RING_DRIVER_NAME, MATCH_RING_PARTITION,
+                                             {MATCH_RING_PREFS_NAMESPACE});
 
     // Create driver configuration
     DriverConfig pdnConfig = {
@@ -138,10 +148,10 @@ static void setup() {
 
     // The PDN's crash records go to an FDN through the record relay.
     crashLogger = new CrashLogger(storageDriver);
-    crashLogger->capture(crashedBootUptimeMs);
+    if (nvsStatus == ESP_OK) crashLogger->capture(crashedBootUptimeMs);  // it erases the dump
 
     gameSession = new GameSession(playerProvider->getPlayer(), playerProvider->getRecordKey(), pdn,
-                                  symbolWirelessManager);
+                                  symbolWirelessManager, matchRingDriver);
     gameSession->setCrashRecordSource(crashLogger);
 
     GameContext gameContext = gameSession->getContext();

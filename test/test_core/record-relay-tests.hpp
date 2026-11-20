@@ -18,6 +18,7 @@
 #include "game/record-relay.hpp"
 #include "game/shootout-manager.hpp"
 #include "match-manager-tests.hpp"
+#include "match-ring-area-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "utility-tests.hpp"
 #include "wireless/remote-player-manager.hpp"
@@ -200,6 +201,8 @@ public:
     FakePlatformClock clock;
     NativePrefsDriver pdnStorage{"pdn-prefs",
                                  {MATCH_RING_PREFS_NAMESPACE, LEGACY_MATCHES_NAMESPACE}};
+    // The match ring's own area, for a manager that moves its ring there.
+    NativePrefsDriver ringArea{"relay-ring-area", {MATCH_RING_PREFS_NAMESPACE}};
     NativePrefsDriver fdnStorage{"fdn-prefs", {FDN_RECORD_STORE_NAMESPACE}};
     RecordingPeerComms pdnRadio{"relay-pdn-radio"};
     RecordingPeerComms fdnRadio{"relay-fdn-radio"};
@@ -525,6 +528,28 @@ TEST_F(RecordRelayTests, relayLeavesOlderFirmwareMatchesByteIdentical) {
         EXPECT_EQ(pdnStorage.read(LEGACY_MATCHES_NAMESPACE, entry.first, ""), entry.second);
     }
     EXPECT_EQ(pdnStorage.read(LEGACY_MATCHES_NAMESPACE, "match_2", "absent"), "absent");
+}
+
+// Records stored before the ring had its own area move there at boot with
+// their numbers and tags, and are relayed from it.
+TEST_F(RecordRelayTests, ringRecordsMoveAtBootAndAreRelayedFromTheirArea) {
+    storeMatch(0xA1);
+    storeMatch(0xA2);
+    const OlderFirmwareMatches legacy = writeOlderFirmwareMatches(pdnStorage);
+
+    matchManager->initialize(&player, &pdnStorage, &ringArea);
+    beacon(fdnMac);
+
+    FdnRecordStore::MatchRing::Entry matches[3];
+    ASSERT_EQ(store->getMatchRecords().peekOldest(matches, 3), 2u);
+    EXPECT_EQ(matches[0].recordNumber, 1u);
+    EXPECT_EQ(matches[0].content[0], 0xA1);
+    EXPECT_EQ(matches[0].content[MATCH_BINARY_SIZE], static_cast<uint8_t>(~0xA1));
+    EXPECT_EQ(matches[1].recordNumber, 2u);
+    EXPECT_EQ(matches[1].content[sizeof(TaggedMatchRecord) - 1], static_cast<uint8_t>(~0xA2));
+    EXPECT_EQ(ringArea.readUInt(MATCH_RING_PREFS_NAMESPACE, "collectedSeq", 0), 2u);
+    EXPECT_TRUE(ringIsGone(pdnStorage));
+    expectOlderFirmwareMatchesUntouched(pdnStorage, legacy);
 }
 
 // The session builds the relay over its own match ring, takes the crash source,
