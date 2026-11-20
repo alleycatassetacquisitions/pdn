@@ -51,12 +51,17 @@ protected:
             // Get current and next colors
             LEDColor currentColor = originalColors[currentColorIndex];
             LEDColor nextColor = originalColors[nextColorIndex];
-            
-            // Interpolate between colors
-            uint8_t r = currentColor.red + (uint8_t)(interpolationFactor * (nextColor.red - currentColor.red));
-            uint8_t g = currentColor.green + (uint8_t)(interpolationFactor * (nextColor.green - currentColor.green));
-            uint8_t b = currentColor.blue + (uint8_t)(interpolationFactor * (nextColor.blue - currentColor.blue));
-            
+
+            // Interpolate between colors. A channel that fades down has a negative step,
+            // which uint8_t cannot hold, so the step is truncated to int.
+            uint8_t r = currentColor.red +
+                        static_cast<int>(interpolationFactor * (nextColor.red - currentColor.red));
+            uint8_t g =
+            currentColor.green +
+            static_cast<int>(interpolationFactor * (nextColor.green - currentColor.green));
+            uint8_t b = currentColor.blue + static_cast<int>(interpolationFactor *
+                                                             (nextColor.blue - currentColor.blue));
+
             // Set the interpolated color
             LEDColor interpolatedColor = {r, g, b};
             if(i > 2) {
