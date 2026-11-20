@@ -1244,6 +1244,10 @@ TEST_F(IdleStateTests, dismountClearsUnreadyMatch) {
     idleDismountClearsUnreadyMatch(this);
 }
 
+TEST_F(IdleStateTests, holdsTheMatchForBothRetransmitSpans) {
+    idleHoldsTheMatchForBothRetransmitSpans(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - COUNTDOWN
 // ============================================
@@ -1451,6 +1455,18 @@ TEST_F(StateCleanupTests, winAndLoseStopTheirAnimation) {
     cleanupWinAndLoseStopTheirAnimation(this);
 }
 
+TEST_F(StateCleanupTests, resultScreensLeaveForSleepAfterTheirTimer) {
+    resultScreensLeaveForSleepAfterTheirTimer(this);
+}
+
+TEST_F(StateCleanupTests, resultCardShowsOwnBoostAndPenalty) {
+    resultCardShowsOwnBoostAndPenalty(this);
+}
+
+TEST_F(StateCleanupTests, resultCardShowsNegativeTimesAndNoPenaltyLine) {
+    resultCardShowsNegativeTimesAndNoPenaltyLine(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - CONNECTION SUCCESSFUL
 // ============================================
@@ -1465,6 +1481,10 @@ TEST_F(GameSessionLifecycleTests, countdownVoidsStandingConfirm) {
 
 TEST_F(GameSessionLifecycleTests, countdownArmsMountedSupporter) {
     gameSessionCountdownArmsMountedSupporter(this);
+}
+
+TEST_F(GameSessionLifecycleTests, supporterIsCountedOnThePressNotTheRelease) {
+    supporterIsCountedOnThePressNotTheRelease(this);
 }
 
 // ============================================

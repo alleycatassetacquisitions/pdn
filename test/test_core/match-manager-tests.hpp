@@ -1057,3 +1057,101 @@ TEST_F(MatchManagerTestSuite, shootoutSlotNotStandingRoleDecidesTheLocalSlot) {
     EXPECT_TRUE(matchManager->getHasReceivedDrawResult());
     EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 250u);
 }
+
+// Only the bounty's MATCH_ID_ACK may drop the match when its retries run out. A
+// DRAW_RESULT nobody confirmed still leaves the duel waiting for the opponent's.
+TEST_F(MatchManagerTestSuite, anUnconfirmedDrawResultKeepsTheDuel) {
+    static const uint8_t bountyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    setupAckedMatchAsHunter();
+    const std::string matchId = matchManager->getCurrentMatch()->getMatchId();
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(200);
+    matchManager->getMatchButtonPush()(matchManager);
+    ASSERT_EQ(radioTap.lastFrame()->command, MatchCmd::DRAW_RESULT);
+
+    fakeClock->advance(Resender::RETRANSMIT_SPAN_MS + 1);
+    matchManager->sync();
+    ASSERT_TRUE(matchManager->getCurrentMatch().has_value())
+    << "the duel was dropped because its DRAW_RESULT went unconfirmed";
+
+    MatchCommand result(bountyMac, MatchCmd::DRAW_RESULT, matchId.c_str(), 300, false);
+    matchManager->listenForMatchEvents(result);
+    EXPECT_TRUE(matchManager->matchResultsAreIn());
+    EXPECT_TRUE(matchManager->didWin());
+}
+
+// A player who pressed beats one who never did, even when the pity time equals
+// the press to the millisecond.
+TEST_F(MatchManagerTestSuite, aPressBeatsANeverPressedOfTheSameTime) {
+    static const uint8_t bountyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    setupAckedMatchAsHunter();
+    const std::string matchId = matchManager->getCurrentMatch()->getMatchId();
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(300);
+    matchManager->getMatchButtonPush()(matchManager);
+
+    MatchCommand neverPressed(bountyMac, MatchCmd::NEVER_PRESSED, matchId.c_str(), 300, false);
+    matchManager->listenForMatchEvents(neverPressed);
+
+    ASSERT_TRUE(matchManager->matchResultsAreIn());
+    EXPECT_TRUE(matchManager->didWin()) << "the side that never pressed won the tie";
+}
+
+// The first press is the draw. A second one changes neither the time, the
+// player's stats nor what the opponent was told.
+TEST_F(MatchManagerTestSuite, aSecondPressKeepsTheFirstDraw) {
+    setupAckedMatchAsHunter();
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(200);
+    matchManager->getMatchButtonPush()(matchManager);
+    const size_t framesAfterFirstPress = radioTap.sentFrames.size();
+
+    fakeClock->advance(150);
+    matchManager->getMatchButtonPush()(matchManager);
+
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 200u);
+    EXPECT_EQ(player->getLastReactionTime(), 200u);
+    EXPECT_EQ(radioTap.sentFrames.size(), framesAfterFirstPress)
+    << "a second press sent the opponent another DRAW_RESULT";
+}
+
+// A posse lowers the time the duel is decided on, not the player's own record.
+TEST_F(MatchManagerTestSuite, playerStatsKeepTheUnboostedTime) {
+    setupAckedMatchAsHunter();
+    matchManager->setBoostProvider([]() -> unsigned long { return 30; });
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(200);
+    matchManager->getMatchButtonPush()(matchManager);
+
+    EXPECT_EQ(player->getLastReactionTime(), 200u) << "the boost was taken off the player's stats";
+}
+
+// A standing Hunter drawn into the Bounty slot of a shootout match fills that
+// slot and says so on the radio; naming its standing role instead would have
+// the opponent refuse the frame as naming the opponent's own slot.
+TEST_F(MatchManagerTestSuite, shootoutPressFillsAndNamesTheMatchSlot) {
+    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    player->setIsHunter(true);
+    matchManager->initializeShootoutMatch("SHT-00000000000000000000000000611", opponentMac, false);
+    matchManager->setMatchLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(200);
+    matchManager->getMatchButtonPush()(matchManager);
+
+    EXPECT_EQ(matchManager->getCurrentMatch()->getBountyDrawTime(), 200u);
+    EXPECT_EQ(matchManager->getCurrentMatch()->getHunterDrawTime(), 0u)
+    << "the press filled the opponent's slot";
+    ASSERT_NE(radioTap.lastFrame(), nullptr);
+    EXPECT_EQ(radioTap.lastFrame()->command, MatchCmd::DRAW_RESULT);
+    EXPECT_FALSE(radioTap.lastFrame()->isHunter) << "the DRAW_RESULT named the standing role";
+}
+
+TEST_F(MatchManagerTestSuite, shootoutNeverPressedNamesTheMatchSlot) {
+    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    player->setIsHunter(true);
+    matchManager->initializeShootoutMatch("SHT-00000000000000000000000000612", opponentMac, false);
+    matchManager->sendNeverPressed(4000);
+
+    ASSERT_NE(radioTap.lastFrame(), nullptr);
+    EXPECT_EQ(radioTap.lastFrame()->command, MatchCmd::NEVER_PRESSED);
+    EXPECT_FALSE(radioTap.lastFrame()->isHunter) << "the NEVER_PRESSED named the standing role";
+}
