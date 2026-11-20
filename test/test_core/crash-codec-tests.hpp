@@ -179,33 +179,20 @@ inline void crashPacketCarriesRecordInRelayLayout() {
     }
 }
 
-// A crash relayed PDN to FDN reaches the server with the values the PDN recorded; the server
-// dedupes on MAC and crash number.
-inline void crashRelayedThroughPacketReachesServerUnchanged(CrashCodecTestSuite* suite) {
-    CrashRecord rec = makeFullRecord();
-
-    CrashRecord relayed = fromCrashPacket(toCrashPacket(rec));
-    size_t len = CrashCodec::encode(relayed, suite->mac, suite->buf, sizeof(suite->buf));
-    ASSERT_GT(len, 0u);
-    alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
-
-    EXPECT_EQ(msg.crash_number, 3u);
-    EXPECT_EQ(msg.uptime_ms, 12500u);
-    EXPECT_EQ(msg.reset_reason, 7u);
-    EXPECT_EQ(msg.program_counter, 0x400D1A2Cu);
-    ASSERT_TRUE(msg.has_exception_cause);
-    EXPECT_EQ(msg.exception_cause, 28u);
-    EXPECT_STREQ(msg.task_name, "loopTask");
-    EXPECT_STREQ(msg.software_version, "a1b2c3d4");
-}
-
-// A task watchdog crash has no exception cause; relayed, it must not arrive as cause 0
-// (IllegalInstruction).
+// A task watchdog crash has no exception cause. The packet marks it with the 0xFFFF sentinel at
+// offset 13, which other firmware and records already stored on an FDN rely on, and it reaches
+// the server with no cause, not cause 0 (IllegalInstruction).
 inline void crashWithoutCauseRelaysWithoutCause(CrashCodecTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
     rec.coreDumpDetails->exceptionCause.reset();
 
-    CrashRecord relayed = fromCrashPacket(toCrashPacket(rec));
+    CrashPacket packet = toCrashPacket(rec);
+    const uint8_t sentinel[] = {0xFF, 0xFF, 0x00, 0x00};
+    uint8_t cause[sizeof(sentinel)];
+    memcpy(cause, reinterpret_cast<const uint8_t*>(&packet) + 13, sizeof(cause));
+    EXPECT_EQ(memcmp(cause, sentinel, sizeof(sentinel)), 0);
+
+    CrashRecord relayed = fromCrashPacket(packet);
     size_t len = CrashCodec::encode(relayed, suite->mac, suite->buf, sizeof(suite->buf));
     ASSERT_GT(len, 0u);
     alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);

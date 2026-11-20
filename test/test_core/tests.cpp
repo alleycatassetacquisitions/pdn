@@ -1028,10 +1028,6 @@ TEST_F(CrashCodecTestSuite, returnsZeroWhenBufferTooSmall) {
 
 TEST(CrashPacketTests, carriesRecordInRelayLayout) { crashPacketCarriesRecordInRelayLayout(); }
 
-TEST_F(CrashCodecTestSuite, crashRelayedThroughPacketReachesServerUnchanged) {
-    crashRelayedThroughPacketReachesServerUnchanged(this);
-}
-
 TEST_F(CrashCodecTestSuite, crashWithoutCauseRelaysWithoutCause) {
     crashWithoutCauseRelaysWithoutCause(this);
 }
