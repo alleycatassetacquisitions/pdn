@@ -343,10 +343,6 @@ inline void fdnRegistrationTapSendsKeyThenProfileToTheTurnsPdn(FdnRegistrationTe
     EXPECT_FALSE(suite->everShowedRegistered()) << "WELCOME before the PDN confirmed";
 }
 
-// How long the FDN waits for the PDN to confirm its profile (the PDN's 10 s
-// attempt plus a context round trip).
-constexpr unsigned long CONFIRM_DEADLINE_MS = 12000;
-
 // The FDN welcomes the player only once the PDN's resent context says its
 // profile is applied, and says it waits until then. The result holds for
 // 3000 ms from the confirmation.
@@ -413,7 +409,7 @@ inline void fdnRegistrationShowsPdnLeftWhenItsJackChangesPeer(FdnRegistrationTes
 inline void fdnRegistrationGivesUpOnAConfirmationThatNeverComes(FdnRegistrationTests* suite) {
     using Lines = std::pair<std::string, std::string>;
     ASSERT_NO_FATAL_FAILURE(suite->sendKeyAndProfileToPdnA());
-    suite->advance(CONFIRM_DEADLINE_MS - 100);
+    suite->advance(FdnProvisioningManager::CONFIRM_TIMEOUT_MS - 100);
     EXPECT_EQ(suite->screenLines(), Lines("SENT", "WAITING"));
     suite->advance(200);
     EXPECT_EQ(suite->screenLines(), Lines("UNABLE TO", "CONFIRM"));
