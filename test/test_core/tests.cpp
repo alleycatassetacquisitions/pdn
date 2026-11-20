@@ -2327,6 +2327,21 @@ TEST_F(FdnRegistrationTests, turnIsOnlyWithTheFirstPdn) {
 TEST_F(FdnRegistrationTests, tapSendsKeyThenProfileToTheTurnsPdn) {
     fdnRegistrationTapSendsKeyThenProfileToTheTurnsPdn(this);
 }
+TEST_F(FdnRegistrationTests, welcomesOnlyOnceThePdnConfirms) {
+    fdnRegistrationWelcomesOnlyOnceThePdnConfirms(this);
+}
+TEST_F(FdnRegistrationTests, countsOnlyTheConfirmOfThePdnOnItsJack) {
+    fdnRegistrationCountsOnlyTheConfirmOfThePdnOnItsJack(this);
+}
+TEST_F(FdnRegistrationTests, showsPdnLeftWhenUnpluggedBeforeConfirming) {
+    fdnRegistrationShowsPdnLeftWhenUnpluggedBeforeConfirming(this);
+}
+TEST_F(FdnRegistrationTests, showsPdnLeftWhenItsJackChangesPeer) {
+    fdnRegistrationShowsPdnLeftWhenItsJackChangesPeer(this);
+}
+TEST_F(FdnRegistrationTests, givesUpOnAConfirmationThatNeverComes) {
+    fdnRegistrationGivesUpOnAConfirmationThatNeverComes(this);
+}
 TEST_F(FdnRegistrationTests, withoutKeySendsNoKeyAndNoProfile) {
     fdnRegistrationWithoutKeySendsNoKeyAndNoProfile(this);
 }

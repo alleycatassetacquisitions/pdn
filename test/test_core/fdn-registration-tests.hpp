@@ -9,9 +9,11 @@
 #include "fake-band-reader.hpp"
 #include "rdc-application-frame-tests.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -94,7 +96,10 @@ public:
         rdc.setExternalConnectivityTask(true);
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
         manager = new FdnProvisioningManager(device.wirelessManager, &rdc, &reader);
-        manager->setOnViewChanged([this](const RegistrationView& changed) { view = changed; });
+        manager->setOnViewChanged([this](const RegistrationView& changed) {
+            view = changed;
+            views.push_back(changed);
+        });
         manager->setRegistrationScreenShown(true);
     }
 
@@ -109,6 +114,12 @@ public:
         cabled.push_back({&jack, mac});
         deliverFrame(jack, pdnHello(mac));
         rdc.sync(&device);
+        sendContext(mac, registered);
+        step();
+    }
+
+    /** The PDN @p mac sends its context over the radio, reporting @p registered. */
+    void sendContext(const uint8_t* mac, bool registered) {
         PdnConnectionContext context{};
         context.seqId = ++contextSeqId;
         context.player.userId = RemoteDeviceCoordinator::PEER_USER_ID_NONE;
@@ -117,7 +128,34 @@ public:
         packetHandlers[PktType::kPdnConnectionContext];
         handler.first(mac, reinterpret_cast<const uint8_t*>(&context), sizeof(context),
                       handler.second);
+    }
+
+    /**
+     * Cables PDN_A on jack 1, taps for it and runs until its key is written and
+     * its profile sent.
+     */
+    void sendKeyAndProfileToPdnA() {
+        cable(jack1, PDN_A);
+        tap();
+        ASSERT_EQ(requests.size(), 1u);
+        answer(0, encodeTestPlayerWithKey(RECORD_KEY_SIZE));
         step();
+        step();
+        ASSERT_EQ(provisionsTo(PDN_A).size(), 1u);
+    }
+
+    /** The two lines the FDN screen shows now. */
+    std::pair<std::string, std::string> screenLines() const {
+        const RegistrationScreenLines lines = getRegistrationScreenLines(view);
+        return {lines.top, lines.bottom};
+    }
+
+    /** @return true if any view so far showed the registered result. */
+    bool everShowedRegistered() const {
+        return std::any_of(views.begin(), views.end(), [](const RegistrationView& shown) {
+            return shown.screen == RegistrationScreen::RESULT &&
+                   shown.outcome == RegistrationOutcome::REGISTERED;
+        });
     }
 
     /** Stops @p mac's HELLO and waits out the silent-link window. */
@@ -241,6 +279,7 @@ public:
     FakeBandReader reader;
     FdnProvisioningManager* manager = nullptr;
     RegistrationView view;
+    std::vector<RegistrationView> views;
     std::vector<CabledPdn> cabled;
     std::vector<SentFrame> sent;
     std::vector<SentFrame> unacked;
@@ -301,9 +340,91 @@ inline void fdnRegistrationTapSendsKeyThenProfileToTheTurnsPdn(FdnRegistrationTe
     EXPECT_EQ(memcmp(packets[0].playerId, makeTestUuid(TEST_PLAYER_ID).bytes, UUIDBytes::SIZE), 0);
     EXPECT_STREQ(packets[0].playerName, "Alex");
     EXPECT_TRUE(suite->provisionsTo(PDN_B).empty());
-    EXPECT_EQ(suite->view.screen, RegistrationScreen::RESULT);
-    EXPECT_EQ(suite->view.outcome, RegistrationOutcome::REGISTERED);
-    EXPECT_STREQ(suite->view.playerName, "Alex");
+    EXPECT_FALSE(suite->everShowedRegistered()) << "WELCOME before the PDN confirmed";
+}
+
+// How long the FDN waits for the PDN to confirm its profile (the PDN's 10 s
+// attempt plus a context round trip).
+constexpr unsigned long CONFIRM_DEADLINE_MS = 12000;
+
+// The FDN welcomes the player only once the PDN's resent context says its
+// profile is applied, and says it waits until then. The result holds for
+// 3000 ms from the confirmation.
+inline void fdnRegistrationWelcomesOnlyOnceThePdnConfirms(FdnRegistrationTests* suite) {
+    using Lines = std::pair<std::string, std::string>;
+    ASSERT_NO_FATAL_FAILURE(suite->sendKeyAndProfileToPdnA());
+    EXPECT_EQ(suite->screenLines(), Lines("SENT", "WAITING"));
+    suite->advance(5000);
+    EXPECT_EQ(suite->screenLines(), Lines("SENT", "WAITING"));
+    EXPECT_FALSE(suite->everShowedRegistered()) << "WELCOME before the PDN confirmed";
+
+    suite->sendContext(PDN_A, /*registered=*/true);
+    suite->step();
+    EXPECT_EQ(suite->screenLines(), Lines("WELCOME", "Alex"));
+    suite->advance(FdnProvisioningManager::LOOKUP_RESULT_HOLD_MS - 100);
+    EXPECT_EQ(suite->screenLines(), Lines("WELCOME", "Alex")) << "the hold ran from the profile";
+    suite->advance(200);
+    EXPECT_EQ(suite->view.screen, RegistrationScreen::NONE);
+}
+
+// Only the PDN the key went to confirms, on its own jack: a registered context
+// from the PDN on the other jack or from a MAC on no jack, or an unregistered
+// one from that PDN, leaves the FDN waiting.
+inline void fdnRegistrationCountsOnlyTheConfirmOfThePdnOnItsJack(FdnRegistrationTests* suite) {
+    using Lines = std::pair<std::string, std::string>;
+    ASSERT_NO_FATAL_FAILURE(suite->sendKeyAndProfileToPdnA());
+    suite->cable(suite->jack2, PDN_B, /*registered=*/true);
+    suite->sendContext(PDN_C, /*registered=*/true);
+    suite->step();
+    suite->sendContext(PDN_A, /*registered=*/false);
+    suite->step();
+    EXPECT_EQ(suite->screenLines(), Lines("SENT", "WAITING"));
+    EXPECT_FALSE(suite->everShowedRegistered()) << "another PDN's context confirmed PDN A";
+
+    suite->sendContext(PDN_A, /*registered=*/true);
+    suite->step();
+    EXPECT_EQ(suite->screenLines(), Lines("WELCOME", "Alex"));
+}
+
+// The PDN is unplugged after its profile went out but before it confirmed: the
+// FDN says it left, never WELCOME.
+inline void fdnRegistrationShowsPdnLeftWhenUnpluggedBeforeConfirming(FdnRegistrationTests* suite) {
+    using Lines = std::pair<std::string, std::string>;
+    ASSERT_NO_FATAL_FAILURE(suite->sendKeyAndProfileToPdnA());
+    suite->unplug(PDN_A);
+    EXPECT_EQ(suite->screenLines(), Lines("PDN LEFT", "JACK 1"));
+    EXPECT_FALSE(suite->everShowedRegistered()) << "WELCOME for a PDN that left unconfirmed";
+}
+
+// Another PDN takes the jack before the first confirmed and reports a profile
+// applied: that is not the confirmation.
+inline void fdnRegistrationShowsPdnLeftWhenItsJackChangesPeer(FdnRegistrationTests* suite) {
+    using Lines = std::pair<std::string, std::string>;
+    ASSERT_NO_FATAL_FAILURE(suite->sendKeyAndProfileToPdnA());
+    suite->cabled.clear();
+    suite->cable(suite->jack1, PDN_C, /*registered=*/true);
+    EXPECT_EQ(suite->screenLines(), Lines("PDN LEFT", "JACK 1"));
+    EXPECT_FALSE(suite->everShowedRegistered()) << "the new peer's context confirmed PDN A";
+}
+
+// No confirmation by the deadline: the FDN says it could not confirm and tells
+// the PDN still cabled that the attempt failed; a late confirmation changes
+// nothing.
+inline void fdnRegistrationGivesUpOnAConfirmationThatNeverComes(FdnRegistrationTests* suite) {
+    using Lines = std::pair<std::string, std::string>;
+    ASSERT_NO_FATAL_FAILURE(suite->sendKeyAndProfileToPdnA());
+    suite->advance(CONFIRM_DEADLINE_MS - 100);
+    EXPECT_EQ(suite->screenLines(), Lines("SENT", "WAITING"));
+    suite->advance(200);
+    EXPECT_EQ(suite->screenLines(), Lines("UNABLE TO", "CONFIRM"));
+    const std::vector<PlayerProvisionPacket> packets = suite->provisionsTo(PDN_A);
+    ASSERT_EQ(packets.size(), 2u);
+    EXPECT_EQ(packets[1].status, static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED));
+
+    suite->sendContext(PDN_A, /*registered=*/true);
+    suite->step();
+    EXPECT_EQ(suite->screenLines(), Lines("UNABLE TO", "CONFIRM"));
+    EXPECT_FALSE(suite->everShowedRegistered()) << "WELCOME after the deadline";
 }
 
 // An answer with no usable key, or no player, registers nobody: no key frame,
