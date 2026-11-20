@@ -330,6 +330,52 @@ TEST(FirmwareTransportTest, aReceiveWithNoChunksForTooLongIsDropped) {
     EXPECT_FALSE(f.receiverStore.restarted);
 }
 
+// Frames come off the radio from anyone. A header with no chunk behind it, or a
+// chunk past the end of the image, is not the seed still sending: neither is
+// written, and neither keeps a stalled receive from being dropped.
+TEST(FirmwareTransportTest, framesThatAreNoChunkOfTheImageDoNotHoldAStalledReceiveOpen) {
+    FirmwareTransportFixture f;
+    f.deliverFirstFrames(3);
+    ASSERT_EQ(f.receiverStore.beginWriteCalls, 1);
+    const int writesBefore = f.receiverStore.writeCount;
+    const std::vector<uint8_t>& chunkOne = f.seedRadio.sent[1];
+    const std::vector<uint8_t> headerOnly(chunkOne.begin(),
+                                          chunkOne.begin() + sizeof(FirmwareChunkHeader));
+    FirmwareChunkHeader header{};
+    std::memcpy(&header, chunkOne.data(), sizeof(header));
+    header.index = FirmwareTransportFixture::CHUNK_COUNT;
+    std::vector<uint8_t> pastTheEnd = chunkOne;
+    std::memcpy(pastTheEnd.data(), &header, sizeof(header));
+
+    for (int second = 0; second < 20; second++) {
+        f.receiverRadio.deliver(headerOnly);
+        f.receiverRadio.deliver(pastTheEnd);
+        f.hearNothingFor(1);
+    }
+
+    EXPECT_EQ(f.receiverStore.abortCalls, 1);
+    EXPECT_EQ(f.receiverStore.writeCount, writesBefore);
+    EXPECT_FALSE(f.receiverStore.restarted);
+}
+
+// A truncated frame would spoil the image in flash: its chunk is not written and
+// stays missing until a whole copy comes round on a later pass.
+TEST(FirmwareTransportTest, aChunkOfTheWrongLengthIsNotWrittenAndAWholeCopyFillsIt) {
+    FirmwareTransportFixture f;
+    bool truncatedOnce = false;
+    f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
+        if (truncatedOnce || FirmwareTransportFixture::chunkIndex(frame) != 3) {
+            return false;
+        }
+        truncatedOnce = true;
+        f.receiverRadio.deliver(std::vector<uint8_t>(frame.begin(), frame.end() - 1));
+        return true;
+    });
+
+    EXPECT_EQ(f.receiverStore.slot, f.image);
+    EXPECT_TRUE(f.receiverStore.restarted);
+}
+
 TEST(FirmwareTransportTest, chunksOfAnotherImageAreIgnored) {
     FirmwareTransportFixture f;
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
