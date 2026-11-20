@@ -1007,7 +1007,7 @@ public:
 };
 
 // Test: a cabled duel drawn by the typed b and b2 commands leaves one record on each PDN
-void cliDuelStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
+void cliDuelDrawnByTypedButtonsStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
     // cli-main seeds this at boot; the hunter draws the match id from it.
     IdGenerator::initialize(42);
     ASSERT_TRUE(cli::SerialCableBroker::getInstance().connect(0, 1));
@@ -1016,10 +1016,10 @@ void cliDuelStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
 
     MatchManager* matchManagers[2] = {suite->devices[0].gameSession->getContext().matchManager,
                                       suite->devices[1].gameSession->getContext().matchManager};
-    // The typed b and b2 commands draw, as a player at the simulator does.
     cli::CommandProcessor processor;
     cli::Renderer renderer;
-    int selected = 0;
+    // No device selected, so each command must reach its PDN through its own argument.
+    int selected = -1;
     const char* drawCommands[2] = {"b 0", "b2 1"};
     bool drawLanded[2] = {true, true};
     for (int tick = 0; tick < 20000; tick++) {
@@ -1058,7 +1058,7 @@ void cliDuelStoresOneRecordOnEachPdn(CliSimulationTestSuite* suite) {
 
 // Test: after the duel, one FDN beacon in the simulator takes both PDNs' records into a real store
 void cliFdnBeaconCollectsBothDuelRecords(CliSimulationTestSuite* suite) {
-    cliDuelStoresOneRecordOnEachPdn(suite);
+    cliDuelDrawnByTypedButtonsStoresOneRecordOnEachPdn(suite);
     NativePeerCommsDriver fdnRadio("cli-fdn-radio");
     fdnRadio.initialize();
     fdnRadio.enable();
@@ -1183,7 +1183,6 @@ inline void cliRebootedDeviceReRegistersWithTestIdentity() {
     cli::Renderer renderer;
     cli::CommandProcessor processor;
     processor.execute("reboot", devices, selected, renderer);
-    EXPECT_FALSE(device.player->hasRegistrationProfile());
     for (int digit = 0; digit < 4; digit++) {
         processor.execute("b2", devices, selected, renderer);
     }

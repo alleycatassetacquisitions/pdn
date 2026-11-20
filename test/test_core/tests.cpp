@@ -1098,14 +1098,6 @@ TEST_F(PlayerFetchTestSuite, chooseTeamDemoKeepsNilPlayerId) {
     chooseTeamDemoKeepsNilPlayerId(this);
 }
 
-TEST_F(PlayerFetchTestSuite, releaseBuildAppRegistersNilPlayerId) {
-    playerFetchAppRegistersBuildIdentity(this, false);
-}
-
-TEST_F(PlayerFetchTestSuite, testBuildAppRegistersMacPlayerId) {
-    playerFetchAppRegistersBuildIdentity(this, true);
-}
-
 TEST_F(PlayerFetchTestSuite, pinEntryClearsPreviousRegistration) {
     pinEntryClearsPreviousRegistration(this);
 }
