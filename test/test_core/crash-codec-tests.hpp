@@ -155,3 +155,50 @@ inline void crashCodecStoredPacketWithoutDetailsOmitsThem(CrashCodecTestSuite* s
     EXPECT_TRUE(msg.has_program_counter);
     EXPECT_FALSE(msg.has_exception_cause);
 }
+
+// The packet is what a PDN sends over ESP-NOW and an FDN keeps in NVS, so its bytes are the wire
+// format: a layout change would misread records from other firmware or already stored.
+inline void crashPacketCarriesRecordInRelayLayout() {
+    const uint8_t expected[] = {
+    0x03, 0x00, 0x00, 0x00,  // crash number 3
+    0xD4, 0x30, 0x00, 0x00,  // uptime 12500 ms
+    0x07,                    // reset reason
+    0x2C, 0x1A, 0x0D, 0x40,  // program counter at offset 9
+    0x1C, 0x00, 0x00, 0x00,  // exception cause 28 at offset 13
+    'l',  'o',  'o',  'p',  'T', 'a', 's', 'k', 0, 0, 0, 0, 0, 0, 0, 0,  // task name
+    'a',  '1',  'b',  '2',  'c', '3', 'd', '4', 0,                       // commit hash
+    };
+    ASSERT_EQ(sizeof(CrashPacket), sizeof(expected));
+
+    CrashPacket packet = toCrashPacket(makeFullRecord());
+
+    uint8_t actual[sizeof(CrashPacket)];
+    memcpy(actual, &packet, sizeof(actual));
+    for (size_t i = 0; i < sizeof(expected); i++) {
+        EXPECT_EQ(actual[i], expected[i]) << "byte " << i;
+    }
+}
+
+// A task watchdog crash has no exception cause. The packet marks it with the 0xFFFF sentinel at
+// offset 13, which other firmware and records already stored on an FDN rely on, and it reaches
+// the server with no cause, not cause 0 (IllegalInstruction).
+inline void crashWithoutCauseRelaysWithoutCause(CrashCodecTestSuite* suite) {
+    CrashRecord rec = makeFullRecord();
+    rec.coreDumpDetails->exceptionCause.reset();
+
+    CrashPacket packet = toCrashPacket(rec);
+    const uint8_t sentinel[] = {0xFF, 0xFF, 0x00, 0x00};
+    uint8_t cause[sizeof(sentinel)];
+    memcpy(cause, reinterpret_cast<const uint8_t*>(&packet) + 13, sizeof(cause));
+    EXPECT_EQ(memcmp(cause, sentinel, sizeof(sentinel)), 0);
+
+    CrashRecord relayed = fromCrashPacket(packet);
+    size_t len = CrashCodec::encode(relayed, suite->mac, suite->buf, sizeof(suite->buf));
+    ASSERT_GT(len, 0u);
+    alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
+
+    EXPECT_TRUE(msg.has_program_counter);
+    EXPECT_EQ(msg.program_counter, 0x400D1A2Cu);
+    EXPECT_FALSE(msg.has_exception_cause);
+    EXPECT_STREQ(msg.task_name, "loopTask");
+}
