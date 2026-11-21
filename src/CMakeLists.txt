@@ -38,5 +38,6 @@ idf_component_register(
         esp_timer
         esp_wifi
         espcoredump
+        mqtt
         nvs_flash
 )

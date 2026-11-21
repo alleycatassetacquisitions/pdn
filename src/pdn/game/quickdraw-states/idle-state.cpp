@@ -16,10 +16,13 @@
 #include "state/connect-state.hpp"
 #include <cstring>
 
-Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState<PDN>(remoteDeviceCoordinator, IDLE) {
+Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
+           ChainDuelManager* chainDuelManager, PageManager* pageManager)
+    : ConnectState<PDN>(remoteDeviceCoordinator, IDLE) {
     this->matchManager = matchManager;
     this->player = player;
     this->chainDuelManager = chainDuelManager;
+    this->pageManager = pageManager;
 }
 
 Idle::~Idle() {
@@ -161,6 +164,10 @@ bool Idle::isPrimaryRequired() {
 
 bool Idle::isAuxRequired() {
     return !player->isHunter();
+}
+
+bool Idle::transitionToPageDisplay() {
+    return pageManager != nullptr && pageManager->hasPendingPage();
 }
 
 bool Idle::transitionToSymbol() {

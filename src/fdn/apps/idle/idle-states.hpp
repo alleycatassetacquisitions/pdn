@@ -10,6 +10,8 @@
 #include "apps/hacking/hacked-players-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "utils/simple-timer.hpp"
+#include "wireless/page-manager.hpp"
+#include "wireless/page-display.hpp"
 
 enum IdleStateId {
     IDLE                = 0,
@@ -18,6 +20,7 @@ enum IdleStateId {
     UNAUTHORIZED_PDN    = 3,
     CONNECTION_DETECTED = 4,
     UPLOAD_PENDING      = 5,
+    PAGE_DISPLAY        = 6,
 };
 
 // ---------------------------------------------------------------------------
@@ -28,7 +31,8 @@ public:
     IdleState(RemotePlayerManager* remotePlayerManager,
               HackedPlayersManager* hackedPlayersManager,
               FDNConnectWirelessManager* fdnConnectWirelessManager,
-              RemoteDeviceCoordinator* remoteDeviceCoordinator);
+              RemoteDeviceCoordinator* remoteDeviceCoordinator,
+              PageManager* pageManager);
     ~IdleState();
 
     void onStateMounted(FDN* fdn) override;
@@ -40,11 +44,13 @@ public:
     bool transitionToPlayerDetected();
     bool transitionToConnectionDetected();
     bool transitionToUploadPending();
+    bool transitionToPageDisplay();
 
 private:
     RemotePlayerManager* remotePlayerManager;
     HackedPlayersManager* hackedPlayersManager;
     FDNConnectWirelessManager* fdnConnectWirelessManager;
+    PageManager* pageManager = nullptr;
 
     std::function<void(const std::string&, const uint8_t*)> connectionHandler;
 
@@ -53,6 +59,26 @@ private:
     bool wasConnected       = false;
 
     static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+};
+
+// ---------------------------------------------------------------------------
+// PageDisplayState — Mission Control page on the FDN screen
+// ---------------------------------------------------------------------------
+class PageDisplayState : public TypedState<FDN> {
+public:
+    explicit PageDisplayState(PageManager* pageManager);
+    ~PageDisplayState() override;
+
+    void onStateMounted(FDN* fdn) override;
+    void onStateLoop(FDN* fdn) override;
+    void onStateDismounted(FDN* fdn) override;
+
+    bool transitionToIdle();
+
+private:
+    PageManager* pageManager = nullptr;
+    PageDisplayController displayController;
+    bool done = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -209,3 +235,4 @@ private:
 
     static constexpr int FALLBACK_TIMEOUT_MS = 15000;
 };
+

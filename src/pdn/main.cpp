@@ -32,6 +32,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
+#include "wireless/page-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 
@@ -77,11 +78,13 @@ Quickdraw* game = nullptr;
 QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
 SymbolWirelessManager* symbolWirelessManager = nullptr;
 RemoteDebugManager* remoteDebugManager = nullptr;
+PageManager* pageManager = nullptr;
 
 void setupEspNow(
     QuickdrawWirelessManager* quickdrawWirelessManager,
     RemoteDebugManager* remoteDebugManager,
     SymbolWirelessManager* symbolWirelessManager,
+    PageManager* pageManager,
     PeerCommsInterface* peerCommsDriver) {
     // Register packet handlers
     peerCommsDriver->setPacketHandler(
@@ -106,6 +109,14 @@ void setupEspNow(
             ((SymbolWirelessManager*)userArg)->processSymbolMatchCommand(srcAddr, data, len);
         },
         symbolWirelessManager
+    );
+
+    peerCommsDriver->setPacketHandler(
+        PktType::kPageCommand,
+        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
+            static_cast<PageManager*>(userArg)->processPacket(srcAddr, data, len);
+        },
+        pageManager
     );
 }
 
@@ -186,16 +197,20 @@ static void setup() {
 
     quickdrawWirelessManager->initialize(playerProvider->getPlayer(), pdn->getWirelessManager(), 1000);
     symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
+
+    pageManager = new PageManager();
+    pageManager->initialize(pdn->getWirelessManager(), playerProvider->getPlayer());
     
     // Register ESP-NOW packet handlers
-    setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
+    setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, pageManager,
+                peerCommsDriver);
 
     crashLogger = new CrashLogger(storageDriver, pdn->getWirelessManager());
     crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
 
     game = new Quickdraw(playerProvider, pdn, quickdrawWirelessManager, remoteDebugManager,
-                         symbolWirelessManager);
+                         symbolWirelessManager, pageManager);
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->

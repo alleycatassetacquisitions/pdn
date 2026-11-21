@@ -169,7 +169,10 @@ public:
             LOG_W(CRASH_LOG_TAG, "Crash uploads timed out");
         }
         uploadTimer.invalidate();
-        wirelessManager->enablePeerCommsMode();
+        // FDN concurrent MQTT path must not be collapsed back to ESP-NOW-only.
+        if (wirelessManager->getCurrentMode() != WirelessMode::WIFI_AND_ESPNOW) {
+            wirelessManager->enablePeerCommsMode();
+        }
     }
 
     /** Dumps every stored record to the USB monitor, for a device on a bench. */

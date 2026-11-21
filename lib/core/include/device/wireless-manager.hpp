@@ -12,8 +12,9 @@
  * Wireless operation modes
  */
 enum class WirelessMode {
-    ESPNOW,  // Fixed channel, no AP connection - for peer-to-peer communication
-    WIFI     // Connected to AP for HTTP requests
+    ESPNOW,           // Fixed channel, no AP connection - for peer-to-peer communication
+    WIFI,             // Connected to AP for HTTP requests
+    WIFI_AND_ESPNOW   // FDN: STA for MQTT/HTTP while ESP-NOW stays up (AP must be ESPNOW_CHANNEL)
 };
 
 static const char* WM_TAG = "WirelessManager";
@@ -126,6 +127,33 @@ public:
     }
 
     /**
+     * FDN concurrent bring-up, step 1: start STA without touching ESP-NOW.
+     * Call attachConcurrentEspNow() only after isWifiConnected() (or IP) is true
+     * so EspNowDriver keeps the AP association.
+     */
+    void beginConcurrentWifi() {
+        LOG_I(WM_TAG, "Concurrent mode: starting WiFi STA...");
+        if (peerComms->getPeerCommsState() == PeerCommsState::CONNECTED) {
+            peerComms->setPeerCommsState(PeerCommsState::DISCONNECTED);
+        }
+        httpClient->setHttpClientState(HttpClientState::CONNECTED);
+        currentMode = WirelessMode::WIFI;
+    }
+
+    /**
+     * FDN concurrent bring-up, step 2: init ESP-NOW while STA stays associated.
+     * Venue AP must be on ESPNOW_CHANNEL so PDNs remain reachable.
+     */
+    void attachConcurrentEspNow() {
+        LOG_I(WM_TAG, "Concurrent mode: attaching ESP-NOW alongside WiFi...");
+        if (peerComms->getPeerCommsState() != PeerCommsState::CONNECTED) {
+            peerComms->setPeerCommsState(PeerCommsState::CONNECTED);
+        }
+        currentMode = WirelessMode::WIFI_AND_ESPNOW;
+        LOG_I(WM_TAG, "Concurrent WiFi+ESP-NOW mode enabled");
+    }
+
+    /**
      * Get the current wireless mode.
      */
     WirelessMode getCurrentMode() {
@@ -136,7 +164,9 @@ public:
      * Check if WiFi is connected (only relevant in WIFI mode).
      */
     bool isWifiConnected() {
-        return currentMode == WirelessMode::WIFI &&
+        const bool wifiMode = currentMode == WirelessMode::WIFI ||
+                              currentMode == WirelessMode::WIFI_AND_ESPNOW;
+        return wifiMode &&
                httpClient->getHttpClientState() == HttpClientState::CONNECTED &&
                httpClient->isConnected();
     }
@@ -145,7 +175,9 @@ public:
      * Check if ESP-NOW is active and ready.
      */
     bool isEspNowReady() {
-        return currentMode == WirelessMode::ESPNOW &&
+        const bool espMode = currentMode == WirelessMode::ESPNOW ||
+                             currentMode == WirelessMode::WIFI_AND_ESPNOW;
+        return espMode &&
                peerComms->getPeerCommsState() == PeerCommsState::CONNECTED;
     }
 
@@ -158,7 +190,9 @@ public:
      * @return true if request was queued successfully
      */
     bool queueHttpRequest(HttpRequest&& request) {
-        // Auto-switch to WiFi mode if needed
+        if (currentMode == WirelessMode::WIFI_AND_ESPNOW) {
+            return httpClient->queueRequest(std::move(request));
+        }
         if (currentMode != WirelessMode::WIFI) {
             LOG_I(WM_TAG, "Auto-switching to WiFi mode for HTTP request");
             enableWifiMode();
@@ -178,8 +212,8 @@ public:
      * @return 0 on success, negative on error
      */
     int sendEspNowData(const uint8_t* dst, PktType packetType, const uint8_t* data, size_t length) {
-        // Auto-switch to ESP-NOW mode if needed
-        if (currentMode != WirelessMode::ESPNOW) {
+        if (currentMode != WirelessMode::ESPNOW &&
+            currentMode != WirelessMode::WIFI_AND_ESPNOW) {
             LOG_I(WM_TAG, "Auto-switching to ESP-NOW mode for peer communication");
             enablePeerCommsMode();
         }
@@ -255,6 +289,8 @@ public:
                 return httpClient->isConnected() ? "WIFI_CONNECTED" : "WIFI_CONNECTING";
             case WirelessMode::ESPNOW:
                 return "ESPNOW_ACTIVE";
+            case WirelessMode::WIFI_AND_ESPNOW:
+                return httpClient->isConnected() ? "WIFI_ESPNOW_CONNECTED" : "WIFI_ESPNOW_CONNECTING";
             default:
                 return "UNKNOWN";
         }

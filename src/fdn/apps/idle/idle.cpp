@@ -5,24 +5,28 @@
 Idle::Idle(RemotePlayerManager* remotePlayerManager,
            HackedPlayersManager* hackedPlayersManager,
            FDNConnectWirelessManager* fdnConnectWirelessManager,
-           RemoteDeviceCoordinator* remoteDeviceCoordinator)
+           RemoteDeviceCoordinator* remoteDeviceCoordinator,
+           PageManager* pageManager)
     : StateMachine(IDLE_APP_ID)
     , remotePlayerManager(remotePlayerManager)
     , hackedPlayersManager(hackedPlayersManager)
     , fdnConnectWirelessManager(fdnConnectWirelessManager)
-    , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
+    , remoteDeviceCoordinator(remoteDeviceCoordinator)
+    , pageManager(pageManager) {}
 
 Idle::~Idle() {
     remotePlayerManager       = nullptr;
     hackedPlayersManager      = nullptr;
     fdnConnectWirelessManager = nullptr;
     remoteDeviceCoordinator   = nullptr;
+    pageManager               = nullptr;
 }
 
 void Idle::populateStateMap() {
     auto* idleState = new IdleState(
         remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager, remoteDeviceCoordinator);
+        fdnConnectWirelessManager, remoteDeviceCoordinator, pageManager);
+    auto* pageDisplayState = new PageDisplayState(pageManager);
     auto* playerDetectedState = new PlayerDetectedState(
         remotePlayerManager, hackedPlayersManager,
         fdnConnectWirelessManager, remoteDeviceCoordinator);
@@ -41,11 +45,16 @@ void Idle::populateStateMap() {
     playerDetectedState->setConnectionHandler(connectHandler);
 
     idleState->addTransition(new StateTransition(
+        std::bind(&IdleState::transitionToPageDisplay, idleState), pageDisplayState));
+    idleState->addTransition(new StateTransition(
         std::bind(&IdleState::transitionToPlayerDetected, idleState), playerDetectedState));
     idleState->addTransition(new StateTransition(
         std::bind(&IdleState::transitionToConnectionDetected, idleState), connectionDetectedState));
     idleState->addTransition(new StateTransition(
         std::bind(&IdleState::transitionToUploadPending, idleState), uploadPendingState));
+
+    pageDisplayState->addTransition(new StateTransition(
+        std::bind(&PageDisplayState::transitionToIdle, pageDisplayState), idleState));
 
     playerDetectedState->addTransition(new StateTransition(
         std::bind(&PlayerDetectedState::transitionToIdle, playerDetectedState), idleState));
@@ -83,4 +92,5 @@ void Idle::populateStateMap() {
     stateMap.push_back(unauthorizedDetectedState);  // [3] UNAUTHORIZED_PDN
     stateMap.push_back(connectionDetectedState);    // [4] CONNECTION_DETECTED
     stateMap.push_back(uploadPendingState);         // [5] UPLOAD_PENDING
+    stateMap.push_back(pageDisplayState);           // [6] PAGE_DISPLAY
 }

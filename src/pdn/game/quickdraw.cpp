@@ -8,7 +8,8 @@
 Quickdraw::Quickdraw(PlayerProvider* playerProvider, Device* pdn,
                      QuickdrawWirelessManager* quickdrawWirelessManager,
                      RemoteDebugManager* remoteDebugManager,
-                     SymbolWirelessManager* symbolWirelessManager)
+                     SymbolWirelessManager* symbolWirelessManager,
+                     PageManager* pageManager)
     : StateMachine(QUICKDRAW_APP_ID)
     , playerProvider(playerProvider)
     , wirelessManager(pdn->getWirelessManager())
@@ -20,6 +21,7 @@ Quickdraw::Quickdraw(PlayerProvider* playerProvider, Device* pdn,
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
+    this->pageManager = pageManager;
     this->matchManager = new MatchManager();
 
     this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
@@ -300,7 +302,8 @@ void Quickdraw::populateStateMap() {
     PlayerFetchApp* playerFetch =
     new PlayerFetchApp(wirelessManager, firmwareUpdateManager, playerProvider);
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
+    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager, pageManager);
+    PageDisplay* pageDisplay = new PageDisplay(pageManager);
 
     DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
     Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator, chainDuelManager, shootoutManager_);
@@ -333,6 +336,12 @@ void Quickdraw::populateStateMap() {
 
     awakenSequence->addTransition(
     new StateTransition(std::bind(&AwakenSequence::transitionToIdle, awakenSequence), idle));
+
+    // Mission Control pages interrupt idle before duel/shootout/symbol work.
+    idle->addTransition(
+        new StateTransition(std::bind(&Idle::transitionToPageDisplay, idle), pageDisplay));
+    pageDisplay->addTransition(
+        new StateTransition(std::bind(&PageDisplay::transitionToIdle, pageDisplay), idle));
 
     // Auto-trigger Shootout when the chain closes into a loop. Priority over
     // DuelCountdown/SupporterReady: in a closed ring, adjacent H-B pairs
@@ -609,4 +618,5 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(shAborted);
     stateMap.push_back(symbol);
     stateMap.push_back(symbolMatched);
+    stateMap.push_back(pageDisplay);
 }

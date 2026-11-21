@@ -1,6 +1,7 @@
 dependencies:
   idf: ">=5.4"
   # LEDs are driven straight off esp_driver_rmt, so no component there.
+  # mqtt is a built-in IDF 5.5 component (REQUIRES mqtt in CMakeLists.txt).
   espressif/button: "4.2.1"
   # Pulled in by button; named here so its version is pinned rather than
   # whatever button's "*" resolves to on the day of a clean build.

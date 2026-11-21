@@ -230,7 +230,8 @@ public:
         // Create game (no remote debug manager for now)
         instance.game =
         new Quickdraw(instance.playerProvider, instance.pdn,
-                      instance.quickdrawWirelessManager, nullptr, instance.symbolWirelessManager);
+                      instance.quickdrawWirelessManager, nullptr, instance.symbolWirelessManager,
+                      nullptr);
 
         // Register state machines with the device and launch Quickdraw
         AppConfig apps = {

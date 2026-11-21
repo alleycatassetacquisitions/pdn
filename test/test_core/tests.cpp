@@ -28,6 +28,7 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
+#include "page-manager-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>

@@ -9,6 +9,8 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
+#include "wireless/page-manager.hpp"
+#include "wireless/page-display.hpp"
 #include "game/match-manager.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
@@ -46,6 +48,7 @@ enum QuickdrawStateId {
     // in parallel with shootout taking 22-27; they were renumbered here on merge.
     SYMBOL = 28,
     SYMBOL_MATCHED = 29,
+    PAGE_DISPLAY = 30,
 };
 
 class Sleep : public TypedState<PDN> {
@@ -89,7 +92,8 @@ private:
 
 class Idle : public ConnectState<PDN> {
 public:
-    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
+    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
+         ChainDuelManager* chainDuelManager, PageManager* pageManager);
     ~Idle();
 
     void onStateMounted(PDN* pdn) override;
@@ -99,11 +103,13 @@ public:
     bool transitionToSupporterReady();
     void renderStats(PDN* pdn);
     bool transitionToSymbol();
+    bool transitionToPageDisplay();
 
 private:
     Player *player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
+    PageManager* pageManager = nullptr;
     bool matchInitialized = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
@@ -119,6 +125,22 @@ private:
     bool transitionToSymbolState = false;
 
     // void serialEventCallbacks(const std::string& message);
+};
+
+class PageDisplay : public TypedState<PDN> {
+public:
+    explicit PageDisplay(PageManager* pageManager);
+    ~PageDisplay() override;
+
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
+    bool transitionToIdle();
+
+private:
+    PageManager* pageManager = nullptr;
+    PageDisplayController displayController;
+    bool done = false;
 };
 
 class SupporterReady : public ConnectState<PDN> {

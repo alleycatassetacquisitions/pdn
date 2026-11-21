@@ -7,16 +7,19 @@
 IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
                      HackedPlayersManager* hackedPlayersManager,
                      FDNConnectWirelessManager* fdnConnectWirelessManager,
-                     RemoteDeviceCoordinator* remoteDeviceCoordinator)
+                     RemoteDeviceCoordinator* remoteDeviceCoordinator,
+                     PageManager* pageManager)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::IDLE)
     , remotePlayerManager(remotePlayerManager)
     , hackedPlayersManager(hackedPlayersManager)
-    , fdnConnectWirelessManager(fdnConnectWirelessManager) {}
+    , fdnConnectWirelessManager(fdnConnectWirelessManager)
+    , pageManager(pageManager) {}
 
 IdleState::~IdleState() {
     remotePlayerManager       = nullptr;
     hackedPlayersManager      = nullptr;
     fdnConnectWirelessManager = nullptr;
+    pageManager               = nullptr;
 }
 
 void IdleState::setConnectionHandler(
@@ -75,4 +78,8 @@ bool IdleState::transitionToConnectionDetected() {
 
 bool IdleState::transitionToUploadPending() {
     return uploadTimer.expired() && !hackedPlayersManager->getPendingUploads().empty();
+}
+
+bool IdleState::transitionToPageDisplay() {
+    return pageManager != nullptr && pageManager->hasPendingPage();
 }
