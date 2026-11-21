@@ -104,6 +104,10 @@ public:
         return NativePeerBroker::getInstance().getBroadcastAddress();
     }
 
+    uint8_t getWifiChannel() override {
+        return ESPNOW_CHANNEL;
+    }
+
     uint8_t* getMacAddress() override {
         return macAddress_;
     }

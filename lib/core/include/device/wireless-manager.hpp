@@ -1,6 +1,12 @@
 #pragma once
 
 #include <cstdint>
+
+#ifdef ESP_PLATFORM
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
+
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/logger.hpp"
@@ -14,7 +20,7 @@
 enum class WirelessMode {
     ESPNOW,           // Fixed channel, no AP connection - for peer-to-peer communication
     WIFI,             // Connected to AP for HTTP requests
-    WIFI_AND_ESPNOW   // FDN: STA for MQTT/HTTP while ESP-NOW stays up (AP must be ESPNOW_CHANNEL)
+    WIFI_AND_ESPNOW   // FDN: STA for MQTT/HTTP while ESP-NOW stays up (page hop if AP != ESPNOW_CHANNEL)
 };
 
 static const char* WM_TAG = "WirelessManager";
@@ -142,7 +148,8 @@ public:
 
     /**
      * FDN concurrent bring-up, step 2: init ESP-NOW while STA stays associated.
-     * Venue AP must be on ESPNOW_CHANNEL so PDNs remain reachable.
+     * Page relays hop to ESPNOW_CHANNEL when the AP is elsewhere; other ESP-NOW
+     * traffic still prefers a venue AP on ESPNOW_CHANNEL until dual-radio hardware.
      */
     void attachConcurrentEspNow() {
         LOG_I(WM_TAG, "Concurrent mode: attaching ESP-NOW alongside WiFi...");
@@ -227,6 +234,60 @@ public:
     }
 
     /**
+     * FDN page relay: broadcast opaque PageCmd bytes on ESPNOW_CHANNEL.
+     * Fast path when already on that channel; otherwise hop off WiFi, send, restore
+     * concurrent MQTT/STA (brief MQTT disconnect on non-home-channel APs).
+     */
+    int sendEspNowPageRelay(const uint8_t* data, size_t length) {
+        const uint8_t* broadcast = getBroadcastAddress();
+        if (broadcast == nullptr) {
+            return -1;
+        }
+
+        const uint8_t channel = peerComms->getWifiChannel();
+        const bool onHomeChannel = (channel == ESPNOW_CHANNEL);
+        const bool canSendNow =
+            isEspNowReady() &&
+            (onHomeChannel || currentMode == WirelessMode::ESPNOW);
+
+        if (canSendNow && onHomeChannel) {
+            LOG_I(WM_TAG, "Page relay fast path on channel %u",
+                  static_cast<unsigned>(channel));
+            return sendEspNowData(broadcast, PktType::kPageCommand, data, length);
+        }
+        if (canSendNow && currentMode == WirelessMode::ESPNOW) {
+            LOG_I(WM_TAG, "Page relay on ESP-NOW-only (channel %u)",
+                  static_cast<unsigned>(channel));
+            return sendEspNowData(broadcast, PktType::kPageCommand, data, length);
+        }
+
+        const bool restoreConcurrent =
+            currentMode == WirelessMode::WIFI_AND_ESPNOW ||
+            currentMode == WirelessMode::WIFI;
+
+        LOG_I(WM_TAG, "Page relay hop: leave WiFi (channel %u) → ESPNOW_CHANNEL %u",
+              static_cast<unsigned>(channel), static_cast<unsigned>(ESPNOW_CHANNEL));
+        enablePeerCommsMode();
+
+        const int rc = sendEspNowData(broadcast, PktType::kPageCommand, data, length);
+        waitEspNowSendDrain(PAGE_RELAY_DRAIN_MS);
+
+        if (restoreConcurrent) {
+            LOG_I(WM_TAG, "Page relay restore: rejoining WiFi for concurrent MQTT");
+            beginConcurrentWifi();
+            if (isWifiConnected()) {
+                attachConcurrentEspNow();
+                LOG_I(WM_TAG, "Page relay restore ok (channel %u)",
+                      static_cast<unsigned>(peerComms->getWifiChannel()));
+            } else {
+                LOG_W(WM_TAG, "Page relay restore: WiFi not up after hop; staying ESP-NOW");
+            }
+        }
+
+        return rc;
+    }
+
+    /**
      * Set packet handler for ESP-NOW received packets.
      * Note: Handlers can be set regardless of current mode.
      */
@@ -297,6 +358,24 @@ public:
     }
 
 private:
+    static constexpr unsigned PAGE_RELAY_DRAIN_MS = 500;
+
+    void waitEspNowSendDrain(unsigned timeoutMs) {
+#ifdef ESP_PLATFORM
+        const TickType_t deadline =
+            xTaskGetTickCount() + pdMS_TO_TICKS(timeoutMs);
+        while (!peerComms->isSendQueueEmpty() && xTaskGetTickCount() < deadline) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        if (!peerComms->isSendQueueEmpty()) {
+            LOG_W(WM_TAG, "Page relay: ESP-NOW send queue not empty after %ums",
+                  timeoutMs);
+        }
+#else
+        (void)timeoutMs;
+#endif
+    }
+
     PeerCommsInterface* peerComms;
     HttpClientInterface* httpClient;
     WirelessMode currentMode;

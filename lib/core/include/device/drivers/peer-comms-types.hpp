@@ -26,6 +26,9 @@ enum class PktType : uint8_t {
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
+/** PDN / ESP-NOW home channel. Page relays always transmit here. */
+constexpr uint8_t ESPNOW_CHANNEL = 6;
+
 // Frozen: older builds must parse a newer build's firmware frames (this header, kFirmwareUpdate,
 // FirmwareChunkHeader, FIRMWARE_CHUNK_SIZE, ESPNOW_CHANNEL) or they can only be updated over USB.
 struct DataPktHdr

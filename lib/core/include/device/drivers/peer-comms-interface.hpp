@@ -21,6 +21,12 @@ public:
     /** True when no frame is queued or awaiting its send report; transports without send reports answer true. */
     virtual bool isSendQueueEmpty() { return true; }
 
+    /**
+     * Current STA / radio channel, or 0 if unknown / not associated.
+     * Used by FDN page relay to decide whether a channel hop is required.
+     */
+    virtual uint8_t getWifiChannel() { return 0; }
+
     virtual const uint8_t* getGlobalBroadcastAddress() = 0;
     virtual uint8_t* getMacAddress() = 0;
     virtual void removePeer(uint8_t* macAddr) = 0;

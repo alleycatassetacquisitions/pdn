@@ -76,6 +76,9 @@ protected:
             .WillByDefault(Return(PeerCommsState::CONNECTED));
         ON_CALL(*device->mockPeerComms, getGlobalBroadcastAddress())
             .WillByDefault(Return(broadcastMac));
+        ON_CALL(*device->mockPeerComms, getWifiChannel())
+            .WillByDefault(Return(static_cast<uint8_t>(ESPNOW_CHANNEL)));
+        ON_CALL(*device->mockPeerComms, isSendQueueEmpty()).WillByDefault(Return(true));
         ON_CALL(*device->mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(0));
         ON_CALL(*device->mockHttpClient, getHttpClientState())
             .WillByDefault(Return(HttpClientState::DISCONNECTED));

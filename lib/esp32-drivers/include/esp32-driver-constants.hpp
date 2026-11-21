@@ -1,10 +1,8 @@
 #pragma once
 
-#include <cstdint>
 #include <sdkconfig.h>
 
-// ESP-NOW Wi-Fi channel. Must match across all devices on the same network.
-constexpr uint8_t ESPNOW_CHANNEL = 6;
+#include "device/drivers/peer-comms-types.hpp"
 
 // The fleet runs at 240MHz with 80MHz PSRAM. kconfgen substitutes a default for
 // an option that is out of range or unreachable rather than failing, so a flipped

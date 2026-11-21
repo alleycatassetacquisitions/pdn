@@ -33,7 +33,7 @@ PDNs must **not** switch to WiFi for Mission Control messages. FDN is the only M
 | **PDN owns filter** | Stamps `player_id` / `role` / `neocorp` filtered on the PDN. FDN does not drop pages because a player is not in `RemotePlayerManager`. |
 | **Targeting via stamps, not MCS MAC** | MCS MAC lookup is still a stub. DNN already routes stamped pages on `mc/dnn/cmd/all/page`. |
 | **Idle-safe interrupt only** | Page display from Idle (FDN Idle app / PDN Quickdraw Idle). No global app-return stack / duel interrupt yet. |
-| **Venue AP on channel 6** | FDN concurrent STA+ESP-Now uses the AP channel; PDNs pin `ESPNOW_CHANNEL` (6). |
+| **Page relay on channel 6** | PDNs pin `ESPNOW_CHANNEL` (6). FDN page relay fast-paths when the AP is already on 6; otherwise hops off WiFi, broadcasts on 6, then restores concurrent MQTT/STA. |
 
 ---
 
@@ -100,7 +100,7 @@ Empty stamps = broadcast to all PDNs. Non-empty stamps = PDN local filter.
 | `include/wireless/page-cmd.hpp` | Parse JSON; `pageCmdMatchesPlayer` |
 | `include/wireless/page-manager.hpp` | Dedupe ring, pending page, FDN `ingestMqttPayload`, PDN `processPacket` |
 | `include/wireless/page-display.hpp` | OLED + duration timer + primary dismiss |
-| `include/device/wireless-manager.hpp` | `WIFI_AND_ESPNOW`, `beginConcurrentWifi()`, `attachConcurrentEspNow()` |
+| `include/device/wireless-manager.hpp` | `WIFI_AND_ESPNOW`, concurrent bring-up, `sendEspNowPageRelay()` (ch6 fast path / hop+restore) |
 | `include/device/drivers/peer-comms-types.hpp` | `kPageCommand` |
 | `include/device/drivers/mqtt-interface.hpp` / `mqtt-types.hpp` | Reworked usable MQTT API |
 
@@ -144,12 +144,13 @@ Empty stamps = broadcast to all PDNs. Non-empty stamps = PDN local filter.
 
 ## Radio / venue constraints (load-bearing)
 
-1. FDN WiFi AP **must be channel 6** (`ESPNOW_CHANNEL` in `esp32-driver-constants.hpp`) or PDNs will not hear relays while FDN stays associated.
-2. FDN bring-up order in `fdn/main.cpp`:
+1. **Paging does not require the venue AP on channel 6.** `WirelessManager::sendEspNowPageRelay` sends on `ESPNOW_CHANNEL` (6) via a fast path when already there, or a brief WiFi→ch6→WiFi hop otherwise (MQTT drops and resubscribes during the hop).
+2. Other FDN↔PDN ESP-Now (nearby players, FDN connect, symbol-match) still prefer a venue AP on channel 6 on single-radio boards; dual-radio hardware is the long-term fix for full RF freedom.
+3. FDN bring-up order in `fdn/main.cpp`:
    - Crash upload / restore first (exclusive WiFi if needed)
    - Then `beginConcurrentWifi()` → wait for IP → `attachConcurrentEspNow()`
    - Then MQTT start
-3. Ethernet MQTT is **out of scope** (would break the channel coupling later).
+4. Ethernet MQTT remains out of scope for now (dual-radio is the preferred path to permanent channel decoupling).
 
 ---
 
@@ -159,7 +160,7 @@ Empty stamps = broadcast to all PDNs. Non-empty stamps = PDN local filter.
 
 1. Copy/fill `wifi_credentials.ini` from example (`[wifi]` + `[mqtt]` + `[fdn]`).
 2. Mosquitto on HA reachable at `MQTT_BROKER:MQTT_PORT` with those creds (same as AlleycatTV).
-3. FDN AP on channel 6.
+3. Venue AP may be any 2.4 GHz channel for **paging**; channel 6 still helps other FDN↔PDN ESP-Now.
 4. Flash FDN (`esp32-s3_fdn_release`) and PDN (`esp32-s3_pdn_release`).
 5. Deploy updated DNN / `mc_codec` to HA so pages include `id`.
 
@@ -180,9 +181,14 @@ Empty stamps = broadcast to all PDNs. Non-empty stamps = PDN local filter.
 
 ### Serial checks
 
-- FDN: `DnnMqtt` subscribe / `PageManager` pending / ESP-Now broadcast logs.
+- FDN: `DnnMqtt` subscribe / `PageManager` pending / `WirelessManager` page relay fast path or hop+restore / `ESP-Now page relay ok`.
 - FDN appears in HA via `mc/dnn/status/{mac}`.
 - PDN: duplicate skip / filter skip / Idle → page display.
+
+### Channel hop prove-out
+
+1. Leave UniFi 2.4 GHz on a **non-6** channel; page with target all → expect hop logs and PDN display.
+2. Pin AP to channel 6; page again → expect fast-path log (no hop / no MQTT blip).
 
 ---
 
@@ -201,11 +207,12 @@ Empty stamps = broadcast to all PDNs. Non-empty stamps = PDN local filter.
 
 ## Likely next work for another agent
 
-1. **Live venue e2e** with real DNN panel + FDN + PDN; fix any MTU / channel / membership edge cases found.
+1. **Live venue e2e** with real DNN panel + FDN + PDN on a non-6 AP; confirm hop restore + MQTT resubscribe.
 2. **Deploy MC changes** to the running HA instance if not already deployed.
 3. **Native tests:** `page-manager-tests.hpp` exists; this Windows host lacked `g++` on PATH for `pio test -e native` — run where the native toolchain works.
 4. If Idle is not the active FDN app in some flows, ensure page pending is drained (currently FDN launches Idle for prove-out).
-5. Optional later: duel-safe interrupt, cloud ack, ethernet, protobuf dual-read.
+5. **Dual-radio FDN board:** WiFi ESP for MQTT on any venue channel + ESP-Now ESP pinned to 6 (removes hop and fixes non-page RF).
+6. Optional later: duel-safe interrupt, cloud ack, ethernet, protobuf dual-read.
 
 ---
 

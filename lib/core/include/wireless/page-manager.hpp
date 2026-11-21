@@ -117,14 +117,12 @@ private:
         if (wirelessManager == nullptr) {
             return -1;
         }
-        const uint8_t* broadcast = wirelessManager->getBroadcastAddress();
-        if (broadcast == nullptr) {
-            return -1;
-        }
-        const int rc = wirelessManager->sendEspNowData(
-            broadcast, PktType::kPageCommand, data, length);
+        const int rc = wirelessManager->sendEspNowPageRelay(data, length);
         if (rc != 0) {
-            LOG_W(PAGE_MGR_TAG, "ESP-Now page broadcast failed: %d", rc);
+            LOG_W(PAGE_MGR_TAG, "ESP-Now page relay failed: %d", rc);
+        } else {
+            LOG_I(PAGE_MGR_TAG, "ESP-Now page relay ok (%u bytes)",
+                  static_cast<unsigned>(length));
         }
         return rc;
     }

@@ -575,6 +575,19 @@ private:
         return PEER_BROADCAST_ADDR;
     }
 
+    uint8_t getWifiChannel() override {
+        wifi_ap_record_t apInfo{};
+        if (esp_wifi_sta_get_ap_info(&apInfo) == ESP_OK && apInfo.primary != 0) {
+            return apInfo.primary;
+        }
+        uint8_t primary = 0;
+        wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;
+        if (esp_wifi_get_channel(&primary, &secondary) == ESP_OK) {
+            return primary;
+        }
+        return 0;
+    }
+
     void removePeer(uint8_t* macAddr) override {
         esp_now_del_peer(macAddr);
     }
