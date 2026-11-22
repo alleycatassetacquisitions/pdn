@@ -48,18 +48,25 @@ void applyMatchSideHalves(FDNLightManager* lm, bool leftOn, bool rightOn) {
 
 SymbolIdle::SymbolIdle(SymbolManager* symbolManager,
                        RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                       SymbolWirelessManager* symbolWirelessManager)
+                       SymbolWirelessManager* symbolWirelessManager,
+                       FdnProvisioningManager* fdnProvisioningManager)
     : FDNConnectState(remoteDeviceCoordinator, SYMBOL_IDLE)
     , symbolManager(symbolManager)
-    , symbolWirelessManager(symbolWirelessManager) {}
+    , symbolWirelessManager(symbolWirelessManager)
+    , fdnProvisioningManager(fdnProvisioningManager) {}
 
 SymbolIdle::~SymbolIdle() {
     symbolWirelessManager = nullptr;
+    fdnProvisioningManager = nullptr;
 }
 
 void SymbolIdle::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
     mountedFdn = fdn;
+    // A PDN waiting to register is not playing, so the round this cuts short cannot be won.
+    fdnProvisioningManager->setOnViewChanged([this](const RegistrationView& view) {
+        transitionToRegistrationState = view.screen != RegistrationScreen::NONE;
+    });
     renderSymbolScreen(fdn);
 
     symbolWirelessManager->setPacketReceivedCallback(
@@ -156,6 +163,8 @@ void SymbolIdle::onStateLoop(FDN* fdn) {
 
 void SymbolIdle::onStateDismounted(FDN* fdn) {
     transitionToSelectionState = false;
+    transitionToRegistrationState = false;
+    fdnProvisioningManager->setOnViewChanged(nullptr);
     mountedFdn                 = nullptr;
     lastTimeRendered           = 0;
     symbolSentLeft             = false;
@@ -216,6 +225,8 @@ void SymbolIdle::renderSymbolScreen(FDN* fdn) {
 bool SymbolIdle::transitionToSelection() {
     return transitionToSelectionState;
 }
+
+bool SymbolIdle::transitionToRegistration() { return transitionToRegistrationState; }
 
 bool SymbolIdle::transitionToMatchSuccess() {
     return symbolManager->isMatched(SerialIdentifier::INPUT_JACK)

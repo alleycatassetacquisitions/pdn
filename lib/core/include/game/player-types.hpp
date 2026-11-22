@@ -25,3 +25,41 @@ struct Affiliation {
     UUIDBytes affiliationId;
     char affiliationName[PlayerLimits::NAME_BUFFER_SIZE] = {};
 };
+
+/** What a PlayerProvisionPacket carries. */
+enum class ProvisionStatus : uint8_t {
+    PROFILE_DELIVERED = 0,
+    LOOKUP_FAILED = 1,
+};
+
+/**
+ * How long a PDN waits, from the first piece of a band registration, for the
+ * rest; the FDN waits a little longer for the PDN to confirm.
+ */
+constexpr unsigned long REGISTRATION_ATTEMPT_MS = 10000;
+
+/** One affiliation on the wire, names NUL-terminated. */
+struct WireAffiliation {
+    uint8_t categoryId[UUIDBytes::SIZE];
+    char categoryName[PlayerLimits::NAME_BUFFER_SIZE];
+    uint8_t affiliationId[UUIDBytes::SIZE];
+    char affiliationName[PlayerLimits::NAME_BUFFER_SIZE];
+} __attribute__((packed));
+
+/**
+ * FDN to PDN over PktType::kPlayerProvision, sent to the MAC of the PDN a band
+ * tap was looked up for; a PROFILE_DELIVERED one only after its record key went
+ * over that PDN's jack. Only `status` means anything when it is LOOKUP_FAILED.
+ */
+struct PlayerProvisionPacket {
+    uint8_t seqId;
+    uint8_t status;
+    uint8_t playerId[UUIDBytes::SIZE];
+    char playerName[PlayerLimits::NAME_BUFFER_SIZE];
+    uint8_t teamId[UUIDBytes::SIZE];
+    char teamName[PlayerLimits::NAME_BUFFER_SIZE];
+    uint8_t affiliationCount;
+    WireAffiliation affiliations[PlayerLimits::MAX_AFFILIATIONS];
+} __attribute__((packed));
+// Both images parse it: a change to a name or affiliation limit changes the wire.
+static_assert(sizeof(PlayerProvisionPacket) == 427, "PlayerProvisionPacket wire size");

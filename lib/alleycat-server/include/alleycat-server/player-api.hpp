@@ -12,9 +12,9 @@
 
 /** How a band lookup ended. Only KEY_ISSUED registers anyone (one delivery, #486). */
 enum class ProvisionLookupResult : uint8_t {
-    // The server sent a profile and a record key of ISSUED_RECORD_KEY_SIZE bytes.
+    // The server sent a profile and a record key of RECORD_KEY_SIZE bytes.
     KEY_ISSUED,
-    // The server sent a profile but no key of ISSUED_RECORD_KEY_SIZE bytes.
+    // The server sent a profile but no key of RECORD_KEY_SIZE bytes.
     KEY_NOT_ISSUED,
     // The server answered 404: no player is linked to the band. The server
     // cannot tell an unknown band from an unlinked one.
@@ -34,10 +34,10 @@ constexpr const char GET_DEVICE_PLAYER_BY_BAND_ENDPOINT[] = "/device/players/by-
 /**
  * Told how a by-band lookup ended. @p player holds the decoded profile and
  * @p recordKey the decoded key; both are empty unless @p result is KEY_ISSUED
- * or KEY_NOT_ISSUED, and both live only for the call.
+ * or KEY_NOT_ISSUED, and both live only for the call: the key is wiped after it.
  */
-using OnBandLookupDone = std::function<void(ProvisionLookupResult result, const Player& player,
-                                            const IssuedRecordKey& recordKey)>;
+using OnBandLookupDone =
+std::function<void(ProvisionLookupResult result, const Player& player, const RecordKey& recordKey)>;
 
 /**
  * GET /device/players/by-band/{uid}, {uid} being @p uid as upper-case hex with
@@ -51,7 +51,7 @@ inline void getDevicePlayerByBand(WirelessManager* wirelessManager, const BandUi
     if (!uid.hasLookupLength()) {
         LOG_E("PLAYER_API", "Band UID of %u bytes not looked up",
               static_cast<unsigned>(uid.length));
-        onDone(ProvisionLookupResult::LOOKUP_FAILED, Player(), IssuedRecordKey());
+        onDone(ProvisionLookupResult::LOOKUP_FAILED, Player(), RecordKey());
         return;
     }
     static constexpr char HEX_DIGITS[] = "0123456789ABCDEF";
@@ -65,14 +65,14 @@ inline void getDevicePlayerByBand(WirelessManager* wirelessManager, const BandUi
     std::move(path), "GET", "", "",
     [onDone](const std::string& response) {
         Player player;
-        IssuedRecordKey recordKey;
+        RecordKey recordKey;
         if (!DevicePlayerCodec::decode(response, player, recordKey)) {
             LOG_E("PLAYER_API", "Band lookup answer not decodable");
-            onDone(ProvisionLookupResult::LOOKUP_FAILED, Player(), IssuedRecordKey());
+            onDone(ProvisionLookupResult::LOOKUP_FAILED, Player(), recordKey);
             return;
         }
-        onDone(recordKey.held ? ProvisionLookupResult::KEY_ISSUED
-                              : ProvisionLookupResult::KEY_NOT_ISSUED,
+        onDone(recordKey.isHeld() ? ProvisionLookupResult::KEY_ISSUED
+                                  : ProvisionLookupResult::KEY_NOT_ISSUED,
                player, recordKey);
     },
     [onDone](const WirelessErrorInfo& error) {
@@ -82,7 +82,7 @@ inline void getDevicePlayerByBand(WirelessManager* wirelessManager, const BandUi
         } else if (error.httpStatus == 404) {
             result = ProvisionLookupResult::NO_PLAYER;
         }
-        onDone(result, Player(), IssuedRecordKey());
+        onDone(result, Player(), RecordKey());
     });
     request.loggablePathLength = sizeof(GET_DEVICE_PLAYER_BY_BAND_ENDPOINT) - 1;
     request.requestHeaders.push_back({"Accept", "application/protobuf"});
