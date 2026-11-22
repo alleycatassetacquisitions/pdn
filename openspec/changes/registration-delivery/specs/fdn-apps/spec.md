@@ -39,7 +39,7 @@ While a PDN waits to register, a lookup runs or its result holds, the FDN SHALL 
 
 ### Requirement: Registration result screens
 
-A lookup's result SHALL stay on the registration screen for `3000 ms` from when it shows: `"WELCOME"` over the player's name once the PDN confirms; `"UNABLE TO"` / `"ISSUE KEY"` for no usable key; `"SEE DESK"` over the jack label for no linked player; `"SERVER"` / `"NOT TRUSTED"` for a non-`https://` address or failed TLS verification; `"PDN LEFT"` over the jack label when the PDN left first; `"UNABLE TO"` / `"CONFIRM"` with no confirmation in time; otherwise `"UNABLE TO"` / `"LOCATE ASSET"`.
+A lookup's result SHALL stay on screen for `3000 ms`: `"WELCOME"` over the player's name on confirmation; `"UNABLE TO"` / `"ISSUE KEY"` for no usable key; `"SEE DESK"` over the jack label for no linked player; `"SERVER"` / `"NOT TRUSTED"` for non-`https://` or failed TLS; `"PDN LEFT"` over the jack label if the PDN leaves before profile send; after send, see Registration waits for the PDN's confirmation; otherwise `"UNABLE TO"` / `"LOCATE ASSET"`.
 
 #### Scenario: Profile without a key
 - **WHEN** the server answers a tap with a profile and no record key
@@ -51,7 +51,7 @@ A lookup's result SHALL stay on the registration screen for `3000 ms` from when 
 
 ### Requirement: Registration waits for the PDN's confirmation
 
-After writing the key and sending the profile, the FDN SHALL show `"SENT"` / `"WAITING"`, and SHALL show the registered result only when a context arrives from the MAC Connected on that jack reporting the profile applied. If that PDN leaves or the jack's peer changes first, it SHALL show `"PDN LEFT"`; if `12,000 ms` (the PDN's `10,000 ms` attempt plus `2,000 ms`) pass first, `"UNABLE TO"` / `"CONFIRM"`, sending no failure. Contexts from another jack or MAC SHALL NOT count.
+After writing the key and sending the profile, the FDN SHALL show `"SENT"` / `"WAITING"`. Only a context from the MAC Connected on that jack reporting the profile applied SHALL confirm registration. If the PDN leaves or the jack's peer changes first, the FDN SHALL show `"UNCONFIRMED"` / `"CHECK PDN"`; if `12,000 ms` (the PDN's `10,000 ms` attempt plus `2,000 ms`) pass first, `"UNABLE TO"` / `"CONFIRM"`, sending no failure. Contexts from another jack or MAC SHALL NOT count.
 
 #### Scenario: PDN confirms its profile
 - **WHEN** the FDN has written the key and sent the profile to the PDN on the primary jack, and that PDN's next context reports its profile applied
@@ -59,7 +59,7 @@ After writing the key and sending the profile, the FDN SHALL show `"SENT"` / `"W
 
 #### Scenario: PDN unplugged before it confirms
 - **WHEN** the PDN on the primary jack is unplugged after its profile was sent and before its context reports the profile applied
-- **THEN** the FDN displays `"PDN LEFT"` / `"JACK 1"` and never `"WELCOME"`
+- **THEN** the FDN displays `"UNCONFIRMED"` / `"CHECK PDN"` and never `"WELCOME"`
 
 #### Scenario: No confirmation in time
 - **WHEN** `12,000 ms` pass after the profile was sent with no context from that PDN reporting it applied

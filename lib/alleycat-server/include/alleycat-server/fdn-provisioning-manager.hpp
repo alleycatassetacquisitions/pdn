@@ -41,8 +41,10 @@ enum class RegistrationScreen : uint8_t {
 enum class RegistrationOutcome : uint8_t {
     // The PDN's context confirmed that the profile it was sent is applied.
     REGISTERED,
-    // A key was issued, but the PDN left before it confirmed its profile.
+    // The PDN left before the profile was sent.
     PDN_LEFT,
+    // The PDN left after the profile was sent, so it may have applied it.
+    PDN_LEFT_UNCONFIRMED,
     // Key and profile went out, but the PDN did not confirm in time.
     NOT_CONFIRMED,
     KEY_NOT_ISSUED,
@@ -90,6 +92,7 @@ inline RegistrationScreenLines getRegistrationScreenLines(const RegistrationView
     switch (view.outcome) {
         case RegistrationOutcome::REGISTERED: return {"WELCOME", view.playerName};
         case RegistrationOutcome::PDN_LEFT: return {"PDN LEFT", jackLabel};
+        case RegistrationOutcome::PDN_LEFT_UNCONFIRMED: return {"UNCONFIRMED", "CHECK PDN"};
         case RegistrationOutcome::NOT_CONFIRMED: return {"UNABLE TO", "CONFIRM"};
         case RegistrationOutcome::KEY_NOT_ISSUED: return {"UNABLE TO", "ISSUE KEY"};
         case RegistrationOutcome::NO_PLAYER: return {"SEE DESK", jackLabel};
@@ -289,7 +292,7 @@ private:
             PlayerProfile profile{};
             if (!isStillCabled(lookupPdn)) {
                 LOG_E("FDN_PROVISION", "PDN left before it confirmed its profile");
-                endLookup(RegistrationOutcome::PDN_LEFT);
+                endLookup(RegistrationOutcome::PDN_LEFT_UNCONFIRMED);
             } else if (remoteDeviceCoordinator->getPeerPlayerProfile(lookupPdn.jack, profile) &&
                        profile.registered != 0) {
                 endLookup(RegistrationOutcome::REGISTERED);

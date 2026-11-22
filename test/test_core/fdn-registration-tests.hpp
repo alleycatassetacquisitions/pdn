@@ -384,23 +384,23 @@ inline void fdnRegistrationCountsOnlyTheConfirmOfThePdnOnItsJack(FdnRegistration
 }
 
 // The PDN is unplugged after its profile went out but before it confirmed: the
-// FDN says it left, never WELCOME.
-inline void fdnRegistrationShowsPdnLeftWhenUnpluggedBeforeConfirming(FdnRegistrationTests* suite) {
+// FDN tells the operator to check the PDN, not to assume registration failed.
+inline void fdnRegistrationShowsUnconfirmedWhenUnplugged(FdnRegistrationTests* suite) {
     using Lines = std::pair<std::string, std::string>;
     ASSERT_NO_FATAL_FAILURE(suite->sendKeyAndProfileToPdnA());
     suite->unplug(PDN_A);
-    EXPECT_EQ(suite->screenLines(), Lines("PDN LEFT", "JACK 1"));
+    EXPECT_EQ(suite->screenLines(), Lines("UNCONFIRMED", "CHECK PDN"));
     EXPECT_FALSE(suite->everShowedRegistered()) << "WELCOME for a PDN that left unconfirmed";
 }
 
 // Another PDN takes the jack before the first confirmed and reports a profile
 // applied: that is not the confirmation.
-inline void fdnRegistrationShowsPdnLeftWhenItsJackChangesPeer(FdnRegistrationTests* suite) {
+inline void fdnRegistrationShowsUnconfirmedWhenItsJackChangesPeer(FdnRegistrationTests* suite) {
     using Lines = std::pair<std::string, std::string>;
     ASSERT_NO_FATAL_FAILURE(suite->sendKeyAndProfileToPdnA());
     suite->cabled.clear();
     suite->cable(suite->jack1, PDN_C, /*registered=*/true);
-    EXPECT_EQ(suite->screenLines(), Lines("PDN LEFT", "JACK 1"));
+    EXPECT_EQ(suite->screenLines(), Lines("UNCONFIRMED", "CHECK PDN"));
     EXPECT_FALSE(suite->everShowedRegistered()) << "the new peer's context confirmed PDN A";
 }
 
@@ -461,7 +461,7 @@ inline void fdnRegistrationSendsNothingToAPdnThatLeftDuringLookup(FdnRegistratio
     EXPECT_TRUE(suite->keyFrames1.empty()) << "a key went to the PDN now on the jack";
     EXPECT_TRUE(suite->provisionsTo(PDN_A).empty());
     EXPECT_TRUE(suite->provisionsTo(PDN_C).empty());
-    EXPECT_EQ(suite->view.outcome, RegistrationOutcome::PDN_LEFT);
+    EXPECT_EQ(suite->screenLines(), std::make_pair(std::string("PDN LEFT"), std::string("JACK 1")));
 }
 
 // The PDN is swapped for another after its key frame went out but before the
@@ -480,7 +480,7 @@ fdnRegistrationSendsNoProfileToAPdnSwappedAsItsKeyIsWritten(FdnRegistrationTests
     suite->step();
     EXPECT_TRUE(suite->provisionsTo(PDN_A).empty()) << "profile sent to a PDN that left";
     EXPECT_TRUE(suite->provisionsTo(PDN_C).empty());
-    EXPECT_EQ(suite->view.outcome, RegistrationOutcome::PDN_LEFT);
+    EXPECT_EQ(suite->screenLines(), std::make_pair(std::string("PDN LEFT"), std::string("JACK 1")));
 }
 
 // A UID of no anticollision length is not looked up and the turn stays. Taps

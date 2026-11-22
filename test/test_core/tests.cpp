@@ -2333,11 +2333,11 @@ TEST_F(FdnRegistrationTests, welcomesOnlyOnceThePdnConfirms) {
 TEST_F(FdnRegistrationTests, countsOnlyTheConfirmOfThePdnOnItsJack) {
     fdnRegistrationCountsOnlyTheConfirmOfThePdnOnItsJack(this);
 }
-TEST_F(FdnRegistrationTests, showsPdnLeftWhenUnpluggedBeforeConfirming) {
-    fdnRegistrationShowsPdnLeftWhenUnpluggedBeforeConfirming(this);
+TEST_F(FdnRegistrationTests, showsUnconfirmedWhenUnplugged) {
+    fdnRegistrationShowsUnconfirmedWhenUnplugged(this);
 }
-TEST_F(FdnRegistrationTests, showsPdnLeftWhenItsJackChangesPeer) {
-    fdnRegistrationShowsPdnLeftWhenItsJackChangesPeer(this);
+TEST_F(FdnRegistrationTests, showsUnconfirmedWhenItsJackChangesPeer) {
+    fdnRegistrationShowsUnconfirmedWhenItsJackChangesPeer(this);
 }
 TEST_F(FdnRegistrationTests, givesUpOnAConfirmationThatNeverComes) {
     fdnRegistrationGivesUpOnAConfirmationThatNeverComes(this);
