@@ -296,11 +296,12 @@ bool MatchManager::finalizeMatch() {
     lastMatchDisplay.boostMs = activeMatchState.boostMs;
     lastMatchDisplay.penaltyMs = activeMatchState.penaltyMs;
     lastMatchDisplay.hasData = true;
+    lastMatchDisplay.isPractice = isPracticeMatch();
 
-    // Shootout matches are local-ephemeral and their IDs are not UUIDs, so the
-    // server cannot take them. Every other record is kept as computed; the
-    // server rejects or flags a nil or repeated player or a disputed winner.
-    if (currentMatchIsShootout()) {
+    // Shootout matches are scored by the tournament and their IDs are not UUIDs;
+    // a practice match has no two distinct players. The server takes neither.
+    // Every other record is kept as computed; the server flags a disputed winner.
+    if (currentMatchIsShootout() || lastMatchDisplay.isPractice) {
         clearCurrentMatch();
         return true;
     }
@@ -425,8 +426,7 @@ bool MatchManager::appendRecordToStorage(const Match& match) {
     matchSlotKey(nextSeq, key);
     TaggedMatchRecord record{};
     match.serialize(reinterpret_cast<uint8_t*>(&record.record));
-    // Tagged once, here, under the key held now. A match with no key is still
-    // stored, with a zero tag, until #498 settles whether it should be.
+    // Tagged once, here, under the key held now.
     if (!tagMatchRecord(recordKey, record)) {
         LOG_W(MATCH_MANAGER_TAG, "Match %s has no record key; its tag is zero", match.getMatchId());
     }
@@ -708,3 +708,13 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
 }
 
 bool MatchManager::isMatchReady() const { return activeMatchState.matchIsReady; }
+
+bool MatchManager::isPracticeMatch() const {
+    // A shootout's opponent slot is never filled by a handshake; the tournament scores it.
+    if (!activeMatchState.match.has_value() || currentMatchIsShootout()) {
+        return false;
+    }
+    const UUIDBytes& hunterPlayerId = activeMatchState.match->getHunterPlayerId();
+    const UUIDBytes& bountyPlayerId = activeMatchState.match->getBountyPlayerId();
+    return hunterPlayerId.isZero() || bountyPlayerId.isZero() || hunterPlayerId == bountyPlayerId;
+}

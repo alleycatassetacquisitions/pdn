@@ -51,8 +51,6 @@ bool containsIgnoreCase(const char* haystack, const char* needle) {
 
 bool teamNameIsHunter(const char* teamName) { return equalsIgnoreCase(teamName, "Hunter"); }
 
-bool teamNameIsBounty(const char* teamName) { return equalsIgnoreCase(teamName, "Bounty"); }
-
 Allegiance allegianceFromAffiliationName(const char* affiliationName) {
     if (affiliationName == nullptr || affiliationName[0] == '\0') {
         return Allegiance::ALLEYCAT;
@@ -63,7 +61,8 @@ Allegiance allegianceFromAffiliationName(const char* affiliationName) {
     if (containsIgnoreCase(affiliationName, "Helix")) {
         return Allegiance::HELIX;
     }
-    if (containsIgnoreCase(affiliationName, "Resistance")) {
+    if (containsIgnoreCase(affiliationName, "Resistance") ||
+        containsIgnoreCase(affiliationName, "Reboot")) {
         return Allegiance::RESISTANCE;
     }
     return Allegiance::ALLEYCAT;
@@ -178,12 +177,12 @@ void Player::setUserID(char* newId) {
     symbol.updateFromUserIdString(id);
 }
 
-void Player::applyRngSeedFromDecimalString(const char* decimalString) {
-    if (decimalString == nullptr || decimalString[0] == '\0') {
-        return;
+void Player::applyRngSeedFromServerPlayerId() {
+    // FNV-1a over the id bytes, so a player gets the same seed on any PDN.
+    uint32_t seed = 2166136261u;
+    for (uint8_t byte : serverPlayerId.bytes) {
+        seed = (seed ^ byte) * 16777619u;
     }
-    const unsigned int seed =
-        static_cast<unsigned int>(std::strtoul(decimalString, nullptr, 10));
     std::srand(seed);
     symbol.setRandomSymbol();
 }
@@ -252,14 +251,17 @@ void Player::applyRegistrationProfile(const UUIDBytes& serverId, const char* ser
     registrationAffiliations = affiliations;
     registrationProfileStored = true;
     syncLegacyFieldsFromRegistration();
+    if (roleChangedCallback) roleChangedCallback();
 }
 
 void Player::clearRegistrationProfile() {
+    const bool wasStored = registrationProfileStored;
     serverPlayerId = UUIDBytes();
     serverPlayerName[0] = '\0';
     registrationTeam = Team();
     registrationAffiliations.clear();
     registrationProfileStored = false;
+    if (wasStored && roleChangedCallback) roleChangedCallback();
 }
 
 UUIDBytes Player::testPlayerIdFromMac(const uint8_t* mac) {
@@ -280,18 +282,11 @@ void Player::syncLegacyFieldsFromRegistration() {
         symbol.updateFromUserIdString(id);
     }
 
-    if (teamNameIsHunter(registrationTeam.name)) {
-        applyRole(true);
-    } else if (teamNameIsBounty(registrationTeam.name)) {
-        applyRole(false);
-    } else if (hasTeam()) {
-        applyRole(true);
-        LOG_W(TAG, "Unknown team name '%s'; defaulting to hunter", registrationTeam.name);
-    }
+    // Only "Hunter" hunts: "Bounty", no team or a team this build does not know is Bounty.
+    hunter = teamNameIsHunter(registrationTeam.name);
 
-    if (!registrationAffiliations.empty()) {
-        const Affiliation& primary = registrationAffiliations.front();
-        setAllegiance(allegianceFromAffiliationName(primary.affiliationName));
-        faction = primary.affiliationName;
-    }
+    const bool hasAffiliation = !registrationAffiliations.empty();
+    setAllegiance(allegianceFromAffiliationName(
+    hasAffiliation ? registrationAffiliations.front().affiliationName : nullptr));
+    if (hasAffiliation) faction = registrationAffiliations.front().affiliationName;
 }

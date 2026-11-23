@@ -128,7 +128,7 @@ void Idle::renderPlayerName(PDN* pdn) {
 }
 
 void Idle::renderStats(PDN* pdn) {
-    if (statsIndex == NAME_SCREEN_INDEX) {
+    if (statsIndex == NAME_SCREEN_INDEX && !player->getServerPlayerId().isZero()) {
         renderPlayerName(pdn);
         return;
     }
@@ -136,7 +136,14 @@ void Idle::renderStats(PDN* pdn) {
     pdn->getDisplay()->invalidateScreen();
     pdn->getDisplay()->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
 
-    if (statsIndex == 1) {
+    if (statsIndex == NAME_SCREEN_INDEX) {
+        // A nil player UUID is unregistered, whatever name it holds.
+        // "UNREGISTERED" is wider than the stats panel, so it takes two lines.
+        pdn->getDisplay()
+        ->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+        ->drawText("UNREGIS-", 70, 28)
+        ->drawText("TERED", 70, 42);
+    } else if (statsIndex == 1) {
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getWins()).c_str(), 88, 40);
     } else if (statsIndex == 2) {

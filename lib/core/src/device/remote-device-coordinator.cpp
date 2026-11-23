@@ -618,6 +618,7 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
     if (resend) sendSelfContext(fromMac);
 
     ContextReceivedCallback handler = contextReceivedCallback;
+    JackContextCallback jackHandler = jackContextCallback;
     for (SerialIdentifier jack : HELLO_JACKS) {
         JackHelloLink& link = helloByJack[jackIndex(jack)];
         if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
@@ -625,6 +626,7 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
         if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
         if (resend) link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
         if (handler) handler(jack, peerType, profile, len);
+        if (jackHandler) jackHandler(jack);
     }
 }
 

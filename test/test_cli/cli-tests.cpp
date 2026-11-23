@@ -340,7 +340,7 @@ TEST_F(CliRoleCommandTestSuite, NoDevices) {
 // CLI COMMAND / REBOOT TESTS
 // ============================================
 
-TEST(CliCommandTest, RebootEntersPinEntry) { cliCommandRebootEntersPinEntry(); }
+TEST(CliCommandTest, RebootEntersAwaitBand) { cliCommandRebootEntersAwaitBand(); }
 
 TEST_F(CliSimulationTestSuite, DevicesStartWithDistinctTestIdentities) {
     cliDevicesStartWithDistinctTestIdentities(this);

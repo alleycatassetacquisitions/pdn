@@ -652,26 +652,42 @@ inline void fdnRegistrationScreenText() {
     }
 }
 
-// The profile packet carries the registration fields, at most three affiliations.
-inline void playerProvisionCodecEncodesTheRegistrationFields() {
+// The profile packet carries the registration fields across, and a decoding
+// PDN never trusts the count or the names off the radio.
+inline void playerProvisionCodecRoundTripsAndBoundsTheWire() {
     Player player;
     Team team;
     team.id = makeTestUuid(TEST_PLAYER_ID);
     strcpy(team.name, "Hunter");
     std::vector<Affiliation> affiliations(4);
     for (size_t i = 0; i < affiliations.size(); ++i) {
+        affiliations[i].categoryId.bytes[0] = static_cast<uint8_t>(i + 1);
         affiliations[i].affiliationId.bytes[0] = static_cast<uint8_t>(i + 11);
         snprintf(affiliations[i].affiliationName, PlayerLimits::NAME_BUFFER_SIZE, "Helix %zu", i);
     }
     player.applyRegistrationProfile(makeTestUuid(TEST_PLAYER_ID), "Ada", team, affiliations);
 
-    const PlayerProvisionPacket packet = PlayerProvisionCodec::encode(player);
-    EXPECT_EQ(packet.status, static_cast<uint8_t>(ProvisionStatus::PROFILE_DELIVERED));
-    EXPECT_EQ(memcmp(packet.playerId, makeTestUuid(TEST_PLAYER_ID).bytes, UUIDBytes::SIZE), 0);
-    EXPECT_STREQ(packet.playerName, "Ada");
-    EXPECT_EQ(memcmp(packet.teamId, team.id.bytes, UUIDBytes::SIZE), 0);
-    EXPECT_STREQ(packet.teamName, "Hunter");
-    ASSERT_EQ(packet.affiliationCount, PlayerLimits::MAX_AFFILIATIONS);
-    EXPECT_EQ(packet.affiliations[2].affiliationId[0], 13);
-    EXPECT_STREQ(packet.affiliations[2].affiliationName, "Helix 2");
+    PlayerProvisionPacket packet = PlayerProvisionCodec::encode(player);
+    Player decoded;
+    ASSERT_TRUE(PlayerProvisionCodec::decode(packet, decoded));
+    EXPECT_EQ(decoded.getServerPlayerId(), makeTestUuid(TEST_PLAYER_ID));
+    EXPECT_STREQ(decoded.getServerPlayerName(), "Ada");
+    EXPECT_STREQ(decoded.getRegistrationTeam().name, "Hunter");
+    ASSERT_EQ(decoded.getRegistrationAffiliations().size(), PlayerLimits::MAX_AFFILIATIONS);
+    EXPECT_STREQ(decoded.getRegistrationAffiliations()[2].affiliationName, "Helix 2");
+
+    packet.affiliationCount = 200;
+    memset(packet.playerName, 'x', sizeof(packet.playerName));
+    ASSERT_TRUE(PlayerProvisionCodec::decode(packet, decoded));
+    EXPECT_EQ(decoded.getRegistrationAffiliations().size(), PlayerLimits::MAX_AFFILIATIONS);
+    EXPECT_EQ(strlen(decoded.getServerPlayerName()), PlayerLimits::NAME_BUFFER_SIZE - 1);
+
+    Player untouched;
+    PlayerProvisionPacket failed = PlayerProvisionCodec::encode(player);
+    failed.status = static_cast<uint8_t>(ProvisionStatus::LOOKUP_FAILED);
+    EXPECT_FALSE(PlayerProvisionCodec::decode(failed, untouched));
+    PlayerProvisionPacket nilPlayer = PlayerProvisionCodec::encode(Player());
+    strcpy(nilPlayer.playerName, "Ada");
+    EXPECT_FALSE(PlayerProvisionCodec::decode(nilPlayer, untouched));
+    EXPECT_FALSE(untouched.hasRegistrationProfile());
 }

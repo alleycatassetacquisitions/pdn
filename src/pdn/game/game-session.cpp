@@ -48,8 +48,9 @@ GameSession::GameSession(Player* player, const RecordKey* recordKey, Device* pdn
         return this->player->toProfile();
     });
 
-    // Registration flips hunter/bounty long after the jacks came up, and the
-    // context exchange only runs on connect, so the flip has to push itself.
+    // Registration applies a profile and flips hunter/bounty long after the
+    // jacks came up, and the context exchange only runs on connect, so each
+    // change has to push itself; an FDN learns from it that the PDN registered.
     this->player->setOnRoleChanged([this]() {
         remoteDeviceCoordinator->resendContext();
         posseManager->onChainStateChanged();
