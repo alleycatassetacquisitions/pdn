@@ -6,10 +6,11 @@ Legacy registration remains the production boot path via Quickdraw. PlayerFetch 
 
 **Goals:**
 
-- Standalone `PlayerFetchApp`: **PinEntry**, **FetchUser**, **ChooseTeam**, **DemoStub**, **Welcome**, **AwakenSequence**, **FirmwareUpdate**.
+- Standalone `PlayerFetchApp`: **PinEntry**, **FetchUser**, **DemoModeMenu**, **ChooseTeam**, **Welcome**, **AwakenSequence**, **FirmwareUpdate**, **DeviceTest** (operator + subject).
 - Fetch via `getDevicePlayerByPin`; failure page 0 + 3 s → PinEntry.
 - Server path: Welcome → Awaken inside app.
-- Demo path: ChooseTeam → **DemoStub** (placeholder UI or idle loop back to pin; must not crash).
+- Demo path: Pin `0000` → **DemoModeMenu** → PLAY → ChooseTeam → Welcome → gameplay; TEST → device test operator app.
+- DUT path: Pin entry listens for session begin → device test subject.
 - Keep `player-registration/` and Quickdraw **untouched**.
 
 **Non-Goals:**
@@ -31,12 +32,12 @@ Legacy registration remains the production boot path via Quickdraw. PlayerFetch 
 
 ```
 PinEntry --(pin != 0000)--> FetchUser --success--> Welcome --> Awaken --> [terminal / hold in app]
-PinEntry --(pin == 0000)--> ChooseTeam --confirm--> DemoStub
+PinEntry --(pin == 0000)--> DemoModeMenu --PLAY--> ChooseTeam --confirm--> Welcome
+DemoModeMenu --TEST--> DeviceTest (operator)
+PinEntry --(session begin)--> DeviceTestSubject
 FetchUser --fail|timeout--> [page 0] --3s--> PinEntry
 PinEntry --OTA hold--> FirmwareUpdate --> PinEntry
 ```
-
-**DemoStub:** minimal state (e.g. “Demo” text or log + return to PinEntry on button, or no-op loop). No Welcome, no Awaken, no `readyForGameplay()` assertion required for demo.
 
 ### DevicePlayer storage
 

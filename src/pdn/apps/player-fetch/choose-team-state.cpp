@@ -26,7 +26,7 @@ void ChooseTeamState::onStateMounted(PDN* pdn) {
         Team team;
         IdGenerator::copyId(team.name, chooseTeamState->hunterSelected ? "Hunter" : "Bounty");
         player->applyRegistrationProfile(UUIDBytes(), "Demo", team, {});
-        chooseTeamState->transitionToDemoStubState = true;
+        chooseTeamState->transitionToWelcomeState = true;
     },
     this, ButtonInteraction::CLICK);
 }
@@ -41,12 +41,12 @@ void ChooseTeamState::onStateLoop(PDN* pdn) {
 void ChooseTeamState::onStateDismounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
-    transitionToDemoStubState = false;
+    transitionToWelcomeState = false;
     displayIsDirty = false;
     hunterSelected = true;
 }
 
-bool ChooseTeamState::transitionToDemoStub() const { return transitionToDemoStubState; }
+bool ChooseTeamState::transitionToWelcome() const { return transitionToWelcomeState; }
 
 void ChooseTeamState::renderUi(PDN* pdn) const {
     pdn->getDisplay()->invalidateScreen();

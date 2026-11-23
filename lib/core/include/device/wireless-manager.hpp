@@ -107,6 +107,11 @@ public:
             return;
         }
 
+        if (hasQueuedHttpRequests()) {
+            LOG_W(WM_TAG, "Deferring ESP-NOW mode — HTTP request in progress");
+            return;
+        }
+
         LOG_I(WM_TAG, "Switching to ESP-NOW mode...");
 
         // Step 1: Disconnect HTTP client first (releases WiFi AP connection but keeps radio on)
@@ -128,9 +133,7 @@ public:
     /**
      * Get the current wireless mode.
      */
-    WirelessMode getCurrentMode() {
-        return currentMode;
-    }
+    WirelessMode getCurrentMode() { return currentMode; }
 
     /**
      * Check if WiFi is connected (only relevant in WIFI mode).
@@ -178,6 +181,11 @@ public:
      * @return 0 on success, negative on error
      */
     int sendEspNowData(const uint8_t* dst, PktType packetType, const uint8_t* data, size_t length) {
+        if (currentMode != WirelessMode::ESPNOW && hasQueuedHttpRequests()) {
+            LOG_D(WM_TAG, "Deferring ESP-NOW send — HTTP request in progress");
+            return -1;
+        }
+
         // Auto-switch to ESP-NOW mode if needed
         if (currentMode != WirelessMode::ESPNOW) {
             LOG_I(WM_TAG, "Auto-switching to ESP-NOW mode for peer communication");
@@ -196,44 +204,35 @@ public:
      * Set packet handler for ESP-NOW received packets.
      * Note: Handlers can be set regardless of current mode.
      */
-    void setEspNowPacketHandler(PktType packetType, PeerCommsInterface::PacketCallback callback, void* ctx) {
+    void setEspNowPacketHandler(PktType packetType, PeerCommsInterface::PacketCallback callback,
+                                void* ctx) {
         peerComms->setPacketHandler(packetType, callback, ctx);
     }
 
     /**
      * Clear packet handler for a specific packet type.
      */
-    void clearEspNowPacketHandler(PktType packetType) {
-        peerComms->clearPacketHandler(packetType);
-    }
+    void clearEspNowPacketHandler(PktType packetType) { peerComms->clearPacketHandler(packetType); }
 
     /**
      * Register a MAC as an ESP-NOW peer, making it eligible for unicast sends.
      */
-    int addEspNowPeer(const uint8_t* mac) {
-        return peerComms->addEspNowPeer(mac);
-    }
+    int addEspNowPeer(const uint8_t* mac) { return peerComms->addEspNowPeer(mac); }
 
     /**
      * Remove a MAC from the ESP-NOW peer table.
      */
-    int removeEspNowPeer(const uint8_t* mac) {
-        return peerComms->removeEspNowPeer(mac);
-    }
+    int removeEspNowPeer(const uint8_t* mac) { return peerComms->removeEspNowPeer(mac); }
 
     /**
      * Get the device's MAC address.
      */
-    uint8_t* getMacAddress() {
-        return peerComms->getMacAddress();
-    }
+    uint8_t* getMacAddress() { return peerComms->getMacAddress(); }
 
     /**
      * Get the ESP-NOW broadcast address.
      */
-    const uint8_t* getBroadcastAddress() {
-        return peerComms->getGlobalBroadcastAddress();
-    }
+    const uint8_t* getBroadcastAddress() { return peerComms->getGlobalBroadcastAddress(); }
 
     /**
      * Must be called in the main loop to process wireless operations.
@@ -253,10 +252,8 @@ public:
         switch (currentMode) {
             case WirelessMode::WIFI:
                 return httpClient->isConnected() ? "WIFI_CONNECTED" : "WIFI_CONNECTING";
-            case WirelessMode::ESPNOW:
-                return "ESPNOW_ACTIVE";
-            default:
-                return "UNKNOWN";
+            case WirelessMode::ESPNOW: return "ESPNOW_ACTIVE";
+            default: return "UNKNOWN";
         }
     }
 

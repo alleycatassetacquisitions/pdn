@@ -19,7 +19,7 @@ Pin entry SHALL reproduce the digit-entry behavior of `player-registration-state
 #### Scenario: Demo PIN completed
 - **WHEN** the player confirms digits `0`, `0`, `0`, `0`
 - **THEN** `Player` holds PIN `"0000"` and RNG is seeded
-- **AND** the app transitions to choose team without issuing a network request
+- **AND** the app transitions to demo mode menu without issuing a network request
 
 ### Requirement: Fetch user only performs device player lookup
 Fetch user SHALL call `PlayerApi::getDevicePlayerByPin` with the stored PIN, SHALL show loading glyphs while waiting, and SHALL use the same fetch timeout constant as legacy fetch user. It SHALL NOT upload matches, SHALL NOT call `PlayerApi::getPlayer`, and SHALL NOT branch on test or debug PIN constants.
@@ -49,21 +49,30 @@ On lookup error or fetch timeout, fetch user SHALL display only the first confir
 - **THEN** page zero is shown
 - **AND** after 3000 ms the app transitions to pin entry
 
-### Requirement: Choose team demo enters stub only
-Choose team SHALL offer Hunter/Bounty selection like legacy choose-role. On confirm, the app SHALL transition to a demo stub state. It SHALL NOT mount welcome or awaken on the demo path.
+### Requirement: Demo mode menu offers gameplay or device test
+Demo mode menu SHALL follow the same toggle-and-confirm button pattern as choose team. PLAY SHALL transition to choose team; TEST SHALL transition to the device test operator app. Device test SHALL NOT be reachable via a dedicated pin-entry PIN.
+
+#### Scenario: Demo gameplay selected
+- **WHEN** the player confirms PLAY on the demo mode menu
+- **THEN** choose team mounts
+
+#### Scenario: Device test selected
+- **WHEN** the player toggles to TEST and confirms
+- **THEN** the device test operator app mounts
+
+### Requirement: Choose team demo enters welcome
+Choose team SHALL offer Hunter/Bounty selection like legacy choose-role. On confirm, the app SHALL apply the demo profile and transition to welcome for gameplay handoff.
 
 #### Scenario: Demo confirm
 - **WHEN** the player confirms a team on the demo path
-- **THEN** demo stub mounts
-- **AND** welcome is not mounted
+- **THEN** welcome mounts after role selection
 
-### Requirement: Demo stub must not crash
-Demo stub SHALL be a placeholder implementation sufficient to exercise the transition from choose team. It SHALL NOT transition to Quickdraw Idle or gameplay states.
+### Requirement: Device test subject from pin entry
+Pin entry SHALL listen for device test session begin while mounted. When a session begins, the unit SHALL transition to device test subject without requiring the demo mode menu.
 
-#### Scenario: Demo stub mounted
-- **WHEN** demo stub is active
-- **THEN** the app remains entirely within PlayerFetch
-- **AND** no unhandled null profile access occurs
+#### Scenario: DUT session begin on pin entry
+- **WHEN** the operator begins a session targeting a unit on pin entry
+- **THEN** device test subject mounts
 
 ### Requirement: Welcome then awaken on server path only
 Welcome SHALL display `Welcome` and the fetched player name, then after the welcome timer SHALL transition to awaken sequence within PlayerFetch.

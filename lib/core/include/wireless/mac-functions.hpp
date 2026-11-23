@@ -27,8 +27,6 @@ inline const char* MacToString(const uint8_t* macAddr)
 
 inline bool StringToMac(const char* macStr, uint8_t* macAddr)
 {
-    LOG_I("ENC", "Converting MAC string '%s' to bytes", macStr);
-
     if(strlen(macStr) != 17) { // XX:XX:XX:XX:XX:XX
         LOG_E("ENC", "Invalid MAC string length: %d", strlen(macStr));
         return false;
@@ -53,6 +51,5 @@ inline bool StringToMac(const char* macStr, uint8_t* macAddr)
         macAddr[i] = (uint8_t)values[i];
     }
 
-    LOG_I("ENC", "Successfully converted MAC string to bytes");
     return true;
 }

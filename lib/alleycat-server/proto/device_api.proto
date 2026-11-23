@@ -160,3 +160,76 @@ message QuickdrawMatch {
   // The first accepted upload supplies the timestamp and all other fields.
   optional int64 occurred_at_unix_ms = 9;
 }
+
+// Registers a device if needed and saves its inspection atomically.
+// Used by POST /device-reports; see the HTTP API docs for responses and retries.
+message WriteDeviceReportRequest {
+  // Required registration details. Existing fields must match, including the
+  // presence of optional fields. Reports never update registration metadata.
+  CreateDeviceRequest device = 1;
+  // Required condition snapshot for this device.
+  CreateDeviceInspectionRequest inspection = 2;
+}
+
+// Device registration details, also accepted by POST /devices.
+// Firmware uploads include this message in WriteDeviceReportRequest.
+message CreateDeviceRequest {
+  // Required permanent, non-nil UUID: exactly 16 bytes in RFC 9562 network order.
+  // Generate once and retain across reports and reboots; do not send UUID text.
+  bytes id = 1;
+  // Required printed inventory label, from 1 through 9999. Globally unique.
+  uint32 id_label = 2;
+  // Optional hardware revision, from 1 through 2147483647. Omit if unknown.
+  optional uint32 hardware_version = 3;
+  // Optional 48-bit MAC: six colon-separated hexadecimal byte pairs.
+  // Case is ignored. Omit if unknown; an empty string is invalid.
+  optional string mac_address = 4;
+  // Required: DEVICE_KIND_PDN. Unspecified and unknown values are rejected.
+  DeviceKind device_kind = 5;
+}
+
+// Supported inventory device kinds.
+enum DeviceKind {
+  DEVICE_KIND_UNSPECIFIED = 0;
+  DEVICE_KIND_PDN = 1;
+}
+
+// Complete inspection snapshot for WriteDeviceReportRequest or
+// POST /devices/{device_id}/inspections. Saved snapshots are never overwritten.
+message CreateDeviceInspectionRequest {
+  // Required non-nil UUID: exactly 16 bytes in RFC 9562 network order.
+  // Generate once per check; retain this UUID and the same contents for retries.
+  bytes id = 1;
+  // Required check time: UTC milliseconds since 1970-01-01, from 0 through
+  // 253402300799999. Must not be in the future. Upload time is recorded separately.
+  optional int64 inspected_at_unix_ms = 2;
+  // Optional firmware identifier at check time. Nonblank, at most 64 UTF-8 bytes,
+  // with no null characters. Stored unchanged.
+  optional string firmware_commit_hash = 3;
+  // Optional notes, at most 2048 UTF-8 bytes, with no null characters.
+  optional string notes = 4;
+  oneof checks {
+    // Required for PDNs; must match the registered device kind. An empty message
+    // means no components were checked. Missing or unsupported payloads are rejected.
+    PdnComponentChecks pdn = 5;
+  }
+  // Whether the device powered on during this inspection: true means it did,
+  // false means an attempted power-on failed, and absent means not checked.
+  // Independent of component results; never carried forward from older checks.
+  // Returned as checks.powers_on in JSON inspection responses.
+  optional bool powers_on = 6;
+}
+
+// PDN observations: true means working, false means failed, absent means not checked.
+// Each snapshot stands alone; unchecked values never carry forward from older checks.
+message PdnComponentChecks {
+  optional bool screen = 1;
+  optional bool primary_button = 2;
+  optional bool secondary_button = 3;
+  optional bool haptics = 4;
+  optional bool leds = 5;
+  optional bool power_switch = 6;
+  optional bool input_jack = 7;
+  optional bool output_jack = 8;
+  optional bool housing = 9;
+}

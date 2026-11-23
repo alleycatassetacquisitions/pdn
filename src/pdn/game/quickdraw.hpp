@@ -15,6 +15,7 @@
 #include "game/shootout-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
+class DeviceTestWirelessManager;
 class FirmwareUpdateManager;
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
@@ -24,7 +25,8 @@ constexpr int QUICKDRAW_APP_ID = 1;
 class Quickdraw : public StateMachine {
 public:
     /** Builds the game managers and registers their packet handlers. */
-    Quickdraw(PlayerProvider* playerProvider, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager,
+    Quickdraw(PlayerProvider* playerProvider, Device* pdn,
+              QuickdrawWirelessManager* quickdrawWirelessManager,
               RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
     ~Quickdraw();
 
@@ -40,34 +42,29 @@ public:
     void onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onStateLoop(Device *PDN) override;
+    /** @copydoc StateMachine::onStateLoop */
+    void onStateLoop(Device* pdn) override;
 
 private:
     void onChainStateChanged();
 
     std::vector<Match> matches;
     int numMatches = 0;
-    MatchManager* matchManager;
-    Player* player;
     PlayerProvider* playerProvider = nullptr;
     WirelessManager* wirelessManager;
     StorageInterface* storageManager;
     PeerCommsInterface* peerComms;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
+    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
+    DeviceTestWirelessManager* deviceTestWirelessManager = nullptr;
+    Player* player;
+    MatchManager* matchManager;
+    ChainDuelManager* chainDuelManager = nullptr;
+    ShootoutManager* shootoutManager = nullptr;
     QuickdrawWirelessManager* quickdrawWirelessManager;
     SymbolWirelessManager* symbolWirelessManager;
     RemoteDebugManager* remoteDebugManager;
     SupporterReady* supporterReadyState = nullptr;
-    ChainDuelManager* chainDuelManager = nullptr;
-    ShootoutManager* shootoutManager_ = nullptr;
-    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
-
-    // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
-    // counters from both RDC and CDM. Intended for venue deployment: `cat`ing
-    // the serial port gives a rolling view of retry-machine health. Parseable
-    // by scripts/chain_status.sh (prefix: "STATS").
-    SimpleTimer statsLogTimer_;
-    static constexpr unsigned long kStatsLogIntervalMs = 5000;
 
     // Diagnostic: track isLoop() transitions to expose ring re-formation timing.
     bool lastIsLoop_ = false;

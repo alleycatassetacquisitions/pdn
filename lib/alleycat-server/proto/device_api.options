@@ -30,3 +30,9 @@ alleycat.device.QuickdrawMatch.player_b_id                max_size:37
 alleycat.device.QuickdrawMatch.player_a_team_id           max_size:37
 alleycat.device.QuickdrawMatch.player_b_team_id           max_size:37
 alleycat.device.QuickdrawMatch.winner_player_id           max_size:37
+
+alleycat.device.CreateDeviceRequest.id                 max_size:16 fixed_length:true
+alleycat.device.CreateDeviceRequest.mac_address        max_size:18
+alleycat.device.CreateDeviceInspectionRequest.id       max_size:16 fixed_length:true
+alleycat.device.CreateDeviceInspectionRequest.firmware_commit_hash max_size:64
+alleycat.device.CreateDeviceInspectionRequest.notes    max_size:2048

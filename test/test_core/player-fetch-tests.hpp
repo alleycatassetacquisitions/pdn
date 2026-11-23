@@ -81,16 +81,16 @@ inline void pinEntryRoutesNonDemoPinToFetch(PlayerFetchTestSuite* suite) {
         ctx = buttonCtx;
     }));
 
-    PinEntryState pinEntry(&suite->playerProvider);
+    PinEntryState pinEntry(&suite->playerProvider, nullptr);
     const int digits[4] = {0, 0, 0, 7};
     completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
     EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "0007");
     EXPECT_TRUE(pinEntry.transitionToFetchUser());
-    EXPECT_FALSE(pinEntry.transitionToChooseTeam());
+    EXPECT_FALSE(pinEntry.transitionToDemoModeMenu());
     pinEntry.onStateDismounted(&suite->device);
 }
 
-inline void pinEntryRoutesDemoPinToChooseTeam(PlayerFetchTestSuite* suite) {
+inline void pinEntryRoutesDemoPinToDemoModeMenu(PlayerFetchTestSuite* suite) {
     parameterizedCallbackFunction primaryPress = nullptr;
     parameterizedCallbackFunction secondaryPress = nullptr;
     void* ctx = nullptr;
@@ -107,11 +107,11 @@ inline void pinEntryRoutesDemoPinToChooseTeam(PlayerFetchTestSuite* suite) {
         ctx = buttonCtx;
     }));
 
-    PinEntryState pinEntry(&suite->playerProvider);
+    PinEntryState pinEntry(&suite->playerProvider, nullptr);
     const int digits[4] = {0, 0, 0, 0};
     completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
     EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), DEMO_PIN);
-    EXPECT_TRUE(pinEntry.transitionToChooseTeam());
+    EXPECT_TRUE(pinEntry.transitionToDemoModeMenu());
     EXPECT_FALSE(pinEntry.transitionToFetchUser());
     pinEntry.onStateDismounted(&suite->device);
 }
@@ -133,8 +133,7 @@ inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
     fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
 
-    suite->queuedRequests[0].onSuccess(
-        encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada"));
+    suite->queuedRequests[0].onSuccess(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada"));
 
     fetch.onStateLoop(&suite->device);
     EXPECT_TRUE(suite->playerProvider.hasPlayer());
@@ -160,7 +159,7 @@ inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* s
     fetch.onStateDismounted(&suite->device);
 }
 
-inline void chooseTeamConfirmReachesDemoStub(PlayerFetchTestSuite* suite) {
+inline void chooseTeamConfirmReachesWelcome(PlayerFetchTestSuite* suite) {
     ChooseTeamState chooseTeam(&suite->playerProvider);
     parameterizedCallbackFunction secondaryPress = nullptr;
     void* secondaryCtx = nullptr;
@@ -172,6 +171,32 @@ inline void chooseTeamConfirmReachesDemoStub(PlayerFetchTestSuite* suite) {
     chooseTeam.onStateMounted(&suite->device);
     ASSERT_NE(secondaryPress, nullptr);
     secondaryPress(secondaryCtx);
-    EXPECT_TRUE(chooseTeam.transitionToDemoStub());
+    EXPECT_TRUE(chooseTeam.transitionToWelcome());
     chooseTeam.onStateDismounted(&suite->device);
+}
+
+inline void demoModeMenuConfirmDeviceTest(PlayerFetchTestSuite* suite) {
+    DemoModeMenuState demoModeMenu;
+    parameterizedCallbackFunction primaryPress = nullptr;
+    parameterizedCallbackFunction secondaryPress = nullptr;
+    void* primaryCtx = nullptr;
+    void* secondaryCtx = nullptr;
+    ON_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
+    .WillByDefault(Invoke([&](parameterizedCallbackFunction fn, void* ctx, ButtonInteraction) {
+        primaryPress = fn;
+        primaryCtx = ctx;
+    }));
+    ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
+    .WillByDefault(Invoke([&](parameterizedCallbackFunction fn, void* ctx, ButtonInteraction) {
+        secondaryPress = fn;
+        secondaryCtx = ctx;
+    }));
+    demoModeMenu.onStateMounted(&suite->device);
+    ASSERT_NE(primaryPress, nullptr);
+    ASSERT_NE(secondaryPress, nullptr);
+    primaryPress(primaryCtx);
+    secondaryPress(secondaryCtx);
+    EXPECT_TRUE(demoModeMenu.transitionToDeviceTest());
+    EXPECT_FALSE(demoModeMenu.transitionToChooseTeam());
+    demoModeMenu.onStateDismounted(&suite->device);
 }

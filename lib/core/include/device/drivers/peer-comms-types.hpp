@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-//PktType determines which callback will handle the packet on the receiving end
+// PktType determines which callback will handle the packet on the receiving end
 enum class PktType : uint8_t {
     kPlayerInfoBroadcast = 0,
     kQuickdrawCommand = 1,
@@ -22,42 +22,37 @@ enum class PktType : uint8_t {
     kFdnConnect = 14,
     kCrashLog = 15,
     kFirmwareUpdate = 16,
+    kDeviceTestCommand = 17,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
 // Frozen: older builds must parse a newer build's firmware frames (this header, kFirmwareUpdate,
 // FirmwareChunkHeader, FIRMWARE_CHUNK_SIZE, ESPNOW_CHANNEL) or they can only be updated over USB.
-struct DataPktHdr
-{
+struct DataPktHdr {
     PktType packetType;
 } __attribute__((packed));
 static_assert(sizeof(DataPktHdr) == 1, "older builds parse firmware frames with a one-byte header");
 
-struct ChainConfirmPayload
-{
+struct ChainConfirmPayload {
     uint8_t originatorMac[6];
     uint8_t seqId;
 } __attribute__((packed));
 
-struct RoleAnnouncePayload
-{
-    uint8_t role;               // 1 = hunter, 0 = target/bounty
+struct RoleAnnouncePayload {
+    uint8_t role;  // 1 = hunter, 0 = target/bounty
     uint8_t championMac[6];
     uint8_t seqId;
 } __attribute__((packed));
 
-struct RoleAnnounceAckPayload
-{
+struct RoleAnnounceAckPayload {
     uint8_t seqId;
 } __attribute__((packed));
 
-struct ChainGameEventAckPayload
-{
+struct ChainGameEventAckPayload {
     uint8_t seqId;
 } __attribute__((packed));
 
-enum class ShootoutCmd : uint8_t
-{
+enum class ShootoutCmd : uint8_t {
     CONFIRM = 0,
     BRACKET = 1,
     MATCH_START = 2,
@@ -67,17 +62,15 @@ enum class ShootoutCmd : uint8_t
     ABORT = 6,
 };
 
-struct ShootoutPacket
-{
+struct ShootoutPacket {
     ShootoutCmd cmd;
-    uint8_t     seqId;   // nonzero for reliable commands; 0 = no ack expected
-    uint8_t     payload[];
+    uint8_t seqId;  // nonzero for reliable commands; 0 = no ack expected
+    uint8_t payload[];
 } __attribute__((packed));
 
-struct ShootoutAckPayload
-{
+struct ShootoutAckPayload {
     ShootoutCmd cmd;
-    uint8_t     seqId;
+    uint8_t seqId;
 } __attribute__((packed));
 
 constexpr uint16_t FIRMWARE_CHUNK_SIZE = 1400;
@@ -95,4 +88,3 @@ struct FirmwareChunkHeader {
     uint32_t imageLength;
     uint16_t index;
 } __attribute__((packed));
-
