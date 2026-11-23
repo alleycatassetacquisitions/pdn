@@ -830,8 +830,8 @@ public:
         outputWirelessManager = new WirelessManager(&outputPeerComms, &outputHttpClient);
         inputWirelessManager  = new WirelessManager(&inputPeerComms,  &inputHttpClient);
 
-        outputHWM.initialize(outputWirelessManager);
-        inputHWM.initialize(inputWirelessManager);
+        outputHWM.initialize(outputWirelessManager, DeviceType::PDN);
+        inputHWM.initialize(inputWirelessManager, DeviceType::FDN);
     }
 
     void TearDown() override {
@@ -875,6 +875,7 @@ inline void handshakeCompleteBountyPerspective(HandshakeIntegrationTests* suite)
     EXPECT_TRUE(callbackFired);
     EXPECT_EQ(receivedCmd.command, HSCommand::EXCHANGE_ID);
     EXPECT_EQ(receivedCmd.receivingJack, SerialIdentifier::INPUT_JACK);
+    EXPECT_EQ(receivedCmd.deviceType, static_cast<int>(DeviceType::PDN));
 }
 
 // Test: EXCHANGE_ID sent by input (INPUT) is routed to the output OUTPUT callback
@@ -893,6 +894,7 @@ inline void handshakeCompleteHunterPerspective(HandshakeIntegrationTests* suite)
     EXPECT_TRUE(callbackFired);
     EXPECT_EQ(receivedCmd.command, HSCommand::EXCHANGE_ID);
     EXPECT_EQ(receivedCmd.receivingJack, SerialIdentifier::OUTPUT_JACK);
+    EXPECT_EQ(receivedCmd.deviceType, static_cast<int>(DeviceType::FDN));
 }
 
 // Test: Full 4-step symmetric handshake protocol

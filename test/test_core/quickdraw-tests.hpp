@@ -289,7 +289,7 @@ public:
 
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
 
-        handshakeWirelessManager.initialize(device.wirelessManager);
+        handshakeWirelessManager.initialize(device.wirelessManager, device.getDeviceType());
     }
 
     void TearDown() override {
@@ -1432,7 +1432,7 @@ inline void cleanupHandshakeClearsWirelessCallbacks(StateCleanupTests* suite) {
     ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
 
     HandshakeWirelessManager hwm;
-    hwm.initialize(suite->device.wirelessManager);
+    hwm.initialize(suite->device.wirelessManager, suite->device.getDeviceType());
     uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     hwm.setMacPeer(SerialIdentifier::OUTPUT_JACK, makeHSPeer(peerMac, SerialIdentifier::OUTPUT_JACK));
 
@@ -1511,7 +1511,7 @@ public:
 
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
 
-        hwm.initialize(device.wirelessManager);
+        hwm.initialize(device.wirelessManager, device.getDeviceType());
         uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         Peer peer;
         std::copy(std::begin(mac), std::end(mac), peer.macAddr.begin());

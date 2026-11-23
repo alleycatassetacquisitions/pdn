@@ -18,8 +18,9 @@ HandshakeWirelessManager::~HandshakeWirelessManager() {
     wirelessManager = nullptr;
 }
 
-void HandshakeWirelessManager::initialize(WirelessManager* wirelessManager) {
+void HandshakeWirelessManager::initialize(WirelessManager* wirelessManager, DeviceType deviceType) {
     this->wirelessManager = wirelessManager;
+    this->deviceType = deviceType;
 }
 
 void HandshakeWirelessManager::setPacketReceivedCallback(const std::function<void(HandshakeCommand)>& callback, SerialIdentifier jack) {
@@ -67,10 +68,11 @@ int HandshakeWirelessManager::sendPacket(int command, SerialIdentifier jack) {
         return -1;
     }
 
-    HandshakePacket hsPacket;
+    HandshakePacket hsPacket = {};
     hsPacket.command = command;
     hsPacket.sendingJack = static_cast<int>(jack);
     hsPacket.receicingJack = static_cast<int>(it->second.sid);
+    hsPacket.deviceType = static_cast<int>(deviceType);
 
     LOG_I("HWM", "Sending command %i to port %i", command, static_cast<int>(jack));
 
