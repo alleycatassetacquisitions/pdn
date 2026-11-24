@@ -21,6 +21,7 @@
 
 class StateMachine;
 class FirmwareUpdateManager;
+class PageManager;
 
 using AppConfig = std::map<StateId, StateMachine*>;
 
@@ -68,6 +69,10 @@ public:
     /** Null on a device that takes no firmware updates. */
     virtual FirmwareUpdateManager* getFirmwareUpdateManager() { return nullptr; }
 
+    /** Mission Control page inbox. Null on a device that takes no pages. */
+    PageManager* getPageManager() { return pageManager; }
+    void setPageManager(PageManager* manager) { pageManager = manager; }
+
     // Generic driver accessor — useful for device-specific peripherals not
     // covered by the standard convenience wrappers (e.g. FDN tertiary button).
     // Uses abstractSelf() on each combined driver interface to perform the
@@ -87,4 +92,5 @@ private:
     DriverManager driverManager;
     AppConfig appConfig;
     StateId currentAppId;
+    PageManager* pageManager = nullptr;
 };

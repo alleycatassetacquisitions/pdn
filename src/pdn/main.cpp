@@ -199,7 +199,8 @@ static void setup() {
     symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
 
     pageManager = new PageManager();
-    pageManager->initialize(pdn->getWirelessManager(), playerProvider->getPlayer());
+    pageManager->setLocalPlayer(playerProvider->getPlayer());
+    pdn->setPageManager(pageManager);
     
     // Register ESP-NOW packet handlers
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, pageManager,
@@ -210,7 +211,7 @@ static void setup() {
     crashLogger->transmitPending();
 
     game = new Quickdraw(playerProvider, pdn, quickdrawWirelessManager, remoteDebugManager,
-                         symbolWirelessManager, pageManager);
+                         symbolWirelessManager);
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->

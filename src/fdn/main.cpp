@@ -28,8 +28,9 @@ constexpr unsigned long WIFI_CONCURRENT_WAIT_MS = 20000;
 #include "wireless/fdn-connect-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/page-manager.hpp"
+#include "wireless/page-relay.hpp"
 #include "wireless/dnn-mqtt-client.hpp"
-#include "wireless/mac-device-id.hpp"
+#include "wireless/mac-functions.hpp"
 #include "wireless/wireless-types.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "apps/main-menu/main-menu.hpp"
@@ -50,6 +51,7 @@ constexpr unsigned long WIFI_CONCURRENT_WAIT_MS = 20000;
 #ifndef BASE_URL
 #error "BASE_URL not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
 #endif
+// MQTT broker login - injected at compile time from the [mqtt] section of wifi_credentials.ini
 #ifndef MQTT_BROKER
 #error "MQTT_BROKER not defined. Please add [mqtt] to wifi_credentials.ini from wifi_credentials.ini.example"
 #endif
@@ -94,6 +96,7 @@ FDNConnectWirelessManager* fdnConnectWirelessManager = nullptr;
 HackedPlayersManager*     hackedPlayersManager     = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
 PageManager*              pageManager              = nullptr;
+PageRelay*                pageRelay                = nullptr;
 DnnMqttClient*            dnnMqttClient            = nullptr;
 
 // Apps
@@ -182,7 +185,7 @@ static void setup() {
     wifiConfig    = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
-    mqttDriver = new Esp32S3MQTTDriver("mqtt");
+    mqttDriver = new Esp32S3MQTTDriver(MQTT_DRIVER_NAME);
     storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_PREF_NAMESPACE, CRASH_LOG_NAMESPACE});
 
     DriverConfig fdnConfig = {
@@ -199,12 +202,13 @@ static void setup() {
         {PLATFORM_CLOCK_DRIVER_NAME,       clockDriver},
         {LOGGER_DRIVER_NAME,               loggerDriver},
         {STORAGE_DRIVER_NAME,              storageDriver},
+        {MQTT_DRIVER_NAME,                 mqttDriver},
     };
 
     fdn = FDN::createFDN(fdnConfig);
     fdn->begin();
 
-    // Managers — ESP-NOW handlers before any crash WiFi excursion.
+    // Managers — constructed after fdn->begin() so wireless is ready.
     remotePlayerManager = new RemotePlayerManager(peerCommsDriver);
 
     fdnConnectWirelessManager = new FDNConnectWirelessManager();
@@ -215,22 +219,24 @@ static void setup() {
     symbolWirelessManager = new SymbolWirelessManager();
     symbolWirelessManager->initialize(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
 
+    // No local player: the FDN shows and relays every page; PDNs do the filtering.
     pageManager = new PageManager();
-    pageManager->initialize(fdn->getWirelessManager(), nullptr);
+    fdn->setPageManager(pageManager);
+    pageRelay = new PageRelay();
+    pageRelay->initialize(fdn->getWirelessManager(), pageManager);
 
     setupEspNow(peerCommsDriver);
 
     crashLogger = new CrashLogger(storageDriver, fdn->getWirelessManager());
     crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
-    // Finish any crash HTTP upload before concurrent MQTT so restoreEspNow
-    // cannot tear down the STA+ESP-NOW session we are about to start.
+    // Let a crash upload finish before concurrent mode starts, so its
+    // restoreEspNowAfterUploads() cannot tear the new STA+ESP-NOW session down.
     {
         SimpleTimer crashWait;
         crashWait.setTimer(WIFI_CONCURRENT_WAIT_MS);
-        while (!crashWait.expired()) {
+        while (fdn->getWirelessManager()->hasQueuedHttpRequests() && !crashWait.expired()) {
             httpClientDriver->exec();
-            crashLogger->restoreEspNowAfterUploads();
             vTaskDelay(pdMS_TO_TICKS(20));
         }
         crashLogger->restoreEspNowAfterUploads();
@@ -238,23 +244,17 @@ static void setup() {
 
     bringUpConcurrentRadio();
 
-    const std::string deviceId = macAddressDeviceId(fdn->getWirelessManager());
+    const std::string deviceId = MacToDeviceId(fdn->getWirelessManager()->getMacAddress());
     fdn->setDeviceId(deviceId);
 
     dnnMqttClient = new DnnMqttClient();
-    dnnMqttClient->initialize(mqttDriver, deviceId, pageManager);
-    mqttDriver->onConnected = []() {
-        if (dnnMqttClient != nullptr) {
-            dnnMqttClient->onBrokerConnected();
-        }
-    };
+    dnnMqttClient->initialize(mqttDriver, deviceId, pageRelay);
 
     MqttConfig mqttCfg;
     mqttCfg.brokerHost = MQTT_BROKER;
     mqttCfg.brokerPort = MQTT_PORT;
     mqttCfg.username = MQTT_USER;
     mqttCfg.password = MQTT_PASSWORD;
-    mqttCfg.clientId = std::string("fdn-") + deviceId;
     dnnMqttClient->start(mqttCfg);
 
     // After transmitPending(): a broadcast in flight when ESP-NOW shuts down wedges its send queue.
@@ -263,7 +263,7 @@ static void setup() {
     // Apps
     idleApp = new Idle(
         remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager, fdn->getRemoteDeviceCoordinator(), pageManager);
+        fdnConnectWirelessManager, fdn->getRemoteDeviceCoordinator());
 
     mainMenu = new MainMenu(fdn, remotePlayerManager);
 
@@ -286,7 +286,7 @@ static void setup() {
         {StateId(HACKING_APP_ID),      hackingApp},
         {StateId(IDLE_APP_ID),         idleApp},
     };
-    // Idle is the page-consuming path; launch there so MQTT pages are visible for prove-out.
+    // Mission Control pages only show from the Idle app, so the FDN starts there.
     fdn->loadAppConfig(apps, StateId(IDLE_APP_ID));
 }
 
@@ -296,10 +296,10 @@ void loop() {
         crashLogger->pollSerialCommand();
         crashLogger->restoreEspNowAfterUploads();
     }
-    if (dnnMqttClient != nullptr) {
-        dnnMqttClient->loop();
+    fdn->loop();  // the MQTT driver's exec() queues pages into pageRelay
+    if (pageRelay != nullptr) {
+        pageRelay->flush();
     }
-    fdn->loop();
 }
 
 extern "C" void app_main() {

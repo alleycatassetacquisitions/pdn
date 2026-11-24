@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstring>
 #include <mutex>
 #include <queue>
@@ -15,15 +16,20 @@
 static const char* MQTT_DRV_TAG = "MQTT";
 
 /**
- * ESP-IDF mqtt client wrapped as a driver. Messages are queued in the MQTT
- * event task and drained on loop() so app code never runs on the MQTT task.
+ * ESP-IDF mqtt client wrapped as a driver. The MQTT task only records events;
+ * exec()/loop() on the app task runs the connected and message handlers.
  */
 class Esp32S3MQTTDriver : public MQTTDriverInterface {
 public:
+    /** Holds a whole page (MAX_OPAQUE_PAYLOAD 1400) plus its topic in one event. */
+    static constexpr int BUFFER_SIZE = 2048;
+    /** Inbound messages held between loop() passes; more are dropped with a warning. */
+    static constexpr size_t MAX_INBOUND = 16;
+
     explicit Esp32S3MQTTDriver(const std::string& name) : MQTTDriverInterface(name) {}
 
     ~Esp32S3MQTTDriver() override {
-        disconnect();
+        stop();
     }
 
     int initialize() override { return 0; }
@@ -46,7 +52,6 @@ public:
         }
 
         esp_mqtt_client_config_t cfg = {};
-        cfg.broker.address.uri = nullptr;
         brokerUri = "mqtt://" + mqttConfig.brokerHost + ":" + std::to_string(mqttConfig.brokerPort);
         cfg.broker.address.uri = brokerUri.c_str();
         cfg.credentials.client_id = mqttConfig.clientId.c_str();
@@ -56,13 +61,14 @@ public:
         }
         if (!mqttConfig.lwtTopic.empty()) {
             cfg.session.last_will.topic = mqttConfig.lwtTopic.c_str();
-            cfg.session.last_will.msg = mqttConfig.lwtPayload.c_str();
-            cfg.session.last_will.msg_len = static_cast<int>(mqttConfig.lwtPayload.size());
+            cfg.session.last_will.msg = "";
+            cfg.session.last_will.msg_len = 0;
             cfg.session.last_will.qos = 1;
             cfg.session.last_will.retain = true;
         }
         cfg.session.keepalive = 60;
         cfg.network.reconnect_timeout_ms = 5000;
+        cfg.buffer.size = BUFFER_SIZE;
 
         client = esp_mqtt_client_init(&cfg);
         if (client == nullptr) {
@@ -77,22 +83,7 @@ public:
         }
     }
 
-    void disconnect() override {
-        if (client == nullptr) {
-            return;
-        }
-        if (connected) {
-            if (!mqttConfig.lwtTopic.empty()) {
-                esp_mqtt_client_publish(client, mqttConfig.lwtTopic.c_str(), "", 0, 1, 1);
-            }
-        }
-        esp_mqtt_client_stop(client);
-        esp_mqtt_client_destroy(client);
-        client = nullptr;
-        connected = false;
-    }
-
-    bool isConnected() const override { return connected; }
+    bool isConnected() const override { return connected.load(); }
 
     void publish(const std::string& topic, const std::string& payload, int qos,
                  bool retain) override {
@@ -120,7 +111,15 @@ public:
 
     void setMessageHandler(MqttMessageHandler handler) override { messageHandler = std::move(handler); }
 
+    void setConnectedHandler(MqttConnectedHandler handler) override {
+        connectedHandler = std::move(handler);
+    }
+
     void loop() override {
+        if (sessionStarted.exchange(false) && connectedHandler) {
+            connectedHandler();
+        }
+
         std::queue<QueuedMessage> pending;
         {
             std::lock_guard<std::mutex> lock(queueMutex);
@@ -141,6 +140,47 @@ private:
         std::vector<uint8_t> payload;
     };
 
+    void stop() {
+        if (client == nullptr) {
+            return;
+        }
+        if (connected.load() && !mqttConfig.lwtTopic.empty()) {
+            esp_mqtt_client_publish(client, mqttConfig.lwtTopic.c_str(), "", 0, 1, 1);
+        }
+        esp_mqtt_client_stop(client);
+        esp_mqtt_client_destroy(client);
+        client = nullptr;
+        connected.store(false);
+    }
+
+    /** Runs on the MQTT task. */
+    void onData(const esp_mqtt_event_handle_t event) {
+        // A message larger than the buffer arrives as several DATA events; only the
+        // first carries the topic.
+        if (event->current_data_offset == 0) {
+            assembling = QueuedMessage{};
+            if (event->topic && event->topic_len > 0) {
+                assembling.topic.assign(event->topic, static_cast<size_t>(event->topic_len));
+            }
+            assembling.payload.reserve(static_cast<size_t>(event->total_data_len));
+        }
+        if (event->data && event->data_len > 0) {
+            assembling.payload.insert(assembling.payload.end(), event->data,
+                                      event->data + event->data_len);
+        }
+        if (event->current_data_offset + event->data_len < event->total_data_len) {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(queueMutex);
+        if (inbound.size() >= MAX_INBOUND) {
+            LOG_W(MQTT_DRV_TAG, "Inbound queue full; dropped message on %s",
+                  assembling.topic.c_str());
+            return;
+        }
+        inbound.push(std::move(assembling));
+    }
+
     static void onMqttEvent(void* handlerArgs, esp_event_base_t /*base*/, int32_t eventId,
                             void* eventData) {
         auto* self = static_cast<Esp32S3MQTTDriver*>(handlerArgs);
@@ -148,48 +188,31 @@ private:
         switch (static_cast<esp_mqtt_event_id_t>(eventId)) {
             case MQTT_EVENT_CONNECTED:
                 LOG_I(MQTT_DRV_TAG, "Connected");
-                self->connected = true;
-                if (!self->mqttConfig.lwtTopic.empty()) {
-                    self->publish(self->mqttConfig.lwtTopic, "online", 1, true);
-                }
-                if (self->onConnected) {
-                    self->onConnected();
-                }
+                self->connected.store(true);
+                self->sessionStarted.store(true);
                 break;
             case MQTT_EVENT_DISCONNECTED:
                 LOG_W(MQTT_DRV_TAG, "Disconnected");
-                self->connected = false;
+                self->connected.store(false);
                 break;
-            case MQTT_EVENT_DATA: {
-                QueuedMessage msg;
-                if (event->topic && event->topic_len > 0) {
-                    msg.topic.assign(event->topic, static_cast<size_t>(event->topic_len));
-                }
-                if (event->data && event->data_len > 0) {
-                    msg.payload.assign(event->data, event->data + event->data_len);
-                }
-                std::lock_guard<std::mutex> lock(self->queueMutex);
-                if (self->inbound.size() < 16) {
-                    self->inbound.push(std::move(msg));
-                }
+            case MQTT_EVENT_DATA:
+                self->onData(event);
                 break;
-            }
             default:
                 break;
         }
     }
 
-public:
-    /** Invoked on the MQTT task when the broker accepts the session; used to (re)subscribe. */
-    std::function<void()> onConnected;
-
-private:
     MqttConfig mqttConfig;
     std::string brokerUri;
     esp_mqtt_client_handle_t client = nullptr;
     bool configured = false;
-    bool connected = false;
+    std::atomic<bool> connected{false};
+    /** Set by the MQTT task on each CONNECTED; loop() turns it into one handler call. */
+    std::atomic<bool> sessionStarted{false};
     MqttMessageHandler messageHandler;
+    MqttConnectedHandler connectedHandler;
+    QueuedMessage assembling;  // MQTT task only
     std::mutex queueMutex;
     std::queue<QueuedMessage> inbound;
 };

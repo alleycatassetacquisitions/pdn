@@ -63,6 +63,10 @@ compile_commands.json
 # WiFi credentials (sensitive data)
 wifi_credentials.ini
 
+# Local agent working briefs — not for GitHub
+docs/MQTT_FDN_PDN_PAGING_HANDOFF.md
+docs/tickets/
+
 *.code-workspace
 
 .cache/

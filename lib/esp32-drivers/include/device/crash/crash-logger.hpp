@@ -156,7 +156,8 @@ public:
 
     /**
      * Call every loop() pass: returns the radio to ESP-NOW once the uploads end and
-     * no other HTTP request is queued, or after UPLOAD_TIMEOUT_MS.
+     * no other HTTP request is queued, or after UPLOAD_TIMEOUT_MS. A device already
+     * in WIFI_AND_ESPNOW (FDN with MQTT) is left there.
      */
     void restoreEspNowAfterUploads() {
         if (!uploadTimer.isRunning()) {
@@ -169,7 +170,6 @@ public:
             LOG_W(CRASH_LOG_TAG, "Crash uploads timed out");
         }
         uploadTimer.invalidate();
-        // FDN concurrent MQTT path must not be collapsed back to ESP-NOW-only.
         if (wirelessManager->getCurrentMode() != WirelessMode::WIFI_AND_ESPNOW) {
             wirelessManager->enablePeerCommsMode();
         }

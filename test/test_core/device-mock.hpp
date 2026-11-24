@@ -145,6 +145,7 @@ public:
     MOCK_METHOD(void, clearPacketHandler, (PktType), (override));
     MOCK_METHOD(bool, isSendQueueEmpty, (), (override));
     MOCK_METHOD(uint8_t, getWifiChannel, (), (override));
+    MOCK_METHOD(bool, setWifiChannel, (uint8_t), (override));
     MOCK_METHOD(const uint8_t*, getGlobalBroadcastAddress, (), (override));
     MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
     MOCK_METHOD(void, removePeer, (uint8_t*), (override));

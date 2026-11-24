@@ -14,7 +14,6 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
-#include "wireless/page-manager.hpp"
 
 class FirmwareUpdateManager;
 
@@ -26,8 +25,7 @@ class Quickdraw : public StateMachine {
 public:
     /** Builds the game managers and registers their packet handlers. */
     Quickdraw(PlayerProvider* playerProvider, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager,
-              RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager,
-              PageManager* pageManager);
+              RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
     ~Quickdraw();
 
     void populateStateMap() override;
@@ -59,7 +57,6 @@ private:
     QuickdrawWirelessManager* quickdrawWirelessManager;
     SymbolWirelessManager* symbolWirelessManager;
     RemoteDebugManager* remoteDebugManager;
-    PageManager* pageManager = nullptr;
     SupporterReady* supporterReadyState = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;

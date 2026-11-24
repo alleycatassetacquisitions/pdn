@@ -7,13 +7,11 @@
 IdleState::IdleState(RemotePlayerManager* remotePlayerManager,
                      HackedPlayersManager* hackedPlayersManager,
                      FDNConnectWirelessManager* fdnConnectWirelessManager,
-                     RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                     PageManager* pageManager)
+                     RemoteDeviceCoordinator* remoteDeviceCoordinator)
     : FDNConnectState(remoteDeviceCoordinator, IdleStateId::IDLE)
     , remotePlayerManager(remotePlayerManager)
     , hackedPlayersManager(hackedPlayersManager)
-    , fdnConnectWirelessManager(fdnConnectWirelessManager)
-    , pageManager(pageManager) {}
+    , fdnConnectWirelessManager(fdnConnectWirelessManager) {}
 
 IdleState::~IdleState() {
     remotePlayerManager       = nullptr;
@@ -30,19 +28,25 @@ void IdleState::setConnectionHandler(
 void IdleState::onStateMounted(FDN* fdn) {
     LOG_I(TAG, "Mounted");
     fdn->getLightManager()->clear();
-    remotePlayerManager->consumePacketReceived();
-    connectionResolved = false;
-    wasConnected       = false;
+    pageManager = fdn->getPageManager();
 
-    fdnConnectWirelessManager->setConnectCallback(
-        [this](const std::string& playerId, const uint8_t* senderMac) {
-            LOG_I(TAG, "PDN connected, player: %s", playerId.c_str());
-            fdnConnectWirelessManager->setPeer(senderMac);
-            if (connectionHandler) connectionHandler(playerId, senderMac);
-            connectionResolved = true;
-        });
+    const bool resumingAfterPage = pausedForPage;
+    pausedForPage = false;
+    if (!resumingAfterPage) {
+        remotePlayerManager->consumePacketReceived();
+        connectionResolved = false;
+        wasConnected       = false;
 
-    uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
+        fdnConnectWirelessManager->setConnectCallback(
+            [this](const std::string& playerId, const uint8_t* senderMac) {
+                LOG_I(TAG, "PDN connected, player: %s", playerId.c_str());
+                fdnConnectWirelessManager->setPeer(senderMac);
+                if (connectionHandler) connectionHandler(playerId, senderMac);
+                connectionResolved = true;
+            });
+
+        uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
+    }
 
     fdn->getDisplay()
         ->invalidateScreen()
@@ -63,6 +67,9 @@ void IdleState::onStateLoop(FDN* fdn) {
 void IdleState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
     (void)fdn;
+    if (pausedForPage) {
+        return;
+    }
     fdnConnectWirelessManager->clearCallbacks();
     uploadTimer.invalidate();
     connectionResolved = false;
@@ -81,5 +88,11 @@ bool IdleState::transitionToUploadPending() {
 }
 
 bool IdleState::transitionToPageDisplay() {
-    return pageManager != nullptr && pageManager->hasPendingPage();
+    // A PDN on the jack or mid-connect goes first; the page waits.
+    if (pageManager == nullptr || isConnected() || connectionResolved ||
+        !pageManager->hasPendingPage()) {
+        return false;
+    }
+    pausedForPage = true;
+    return true;
 }

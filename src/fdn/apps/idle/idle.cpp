@@ -5,28 +5,25 @@
 Idle::Idle(RemotePlayerManager* remotePlayerManager,
            HackedPlayersManager* hackedPlayersManager,
            FDNConnectWirelessManager* fdnConnectWirelessManager,
-           RemoteDeviceCoordinator* remoteDeviceCoordinator,
-           PageManager* pageManager)
+           RemoteDeviceCoordinator* remoteDeviceCoordinator)
     : StateMachine(IDLE_APP_ID)
     , remotePlayerManager(remotePlayerManager)
     , hackedPlayersManager(hackedPlayersManager)
     , fdnConnectWirelessManager(fdnConnectWirelessManager)
-    , remoteDeviceCoordinator(remoteDeviceCoordinator)
-    , pageManager(pageManager) {}
+    , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
 
 Idle::~Idle() {
     remotePlayerManager       = nullptr;
     hackedPlayersManager      = nullptr;
     fdnConnectWirelessManager = nullptr;
     remoteDeviceCoordinator   = nullptr;
-    pageManager               = nullptr;
 }
 
 void Idle::populateStateMap() {
     auto* idleState = new IdleState(
         remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager, remoteDeviceCoordinator, pageManager);
-    auto* pageDisplayState = new PageDisplayState(pageManager);
+        fdnConnectWirelessManager, remoteDeviceCoordinator);
+    auto* pageDisplayState = new PageDisplayState(IdleStateId::PAGE_DISPLAY);
     auto* playerDetectedState = new PlayerDetectedState(
         remotePlayerManager, hackedPlayersManager,
         fdnConnectWirelessManager, remoteDeviceCoordinator);
@@ -54,7 +51,7 @@ void Idle::populateStateMap() {
         std::bind(&IdleState::transitionToUploadPending, idleState), uploadPendingState));
 
     pageDisplayState->addTransition(new StateTransition(
-        std::bind(&PageDisplayState::transitionToIdle, pageDisplayState), idleState));
+        std::bind(&PageDisplayState::isFinished, pageDisplayState), idleState));
 
     playerDetectedState->addTransition(new StateTransition(
         std::bind(&PlayerDetectedState::transitionToIdle, playerDetectedState), idleState));

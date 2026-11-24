@@ -21,11 +21,14 @@ public:
     /** True when no frame is queued or awaiting its send report; transports without send reports answer true. */
     virtual bool isSendQueueEmpty() { return true; }
 
-    /**
-     * Current STA / radio channel, or 0 if unknown / not associated.
-     * Used by FDN page relay to decide whether a channel hop is required.
-     */
+    /** Current radio channel, or 0 if unknown. */
     virtual uint8_t getWifiChannel() { return 0; }
+
+    /**
+     * Leaves any AP and pins the radio to `channel`. ESP-NOW stays up. Returns false
+     * if the pin did not take. Transports without a channel answer true.
+     */
+    virtual bool setWifiChannel(uint8_t channel) { (void)channel; return true; }
 
     virtual const uint8_t* getGlobalBroadcastAddress() = 0;
     virtual uint8_t* getMacAddress() = 0;

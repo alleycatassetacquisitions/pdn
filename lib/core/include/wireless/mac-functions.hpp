@@ -1,7 +1,9 @@
 #pragma once
 
 #include "device/drivers/logger.hpp"
+#include <cstdio>
 #include <cstring>
+#include <string>
 #include "device/drivers/peer-comms-interface.hpp"
 
 // Utility functions
@@ -23,6 +25,18 @@ inline const char* MacToString(const uint8_t* macAddr)
 
     macStr[17] = '\0';
     return macStr;
+}
+
+/** Mission Control fabric device id: lowercase hex, no separators. "unknown" for null. */
+inline std::string MacToDeviceId(const uint8_t* macAddr)
+{
+    if (macAddr == nullptr) {
+        return "unknown";
+    }
+    char buf[13] = {};
+    snprintf(buf, sizeof(buf), "%02x%02x%02x%02x%02x%02x",
+        macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
+    return std::string(buf);
 }
 
 inline bool StringToMac(const char* macStr, uint8_t* macAddr)

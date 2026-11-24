@@ -120,7 +120,7 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     // Create game
     instance.game =
     new Quickdraw(instance.playerProvider, instance.pdn, instance.wirelessManager,
-                  nullptr, instance.symbolWirelessManager, nullptr);
+                  nullptr, instance.symbolWirelessManager);
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {

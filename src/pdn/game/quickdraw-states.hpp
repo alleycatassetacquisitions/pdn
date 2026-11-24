@@ -93,7 +93,7 @@ private:
 class Idle : public ConnectState<PDN> {
 public:
     Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
-         ChainDuelManager* chainDuelManager, PageManager* pageManager);
+         ChainDuelManager* chainDuelManager);
     ~Idle();
 
     void onStateMounted(PDN* pdn) override;
@@ -125,22 +125,6 @@ private:
     bool transitionToSymbolState = false;
 
     // void serialEventCallbacks(const std::string& message);
-};
-
-class PageDisplay : public TypedState<PDN> {
-public:
-    explicit PageDisplay(PageManager* pageManager);
-    ~PageDisplay() override;
-
-    void onStateMounted(PDN* pdn) override;
-    void onStateLoop(PDN* pdn) override;
-    void onStateDismounted(PDN* pdn) override;
-    bool transitionToIdle();
-
-private:
-    PageManager* pageManager = nullptr;
-    PageDisplayController displayController;
-    bool done = false;
 };
 
 class SupporterReady : public ConnectState<PDN> {

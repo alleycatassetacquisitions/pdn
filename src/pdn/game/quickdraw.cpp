@@ -8,8 +8,7 @@
 Quickdraw::Quickdraw(PlayerProvider* playerProvider, Device* pdn,
                      QuickdrawWirelessManager* quickdrawWirelessManager,
                      RemoteDebugManager* remoteDebugManager,
-                     SymbolWirelessManager* symbolWirelessManager,
-                     PageManager* pageManager)
+                     SymbolWirelessManager* symbolWirelessManager)
     : StateMachine(QUICKDRAW_APP_ID)
     , playerProvider(playerProvider)
     , wirelessManager(pdn->getWirelessManager())
@@ -21,7 +20,6 @@ Quickdraw::Quickdraw(PlayerProvider* playerProvider, Device* pdn,
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
-    this->pageManager = pageManager;
     this->matchManager = new MatchManager();
 
     this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
@@ -302,8 +300,8 @@ void Quickdraw::populateStateMap() {
     PlayerFetchApp* playerFetch =
     new PlayerFetchApp(wirelessManager, firmwareUpdateManager, playerProvider);
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager, pageManager);
-    PageDisplay* pageDisplay = new PageDisplay(pageManager);
+    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
+    PageDisplayState* pageDisplay = new PageDisplayState(PAGE_DISPLAY);
 
     DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
     Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator, chainDuelManager, shootoutManager_);
@@ -337,11 +335,12 @@ void Quickdraw::populateStateMap() {
     awakenSequence->addTransition(
     new StateTransition(std::bind(&AwakenSequence::transitionToIdle, awakenSequence), idle));
 
-    // Mission Control pages interrupt idle before duel/shootout/symbol work.
+    // Mission Control pages show from a quiet Idle only: Idle::transitionToPageDisplay
+    // holds them while a jack is connected or a match is forming.
     idle->addTransition(
         new StateTransition(std::bind(&Idle::transitionToPageDisplay, idle), pageDisplay));
     pageDisplay->addTransition(
-        new StateTransition(std::bind(&PageDisplay::transitionToIdle, pageDisplay), idle));
+        new StateTransition(std::bind(&PageDisplayState::isFinished, pageDisplay), idle));
 
     // Auto-trigger Shootout when the chain closes into a loop. Priority over
     // DuelCountdown/SupporterReady: in a closed ring, adjacent H-B pairs

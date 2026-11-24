@@ -11,10 +11,10 @@ struct MqttConfig {
     std::string username;
     std::string password;
     std::string clientId;
+    /** Retained last-will topic; the will payload is empty (fabric "offline" convention). */
     std::string lwtTopic;
-    /** Empty payload is the fabric offline LWT convention. */
-    std::string lwtPayload;
 };
 
 using MqttMessageHandler =
     std::function<void(const std::string& topic, const uint8_t* data, size_t length)>;
+using MqttConnectedHandler = std::function<void()>;

@@ -31,8 +31,7 @@ public:
     IdleState(RemotePlayerManager* remotePlayerManager,
               HackedPlayersManager* hackedPlayersManager,
               FDNConnectWirelessManager* fdnConnectWirelessManager,
-              RemoteDeviceCoordinator* remoteDeviceCoordinator,
-              PageManager* pageManager);
+              RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~IdleState();
 
     void onStateMounted(FDN* fdn) override;
@@ -57,28 +56,11 @@ private:
     SimpleTimer uploadTimer;
     bool connectionResolved = false;
     bool wasConnected       = false;
+    // Set when Idle hands off to PageDisplay; the connect callback and upload timer
+    // keep running across the page so a PDN plug-in or due upload is not lost.
+    bool pausedForPage      = false;
 
     static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
-};
-
-// ---------------------------------------------------------------------------
-// PageDisplayState — Mission Control page on the FDN screen
-// ---------------------------------------------------------------------------
-class PageDisplayState : public TypedState<FDN> {
-public:
-    explicit PageDisplayState(PageManager* pageManager);
-    ~PageDisplayState() override;
-
-    void onStateMounted(FDN* fdn) override;
-    void onStateLoop(FDN* fdn) override;
-    void onStateDismounted(FDN* fdn) override;
-
-    bool transitionToIdle();
-
-private:
-    PageManager* pageManager = nullptr;
-    PageDisplayController displayController;
-    bool done = false;
 };
 
 // ---------------------------------------------------------------------------

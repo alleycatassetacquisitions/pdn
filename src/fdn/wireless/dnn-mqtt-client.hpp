@@ -6,36 +6,36 @@
 
 #include "device/drivers/logger.hpp"
 #include "device/drivers/mqtt-interface.hpp"
-#include "wireless/page-manager.hpp"
+#include "wireless/page-relay.hpp"
 
 static const char* DNN_MQTT_TAG = "DnnMqtt";
 
 /**
  * AlleycatTV-style fabric client for Data Node Nexus (`mc/dnn`).
  * Subscribes device + all + membership; broadcast group after BGC assign.
+ * Every handler runs on the app task (the MQTT driver defers them to its loop()).
  */
 class DnnMqttClient {
 public:
-    void initialize(MQTTInterface* mqtt, const std::string& deviceId, PageManager* pageManager) {
+    void initialize(MQTTInterface* mqtt, const std::string& deviceId, PageRelay* pageRelay) {
         this->mqtt = mqtt;
         this->deviceId = deviceId;
-        this->pageManager = pageManager;
+        this->pageRelay = pageRelay;
         statusTopic = std::string("mc/dnn/status/") + deviceId;
         topicDevice = std::string("mc/dnn/cmd/device/") + deviceId + "/#";
         topicAll = "mc/dnn/cmd/all/#";
         topicMembership = std::string("mc/dnn/cmd/device/") + deviceId + "/membership";
     }
 
+    /** `cfg` carries broker and login; topics, will, and client id are set here. */
     void start(MqttConfig cfg) {
         if (mqtt == nullptr) {
             return;
         }
         cfg.lwtTopic = statusTopic;
-        cfg.lwtPayload = "";
-        if (cfg.clientId.empty()) {
-            cfg.clientId = std::string("fdn-") + deviceId;
-        }
+        cfg.clientId = std::string("fdn-") + deviceId;
         mqtt->configure(cfg);
+        mqtt->setConnectedHandler([this]() { onBrokerConnected(); });
         mqtt->setMessageHandler(
             [this](const std::string& topic, const uint8_t* data, size_t length) {
                 onMessage(topic, data, length);
@@ -43,11 +43,9 @@ public:
         mqtt->connect();
     }
 
-    /** (Re)subscribe after MQTT_EVENT_CONNECTED. */
+private:
+    /** (Re)subscribe and announce online after every broker session start. */
     void onBrokerConnected() {
-        if (mqtt == nullptr) {
-            return;
-        }
         mqtt->subscribe(topicDevice, 1);
         mqtt->subscribe(topicAll, 1);
         mqtt->subscribe(topicMembership, 1);
@@ -58,16 +56,6 @@ public:
         LOG_I(DNN_MQTT_TAG, "Subscribed as %s", deviceId.c_str());
     }
 
-    void loop() {
-        if (mqtt != nullptr) {
-            mqtt->loop();
-        }
-    }
-
-    const std::string& getDeviceId() const { return deviceId; }
-    const std::string& getBroadcastGroupId() const { return broadcastGroupId; }
-
-private:
     void onMessage(const std::string& topic, const uint8_t* data, size_t length) {
         if (topic == topicMembership) {
             handleMembership(data, length);
@@ -79,8 +67,8 @@ private:
             LOG_D(DNN_MQTT_TAG, "Ignore action '%s' on %s", action.c_str(), topic.c_str());
             return;
         }
-        if (pageManager != nullptr) {
-            pageManager->ingestMqttPayload(data, length);
+        if (pageRelay != nullptr) {
+            pageRelay->ingest(data, length);
         }
     }
 
@@ -95,6 +83,11 @@ private:
                 }
             }
         }
+        // The id becomes a topic level; a wildcard or separator would widen the subscription.
+        if (groupId.find_first_of("+#/") != std::string::npos) {
+            LOG_W(DNN_MQTT_TAG, "Reject broadcast group id '%s'", groupId.c_str());
+            return;
+        }
         applyBroadcastGroup(groupId);
     }
 
@@ -102,7 +95,7 @@ private:
         if (groupId == broadcastGroupId) {
             return;
         }
-        if (!topicBroadcast.empty() && mqtt != nullptr) {
+        if (!topicBroadcast.empty()) {
             mqtt->unsubscribe(topicBroadcast);
         }
         broadcastGroupId = groupId;
@@ -115,7 +108,7 @@ private:
 
     void subscribeBroadcastGroup(const std::string& groupId) {
         topicBroadcast = std::string("mc/dnn/cmd/broadcast/") + groupId + "/#";
-        if (mqtt != nullptr && mqtt->isConnected()) {
+        if (mqtt->isConnected()) {
             mqtt->subscribe(topicBroadcast, 1);
         }
     }
@@ -129,7 +122,7 @@ private:
     }
 
     MQTTInterface* mqtt = nullptr;
-    PageManager* pageManager = nullptr;
+    PageRelay* pageRelay = nullptr;
     std::string deviceId;
     std::string statusTopic;
     std::string topicDevice;

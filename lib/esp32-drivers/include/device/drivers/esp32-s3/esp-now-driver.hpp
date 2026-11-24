@@ -123,41 +123,20 @@ public:
         }
         esp_wifi_start();
 
-        // Concurrent FDN path: STA already associated (MQTT/HTTP). Keep the AP
-        // link and its channel — venue WiFi must be ESPNOW_CHANNEL so PDNs hear us.
+        // FDN concurrent mode: STA already associated for MQTT/HTTP, so keep the AP
+        // link and its channel. Page relays re-pin ESPNOW_CHANNEL for the send
+        // (WirelessManager::runOnEspNowChannel); other ESP-NOW traffic stays on the AP's channel.
         wifi_ap_record_t apInfo{};
         const bool staAssociated = (esp_wifi_sta_get_ap_info(&apInfo) == ESP_OK);
         if (staAssociated) {
             LOG_I("ENC", "STA associated on channel %d — keeping AP for concurrent ESP-NOW",
                   apInfo.primary);
             if (apInfo.primary != ESPNOW_CHANNEL) {
-                LOG_W("ENC", "AP channel %d != ESPNOW_CHANNEL %d; PDNs may not receive",
+                LOG_W("ENC", "AP channel %d != ESPNOW_CHANNEL %d; only page relays reach PDNs",
                       apInfo.primary, ESPNOW_CHANNEL);
             }
         } else {
-            // Drops the AP association without stopping the radio, which ESP-NOW needs
-            // left running.
-            esp_wifi_disconnect();
-
-            // Settle between the mode change and the channel pin: esp_wifi_set_channel
-            // fails while a connect or scan is in flight.
-            static constexpr uint32_t WIFI_SETTLE_MS = 100;
-            vTaskDelay(pdMS_TO_TICKS(WIFI_SETTLE_MS));
-
-            // Set the channel using ESP-IDF API for reliability
-            esp_err_t err = esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
-            if (err != ESP_OK) {
-                LOG_E("ENC", "Failed to set channel %d: %s", ESPNOW_CHANNEL, esp_err_to_name(err));
-            }
-
-            uint8_t primary_channel;
-            wifi_second_chan_t secondary_channel;
-            esp_wifi_get_channel(&primary_channel, &secondary_channel);
-            if (primary_channel != ESPNOW_CHANNEL) {
-                LOG_E("ENC", "Channel pin did not take: on %d, wanted %d", primary_channel, ESPNOW_CHANNEL);
-            } else {
-                LOG_I("ENC", "WiFi channel set to: %d", primary_channel);
-            }
+            pinChannel(ESPNOW_CHANNEL);
         }
 
         initializeEspNow();
@@ -573,6 +552,36 @@ private:
 
     const uint8_t* getGlobalBroadcastAddress() override {
         return PEER_BROADCAST_ADDR;
+    }
+
+    bool setWifiChannel(uint8_t channel) override {
+        return pinChannel(channel);
+    }
+
+    bool pinChannel(uint8_t channel) {
+        // Drops the AP association without stopping the radio, which ESP-NOW needs
+        // left running.
+        esp_wifi_disconnect();
+
+        // Settle between the disconnect and the channel pin: esp_wifi_set_channel
+        // fails while a connect or scan is in flight.
+        static constexpr uint32_t WIFI_SETTLE_MS = 100;
+        vTaskDelay(pdMS_TO_TICKS(WIFI_SETTLE_MS));
+
+        esp_err_t err = esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+        if (err != ESP_OK) {
+            LOG_E("ENC", "Failed to set channel %d: %s", channel, esp_err_to_name(err));
+        }
+
+        uint8_t primary_channel = 0;
+        wifi_second_chan_t secondary_channel;
+        esp_wifi_get_channel(&primary_channel, &secondary_channel);
+        if (primary_channel != channel) {
+            LOG_E("ENC", "Channel pin did not take: on %d, wanted %d", primary_channel, channel);
+            return false;
+        }
+        LOG_I("ENC", "WiFi channel set to: %d", primary_channel);
+        return true;
     }
 
     uint8_t getWifiChannel() override {

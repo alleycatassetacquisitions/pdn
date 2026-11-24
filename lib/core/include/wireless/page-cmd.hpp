@@ -8,12 +8,18 @@
 
 #include "game/player.hpp"
 
-/** Parsed DNN PageCmd JSON (mc/dnn/.../page). Field names match dnn_commands.proto. */
+/** Longest a page may stay up; also keeps the ms conversion inside 32 bits. */
+constexpr int PAGE_MAX_DURATION_SECONDS = 300;
+
+/**
+ * Parsed DNN PageCmd JSON (mc/dnn/.../page). Field names follow Mission Control's
+ * PageCmd (Data_Node_Nexus dnn_commands.proto).
+ */
 struct PageCmd {
     std::string id;
     std::string text;
     int durationSeconds = 10;
-    bool scroll = false;
+    bool scroll = false;  // Parsed for schema parity; the display does not scroll yet.
     std::string playerId;
     std::string role;
     std::string neocorp;
@@ -41,13 +47,16 @@ inline bool parsePageCmdJson(const uint8_t* data, size_t length, PageCmd& out) {
 
     if (out.durationSeconds < 0) {
         out.durationSeconds = 0;
+    } else if (out.durationSeconds > PAGE_MAX_DURATION_SECONDS) {
+        out.durationSeconds = PAGE_MAX_DURATION_SECONDS;
     }
     return !out.text.empty() || !out.id.empty();
 }
 
 /**
  * Empty stamps accept everyone. Non-empty stamps must match the local player.
- * player_id matches legacy user id or formatted server UUID. role is hunter|bounty.
+ * player_id matches legacy user id or formatted server UUID. role is
+ * hunter|bounty|unassigned (unassigned matches everyone).
  * neocorp maps to Allegiance (helix/endline/reboot|resistance/freelancer|alleycat).
  */
 inline bool pageCmdMatchesPlayer(const PageCmd& cmd, const Player* player) {
@@ -78,7 +87,7 @@ inline bool pageCmdMatchesPlayer(const PageCmd& cmd, const Player* player) {
                 return false;
             }
         } else if (cmd.role == "unassigned") {
-            // Accept any logged-in player when role is explicitly unassigned.
+            // Matches every player.
         } else {
             return false;
         }

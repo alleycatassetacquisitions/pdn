@@ -20,7 +20,7 @@
 enum class WirelessMode {
     ESPNOW,           // Fixed channel, no AP connection - for peer-to-peer communication
     WIFI,             // Connected to AP for HTTP requests
-    WIFI_AND_ESPNOW   // FDN: STA for MQTT/HTTP while ESP-NOW stays up (page hop if AP != ESPNOW_CHANNEL)
+    WIFI_AND_ESPNOW   // FDN: STA for MQTT/HTTP with ESP-NOW up on the AP's channel
 };
 
 static const char* WM_TAG = "WirelessManager";
@@ -32,13 +32,14 @@ static const char* WM_TAG = "WirelessManager";
  * When connected to a WiFi AP, the device uses the AP's channel. For ESP-NOW to work
  * reliably between devices, they must all be on the same channel.
  *
- * This manager handles switching between modes using explicit state management:
- * - WIFI mode: HTTP client CONNECTED, ESP-NOW DISCONNECTED
- * - ESPNOW mode: HTTP client DISCONNECTED, ESP-NOW CONNECTED
+ * Modes:
+ * - WIFI: HTTP client CONNECTED, ESP-NOW DISCONNECTED
+ * - ESPNOW: HTTP client DISCONNECTED, ESP-NOW CONNECTED on ESPNOW_CHANNEL
+ * - WIFI_AND_ESPNOW (FDN): both up, on the AP's channel. runOnEspNowChannel()
+ *   briefly leaves the AP when that channel is not ESPNOW_CHANNEL.
  *
- * State transitions are performed atomically:
- * 1. Disconnect the currently active subsystem first
- * 2. Connect the target subsystem
+ * Switching between WIFI and ESPNOW disconnects the active subsystem before
+ * connecting the other.
  *
  * This is a pure C++ class that delegates platform-specific operations to the
  * HttpClientInterface and PeerCommsInterface.
@@ -133,9 +134,9 @@ public:
     }
 
     /**
-     * FDN concurrent bring-up, step 1: start STA without touching ESP-NOW.
-     * Call attachConcurrentEspNow() only after isWifiConnected() (or IP) is true
-     * so EspNowDriver keeps the AP association.
+     * FDN concurrent bring-up, step 1: drop ESP-NOW and join the AP. Blocks while
+     * the HTTP client connects. Call attachConcurrentEspNow() next; if the STA is
+     * associated by then, EspNowDriver keeps the AP link.
      */
     void beginConcurrentWifi() {
         LOG_I(WM_TAG, "Concurrent mode: starting WiFi STA...");
@@ -147,9 +148,9 @@ public:
     }
 
     /**
-     * FDN concurrent bring-up, step 2: init ESP-NOW while STA stays associated.
-     * Page relays hop to ESPNOW_CHANNEL when the AP is elsewhere; other ESP-NOW
-     * traffic still prefers a venue AP on ESPNOW_CHANNEL until dual-radio hardware.
+     * FDN concurrent bring-up, step 2: init ESP-NOW. Keeps the AP link if the STA
+     * is associated; otherwise ESP-NOW pins ESPNOW_CHANNEL and the HTTP client keeps
+     * retrying the AP in the background (ESP-NOW follows it once it joins).
      */
     void attachConcurrentEspNow() {
         LOG_I(WM_TAG, "Concurrent mode: attaching ESP-NOW alongside WiFi...");
@@ -167,24 +168,16 @@ public:
         return currentMode;
     }
 
-    /**
-     * Check if WiFi is connected (only relevant in WIFI mode).
-     */
+    /** True when the mode uses WiFi and the STA is connected. */
     bool isWifiConnected() {
-        const bool wifiMode = currentMode == WirelessMode::WIFI ||
-                              currentMode == WirelessMode::WIFI_AND_ESPNOW;
-        return wifiMode &&
+        return usesWifi() &&
                httpClient->getHttpClientState() == HttpClientState::CONNECTED &&
                httpClient->isConnected();
     }
 
-    /**
-     * Check if ESP-NOW is active and ready.
-     */
+    /** True when the mode uses ESP-NOW and it is up. */
     bool isEspNowReady() {
-        const bool espMode = currentMode == WirelessMode::ESPNOW ||
-                             currentMode == WirelessMode::WIFI_AND_ESPNOW;
-        return espMode &&
+        return usesEspNow() &&
                peerComms->getPeerCommsState() == PeerCommsState::CONNECTED;
     }
 
@@ -192,7 +185,7 @@ public:
     bool hasQueuedHttpRequests() { return httpClient->hasQueuedRequests(); }
 
     /**
-     * Queue an HTTP request. Automatically switches to WiFi mode if needed.
+     * Queue an HTTP request. Switches to WiFi mode first unless WiFi is already in use.
      * @param request The HTTP request to queue; ownership moves to the HTTP client
      * @return true if request was queued successfully
      */
@@ -211,7 +204,7 @@ public:
     }
 
     /**
-     * Send data via ESP-NOW. Automatically switches to ESP-NOW mode if needed.
+     * Send data via ESP-NOW. Switches to ESP-NOW mode first unless ESP-NOW is already in use.
      * @param dst Destination MAC address
      * @param packetType Type of packet
      * @param data Pointer to data buffer
@@ -219,8 +212,7 @@ public:
      * @return 0 on success, negative on error
      */
     int sendEspNowData(const uint8_t* dst, PktType packetType, const uint8_t* data, size_t length) {
-        if (currentMode != WirelessMode::ESPNOW &&
-            currentMode != WirelessMode::WIFI_AND_ESPNOW) {
+        if (!usesEspNow()) {
             LOG_I(WM_TAG, "Auto-switching to ESP-NOW mode for peer communication");
             enablePeerCommsMode();
         }
@@ -234,57 +226,41 @@ public:
     }
 
     /**
-     * FDN page relay: broadcast opaque PageCmd bytes on ESPNOW_CHANNEL.
-     * Fast path when already on that channel; otherwise hop off WiFi, send, restore
-     * concurrent MQTT/STA (brief MQTT disconnect on non-home-channel APs).
+     * Runs `send` (a batch of sendEspNowData calls) with the radio on ESPNOW_CHANNEL,
+     * where PDNs listen. Already there: runs it in place. Otherwise leaves the AP,
+     * pins ESPNOW_CHANNEL, sends, waits for the queue to drain, then rejoins WiFi
+     * if WiFi was in use (MQTT drops and reconnects across the hop).
      */
-    int sendEspNowPageRelay(const uint8_t* data, size_t length) {
-        const uint8_t* broadcast = getBroadcastAddress();
-        if (broadcast == nullptr) {
-            return -1;
-        }
-
+    template <typename SendFn>
+    void runOnEspNowChannel(SendFn&& send) {
         const uint8_t channel = peerComms->getWifiChannel();
-        const bool onHomeChannel = (channel == ESPNOW_CHANNEL);
-        const bool canSendNow =
-            isEspNowReady() &&
-            (onHomeChannel || currentMode == WirelessMode::ESPNOW);
-
-        if (canSendNow && onHomeChannel) {
-            LOG_I(WM_TAG, "Page relay fast path on channel %u",
-                  static_cast<unsigned>(channel));
-            return sendEspNowData(broadcast, PktType::kPageCommand, data, length);
-        }
-        if (canSendNow && currentMode == WirelessMode::ESPNOW) {
-            LOG_I(WM_TAG, "Page relay on ESP-NOW-only (channel %u)",
-                  static_cast<unsigned>(channel));
-            return sendEspNowData(broadcast, PktType::kPageCommand, data, length);
+        if (isEspNowReady() && channel == ESPNOW_CHANNEL) {
+            send();
+            return;
         }
 
-        const bool restoreConcurrent =
-            currentMode == WirelessMode::WIFI_AND_ESPNOW ||
-            currentMode == WirelessMode::WIFI;
-
-        LOG_I(WM_TAG, "Page relay hop: leave WiFi (channel %u) → ESPNOW_CHANNEL %u",
-              static_cast<unsigned>(channel), static_cast<unsigned>(ESPNOW_CHANNEL));
-        enablePeerCommsMode();
-
-        const int rc = sendEspNowData(broadcast, PktType::kPageCommand, data, length);
-        waitEspNowSendDrain(PAGE_RELAY_DRAIN_MS);
-
-        if (restoreConcurrent) {
-            LOG_I(WM_TAG, "Page relay restore: rejoining WiFi for concurrent MQTT");
-            beginConcurrentWifi();
-            if (isWifiConnected()) {
-                attachConcurrentEspNow();
-                LOG_I(WM_TAG, "Page relay restore ok (channel %u)",
-                      static_cast<unsigned>(peerComms->getWifiChannel()));
-            } else {
-                LOG_W(WM_TAG, "Page relay restore: WiFi not up after hop; staying ESP-NOW");
-            }
+        const bool rejoinWifi = usesWifi();
+        LOG_I(WM_TAG, "ESP-NOW hop: channel %u -> %u", static_cast<unsigned>(channel),
+              static_cast<unsigned>(ESPNOW_CHANNEL));
+        if (httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
+            httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
+        }
+        if (peerComms->getPeerCommsState() != PeerCommsState::CONNECTED) {
+            peerComms->setPeerCommsState(PeerCommsState::CONNECTED);
+        }
+        currentMode = WirelessMode::ESPNOW;
+        // ESP-NOW may already be up on the AP's channel, in which case connecting it
+        // again is a no-op; the explicit pin is what moves the radio.
+        if (!peerComms->setWifiChannel(ESPNOW_CHANNEL)) {
+            LOG_W(WM_TAG, "ESP-NOW hop: channel pin failed; sending anyway");
         }
 
-        return rc;
+        send();
+        waitEspNowSendDrain(HOP_DRAIN_MS);
+
+        if (rejoinWifi) {
+            rejoinConcurrentWifi();
+        }
     }
 
     /**
@@ -358,7 +334,32 @@ public:
     }
 
 private:
-    static constexpr unsigned PAGE_RELAY_DRAIN_MS = 500;
+    static constexpr unsigned HOP_DRAIN_MS = 500;
+
+    bool usesWifi() const {
+        return currentMode == WirelessMode::WIFI || currentMode == WirelessMode::WIFI_AND_ESPNOW;
+    }
+
+    bool usesEspNow() const {
+        return currentMode == WirelessMode::ESPNOW ||
+               currentMode == WirelessMode::WIFI_AND_ESPNOW;
+    }
+
+    /**
+     * Back to WIFI_AND_ESPNOW after a hop. ESP-NOW is re-attached even when the AP
+     * does not come back in time, so peers stay reachable while the HTTP client
+     * keeps retrying.
+     */
+    void rejoinConcurrentWifi() {
+        beginConcurrentWifi();
+        attachConcurrentEspNow();
+        if (isWifiConnected()) {
+            LOG_I(WM_TAG, "ESP-NOW hop: rejoined WiFi on channel %u",
+                  static_cast<unsigned>(peerComms->getWifiChannel()));
+        } else {
+            LOG_W(WM_TAG, "ESP-NOW hop: WiFi not back yet; ESP-NOW up, STA retrying");
+        }
+    }
 
     void waitEspNowSendDrain(unsigned timeoutMs) {
 #ifdef ESP_PLATFORM
@@ -368,7 +369,7 @@ private:
             vTaskDelay(pdMS_TO_TICKS(10));
         }
         if (!peerComms->isSendQueueEmpty()) {
-            LOG_W(WM_TAG, "Page relay: ESP-NOW send queue not empty after %ums",
+            LOG_W(WM_TAG, "ESP-NOW hop: send queue not empty after %ums",
                   timeoutMs);
         }
 #else

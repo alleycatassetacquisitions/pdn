@@ -3,131 +3,58 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <string>
-#include <vector>
 
 #include "device/drivers/logger.hpp"
-#include "device/wireless-manager.hpp"
 #include "game/player.hpp"
+#include "utils/simple-timer.hpp"
 #include "wireless/page-cmd.hpp"
 
 static const char* PAGE_MGR_TAG = "PageManager";
 
 /**
- * Owns page dedupe, optional local filter, pending display, and opaque ESP-Now relay.
- * FDN: ingestMqttPayload (no filter) → display + broadcast. PDN: processPacket (filter).
+ * Mission Control page inbox: recent page ids, local-player filter, and the one
+ * page waiting for an idle-safe state to show it. The PDN feeds it from ESP-NOW
+ * (processPacket); the FDN feeds it through PageRelay.
  */
 class PageManager {
 public:
     static constexpr size_t DEDUPE_RING_SIZE = 16;
-    /** ESP-NOW v2 app payload budget minus DataPktHdr is ~1469; keep a margin. */
+    /** ESP-NOW v2 payload budget is ~1469 bytes after DataPktHdr; keep a margin. */
     static constexpr size_t MAX_OPAQUE_PAYLOAD = 1400;
 
-    void initialize(WirelessManager* wirelessManager, Player* localPlayer) {
-        this->wirelessManager = wirelessManager;
-        this->localPlayer = localPlayer;
-        dedupeCount = 0;
-        dedupeNext = 0;
-        hasPending = false;
-        pending = PageCmd{};
-    }
+    /** PDN: the player pages are filtered against. Null (FDN) accepts every page. */
+    void setLocalPlayer(Player* player) { localPlayer = player; }
 
-    /**
-     * FDN path: parse/validate, dedupe, queue display, opaque-broadcast MQTT bytes.
-     * @return false when payload is invalid, duplicate, or too large to send.
-     */
-    bool ingestMqttPayload(const uint8_t* data, size_t length) {
-        PageCmd cmd;
-        if (!parsePageCmdJson(data, length, cmd)) {
-            LOG_W(PAGE_MGR_TAG, "Reject MQTT page: invalid JSON");
-            return false;
-        }
-        if (length > MAX_OPAQUE_PAYLOAD) {
-            LOG_W(PAGE_MGR_TAG, "Reject MQTT page: payload %u > %u",
-                  static_cast<unsigned>(length), static_cast<unsigned>(MAX_OPAQUE_PAYLOAD));
-            return false;
-        }
-        if (!cmd.id.empty() && seenRecently(cmd.id)) {
-            LOG_D(PAGE_MGR_TAG, "Skip duplicate page id %s", cmd.id.c_str());
-            return false;
-        }
-        if (!cmd.id.empty()) {
-            rememberId(cmd.id);
-        }
-        queuePending(cmd);
-        return broadcastOpaque(data, length) == 0;
-    }
-
-    /** PDN path: decode opaque PageCmd bytes from ESP-Now. */
+    /** PDN path: opaque PageCmd bytes from ESP-NOW. */
     int processPacket(const uint8_t* /*srcMac*/, const uint8_t* data, size_t length) {
+        if (length > MAX_OPAQUE_PAYLOAD) {
+            LOG_W(PAGE_MGR_TAG, "Reject ESP-Now page: %u bytes", static_cast<unsigned>(length));
+            return -1;
+        }
         PageCmd cmd;
         if (!parsePageCmdJson(data, length, cmd)) {
             LOG_W(PAGE_MGR_TAG, "Reject ESP-Now page: invalid JSON");
             return -1;
         }
-        if (!cmd.id.empty() && seenRecently(cmd.id)) {
+        if (hasSeen(cmd.id)) {
             LOG_D(PAGE_MGR_TAG, "Skip duplicate page id %s", cmd.id.c_str());
             return 0;
         }
+        // Filtered ids are not remembered, so they never evict ones this player saw.
         if (!pageCmdMatchesPlayer(cmd, localPlayer)) {
             LOG_D(PAGE_MGR_TAG, "Page filtered for local player");
             return 0;
         }
-        if (!cmd.id.empty()) {
-            rememberId(cmd.id);
-        }
+        remember(cmd.id);
         queuePending(cmd);
         return 0;
     }
 
-    bool hasPendingPage() const { return hasPending; }
-
-    const PageCmd& pendingPage() const { return pending; }
-
-    void clearPendingPage() {
-        hasPending = false;
-        pending = PageCmd{};
-    }
-
-    /**
-     * Queue a page for display without broadcasting (tests / FDN local-only retry).
-     * Still applies dedupe when id is set.
-     */
-    bool queueForDisplay(const PageCmd& cmd) {
-        if (!cmd.id.empty() && seenRecently(cmd.id)) {
+    bool hasSeen(const std::string& id) const {
+        if (id.empty()) {
             return false;
         }
-        if (!cmd.id.empty()) {
-            rememberId(cmd.id);
-        }
-        queuePending(cmd);
-        return true;
-    }
-
-private:
-    void queuePending(const PageCmd& cmd) {
-        pending = cmd;
-        hasPending = true;
-        LOG_I(PAGE_MGR_TAG, "Pending page id=%s duration=%ds", pending.id.c_str(),
-              pending.durationSeconds);
-    }
-
-    int broadcastOpaque(const uint8_t* data, size_t length) {
-        if (wirelessManager == nullptr) {
-            return -1;
-        }
-        const int rc = wirelessManager->sendEspNowPageRelay(data, length);
-        if (rc != 0) {
-            LOG_W(PAGE_MGR_TAG, "ESP-Now page relay failed: %d", rc);
-        } else {
-            LOG_I(PAGE_MGR_TAG, "ESP-Now page relay ok (%u bytes)",
-                  static_cast<unsigned>(length));
-        }
-        return rc;
-    }
-
-    bool seenRecently(const std::string& id) const {
         for (size_t i = 0; i < dedupeCount; ++i) {
             if (dedupeRing[i] == id) {
                 return true;
@@ -136,7 +63,10 @@ private:
         return false;
     }
 
-    void rememberId(const std::string& id) {
+    void remember(const std::string& id) {
+        if (id.empty()) {
+            return;
+        }
         dedupeRing[dedupeNext] = id;
         dedupeNext = (dedupeNext + 1) % DEDUPE_RING_SIZE;
         if (dedupeCount < DEDUPE_RING_SIZE) {
@@ -144,10 +74,46 @@ private:
         }
     }
 
-    WirelessManager* wirelessManager = nullptr;
+    /** Replaces any page still waiting. It expires after its own duration if never shown. */
+    void queuePending(const PageCmd& cmd) {
+        pending = cmd;
+        hasPending = true;
+        const int waitSeconds = cmd.durationSeconds > 0 ? cmd.durationSeconds : 1;
+        pendingExpiry.setTimer(static_cast<unsigned long>(waitSeconds) * 1000UL);
+        LOG_I(PAGE_MGR_TAG, "Pending page id=%s duration=%ds", pending.id.c_str(),
+              pending.durationSeconds);
+    }
+
+    /** True when a page is waiting. Drops one that waited out its whole duration. */
+    bool hasPendingPage() {
+        if (hasPending && pendingExpiry.expired()) {
+            LOG_I(PAGE_MGR_TAG, "Drop stale page id=%s", pending.id.c_str());
+            clearPending();
+        }
+        return hasPending;
+    }
+
+    /** Moves the waiting page into `out`. False when none is waiting. */
+    bool takePendingPage(PageCmd& out) {
+        if (!hasPendingPage()) {
+            return false;
+        }
+        out = pending;
+        clearPending();
+        return true;
+    }
+
+private:
+    void clearPending() {
+        hasPending = false;
+        pending = PageCmd{};
+        pendingExpiry.invalidate();
+    }
+
     Player* localPlayer = nullptr;
     PageCmd pending;
     bool hasPending = false;
+    SimpleTimer pendingExpiry;
     std::array<std::string, DEDUPE_RING_SIZE> dedupeRing{};
     size_t dedupeCount = 0;
     size_t dedupeNext = 0;

@@ -17,12 +17,11 @@
 #include <cstring>
 
 Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
-           ChainDuelManager* chainDuelManager, PageManager* pageManager)
+           ChainDuelManager* chainDuelManager)
     : ConnectState<PDN>(remoteDeviceCoordinator, IDLE) {
     this->matchManager = matchManager;
     this->player = player;
     this->chainDuelManager = chainDuelManager;
-    this->pageManager = pageManager;
 }
 
 Idle::~Idle() {
@@ -31,6 +30,7 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(PDN* pdn) {
+    pageManager = pdn->getPageManager();
 
     // Switch to ESP-NOW mode for peer-to-peer communication
     pdn->getWirelessManager()->enablePeerCommsMode();
@@ -167,7 +167,16 @@ bool Idle::isAuxRequired() {
 }
 
 bool Idle::transitionToPageDisplay() {
-    return pageManager != nullptr && pageManager->hasPendingPage();
+    // Never pull a PDN out of a forming duel, chain, or shootout; the page waits
+    // (and expires after its duration) until Idle is quiet again.
+    if (pageManager == nullptr || isConnected() || matchInitialized) {
+        return false;
+    }
+    ShootoutManager* shMgr = matchManager->getShootoutManager();
+    if (shMgr && shMgr->active()) {
+        return false;
+    }
+    return pageManager->hasPendingPage();
 }
 
 bool Idle::transitionToSymbol() {
