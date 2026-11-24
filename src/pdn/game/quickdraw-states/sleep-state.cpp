@@ -19,6 +19,12 @@ Sleep::~Sleep() {
 }
 
 void Sleep::onStateMounted(PDN* pdn) {
+    // Back from a page with cooldown left: keep the running timer.
+    const bool resumingAfterPage =
+        pausedForPage && dormantTimer.isRunning() && !dormantTimer.expired();
+    pausedForPage = false;
+    pageManager = pdn->getPageManager();
+
     pdn->getDisplay()->
         invalidateScreen()->
         drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
@@ -29,7 +35,9 @@ void Sleep::onStateMounted(PDN* pdn) {
     // Sleep after a prior cycle would fire the transition on the first loop
     // tick before the new dormantTimer ever ran.
     transitionToAwakenSequenceState = false;
-    dormantTimer.setTimer(SLEEP_DURATION);
+    if (!resumingAfterPage) {
+        dormantTimer.setTimer(SLEEP_DURATION);
+    }
 }
 
 void Sleep::onStateLoop(PDN* pdn) {
@@ -66,7 +74,19 @@ void Sleep::onStateLoop(PDN* pdn) {
 }
 
 void Sleep::onStateDismounted(PDN* pdn) {
-    dormantTimer.invalidate();
+    if (!pausedForPage) {
+        dormantTimer.invalidate();
+    }
 }
 
 bool Sleep::transitionToAwakenSequence() { return transitionToAwakenSequenceState; }
+
+bool Sleep::transitionToPageDisplay() {
+    if (pageManager == nullptr || dormantTimer.expired() || !pageManager->hasPendingPage()) {
+        return false;
+    }
+    pausedForPage = true;
+    return true;
+}
+
+bool Sleep::cooldownExpired() { return dormantTimer.expired(); }

@@ -7,7 +7,9 @@
 #include <vector>
 
 #include "device-mock.hpp"
+#include "utility-tests.hpp"
 #include "game/player.hpp"
+#include "game/quickdraw-states.hpp"
 #include "wireless/page-cmd.hpp"
 #include "wireless/page-display.hpp"
 #include "wireless/page-manager.hpp"
@@ -15,7 +17,10 @@
 
 using ::testing::_;
 using ::testing::AnyNumber;
+using ::testing::DoAll;
+using ::testing::Invoke;
 using ::testing::Return;
+using ::testing::SaveArg;
 
 inline const uint8_t* pageJson(const std::string& json, std::vector<uint8_t>& storage) {
     storage.assign(json.begin(), json.end());
@@ -127,6 +132,55 @@ TEST_F(PageManagerTestSuite, oversizedPacketRejected) {
     EXPECT_FALSE(pageManager.hasPendingPage());
 }
 
+TEST_F(PageManagerTestSuite, queuedPagesComeOutOldestFirst) {
+    PageCmd a;
+    a.id = "a";
+    PageCmd b;
+    b.id = "b";
+    pageManager.queuePending(a);
+    pageManager.queuePending(b);
+    EXPECT_EQ(pageManager.pendingCount(), 2u);
+
+    PageCmd out;
+    ASSERT_TRUE(pageManager.takePendingPage(out));
+    EXPECT_EQ(out.id, "a");
+    ASSERT_TRUE(pageManager.takePendingPage(out));
+    EXPECT_EQ(out.id, "b");
+    EXPECT_FALSE(pageManager.takePendingPage(out));
+}
+
+TEST_F(PageManagerTestSuite, fullQueueDropsOldest) {
+    for (size_t i = 0; i <= PageManager::MAX_QUEUED; ++i) {
+        PageCmd cmd;
+        cmd.id = "p" + std::to_string(i);
+        pageManager.queuePending(cmd);
+    }
+    EXPECT_EQ(pageManager.pendingCount(), PageManager::MAX_QUEUED);
+    PageCmd out;
+    ASSERT_TRUE(pageManager.takePendingPage(out));
+    EXPECT_EQ(out.id, "p1");
+}
+
+TEST_F(PageManagerTestSuite, pageHeldPastMaxHoldIsDropped) {
+    FakePlatformClock clock;
+    clock.setTime(1000);
+    SimpleTimer::setPlatformClock(&clock);
+
+    PageCmd cmd;
+    cmd.id = "old";
+    cmd.durationSeconds = 10;
+    pageManager.queuePending(cmd);
+
+    // Survives a match far longer than its own 10 s duration...
+    clock.advance(5UL * 60UL * 1000UL);
+    EXPECT_TRUE(pageManager.hasPendingPage());
+    // ...but not past the hold limit.
+    clock.advance(PageManager::MAX_HOLD_MS);
+    EXPECT_FALSE(pageManager.hasPendingPage());
+
+    SimpleTimer::setPlatformClock(nullptr);
+}
+
 // ---------------------------------------------------------------------------
 // PageRelay (FDN) over WirelessManager
 // ---------------------------------------------------------------------------
@@ -236,15 +290,176 @@ TEST_F(PageRelayTestSuite, oversizedPayloadRejectedBeforeParse) {
 }
 
 // ---------------------------------------------------------------------------
-// PageDisplayState
+// Page text wrapping and PageDisplayState
 // ---------------------------------------------------------------------------
 
-TEST(PageDisplayStateTest, finishesImmediatelyWithNothingPending) {
+inline int tenPxPerChar(const char* s) { return static_cast<int>(std::strlen(s)) * 10; }
+
+TEST(WrapPageTextTest, wrapsOnWords) {
+    const auto lines = wrapPageText("hello world foo", 50, tenPxPerChar);
+    ASSERT_EQ(lines.size(), 3u);
+    EXPECT_EQ(lines[0], "hello");
+    EXPECT_EQ(lines[1], "world");
+    EXPECT_EQ(lines[2], "foo");
+}
+
+TEST(WrapPageTextTest, keepsShortWordsTogether) {
+    const auto lines = wrapPageText("a b c d", 50, tenPxPerChar);
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_EQ(lines[0], "a b c");
+    EXPECT_EQ(lines[1], "d");
+}
+
+TEST(WrapPageTextTest, splitsWordWiderThanLine) {
+    const auto lines = wrapPageText("abcdefghijkl", 50, tenPxPerChar);
+    ASSERT_EQ(lines.size(), 3u);
+    EXPECT_EQ(lines[0], "abcde");
+    EXPECT_EQ(lines[1], "fghij");
+    EXPECT_EQ(lines[2], "kl");
+}
+
+TEST(WrapPageTextTest, honorsNewlines) {
+    const auto lines = wrapPageText("one\ntwo", 128, tenPxPerChar);
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_EQ(lines[0], "one");
+    EXPECT_EQ(lines[1], "two");
+}
+
+class PageDisplayStateTestSuite : public ::testing::Test {
+protected:
+    void SetUp() override {
+        device.setPageManager(&inbox);
+        ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, getWidth()).WillByDefault(Return(128));
+        ON_CALL(*device.mockDisplay, getTextWidth(_)).WillByDefault(Invoke(tenPxPerChar));
+        ON_CALL(*device.mockPrimaryButton,
+                setButtonPress(::testing::Matcher<parameterizedCallbackFunction>(_), _, _))
+            .WillByDefault(DoAll(SaveArg<0>(&clickCallback), SaveArg<1>(&clickCtx)));
+    }
+
+    void queue(const std::string& id, const std::string& text) {
+        PageCmd cmd;
+        cmd.id = id;
+        cmd.text = text;
+        cmd.durationSeconds = 10;
+        inbox.queuePending(cmd);
+    }
+
+    void click() { clickCallback(clickCtx); }
+
     MockDevice device;
     PageManager inbox;
-    device.setPageManager(&inbox);
-    PageDisplayState state(99);
+    PageDisplayState state{99};
+    parameterizedCallbackFunction clickCallback = nullptr;
+    void* clickCtx = nullptr;
+};
 
+TEST_F(PageDisplayStateTestSuite, finishesImmediatelyWithNothingPending) {
     state.onStateMounted(&device);
     EXPECT_TRUE(state.isFinished());
+}
+
+TEST_F(PageDisplayStateTestSuite, buttonStepsThroughScreensOfALongPage) {
+    // 12 chars per 128 px line wraps this to 4 lines: "one two", "three four",
+    // "five six", "seven eight". 3 lines per screen makes two screens.
+    queue("long", "one two three four five six seven eight");
+    state.onStateMounted(&device);
+    ASSERT_FALSE(state.isFinished());
+    ASSERT_NE(clickCallback, nullptr);
+
+    click();
+    state.onStateLoop(&device);
+    EXPECT_FALSE(state.isFinished());
+
+    click();
+    state.onStateLoop(&device);
+    EXPECT_TRUE(state.isFinished());
+}
+
+TEST_F(PageDisplayStateTestSuite, eachMountShowsTheNextQueuedPage) {
+    queue("first", "Hi");
+    queue("second", "There");
+
+    EXPECT_CALL(*device.mockDisplay, drawText(_, _, _)).Times(AnyNumber());
+    EXPECT_CALL(*device.mockDisplay, drawText(::testing::StrEq("+1"), _, _)).Times(1);
+    state.onStateMounted(&device);
+    click();
+    state.onStateLoop(&device);
+    ASSERT_TRUE(state.isFinished());
+    state.onStateDismounted(&device);
+
+    EXPECT_TRUE(inbox.hasPendingPage());
+    state.onStateMounted(&device);
+    EXPECT_FALSE(state.isFinished());
+    EXPECT_FALSE(inbox.hasPendingPage());
+}
+
+// ---------------------------------------------------------------------------
+// Pages during the Quickdraw post-match cooldown (Sleep)
+// ---------------------------------------------------------------------------
+
+class SleepPageTestSuite : public ::testing::Test {
+protected:
+    static constexpr unsigned long COOLDOWN_MS = 60000UL;  // Sleep::SLEEP_DURATION
+
+    void SetUp() override {
+        clock.setTime(1000);
+        SimpleTimer::setPlatformClock(&clock);
+        device.setPageManager(&inbox);
+        ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
+    }
+
+    void TearDown() override { SimpleTimer::setPlatformClock(nullptr); }
+
+    void queuePage() {
+        PageCmd cmd;
+        cmd.id = "cooldown-page";
+        cmd.text = "Hello";
+        inbox.queuePending(cmd);
+    }
+
+    FakePlatformClock clock;
+    MockDevice device;
+    PageManager inbox;
+    Player player{"p1", Allegiance::HELIX, true};
+    Sleep sleep{&player};
+};
+
+TEST_F(SleepPageTestSuite, cooldownKeepsCountingAcrossAPage) {
+    sleep.onStateMounted(&device);
+    clock.advance(20000);
+    queuePage();
+    ASSERT_TRUE(sleep.transitionToPageDisplay());
+    sleep.onStateDismounted(&device);
+
+    clock.advance(10000);  // reading the page
+    sleep.onStateMounted(&device);
+    EXPECT_FALSE(sleep.cooldownExpired());
+
+    clock.advance(30001);  // 60001 ms since the cooldown began, not since the page
+    EXPECT_TRUE(sleep.cooldownExpired());
+}
+
+TEST_F(SleepPageTestSuite, cooldownThatEndsDuringAPageIsReportedAndRestartsNextTime) {
+    sleep.onStateMounted(&device);
+    queuePage();
+    ASSERT_TRUE(sleep.transitionToPageDisplay());
+    sleep.onStateDismounted(&device);
+
+    clock.advance(COOLDOWN_MS + 1);
+    EXPECT_TRUE(sleep.cooldownExpired());  // the page state goes straight to Idle
+
+    // The next match's cooldown starts from zero.
+    sleep.onStateMounted(&device);
+    EXPECT_FALSE(sleep.cooldownExpired());
+}
+
+TEST_F(SleepPageTestSuite, noPageOnceCooldownIsOver) {
+    sleep.onStateMounted(&device);
+    clock.advance(COOLDOWN_MS + 1);
+    queuePage();
+    EXPECT_FALSE(sleep.transitionToPageDisplay());
 }

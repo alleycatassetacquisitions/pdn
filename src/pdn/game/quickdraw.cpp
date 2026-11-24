@@ -302,6 +302,7 @@ void Quickdraw::populateStateMap() {
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
     PageDisplayState* pageDisplay = new PageDisplayState(PAGE_DISPLAY);
+    PageDisplayState* cooldownPageDisplay = new PageDisplayState(PAGE_DISPLAY_COOLDOWN);
 
     DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
     Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator, chainDuelManager, shootoutManager_);
@@ -500,6 +501,18 @@ void Quickdraw::populateStateMap() {
     sleep->addTransition(
     new StateTransition(std::bind(&Sleep::transitionToAwakenSequence, sleep), awakenSequence));
 
+    // Pages during the post-match cooldown: the cooldown keeps counting underneath.
+    // Finished with time left -> back to Sleep; cooldown already over -> straight to Idle.
+    sleep->addTransition(
+        new StateTransition(std::bind(&Sleep::transitionToPageDisplay, sleep), cooldownPageDisplay));
+    cooldownPageDisplay->addTransition(new StateTransition(
+        [cooldownPageDisplay, sleep]() {
+            return cooldownPageDisplay->isFinished() && !sleep->cooldownExpired();
+        },
+        sleep));
+    cooldownPageDisplay->addTransition(new StateTransition(
+        std::bind(&PageDisplayState::isFinished, cooldownPageDisplay), idle));
+
     // --- Shootout transitions ---
     shProposal->addTransition(
         new StateTransition(
@@ -618,4 +631,5 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(symbol);
     stateMap.push_back(symbolMatched);
     stateMap.push_back(pageDisplay);
+    stateMap.push_back(cooldownPageDisplay);
 }

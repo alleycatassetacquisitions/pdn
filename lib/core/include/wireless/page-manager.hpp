@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <string>
 
 #include "device/drivers/logger.hpp"
@@ -13,13 +14,17 @@
 static const char* PAGE_MGR_TAG = "PageManager";
 
 /**
- * Mission Control page inbox: recent page ids, local-player filter, and the one
- * page waiting for an idle-safe state to show it. The PDN feeds it from ESP-NOW
- * (processPacket); the FDN feeds it through PageRelay.
+ * Mission Control page inbox: recent page ids, local-player filter, and a short
+ * queue of pages waiting for an idle-safe state to show them, oldest first. The
+ * PDN feeds it from ESP-NOW (processPacket); the FDN feeds it through PageRelay.
  */
 class PageManager {
 public:
     static constexpr size_t DEDUPE_RING_SIZE = 16;
+    /** Pages held while the device is busy; a new page past this drops the oldest. */
+    static constexpr size_t MAX_QUEUED = 5;
+    /** A page not shown within this long (e.g. a very long match) is dropped unseen. */
+    static constexpr unsigned long MAX_HOLD_MS = 10UL * 60UL * 1000UL;
     /** ESP-NOW v2 payload budget is ~1469 bytes after DataPktHdr; keep a margin. */
     static constexpr size_t MAX_OPAQUE_PAYLOAD = 1400;
 
@@ -74,46 +79,59 @@ public:
         }
     }
 
-    /** Replaces any page still waiting. It expires after its own duration if never shown. */
+    /** Adds a page to the back of the queue, dropping the oldest when full. */
     void queuePending(const PageCmd& cmd) {
-        pending = cmd;
-        hasPending = true;
-        const int waitSeconds = cmd.durationSeconds > 0 ? cmd.durationSeconds : 1;
-        pendingExpiry.setTimer(static_cast<unsigned long>(waitSeconds) * 1000UL);
-        LOG_I(PAGE_MGR_TAG, "Pending page id=%s duration=%ds", pending.id.c_str(),
-              pending.durationSeconds);
-    }
-
-    /** True when a page is waiting. Drops one that waited out its whole duration. */
-    bool hasPendingPage() {
-        if (hasPending && pendingExpiry.expired()) {
-            LOG_I(PAGE_MGR_TAG, "Drop stale page id=%s", pending.id.c_str());
-            clearPending();
+        if (queue.size() >= MAX_QUEUED) {
+            LOG_W(PAGE_MGR_TAG, "Page queue full; dropping oldest id=%s",
+                  queue.front().cmd.id.c_str());
+            queue.pop_front();
         }
-        return hasPending;
+        QueuedPage entry;
+        entry.cmd = cmd;
+        entry.hold.setTimer(MAX_HOLD_MS);
+        queue.push_back(entry);
+        LOG_I(PAGE_MGR_TAG, "Queued page id=%s duration=%ds (%u waiting)", cmd.id.c_str(),
+              cmd.durationSeconds, static_cast<unsigned>(queue.size()));
     }
 
-    /** Moves the waiting page into `out`. False when none is waiting. */
+    /** True when a page is waiting. Drops pages held longer than MAX_HOLD_MS. */
+    bool hasPendingPage() {
+        dropStale();
+        return !queue.empty();
+    }
+
+    /** Pages waiting, after dropping stale ones. */
+    size_t pendingCount() {
+        dropStale();
+        return queue.size();
+    }
+
+    /** Moves the oldest waiting page into `out`. False when none is waiting. */
     bool takePendingPage(PageCmd& out) {
         if (!hasPendingPage()) {
             return false;
         }
-        out = pending;
-        clearPending();
+        out = queue.front().cmd;
+        queue.pop_front();
         return true;
     }
 
 private:
-    void clearPending() {
-        hasPending = false;
-        pending = PageCmd{};
-        pendingExpiry.invalidate();
+    struct QueuedPage {
+        PageCmd cmd;
+        SimpleTimer hold;
+    };
+
+    /** Every page gets the same hold, so the oldest always expires first. */
+    void dropStale() {
+        while (!queue.empty() && queue.front().hold.expired()) {
+            LOG_I(PAGE_MGR_TAG, "Drop stale page id=%s", queue.front().cmd.id.c_str());
+            queue.pop_front();
+        }
     }
 
     Player* localPlayer = nullptr;
-    PageCmd pending;
-    bool hasPending = false;
-    SimpleTimer pendingExpiry;
+    std::deque<QueuedPage> queue;
     std::array<std::string, DEDUPE_RING_SIZE> dedupeRing{};
     size_t dedupeCount = 0;
     size_t dedupeNext = 0;

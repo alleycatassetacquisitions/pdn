@@ -49,6 +49,7 @@ enum QuickdrawStateId {
     SYMBOL = 28,
     SYMBOL_MATCHED = 29,
     PAGE_DISPLAY = 30,
+    PAGE_DISPLAY_COOLDOWN = 31,
 };
 
 class Sleep : public TypedState<PDN> {
@@ -60,10 +61,17 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToAwakenSequence();
+    /** A queued page may show during the cooldown; the cooldown keeps counting. */
+    bool transitionToPageDisplay();
+    bool cooldownExpired();
 
 private:
     bool transitionToAwakenSequenceState = false;
     SimpleTimer dormantTimer;
+    PageManager* pageManager = nullptr;
+    // Set when Sleep hands off to a page, so the next mount resumes the
+    // cooldown instead of restarting it.
+    bool pausedForPage = false;
     Player* player;
     bool breatheUp = true;
     int ledBrightness = 0;
